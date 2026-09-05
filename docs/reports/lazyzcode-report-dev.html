@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LazyZCode 方案调研报告 · 初级开发人员版</title>
+<meta name="description" content="LazyZCode 方案调研报告（初级开发人员版）：概念图解、机制解剖、避坑清单与 MVP 动手路线。">
+<style>
+:root{--bg:#F7F6F3;--card:#FFFFFF;--card2:#FAF9F6;--ink:#2F3437;--muted:#787774;--line:#E7E5E0;--accent:#346538;--accent-soft:#EDF3EC;--pro-bg:#EDF3EC;--pro-ink:#346538;--pro-line:#D8E4D5;--con-bg:#FDEBEC;--con-ink:#9F2F2D;--con-line:#F0D6D7;--neu-bg:#E1F3FE;--neu-ink:#1F6C9F;--neu-line:#CDE6F6;--warn-bg:#FBF3DB;--warn-ink:#956400;--warn-line:#EFDFAF;--vio-bg:#EFEAFB;--vio-ink:#5B4A9F;--vio-line:#DED4F2;--code-bg:#F0EFEB;--code-ink:#4A4E52;--shadow:0 1px 2px rgba(47,52,55,.04),0 10px 30px rgba(47,52,55,.05)}
+html.dark{--bg:#151513;--card:#1D1D1A;--card2:#22211D;--ink:#E6E4DE;--muted:#9B998F;--line:#2E2D28;--accent:#93C99B;--accent-soft:#1B291D;--pro-bg:#1B291D;--pro-ink:#93C99B;--pro-line:#2C4030;--con-bg:#321B1C;--con-ink:#E89A97;--con-line:#4A2A2B;--neu-bg:#16283A;--neu-ink:#8FC3E8;--neu-line:#274156;--warn-bg:#2E2614;--warn-ink:#E0B45C;--warn-line:#463A1E;--vio-bg:#251F3D;--vio-ink:#B9A9E8;--vio-line:#3B3358;--code-bg:#23231F;--code-ink:#C8C5BC;--shadow:0 1px 2px rgba(0,0,0,.25),0 10px 30px rgba(0,0,0,.3);color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;color:var(--ink);background:var(--bg);line-height:1.85;font-size:16px;transition:background .25s,color .25s}
+::selection{background:var(--accent-soft)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+h1,h2,h3{text-wrap:balance}
+p{text-wrap:pretty}
+.wrap{max-width:1240px;margin:0 auto;padding:0 28px}
+@media(min-width:1080px){
+  body>.wrap{display:grid;grid-template-columns:250px minmax(0,1fr);column-gap:52px;align-items:start}
+  body>.wrap>nav.toc{grid-column:1;grid-row:1;position:sticky;top:32px;max-height:calc(100vh - 48px);overflow:auto;align-self:start}
+  body>.wrap>div.content{grid-column:2;grid-row:1;min-width:0}
+  footer .wrap{padding-left:330px}
+}
+/* 进度条 */
+.progress{position:fixed;top:0;left:0;right:0;height:3px;z-index:100;pointer-events:none}
+.progress::before{content:"";display:block;height:100%;background:var(--accent);transform-origin:0 50%;transform:scaleX(0)}
+@supports(animation-timeline:scroll()){.progress::before{animation:pgrow linear both;animation-timeline:scroll(root)}}
+@keyframes pgrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@media(prefers-reduced-motion:reduce){.progress{display:none}}
+/* 封面：纸面编辑风（浅色页 = 浅色封面，主题锁） */
+header.cover{background:var(--bg);color:var(--ink);padding:84px 0 60px;border-bottom:1px solid var(--line);position:relative;overflow:hidden}
+header.cover::before{content:"";position:absolute;inset:0;background:radial-gradient(58% 55% at 72% -6%,var(--accent-soft),transparent 72%);opacity:.55;pointer-events:none}
+header.cover .kicker{font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:11.5px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent)}
+header.cover h1{font-size:clamp(34px,4.4vw,50px);letter-spacing:-.02em;line-height:1.14;font-weight:800;margin:20px 0 14px;max-width:21em;position:relative}
+header.cover p.sub{color:var(--muted);max-width:44em;font-size:16.5px;margin:0;position:relative}
+.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px;position:relative}
+.meta span{border:1px solid var(--line);border-radius:6px;padding:4px 12px;font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:12.5px;color:var(--muted);background:var(--card)}
+/* 目录：桌面粘性侧栏 / 移动端轻卡片 */
+nav.toc b{font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:11px;letter-spacing:.22em;color:var(--muted);font-weight:600}
+nav.toc ol{margin:12px 0 0;padding:0 0 0 4px;list-style:none;counter-reset:toc}
+nav.toc li{margin:2px 0;counter-increment:toc}
+nav.toc li::before{content:counter(toc,decimal-leading-zero);font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:10.5px;color:var(--muted);opacity:.7;margin-right:9px}
+nav.toc a{color:var(--ink);display:inline-block;padding:3.5px 0;font-size:14px;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--accent);text-decoration:none;border-bottom-color:var(--accent-soft)}
+@media(max-width:1079px){
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin:28px 0 8px}
+  nav.toc ol{columns:2;column-gap:36px}
+}
+@media(max-width:640px){nav.toc ol{columns:1}}
+/* 正文区 */
+section{margin:0 0 76px;border-top:1px solid var(--line);padding-top:34px}
+.content>section:first-of-type{border-top:none;padding-top:6px}
+h2{font-size:clamp(23px,2.4vw,29px);letter-spacing:-.01em;line-height:1.3;font-weight:700;margin:0 0 22px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+h2::before{content:"";display:inline-block;width:9px;height:9px;background:var(--accent);margin-right:13px;border-radius:2px;transform:translateY(-2px)}
+h2 .en{font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:11.5px;color:var(--muted);font-weight:400;margin-left:12px;letter-spacing:.08em}
+h3{font-size:19.5px;margin:30px 0 10px;color:var(--ink);letter-spacing:-.005em;font-weight:650}
+p.lead{color:var(--muted);margin:0 0 14px}
+section p{max-width:78ch}
+section li{max-width:76ch}
+/* 卡片：扁平 1px 边框，无投影 */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:26px 30px;margin:18px 0;transition:border-color .2s}
+.card:hover{border-color:#D6D3CC}
+html.dark .card:hover{border-color:#3B3A33}
+.card>h3:first-child,.card>h4:first-child,.card>p:first-child{margin-top:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:840px){.grid2,.grid3{grid-template-columns:1fr}}
+/* 语义淡彩卡（优势/劣势/中性） */
+.pc{border-radius:10px;padding:18px 22px;border:1px solid var(--line);background:var(--card)}
+.pc h4{margin:0 0 8px;font-size:15px}
+.pc ul{margin:0;padding-left:19px}
+.pc li{margin:7px 0}
+.pc.pro{background:var(--pro-bg);border-color:var(--pro-line)}
+.pc.pro h4{color:var(--pro-ink)}
+.pc.con{background:var(--con-bg);border-color:var(--con-line)}
+.pc.con h4{color:var(--con-ink)}
+.pc.neu{background:var(--neu-bg);border-color:var(--neu-line)}
+.pc.neu h4{color:var(--neu-ink)}
+.pc.vio{background:var(--vio-bg);border-color:var(--vio-line)}
+.pc.vio h4{color:var(--vio-ink)}
+/* 表格：编辑风细线表 */
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:16px 0;font-size:14px;font-variant-numeric:tabular-nums}
+th{background:var(--card2);color:var(--muted);text-align:left;padding:10px 14px;font-weight:600;font-size:12.5px;letter-spacing:.05em;border-bottom:1px solid var(--line)}
+td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top}
+tr:nth-child(even) td{background:var(--card2)}
+tr:first-child td{border-top:none}
+.good{color:var(--pro-ink);font-weight:600}
+.bad{color:var(--con-ink);font-weight:600}
+.mid{color:var(--warn-ink);font-weight:600}
+/* 标签：淡彩药丸 */
+.badge{display:inline-block;border-radius:999px;padding:2px 12px;font-size:12px;font-weight:600;vertical-align:middle;letter-spacing:.02em}
+.b-blue{background:var(--neu-bg);color:var(--neu-ink);border:1px solid var(--neu-line)}
+.b-green{background:var(--pro-bg);color:var(--pro-ink);border:1px solid var(--pro-line)}
+.b-red{background:var(--con-bg);color:var(--con-ink);border:1px solid var(--con-line)}
+.b-amber{background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line)}
+.b-gray{background:var(--card2);color:var(--muted);border:1px solid var(--line)}
+.b-vio{background:var(--vio-bg);color:var(--vio-ink);border:1px solid var(--vio-line)}
+/* 图表容器 */
+.fig{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;margin:20px 0;text-align:center}
+.fig .cap{font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:12px;color:var(--muted);margin-top:10px}
+/* 提示框：淡彩左线 */
+.callout{border-left:3px solid var(--neu-ink);background:var(--neu-bg);border-radius:0 10px 10px 0;padding:15px 22px;margin:18px 0}
+.callout.warn{border-left-color:var(--warn-ink);background:var(--warn-bg)}
+.callout.danger{border-left-color:var(--con-ink);background:var(--con-bg)}
+.callout.ok{border-left-color:var(--pro-ink);background:var(--pro-bg)}
+/* KPI */
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
+@media(max-width:840px){.kpi{grid-template-columns:1fr 1fr}}
+.kpi .box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 14px;text-align:center}
+.kpi .num{font-size:27px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi .lbl{font-size:12.5px;color:var(--muted);line-height:1.5}
+/* 代码 */
+code{background:var(--code-bg);border-radius:5px;padding:1.5px 7px;font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:.86em;color:var(--code-ink)}
+pre{background:#1B1B19;color:#D6D3CA;border:1px solid #2E2D28;border-radius:10px;padding:18px 22px;overflow-x:auto;font-size:13px;line-height:1.7}
+pre code{background:none;color:inherit;padding:0;font-size:13px}
+.c{color:#8FC3E8}.k{color:#E0B45C}.s{color:#93C99B}.cm{color:#8A877E;font-style:italic}.fn{color:#B9A9E8}
+/* 折叠：极简手风琴 */
+details{background:transparent;border:none;border-bottom:1px solid var(--line);border-radius:0;padding:6px 2px;margin:0}
+details:first-of-type{border-top:1px solid var(--line);margin-top:8px}
+details + table{margin-top:14px}
+summary{cursor:pointer;font-weight:600;color:var(--ink);padding:8px 0;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";float:right;font-weight:400;color:var(--muted);font-family:"SF Mono",Menlo,monospace;transition:transform .2s}
+details[open] summary::after{content:"3"}
+details[open]{padding-bottom:14px}
+/* 视角标签 / 小标签 */
+.aud{display:inline-block;border-radius:999px;padding:1px 11px;font-size:12px;font-weight:700;letter-spacing:.06em;margin-right:8px;vertical-align:middle}
+.aud-pm{background:var(--vio-bg);color:var(--vio-ink);border:1px solid var(--vio-line)}
+.aud-dev{background:var(--neu-bg);color:var(--neu-ink);border:1px solid var(--neu-line)}
+.tip{display:inline-block;background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:6px;padding:0 8px;font-size:12px;font-weight:600;color:var(--warn-ink)}
+.small{font-size:13px;color:var(--muted)}
+.up{font-size:12px;float:right}
+.up a{color:var(--muted);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:2px 10px;background:var(--card)}
+.up a:hover{color:var(--accent);border-color:var(--accent)}
+/* 悬浮控件 */
+.theme-btn{position:fixed;top:16px;right:16px;z-index:99;height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);box-shadow:var(--shadow);cursor:pointer;font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;transition:transform .15s,border-color .2s}
+.theme-btn:hover{transform:translateY(-1px);border-color:var(--accent)}
+.theme-btn:active{transform:scale(.97)}
+.top-btn{position:fixed;bottom:20px;right:16px;z-index:99;height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer;font-size:12.5px;box-shadow:var(--shadow);opacity:.85;transition:transform .15s,color .2s,opacity .2s;font-family:inherit}
+.top-btn:hover{opacity:1;color:var(--accent);transform:translateY(-2px)}
+.top-btn:active{transform:scale(.97)}
+/* 深色下 SVG 图表适配（按属性精准替换，语义彩色保留） */
+html.dark .fig svg text:not([fill]){fill:#D6D3CA}
+html.dark .fig svg [fill="#334"]{fill:#C9C6BD}
+html.dark .fig svg [fill="#5b6b80"]{fill:#9B998F}
+html.dark .fig svg [fill="#94a3b8"]{fill:#7D7B72}
+html.dark .fig svg [fill="#16233a"]{fill:#D6D3CA}
+html.dark .fig svg [fill="#eff6ff"]{fill:#20262E}
+html.dark .fig svg [fill="#ecfdf5"]{fill:#1E2921}
+html.dark .fig svg [fill="#fffbeb"]{fill:#2A2519}
+html.dark .fig svg [fill="#f5f3ff"]{fill:#26223A}
+html.dark .fig svg [fill="#fef2f2"]{fill:#2E1F1F}
+html.dark .fig svg rect[fill="#fff"]{fill:#191917}
+html.dark .fig svg [fill="#1e3a8a"]{fill:#8FB8E8}
+html.dark .fig svg [fill="#065f46"]{fill:#8FCFA8}
+html.dark .fig svg [fill="#92400e"]{fill:#E0B45C}
+html.dark .fig svg [fill="#5b21b6"]{fill:#B4A5E0}
+html.dark .fig svg [fill="#3730a3"]{fill:#9FA3DC}
+html.dark .fig svg [fill="#b91c1c"]{fill:#E89A97}
+html.dark .fig svg [fill="#b45309"]{fill:#D9A24A}
+html.dark .fig svg [fill="#047857"]{fill:#7FCBA4}
+html.dark .fig svg [fill="#0b1220"]{fill:#1B1B19}
+html.dark .fig svg [fill="#101a33"]{fill:#23221E}
+html.dark .fig svg [fill="#111827"]{fill:#23221E}
+html.dark .fig svg [stroke="#f3c6c6"]{stroke:#5A3334}
+html.dark .fig svg [stroke="#b7e4d0"]{stroke:#35543F}
+html.dark .fig svg [stroke="#2563eb"]{stroke:#4A6FA8}
+html.dark .fig svg [stroke="#059669"]{stroke:#3D8A68}
+html.dark .fig svg [stroke="#d97706"]{stroke:#A87E3B}
+html.dark .fig svg [stroke="#7c3aed"]{stroke:#7464BC}
+html.dark .fig svg [stroke="#4f46e5"]{stroke:#7578C4}
+html.dark .fig svg [stroke="#5b6b80"]{stroke:#5F5D55}
+html.dark .fig svg [stroke="#0f766e"]{stroke:#3A8A80}
+html.dark .fig svg [stroke="#94a3b8"]{stroke:#4A4840}
+/* 打印 */
+@media print{
+  .theme-btn,.top-btn,.progress{display:none!important}
+  nav.toc{position:static;max-height:none;border:none;background:none;padding:0}
+  body>.wrap{display:block}
+  body{background:#fff;font-size:12px}
+  .card,.fig,table,details{break-inside:avoid}
+  pre{white-space:pre-wrap;border-color:#ccc}
+  section{margin:0 0 40px}
+}
+
+/* ==== 响应式 v2：全尺寸适配 ==== */
+.tscroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin:16px 0;background:var(--card);scrollbar-width:thin}
+.tscroll table{border:none;border-radius:0;margin:0;background:transparent}
+.tscroll::-webkit-scrollbar{height:8px}
+.tscroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+.fig{overflow-x:auto;scrollbar-width:thin}
+.fig svg{min-width:760px}
+td,th{line-height:1.65}
+code{overflow-wrap:anywhere}
+html{scroll-padding-top:16px}
+nav.toc{scrollbar-width:thin}
+@media(max-width:1079px){
+  section{margin:0 0 54px;padding-top:26px}
+}
+@media(max-width:700px){
+  header.cover .wrap{padding-right:78px}
+}
+@media(max-width:640px){
+  body{font-size:15.5px}
+  .wrap{padding:0 20px}
+  header.cover{padding:54px 0 40px}
+  header.cover h1{font-size:30px}
+  .card{padding:20px 18px}
+  .fig{padding:14px 12px}
+  .pc{padding:15px 16px}
+  .callout{padding:12px 16px}
+  .kpi{gap:10px}
+  .kpi .num{font-size:23px}
+  h2{font-size:22px}
+  h3{font-size:18px;margin:24px 0 8px}
+  pre{padding:14px 16px;font-size:12.5px}
+  .meta{gap:8px}
+}
+@media print{
+  .tscroll{overflow:visible;border:none}
+  .tscroll table{border:1px solid #ccc}
+  .fig{overflow:visible}
+  .fig svg{min-width:0}
+}
+</style>
+</head>
+<body>
+<div class="progress" aria-hidden="true"></div>
+
+<header class="cover">
+  <div class="wrap">
+    <div class="kicker">LazyZCode · Research Report · For Junior Developers</div>
+    <h1>从零看懂：怎么给 ZCode<br>造一个「lazycodex」</h1>
+    <p class="sub">这份报告假设你刚入行：先把<b>每个概念</b>讲明白（配图），再解剖 lazycodex / OmO 的<b>机制</b>（配代码），然后逐一分析<b>每条实现路线的优劣势</b>（配评分），最后给出<b>可以直接开工的 MVP 文件清单</b>。读完你应该能回答："如果让我动手，我从哪个文件写起？"</p>
+    <div class="meta">
+      <span>2026-09-05 编制 · 2026-09-06 复核修订与拍板</span>
+      <span>读者：初级开发人员</span>
+      <span>读法：顺着读，概念→机制→方案→动手</span>
+      <span>配套：产品经理版 + 合并终版</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <b>目录 CONTENTS</b>
+  <ol>
+    <li><a href="#s1">摘要与怎么读这份报告</a></li>
+    <li><a href="#s2">基础概念图解（6 个新词）</a></li>
+    <li><a href="#s3">lazycodex 机制解剖</a></li>
+    <li><a href="#s4">ZCode 扩展面实测（能挂什么）</a></li>
+    <li><a href="#s5">钩子缺口与架构对策</a></li>
+    <li><a href="#s6">四条实现路线的优劣势（技术视角）</a></li>
+    <li><a href="#s7">推荐架构：core / plugin / cli 三层</a></li>
+    <li><a href="#s8">实现规范与避坑清单</a></li>
+    <li><a href="#s9">已知失败模式与防御设计</a></li>
+    <li><a href="#s10">MVP 动手路线（Phase 0~1 文件清单）</a></li>
+    <li><a href="#s11">术语表 & 继续学习</a></li>
+  </ol>
+</nav>
+
+<div class="content">
+
+<!-- ================= S1 ================= -->
+<section id="s1">
+  <h2>摘要与怎么读这份报告<span class="en">TL;DR</span><span class="up"><a href="#top">↑</a></span></h2>
+  <div class="card">
+    <p><b>目标：</b>给 ZCode 做一个 lazycodex 同款的「AI 编码工作流纪律层」，让 AI 不只写代码，而是<b>计划 → 执行 → 拿证据 → 不做完不停</b>。</p>
+    <p><b>技术结论（一分钟版）：</b></p>
+    <ul>
+      <li>lazycodex 仓库是 <b>MIT</b> → 它的插件结构、技能文本可以合法改写拿来用；OmO 主仓是 <b>SUL-1.0</b> → 只能学思想，一行代码都不能搬。</li>
+      <li>ZCode 的插件/钩子/子智能体/MCP 基建齐全（本机逐项验证过），<b>但钩子缺口实为 6 个</b>（逆向复核：Codex 原生 12 事件 vs ZCode 7 事件）：最关键三个 = 没有 SubagentStop、没有 PreCompact、<b>Stop 续跑最多 3 次</b>（且需非空注入、预算与后台通知共享）。</li>
+      <li>所以推荐架构是：<b>深循环做成 CLI 状态机</b>（<code>lzy loop</code>，像 lazycodex 的 <code>omo ulw-loop</code> 一样），钩子只做轻触发：这正好绕开 3 次上限。</li>
+      <li>仓库分三层：<code>core/</code>（纯逻辑，不碰 ZCode API，可单测）+ <code>plugin/</code>（skills/hooks/agents，ZCode 装载的部分）+ <code>cli/</code>（安装器、doctor、loop 状态机）。</li>
+    </ul>
+    <div class="callout"><b>这份报告的读法：</b>第 2 节把所有黑话讲一遍（有图）；第 3~5 节是"别人怎么做的"（机制解剖）；第 6~7 节是"我们怎么做"（选型与架构）；第 8~10 节是"上手干"（规范、避坑、文件清单）。每节都可以单独跳读。</div>
+  </div>
+</section>
+
+<!-- ================= S2 ================= -->
+<section id="s2">
+  <h2>基础概念图解<span class="en">Concepts 101</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">这 6 个词贯穿全文，先弄懂它们。</p>
+
+  <div class="card">
+    <h3>① 宿主（Host / Harness）与插件（Plugin）</h3>
+    <p><b>宿主</b>就是 AI 编码工具本身（ZCode、Codex、OpenCode）。<b>插件</b>是装进宿主的能力包。ZCode 插件长这样（本机从官方插件缓存里实测的目录结构）：</p>
+    <pre><code>my-plugin/                          <span class="cm"># 插件根目录</span>
+├── .zcode-plugin/
+│   └── plugin.json                 <span class="cm"># 清单：名字、版本、技能目录、MCP 服务…</span>
+├── skills/                         <span class="cm"># 技能（给 AI 看的操作手册，Markdown）</span>
+│   └── my-skill/
+│       └── SKILL.md
+├── agents/                         <span class="cm"># 子智能体角色定义</span>
+│   └── reviewer.md
+├── hooks/
+│   └── hooks.json                  <span class="cm"># 生命周期钩子（带钩子的插件会自动启用钩子引擎）</span>
+└── .mcp.json                       <span class="cm"># 插件自带的 MCP 服务</span></code></pre>
+    <pre><code><span class="cm">// .zcode-plugin/plugin.json ： 实测自官方 document-skills 插件</span>
+{
+  <span class="c">"name"</span>: <span class="s">"document-skills"</span>,
+  <span class="c">"version"</span>: <span class="s">"0.1.4"</span>,
+  <span class="c">"description"</span>: <span class="s">"..."</span>,
+  <span class="c">"description_i18n"</span>: { <span class="c">"zh-CN"</span>: <span class="s">"文档制作技能"</span> },   <span class="cm">// 原生支持双语描述</span>
+  <span class="c">"skills"</span>: <span class="s">"skills"</span>,              <span class="cm">// 指向技能目录</span>
+  <span class="c">"mcpServers"</span>: { <span class="cm">/* ... */</span> }
+}</code></pre>
+    <div class="callout warn"><b>坑位预告（2026-09-06 修订）：</b>官方 plugin-creator 技能的文档口径不建议把钩子写进清单，推荐放 <code>hooks/hooks.json</code> 文件；<b>但引擎 v3.11.2 源码实测：清单里的 <code>manifest.hooks</code> 实际被支持</b>（字符串路径 / 路径数组 / 内联对象均可，与 hooks/hooks.json 并行读取、按 realpath 去重，仅非法事件名降级为 warning）。工程上仍建议随大流放 <code>hooks/hooks.json</code>，但"直接照搬清单写法会翻车"的说法已过时。</div>
+  </div>
+
+  <div class="card">
+    <h3>② 技能（Skill）：给 AI 看的操作手册</h3>
+    <p>一个 <code>SKILL.md</code> = frontmatter（名字 + 描述）+ 正文指令。平时不占上下文，命中时才被读入，所以叫"静态知识，零运行时成本"。用户可以用 <code>/技能名</code> 直接调用（相当于自定义斜杠命令）。</p>
+    <pre><code><span class="cm">---</span>
+<span class="c">name</span>: <span class="s">ultrawork-z</span>
+<span class="c">description</span>: <span class="s">当 prompt 含 zw/ulw/ultrawork 时激活的纪律模式指令…</span>
+<span class="cm">---</span>
+# 角色与铁律
+- 本轮第一条用户可见输出必须是：ULTRAWORK MODE ENABLED!
+- 先做轻重分级（LIGHT/HEAVY），只许升档不许降档
+- 测试全绿 ≠ 完成：每个验收点必须有真实表面证据…</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>③ 钩子（Hook）：固定时机的打卡机</h3>
+    <p>ZCode 支持 <b>7 种事件</b>（schema 来源：官方 zcode-guide 的 <code>diagnosing-hooks</code> 技能；2026-09-06 已经引擎 v3.11.2 源码逐条复核，<b>以源码为更权威事实源</b>——文档存在滞后）。钩子进程从 stdin 收 JSON、往 stdout 写 JSON（或用退出码：0=放行，2=拦截，<b>Stop 上的 2 = "不许收工、强制续跑"</b>）：</p>
+    <table>
+      <tr><th>事件</th><th>触发时机</th><th>matcher 匹配什么</th><th>能干什么</th></tr>
+      <tr><td><code>SessionStart</code></td><td>会话启动/恢复/<b>压缩(compact)</b>/清空</td><td>startup / resume / clear / compact</td><td rowspan="4" style="background:#f0fdfa">往对话里<b>注入上下文</b>（additionalContext）；PreToolUse 可返回 allow / ask / <b>deny</b>；<b>Stop 可请求"再跑一轮"（≤3 次，且必须带非空注入内容——输出空 JSON 永不续跑；3 次额度与后台任务通知共享）</b></td></tr>
+      <tr><td><code>UserPromptSubmit</code></td><td>用户发出消息</td><td>prompt 文本（正则）</td></tr>
+      <tr><td><code>PreToolUse</code> / <code>PostToolUse</code></td><td>工具调用前 / 后</td><td>工具名（正则，注意<b>大小写敏感</b>；<code>Task</code>↔<code>Agent</code> 互为别名）</td></tr>
+      <tr><td><code>PermissionRequest</code> / <code>PostToolUseFailure</code></td><td>权限请求 / 工具失败</td><td>工具名</td></tr>
+      <tr><td><code>Stop</code></td><td>AI 结束回合时</td><td>回复预览文本</td><td style="background:#fffbeb">续跑请求（≤3 次）：我们的轻续跑入口；<b>exit 2 = block = 强制续跑</b>（reason 注入为上下文）</td></tr>
+    </table>
+    <pre><code><span class="cm">// hooks/hooks.json ： 插件钩子示例</span>
+{
+  <span class="c">"hooks"</span>: {
+    <span class="c">"UserPromptSubmit"</span>: [
+      { <span class="c">"matcher"</span>: <span class="s">"\\bzw\\b|\\bulw\\b|ultrawork"</span>,
+        <span class="c">"hooks"</span>: [ { <span class="c">"type"</span>: <span class="s">"command"</span>,
+                     <span class="c">"command"</span>: <span class="s">"node \\"${ZCODE_PLUGIN_ROOT}/hooks/ulw-bootstrap.mjs\\""</span>,
+                     <span class="c">"timeout"</span>: <span class="k">10</span> } ] }   <span class="cm">// timeout 单位是【秒】；process 型的 timeoutMs 才是毫秒</span>
+    ],
+    <span class="c">"Stop"</span>: [
+      { <span class="c">"hooks"</span>: [ { <span class="c">"type"</span>: <span class="s">"process"</span>, <span class="c">"command"</span>: <span class="s">"node"</span>,
+                     <span class="c">"args"</span>: [<span class="s">"hooks/stop-continue.mjs"</span>], <span class="c">"timeoutMs"</span>: <span class="k">5000</span> } ] }
+    ]
+  }
+}</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>④ 子智能体（Subagent / Agent 工具）</h3>
+    <p>主 AI 可以派"分身"去干活，分身干完只把结果带回来，不占主对话的记忆。插件可以提供<b>角色定义文件</b>（本机实测自 document-skills 的 <code>agents/judge.md</code>）：</p>
+    <pre><code><span class="cm">---</span>
+<span class="c">name</span>: <span class="s">lzy-plan-reviewer</span>
+<span class="c">description</span>: <span class="s">敌意式计划评审：只找漏洞，不夸人</span>
+<span class="c">tools</span>: [<span class="s">Read</span>, <span class="s">Bash</span>]      <span class="cm"># 工具白名单：最小权限原则</span>
+<span class="c">color</span>: <span class="s">red</span>
+<span class="cm">---</span>
+你是计划评审员。逐条检查计划：有没有未决歧义？验收点可观测吗？
+输出：每条问题一行（类别 + 证据 + 建议），最后给 PASS / FAIL。</code></pre>
+    <div class="callout"><b>与 Codex 的关键差异：</b>ZCode 的 Agent 工具<b>没有</b> <code>agent_type</code>、<code>fork_context</code> 参数；通信靠 <code>SendMessage</code>，支持 <code>run_in_background</code>。lazycodex 技能文本里所有 <code>spawn_agent(...)</code> 示例，移植时都要改写成「派发消息自带完整角色说明」的形式。</div>
+  </div>
+
+  <div class="card">
+    <h3>⑤ MCP ： AI 的"外设插座"</h3>
+    <p>Model Context Protocol：让 AI 调用外部工具服务的标准协议。可配在用户级（<code>~/.zcode/cli/config.json</code> 的 <code>mcp.servers</code>，本机已见 codegraph / context7 / filesystem / github 等）或插件级（<code>.mcp.json</code>）。<b>好消息：你本机已经装了 codegraph 代码索引 MCP</b>：lazycodex 里最重的组件之一我们直接白嫖现成的。</p>
+  </div>
+
+  <div class="card">
+    <h3>⑥ 证据（Evidence）：整套体系的灵魂</h3>
+    <p>lazycodex 的铁律：<b>"TESTS ALONE NEVER PROVE DONE"</b>（测试全绿也不算完）。每个验收点必须绑定「真实表面」的证据：HTTP 接口返回、浏览器截图、CLI 的 stdout、数据库 diff……并且证据要绑定代码快照：</p>
+    <pre><code>git rev-parse --short <span class="s">"HEAD^{tree}"</span>   <span class="cm"># 证据记录的是"哪棵代码树"上取的证</span>
+<span class="cm"># 代码一变（tree hash 变了），旧证据作废，必须重取：不许"翻旧账盖新章"</span></code></pre>
+  </div>
+</section>
+
+<!-- ================= S3 ================= -->
+<section id="s3">
+  <h2>lazycodex 机制解剖<span class="en">How It Works</span><span class="up"><a href="#top">↑</a></span></h2>
+
+  <div class="fig">
+    <svg viewBox="0 0 960 400" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="核心工作流闭环">
+      <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto"><path d="M0 0L10 5L0 10z" fill="#0f766e"/></marker></defs>
+      <text x="480" y="28" text-anchor="middle" font-size="16" font-weight="700">lazycodex 核心工作流闭环（四个命令串起一支"虚拟团队"）</text>
+      <g>
+        <rect x="40" y="70" width="200" height="88" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+        <text x="140" y="98" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1e3a8a">① $init-deep</text>
+        <text x="140" y="118" text-anchor="middle" font-size="11.5">生成分层 AGENTS.md</text>
+        <text x="140" y="136" text-anchor="middle" font-size="11.5">项目记忆：根目录+按复杂度</text>
+        <text x="140" y="150" text-anchor="middle" font-size="11.5">打分的子目录，默认 3 层</text>
+      </g>
+      <g>
+        <rect x="280" y="70" width="200" height="88" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+        <text x="380" y="98" text-anchor="middle" font-size="14.5" font-weight="700" fill="#5b21b6">② $ulw-plan</text>
+        <text x="380" y="118" text-anchor="middle" font-size="11.5">Prometheus 规划师</text>
+        <text x="380" y="136" text-anchor="middle" font-size="11.5">探索代码库→问关键问题</text>
+        <text x="380" y="150" text-anchor="middle" font-size="11.5">→ 写「决策完备」计划（不碰代码）</text>
+      </g>
+      <g>
+        <rect x="520" y="70" width="200" height="88" rx="12" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+        <text x="620" y="98" text-anchor="middle" font-size="14.5" font-weight="700" fill="#92400e">③ $start-work</text>
+        <text x="620" y="118" text-anchor="middle" font-size="11.5">按计划清单逐项执行</text>
+        <text x="620" y="136" text-anchor="middle" font-size="11.5">每项一个原子提交</text>
+        <text x="620" y="150" text-anchor="middle" font-size="11.5">停了就由 Stop 钩子拽回来</text>
+      </g>
+      <g>
+        <rect x="760" y="70" width="170" height="88" rx="12" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+        <text x="845" y="98" text-anchor="middle" font-size="14.5" font-weight="700" fill="#065f46">④ $ulw-loop / ulw</text>
+        <text x="845" y="118" text-anchor="middle" font-size="11.5">目标循环直到"验证完成"</text>
+        <text x="845" y="136" text-anchor="middle" font-size="11.5">证据绑定 git tree</text>
+        <text x="845" y="150" text-anchor="middle" font-size="11.5">上限 100 / 500 轮</text>
+      </g>
+      <line x1="240" y1="114" x2="278" y2="114" stroke="#0f766e" stroke-width="2" marker-end="url(#a2)"/>
+      <line x1="480" y1="114" x2="518" y2="114" stroke="#0f766e" stroke-width="2" marker-end="url(#a2)"/>
+      <line x1="720" y1="114" x2="758" y2="114" stroke="#0f766e" stroke-width="2" marker-end="url(#a2)"/>
+      <path d="M 845 160 L 845 240 L 140 240 L 140 160" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#a2)"/>
+      <text x="490" y="232" text-anchor="middle" font-size="11.5" fill="#5b6b80">完成 → 经验沉淀回项目记忆，下一轮更快（飞轮）</text>
+      <!-- state dir -->
+      <rect x="230" y="272" width="500" height="96" rx="12" fill="#0b1220"/>
+      <text x="480" y="298" text-anchor="middle" font-size="12.5" fill="#7dd3fc" font-family="Menlo,monospace">.omo/   ← 持久状态目录（会话断了也丢不了）</text>
+      <text x="480" y="320" text-anchor="middle" font-size="12" fill="#d9e8ff" font-family="Menlo,monospace">plans/&nbsp;&nbsp;正式计划 · drafts/&nbsp;&nbsp;待批草稿 · ulw-loop/&nbsp;&nbsp;目标状态机 · evidence/&nbsp;&nbsp;证据</text>
+      <text x="480" y="344" text-anchor="middle" font-size="11.5" fill="#86efac" font-family="Menlo,monospace">证据字段绑定 git rev-parse "HEAD^{tree}"，代码变了旧证据作废</text>
+      <text x="480" y="390" text-anchor="middle" font-size="11" fill="#5b6b80">粘合剂：23 个钩子（触发 ultrawork、注入规则、校验证据、续跑）+ 8 个子智能体角色（explorer/librarian/plan/momus/metis/reviewer…）</text>
+    </svg>
+    <div class="cap">图 1 · 工作流闭环：技能是"剧本"，钩子是"监督"，状态目录是"存档点"，证据是"验收章"</div>
+  </div>
+
+  <h3>三个最值得抄的机制设计</h3>
+  <div class="card">
+    <h4>机制一：技能文本 = 宪法（行为契约）</h4>
+    <p>lazycodex 的 SKILL.md 不是"建议"，是<b>可执行的契约</b>，而且满是防模型耍滑的硬约束（摘自原文）：</p>
+    <ul>
+      <li><b>强制开场标记</b>：本轮第一条用户可见输出必须是 <code>ULTRAWORK MODE ENABLED!</code>：让"模式是否生效"对用户可见、可审计；</li>
+      <li><b>一次性分级、只升不降</b>（tier triage）：开工时定 LIGHT/HEAVY 档并记录理由，"ratchet up only"：防止模型为省事降标准；</li>
+      <li><b>风险清单触发升档</b>：改了鉴权/支付/并发/迁移代码，强制升 HEAVY；</li>
+      <li><b>"与本文冲突时以本文为准"</b>：技能文本里显式声明优先级，防止模型被别的上下文带偏。</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>机制二：计划文件的「行语法」+ 脚手架脚本（防手滑）</h4>
+    <p>计划不是随便写的 Markdown。实现项必须匹配 <code>- [ ] N. 标题</code>（N 是正整数），终验项必须匹配 <code>- [ ] F&lt;数字&gt;. 标题</code>，且必须顶格写在 <code>## Todos</code> / <code>## Final verification wave</code> 小节里。写完还要跑<b>结构自检</b>：任何"用普通段落或 bullet 冒充任务"的行都会被抓出来。<br>计划文件由脚本生成（<code>scaffold-plan.mjs --draft-only</code> 先出草稿 → 用户批准 → 再落正式文件），<b>脚本幂等（重跑不覆盖）</b>：人工手写的计划天然有格式噪音，机器生成的才好被程序解析和勾选。</p>
+  </div>
+  <div class="card">
+    <h4>机制三：子智能体通信协议 + 等待退避</h4>
+    <ul>
+      <li>每个派发消息以 <code>TASK:</code> 开头，必须写明 <code>DELIVERABLE</code>（交付物）/ <code>SCOPE</code>（边界）/ <code>VERIFY</code>(验收)；</li>
+      <li>长任务的孩子要主动汇报：<code>WORKING: 任务名 - 当前阶段</code>；卡死才许 <code>BLOCKED: 原因</code>；</li>
+      <li><b>等待退避</b>：轮询间隔翻倍、上限 ~5 分钟，不许空转刷轮询；<b>超时 ≠ 孩子死了</b>（只是没新消息），不许贸然杀掉重开；</li>
+      <li>默认 <code>fork_context: false</code>（冷启动，不带父对话）：子智能体上下文自包含，省钱且不受主对话噪音干扰。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= S4 ================= -->
+<section id="s4">
+  <h2>ZCode 扩展面实测<span class="en">What ZCode Gives Us</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">以下是本机逐一验证过的事实（不是猜的），每条都标了证据来源。</p>
+  <table>
+    <tr><th style="width:20%">能力</th><th style="width:44%">实测结果</th><th>证据来源（本机路径）</th></tr>
+    <tr><td>插件清单</td><td><code>.zcode-plugin/plugin.json</code>：name/version/skills/mcpServers/description_i18n/author/license</td><td><code>~/.zcode/cli/plugins/cache/.../document-skills/0.1.4/.zcode-plugin/plugin.json</code></td></tr>
+    <tr><td>插件可携带</td><td><code>skills/</code>、<code>agents/*.md</code>、<code>hooks/hooks.json</code>、<code>.mcp.json</code>、scripts/assets</td><td>同上 + <code>agents/judge.md</code> 原文</td></tr>
+    <tr><td>钩子引擎</td><td>7 事件（见 §2③）；插件带钩子→自动启用；配置文件钩子需手动 <code>enabled:true</code></td><td><code>zcode-guide/0.1.0/skills/diagnosing-hooks/SKILL.md</code>（权威 schema）</td></tr>
+    <tr><td>子智能体</td><td>插件角色 = <code>agents/*.md</code>（frontmatter: name/description/tools/color）；调用名带插件前缀如 <code>document-skills:judge</code>；内置 general-purpose、Explore</td><td>本会话 Agent 工具清单 + judge.md 原文</td></tr>
+    <tr><td>插件市场</td><td>源支持 GitHub 仓库 / URL zip；本机已添加 <code>anthropics/claude-plugins-official</code>（291 插件）→ 生态同源可借鉴</td><td><code>~/.zcode/cli/plugins/known_marketplaces.json</code></td></tr>
+    <tr><td>内置记忆</td><td>项目级持久记忆目录，跨会话生效</td><td><code>~/.zcode/cli/memories/projects/&lt;hash&gt;/memory/</code></td></tr>
+    <tr><td>配置层级</td><td>用户级 <code>~/.zcode/cli/config.json</code> + 工作区 <code>&lt;repo&gt;/.zcode/config.json</code> / <code>zcode.json</code></td><td>diagnosing-hooks 技能</td></tr>
+    <tr><td>MCP</td><td>用户级 servers（stdio/http+headers/env）+ 插件级 .mcp.json；本机已有 codegraph 代码索引</td><td><code>config.json</code> mcp 段（已脱敏核对）</td></tr>
+    <tr><td>其他</td><td>内置 WebSearch/WebFetch/TodoWrite；官方市场已有 computer-use / android / ios 插件（visual-QA 抓手）；<b>复核补充</b>：内置 browser-use 插件（MIT：导航/点击/截图/录屏——终验取证面）、原生调度器（scheduler 进程 + sqlite，cron/off-peak——无人值守的宿主内备选路径，P3 与 lzy loop 对比后定）</td><td>本会话工具清单 + 官方市场 JSON + 引擎源码</td></tr>
+  </table>
+
+  <div class="callout ok"><b>结论：</b>ZCode 的扩展基建<b>够用且同源</b>（和 Claude Code / Codex 的插件体系一个套路），缺的不是"能不能挂"，而是"挂上去的那套工作流纪律"：这正是我们要写的部分。<b>待验证项 2026-09-06 更新：</b>① ZCode 原生自动读 AGENTS.md——<b>已证实支持</b>（引擎逐级向上查找 + 用户级/工作区级多源合并 + 100KB 截断，以 # agentsMd 注入系统提示词）：规则注入钩子不用做了；② 内置 Edit 的 old_string 机制是否够稳（决定要不要 hashline 类锚定编辑：初步判断不需要）——待真机验证；③ 新增：插件发现层兼容四种清单风格（.zcode / .claude / .codex / .cursor-plugin），免改名装载与否待真机验证。<b>拍板：②③ 于 Phase 0 开工首日统一 spike 验证。</b></div>
+</section>
+
+<!-- ================= S5 ================= -->
+<section id="s5">
+  <h2>钩子缺口与架构对策<span class="en">Gaps & Countermeasures</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">逆向复核更新：Codex Desktop 原生钩子为 <b>12 事件</b>，ZCode 7 事件共缺 <b>6 个</b>（初版报告写 2 个）。最关键的三个缺口如下，每一个都影响架构选型。</p>
+  <table>
+    <tr><th style="width:22%">缺口</th><th style="width:30%">lazycodex 怎么用的</th><th style="width:24%">ZCode 现状</th><th>我们的对策</th></tr>
+    <tr><td><b>无 SubagentStop</b><br>（子智能体结束事件）</td><td>校验执行者证据、触发 start-work 续跑</td><td>不存在该事件</td><td>移到主循环：Agent 工具返回后，由主流程技能负责校验交付物；后台智能体用 run_in_background + 完成通知</td></tr>
+    <tr><td><b>无 PreCompact</b><br>（上下文压缩前）</td><td>压缩后重置缓存/提醒（3 个 post-compact 钩子）</td><td>无该事件，但 <code>SessionStart</code> 的 matcher 支持 <code>compact</code></td><td>用 <code>SessionStart(matcher:"compact")</code> 做"压缩后恢复"：重读 brief + 计划 + 目标状态 → 接着干（ulw-loop 本来就要求 compaction 后先重读状态）</td></tr>
+    <tr><td><b>Stop 续跑 ≤ 3 次</b></td><td>靠 Stop/subagent-stop 跑 100~500 轮循环</td><td>硬上限 3 次；<b>需非空注入</b>（输出空 JSON 永不续跑）；<b>额度与后台任务通知共享</b></td><td><b>深循环下沉到 CLI 状态机</b>（<code>lzy loop</code>），Stop 钩子只做轻续跑且预算与后台通知互相预留；见下图</td></tr>
+    <tr><td><b>另缺 4 个（影响小）</b><br>SessionEnd / Interrupt / SubagentStart / PostCompact</td><td>中断落盘审计、压缩后清理、子代理起始守卫</td><td>四事件均不存在</td><td>不影响 CLI 状态机结论（反而强化）；SessionEnd / Interrupt 若未来补齐可用于"中断落盘"审计——P3 观察项</td></tr>
+  </table>
+
+  <div class="fig">
+    <svg viewBox="0 0 960 430" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="深循环两种架构对比">
+      <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker><marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto"><path d="M0 0L10 5L0 10z" fill="#059669"/></marker></defs>
+      <text x="480" y="26" text-anchor="middle" font-size="15.5" font-weight="700">深循环放哪？ Stop 钩子硬扛（✗） vs CLI 状态机（✓）</text>
+      <!-- left: bad -->
+      <rect x="30" y="46" width="430" height="350" rx="14" fill="#fef2f2" stroke="#f3c6c6"/>
+      <text x="245" y="76" text-anchor="middle" font-size="14" font-weight="700" fill="#b91c1c">✗ 全靠 Stop 钩子续跑（lazycodex 原味）</text>
+      <g font-size="12" fill="#334">
+        <rect x="60" y="96" width="150" height="40" rx="8" fill="#fff" stroke="#f3c6c6"/><text x="135" y="120" text-anchor="middle">AI 回合结束</text>
+        <rect x="280" y="96" width="150" height="40" rx="8" fill="#fff" stroke="#f3c6c6"/><text x="355" y="113" text-anchor="middle">Stop 钩子：</text><text x="355" y="128" text-anchor="middle">"还没完，继续"</text>
+        <line x1="210" y1="116" x2="278" y2="116" stroke="#dc2626" stroke-width="2" marker-end="url(#a3)"/>
+        <path d="M 355 136 L 355 156 L 135 156 L 135 138" fill="none" stroke="#dc2626" stroke-width="2" marker-end="url(#a3)"/>
+        <text x="245" y="178" text-anchor="middle" font-size="11.5" fill="#b91c1c">×3 之后 → 硬上限，循环戛然而止</text>
+      </g>
+      <g font-size="12" fill="#334">
+        <rect x="60" y="200" width="370" height="52" rx="8" fill="#fff" stroke="#f3c6c6"/>
+        <text x="245" y="222" text-anchor="middle">lazycodex 需要 100~500 轮</text>
+        <text x="245" y="240" text-anchor="middle" fill="#b91c1c">在 ZCode：第 4 轮就断 → 不可行</text>
+        <rect x="60" y="266" width="370" height="110" rx="8" fill="#fff" stroke="#f3c6c6"/>
+        <text x="245" y="290" text-anchor="middle" font-weight="700">附带风险（OmO 官方在 OpenCode 上踩过）：</text>
+        <text x="80" y="314">· 循环逻辑长在钩子里 = 每轮全量消耗主会话上下文</text>
+        <text x="80" y="334">· 多个钩子抢同一个"停止"边沿 → 重复注入/竞态</text>
+        <text x="80" y="354">· 状态藏会话里 → 一压缩就失忆，恢复靠运气</text>
+        <text x="80" y="370" fill="#b91c1c">· 上游同类 bug 实锤：todo 续跑循环"怪行为"</text>
+      </g>
+      <!-- right: good -->
+      <rect x="500" y="46" width="430" height="350" rx="14" fill="#ecfdf5" stroke="#b7e4d0"/>
+      <text x="715" y="76" text-anchor="middle" font-size="14" font-weight="700" fill="#065f46">✓ lzy loop CLI 状态机 + 钩子只做轻触发</text>
+      <g font-size="12" fill="#334">
+        <rect x="530" y="96" width="170" height="46" rx="8" fill="#fff" stroke="#b7e4d0"/>
+        <text x="615" y="115" text-anchor="middle" font-family="Menlo,monospace">lzy loop（独立进程）</text>
+        <text x="615" y="132" text-anchor="middle" font-size="10.5">读 .lazyzcode/loop/state.json → 决定下一步</text>
+        <rect x="740" y="96" width="160" height="46" rx="8" fill="#fff" stroke="#b7e4d0"/>
+        <text x="820" y="115" text-anchor="middle">派发一个原子步骤</text>
+        <text x="820" y="132" text-anchor="middle" font-size="10.5">给 ZCode 会话执行+取证据</text>
+        <line x1="700" y1="119" x2="738" y2="119" stroke="#059669" stroke-width="2" marker-end="url(#a4)"/>
+        <path d="M 820 142 L 820 168 L 615 168 L 615 144" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#a4)"/>
+        <text x="715" y="188" text-anchor="middle" font-size="11.5" fill="#047857">状态每次落盘 → 断点续跑、跨会话、可审计</text>
+        <rect x="530" y="210" width="370" height="60" rx="8" fill="#fff" stroke="#b7e4d0"/>
+        <text x="715" y="233" text-anchor="middle" font-weight="700">Stop 钩子只干两件小事（3 次绰绰有余）：</text>
+        <text x="545" y="255">① 回合意外结束且状态机在跑 → 提示"继续当前步骤"</text>
+        <text x="545" y="266" font-size="10.5">② 会话压缩后（SessionStart:compact）→ 注入"先重读状态"提醒</text>
+        <rect x="530" y="284" width="370" height="92" rx="8" fill="#fff" stroke="#b7e4d0"/>
+        <text x="715" y="308" text-anchor="middle" font-weight="700">收益：</text>
+        <text x="545" y="330">· 轮数不受宿主限制（状态机想跑多少轮跑多少轮）</text>
+        <text x="545" y="348">· 每步独立派发，不撑爆主会话上下文（省钱）</text>
+        <text x="545" y="366">· 状态=磁盘文件，崩溃/压缩/换会话都能恢复</text>
+      </g>
+      <text x="480" y="418" text-anchor="middle" font-size="11" fill="#5b6b80">这正是 lazycodex 在 Codex 上做 <tspan font-family="Menlo,monospace">omo ulw-loop</tspan> CLI 的原因：我们在 ZCode 上理由更硬（3 次上限）</text>
+    </svg>
+    <div class="cap">图 2 · 本项目最重要的架构决策：循环逻辑放 CLI，钩子只做触发与提醒</div>
+  </div>
+</section>
+
+<!-- ================= S6 ================= -->
+<section id="s6">
+  <h2>四条实现路线的优劣势（技术视角）<span class="en">Build Options</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">产品视角的完整版在 PM 报告 §5；这里补开发者最关心的：<b>每条路实际要写/改多少东西</b>。</p>
+
+  <div class="grid2">
+    <div class="pc neu">
+      <h4>路径 A · 等官方（不推荐，只观察）</h4>
+      <ul>
+        <li><b>技术上</b>：官方明确"对跨宿主统一抽象持怀疑态度"，新适配器哲学是"让 AI 一次性写出来"：即使做了也未必有 ZCode 版。</li>
+        <li><b>我们的动作</b>：订阅 ROADMAP 变更（每季度看一次即可）。</li>
+      </ul>
+    </div>
+    <div class="pc con">
+      <h4>路径 B · Fork OmO 引擎写适配器</h4>
+      <ul>
+        <li><b>优</b>：19 个 core 包直接 import（状态机/规则引擎/技能加载器都是现成库）。</li>
+        <li><b>劣</b>：SUL-1.0 传染（衍生品不能开源再分发）→ 对我们一票否决；core 包正处"搬家期"（ROADMAP 自述），API 不稳；memory-core 等重资产在 ZCode 有原生替代，搬来是负资产。</li>
+      </ul>
+    </div>
+    <div class="pc pro">
+      <h4>路径 C · 以 lazycodex（MIT）为底稿</h4>
+      <ul>
+        <li><b>可直接改写</b>：插件清单结构、26 个技能的行为契约文本（改工具面词汇）、钩子配置思路、安装器/doctor 模式、契约测试的组织方式。<b>意外利好（源码复核）</b>：ZCode 插件发现层兼容四种清单风格（.zcode/.claude/.codex/.cursor-plugin），清单可能免改名装载（待真机验证）。</li>
+        <li><b>必须重写</b>：所有 <code>spawn_agent / multi_agent_v1|v2</code> 示例 → ZCode Agent 工具语义；钩子事件映射（Codex 7 类 → ZCode 7 事件，名称对不上）；循环架构（见 §5）。</li>
+        <li><b>工作量直觉</b>：技能文本约 70% 可保留骨架、30% 需逐句翻译工具面；TS 组件大部分不搬（ZCode 有原生替代）。</li>
+      </ul>
+    </div>
+    <div class="pc pro">
+      <h4>路径 D · 全自研（推荐主路径）</h4>
+      <ul>
+        <li><b>优</b>：许可证干净可开源；为 ZCode 而生（内置记忆/codegraph/computer-use 直接整合）；无上游 rebase 负担。</li>
+        <li><b>劣</b>：工作量最大；没有 68.7k stars 背书，冷启动靠文档与 demo。</li>
+        <li><b>降工作量关键</b>：照 C 的文本骨架写、照 B 的分层切目录、按 §8 规范执行："自研"指代码原创，不指从零发明。</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout ok"><b>推荐组合（技术执行口径）：</b>目录与代码 = D（自写）；技能文本初稿 = C 改写（MIT 合法，逐文件登记来源）；架构思想 = B（core 不碰宿主 API）；上游动态 = A（观察）。</div>
+
+  <h3>工具面翻译对照表（写技能文本时手边常备）</h3>
+  <table>
+    <tr><th>lazycodex / Codex 写法</th><th>ZCode 等价写法</th><th>注意</th></tr>
+    <tr><td><code>spawn_agent({task_name, message, agent_type, fork_turns})</code></td><td>Agent 工具 + 插件 <code>agents/*.md</code> 角色（<code>subagent_type: "lzy:reviewer"</code> 风格）</td><td>无 agent_type/fork_context 参数；角色说明全部要写进派发消息本体</td></tr>
+    <tr><td><code>wait_agent(timeout_ms)</code> 信箱等待</td><td><code>run_in_background: true</code> + 完成通知 / <code>SendMessage</code> 通信</td><td>超时≠死亡（见 §8 退避规范）</td></tr>
+    <tr><td>hooks 7 类事件（含 SubagentStop、PostCompact）</td><td>ZCode 7 事件（缺 6：无 SubagentStop/SubagentStart/PreCompact/PostCompact/SessionEnd/Interrupt；SessionStart 含 compact）</td><td>映射见 §5 表格</td></tr>
+    <tr><td><code>~/.codex/agents/*.toml</code> 角色文件</td><td><code>agents/*.md</code>（frontmatter + 正文 system prompt）</td><td>字段名不同：tools 白名单、color</td></tr>
+    <tr><td><code>model-catalog.json</code> 多模型路由</td><td>不自研：宿主已内置多模型目录（10 provider，默认 GLM 套餐）；降级为技能里的 LIGHT/HEAVY 分级提示</td><td>省钱点：LIGHT 档 = 不派子智能体、少取证据面；tier 护栏可借模型维度</td></tr>
+    <tr><td><code>.omo/</code> 状态目录</td><td><code>.lazyzcode/</code>（同构：plans/drafts/loop/evidence）</td><td>建议加 <code>.gitignore</code> 模板（evidence 截图较大）</td></tr>
+  </table>
+</section>
+
+<!-- ================= S7 ================= -->
+<section id="s7">
+  <h2>推荐架构：core / plugin / cli 三层<span class="en">Proposed Architecture</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">抄 OmO ROADMAP 的分层纪律（Core 依赖单向向下），但规模缩小两个数量级。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 960 380" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LazyZCode 三层架构">
+      <defs><marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto"><path d="M0 0L10 5L0 10z" fill="#5b6b80"/></marker></defs>
+      <text x="480" y="28" text-anchor="middle" font-size="16" font-weight="700">LazyZCode 仓库分层（依赖只许从上往下，core 不 import 任何 ZCode API）</text>
+      <g>
+        <rect x="60" y="56" width="260" height="120" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+        <text x="190" y="84" text-anchor="middle" font-size="14.5" font-weight="700" fill="#1e3a8a">core/（纯逻辑）</text>
+        <text x="190" y="106" text-anchor="middle" font-size="11.5">plan-checklist（行语法解析/校验）</text>
+        <text x="190" y="124" text-anchor="middle" font-size="11.5">loop-state（目标状态机 + tree-hash 证据）</text>
+        <text x="190" y="142" text-anchor="middle" font-size="11.5">config / rules-loader / evidence 格式</text>
+        <text x="190" y="162" text-anchor="middle" font-size="11" fill="#2563eb">可单元测试 · 零宿主依赖</text>
+      </g>
+      <g>
+        <rect x="350" y="56" width="260" height="120" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.6"/>
+        <text x="480" y="84" text-anchor="middle" font-size="14.5" font-weight="700" fill="#5b21b6">plugin/（ZCode 装载）</text>
+        <text x="480" y="106" text-anchor="middle" font-size="11.5">skills/ 五大工作流 + 领域技能</text>
+        <text x="480" y="124" text-anchor="middle" font-size="11.5">hooks/ 触发·注入·守卫·轻续跑</text>
+        <text x="480" y="142" text-anchor="middle" font-size="11.5">agents/ 角色库 · .mcp.json</text>
+        <text x="480" y="162" text-anchor="middle" font-size="11" fill="#7c3aed">只做粘合，逻辑调用 core</text>
+      </g>
+      <g>
+        <rect x="640" y="56" width="260" height="120" rx="12" fill="#ecfdf5" stroke="#059669" stroke-width="1.6"/>
+        <text x="770" y="84" text-anchor="middle" font-size="14.5" font-weight="700" fill="#065f46">cli/（lzy 命令）</text>
+        <text x="770" y="106" text-anchor="middle" font-size="11.5">lzy loop 状态机运行器</text>
+        <text x="770" y="124" text-anchor="middle" font-size="11.5">lzy doctor / install / uninstall</text>
+        <text x="770" y="142" text-anchor="middle" font-size="11.5">lzy status / resume</text>
+        <text x="770" y="162" text-anchor="middle" font-size="11" fill="#059669">Node 单文件入口，随插件分发</text>
+      </g>
+      <line x1="320" y1="116" x2="348" y2="116" stroke="#5b6b80" stroke-width="2" marker-end="url(#a5)"/>
+      <line x1="610" y1="116" x2="638" y2="116" stroke="#5b6b80" stroke-width="2" marker-end="url(#a5)"/>
+      <text x="480" y="205" text-anchor="middle" font-size="12" fill="#5b6b80">依赖方向：cli → core；plugin 钩子/技能脚本 → core；ZCode 只看见 plugin/</text>
+      <rect x="60" y="228" width="840" height="118" rx="12" fill="#0b1220"/>
+      <text x="480" y="254" text-anchor="middle" font-size="12.5" fill="#7dd3fc" font-family="Menlo,monospace">lazyzcode/</text>
+      <text x="480" y="276" text-anchor="middle" font-size="12" fill="#d9e8ff" font-family="Menlo,monospace">core/　plugin/{.zcode-plugin,skills,hooks,agents}　cli/　docs/　test/</text>
+      <text x="480" y="300" text-anchor="middle" font-size="11.5" fill="#86efac" font-family="Menlo,monospace">发布物 = plugin/ 打包成 ZCode 插件（GitHub marketplace 源或 URL zip）+ cli/ 随包携带</text>
+      <text x="480" y="326" text-anchor="middle" font-size="11" fill="#94a3b8">契约测试三件套（照抄 lazycodex 的测试组织）：技能契约（frontmatter/触发词/禁语）· 钩子契约（事件/超时单位/输出 schema）· 计划行语法（golden fixtures）</text>
+    </svg>
+    <div class="cap">图 3 · 三层目录：宿主无关的逻辑压到 core，ZCode 粘合压到 plugin，跨会话状态压到 cli</div>
+  </div>
+</section>
+
+<!-- ================= S8 ================= -->
+<section id="s8">
+  <h2>实现规范与避坑清单<span class="en">Conventions & Pitfalls</span><span class="up"><a href="#top">↑</a></span></h2>
+
+  <div class="card">
+    <h3>规范一：表达层级 Skill &gt; MCP &gt; Tool &gt; Hook（OmO 官方设计宪法）</h3>
+    <p>能用技能文本（Markdown）解决的，不写 MCP；能写 MCP 的，不做宿主工具；前三层都覆盖不了，才写钩子。理由：技能是静态文本（零运行时、最好测、最好改），钩子是注入 AI 循环的"手术刀"（最容易引发竞态与死循环）。<b>自检问题：这个功能"不在线时会不会世界崩塌？"不会 → 别放钩子。</b></p>
+  </div>
+
+  <div class="card">
+    <h3>规范二：子智能体派发协议（改写自 lazycodex，适配 ZCode）</h3>
+    <pre><code><span class="cm">/* 每次派发消息的结构化模板 */</span>
+TASK: 实现用户模块的注册接口
+DELIVERABLE: src/routes/register.ts + 对应测试 + 运行证据（curl 输出）
+SCOPE: 只许改 src/routes/ 与 src/models/user.ts；禁止动鉴权中间件
+VERIFY: ① 测试红→绿 ② curl POST /register 200 且库里出现记录（贴输出）
+背景材料：AGENTS.md 的「路由约定」一节；参考 src/routes/login.ts 的既有模式
+
+<span class="cm">/* 长任务的孩子要主动汇报 */</span>
+WORKING: 注册接口 - 正在补集成测试
+BLOCKED: 仅在无法推进时（附原因）
+
+<span class="cm">/* 主流程等待规范 */</span>
+- 轮询间隔翻倍退避，上限 ~5 分钟；超时≠孩子死了，只是没新消息
+- 只有三种情况允许判死重派：完成但没交付物 / 持续 BLOCKED / 进程确实不存在
+- 重派必须缩小任务（更小的 SCOPE），不许原样重试</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>规范三：计划行语法（机器可勾选）</h3>
+    <pre><code>## Todos
+- [ ] 1. 注册接口路由与入参校验        <span class="cm">← 必须顶格、必须是 "- [ ] 正整数. 标题"</span>
+- [ ] 2. 用户模型与持久化
+## Final verification wave
+- [ ] F1. curl 全链路 200 + 库记录 diff  <span class="cm">← 终验项用 F 前缀</span></code></pre>
+    <p><b>为什么较真：</b>这些行会被 <code>lzy loop</code> 程序逐行解析、勾选、统计进度：一个格式歪了整个状态机就瞎了。所以计划由 <code>lzy plan scaffold</code> 生成、由 core/plan-checklist 校验，<b>禁止手写任务行</b>。</p>
+  </div>
+
+  <div class="card">
+    <h3>避坑清单：ZCode hooks 的 12 个坑（实测文档压缩版）</h3>
+    <table>
+      <tr><th style="width:6%">#</th><th style="width:30%">坑</th><th>正确姿势</th></tr>
+      <tr><td>1</td><td>配置文件钩子写了不生效</td><td>非插件钩子默认禁用：配置里要 <code>"hooks":{"enabled":true,...}</code>；插件钩子自动启用</td></tr>
+      <tr><td>2</td><td>事件名想当然</td><td>只有 7 个：SessionStart/UserPromptSubmit/PreToolUse/PermissionRequest/PostToolUse/PostToolUseFailure/Stop。写 SubagentStop/PreCompact = 永不触发</td></tr>
+      <tr><td>3</td><td>matcher 不匹配</td><td>大小写敏感正则；<code>"bash"</code> 匹配不到 <code>Bash</code>；坏正则=静默永不匹配；别名 Task↔Agent、Write/Edit←ApplyPatch</td></tr>
+      <tr><td>4</td><td>permission denied</td><td>脚本要 <code>chmod +x</code>，或用 <code>bash "${ZCODE_PLUGIN_ROOT}/hooks/x.sh"</code> 绕开执行位</td></tr>
+      <tr><td>5</td><td>模板变量没展开</td><td>只认 <code>${ZCODE_PROJECT_DIR}</code>/<code>${CLAUDE_PROJECT_DIR}</code>/<code>${CLAUDE_SESSION_ID}</code>；<code>${ZCODE_PLUGIN_ROOT}</code> 仅插件钩子可用</td></tr>
+      <tr><td>6</td><td>超时单位写错</td><td>command 型 <code>timeout</code> 单位是<b>秒</b>；process 型 <code>timeoutMs</code> 是<b>毫秒</b>且优先级更高；写反 = 秒变毫秒瞬间被杀</td></tr>
+      <tr><td>7</td><td>command / process 字段混用</td><td>process 只收 command+args+timeoutMs；command 收 command+shell+timeout(+Ms)；混了整个钩子被丢弃</td></tr>
+      <tr><td>8</td><td>stdout JSON 校验失败</td><td>schema 严格：多余 key 直接废弃输出；只输出认识的 key，或干脆不输出（空输出合法，靠退出码）</td></tr>
+      <tr><td>9</td><td>以为 async 影响注入</td><td><code>async: true</code> 生效为<b>后台 fire-and-forget</b>（v3.11.2 源码实测，文档滞后）：不阻塞回合，但 <b>stdout 输出被丢弃、不注入</b>。同步注入类钩子仍必须快（预算 &lt; 几秒）；异步适合取证归档（截图/日志）不占主循环时间</td></tr>
+      <tr><td>10</td><td>跨平台翻车</td><td>command 走 shell（POSIX 语法在 Windows 挂）；优先 process 型（参数数组，无 shell）</td></tr>
+      <tr><td>11</td><td>会话被意外阻断</td><td>退出码 2 在<b>三处有语义</b>：PreToolUse / PermissionRequest = deny；<b>Stop = block = 拒绝结束回合、强制续跑</b>（reason/systemMessage 注入为上下文，同样受 3 次预算约束）；其余事件 = 不继续；其他非零 = 报错；默认放行用 0</td></tr>
+      <tr><td>12</td><td>以为第三方钩子有信任门</td><td>当前插件钩子直接执行，但引擎已灰度<b>工作区钩子信任门</b>（workspace_hooks_pending_trust / blocked_by_policy / snapshot_mismatch 等策略码，文档未提）：<b>我们的安装器坚持「装插件」，永不改写用户 config.json</b>；钩子只做轻量、确定、可快退的事</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ================= S9 ================= -->
+<section id="s9">
+  <h2>已知失败模式与防御设计<span class="en">Failure Modes</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">上游（OmO/lazycodex）真实踩过的坑 + 社区反馈的问题，逐条给出我们在设计层面的防御。</p>
+  <table>
+    <tr><th style="width:24%">失败模式</th><th style="width:34%">上游实锤</th><th>我们的防御设计</th></tr>
+    <tr><td><b>评审代理沉默</b>：审批关口等评审，评审不回话，任务挂起</td><td>lazycodex <a href="https://github.com/code-yeongyu/lazycodex/issues/19">Issue #19</a>：codex-ultrawork-reviewer 在定向提示后仍无响应</td><td>派发协议含显式 ack：收到任务先回 <code>ACK</code>；等待方按退避轮询，超时三次未动 → 判死并降级（主流程自己评审 + 在状态里记录降级原因），<b>永不无限等待</b></td></tr>
+    <tr><td><b>续跑循环抽风</b>：todo 续跑出现重复/怪行为</td><td>Reddit 多帖（"todo continuation loop causing weird behavior"）</td><td>循环状态只存磁盘（<code>.lazyzcode/loop/state.json</code>），每步幂等（step_id 去重）；续跑先读状态再行动，禁止凭记忆续</td></tr>
+    <tr><td><b>Token 失控</b>：3× 消耗、额度烧穿</td><td>glukhov.org 实测 ~3×；Reddit "两三个任务烧光 4 小时额度"</td><td>① 轻重分级默认 LIGHT，升档要理由（只升不降）；② 预算护栏：PreToolUse 钩子统计本会话派发/取证次数，超阈值注入"降档"提醒；③ 子智能体默认冷启动（不带父对话）</td></tr>
+    <tr><td><b>压缩失忆</b>：长任务中途上下文被压缩，接着干就跑偏</td><td>ulw-loop 的规则就是为此而生（"compaction 后先重读 brief+goals+ledger，never re-plan from scratch"）</td><td>SessionStart(compact) 钩子注入恢复提醒；恢复动作写进技能的"必做第一步"；状态全在磁盘</td></tr>
+    <tr><td><b>主循环注入竞态</b>：多个钩子抢同一停止/空闲边沿，重复注入消息</td><td>OmO 官方《Why Not OpenCode-Native》整节反思</td><td>钩子之间单一职责、互不重叠（触发归 UserPromptSubmit、守卫归 PreToolUse、续跑归 Stop）；同一事件上最多挂一个我们自己的钩子；钩子永远只做"注入提醒/放行拦截"，<b>不做业务逻辑</b></td></tr>
+    <tr><td><b>伪完成</b>：测试绿了就说做完</td><td>上游铁律 "TESTS ALONE NEVER PROVE DONE"</td><td>终验波（F 项）强制真实表面证据；证据带 tree hash，代码变了自动作废重取</td></tr>
+  </table>
+</section>
+
+<!-- ================= S10 ================= -->
+<section id="s10">
+  <h2>MVP 动手路线<span class="en">Hands-on Plan</span><span class="up"><a href="#top">↑</a></span></h2>
+
+  <div class="card">
+    <h3>Phase 0：骨架（目标：一个能转的最小插件）</h3>
+    <pre><code>lazyzcode/
+├── plugin/
+│   ├── .zcode-plugin/plugin.json        <span class="cm"># name: lazyzcode；skills:"skills"</span>
+│   ├── skills/hello-zlw/SKILL.md        <span class="cm"># 探针技能：验证 /hello-zlw 能被调出</span>
+│   ├── hooks/hooks.json                 <span class="cm"># 先只挂一个 UserPromptSubmit（正则 \bzw\b|\bulw\b|ultrawork，2026-09-06 拍板：zw 主词 + ulw 兼容别名）</span>
+│   └── hooks/ulw-bootstrap.mjs          <span class="cm"># 命中就往 stdout 吐 additionalContext 提醒</span>
+├── core/
+│   └── plan-checklist.mjs               <span class="cm"># 行语法解析 + 校验 + golden 测试</span>
+├── cli/lzy.mjs                          <span class="cm"># 先只实现 lzy status（读状态目录）</span>
+└── test/plan-checklist.test.mjs</code></pre>
+    <p><b>验收标准：</b>① 插件通过本地市场（<code>~/.agents/plugins/marketplace.json</code> 或 ZCode 插件安装）装进 ZCode；② 在会话里输入含 <code>zw</code>（或 <code>ulw</code> 别名）的话，能看到钩子注入的上下文；③ <code>/hello-zlw</code> 能调出；④ <code>node cli/lzy.mjs status</code> 不报错。</p>
+    <div class="callout"><b>2026-09-06 拍板：Phase 0 开工首日先做三件真机验证 spike（各半天内）：</b>① Edit old_string 稳定性（典型编辑场景实测，决定要不要 hashline 类机制）；② 四风格清单免改名装载（.codex-plugin / .claude-plugin 样例各装一次）；③ Stop 非空注入 + 3 次预算被后台通知挤占的真实行为。结果写进 docs/，Phase 1 续跑设计据此定稿。</div>
+  </div>
+
+  <div class="card">
+    <h3>Phase 1：核心工作流（目标：真实任务走完闭环）</h3>
+    <table>
+      <tr><th style="width:24%">交付物</th><th>要点</th></tr>
+      <tr><td><code>skills/ultrawork-z</code></td><td>改写自 lazycodex 同名技能（MIT 合法）：开场标记、LIGHT/HEAVY 分级、证据铁律；删光 Codex 工具面词汇</td></tr>
+      <tr><td><code>skills/ulw-plan-z</code></td><td>探索→intent 路由（CLEAR/UNCLEAR）→审批门→<code>lzy plan scaffold</code> 生成计划（决策完备 + 行语法）</td></tr>
+      <tr><td><code>skills/start-work-z</code></td><td>读计划→逐项执行→原子提交；每项完成即勾选并取证</td></tr>
+      <tr><td><code>skills/ulw-loop-z</code></td><td>薄壳：所有循环逻辑调 <code>lzy loop</code>；技能只负责"当前步骤怎么干"</td></tr>
+      <tr><td><code>cli/lzy loop</code></td><td>状态机：create-goals / step / status / resume；证据记录 tree hash</td></tr>
+      <tr><td>Stop 钩子 + SessionStart(compact) 钩子</td><td>轻续跑提醒 + 压缩恢复提醒（两个，各司其职，不重叠）</td></tr>
+      <tr><td><code>skills/init-deep-z</code></td><td>分层 AGENTS.md 生成（子智能体并行探索各目录）</td></tr>
+    </table>
+    <p><b>验收标准：</b>拿一个真实小需求（如"给某服务加个限流"）全流程跑通：ulw-plan 产出被批准的计划 → start-work 逐项完成 → 终验 F 项有 curl/日志证据 → 中途手动把会话压缩一次，任务仍能正确恢复 → <code>lzy status</code> 全程状态自洽。</p>
+  </div>
+
+  <div class="callout"><b>Phase 2~4 预告</b>（详情见合并终版 §8）：Phase 2 加 agents/ 角色库与双评审门；Phase 3 只整合现有资产（codegraph 接线 / 评论检查 / browser-use 取证面 / 原生调度器备选——规则注入钩子已砍，AGENTS.md 原生支持已证实）；Phase 4 做 doctor/uninstall + GitHub 插件市场发布（ZCode 市场源支持 GitHub 仓库，发布路径已被验证）。</div>
+</section>
+
+<!-- ================= S11 ================= -->
+<section id="s11">
+  <h2>术语表 & 继续学习<span class="en">Glossary & Go Deeper</span><span class="up"><a href="#top">↑</a></span></h2>
+  <details open>
+    <summary>术语表（开发视角）</summary>
+    <table>
+      <tr><th style="width:20%">术语</th><th>定义与出处</th></tr>
+      <tr><td>AGENTS.md</td><td>给 AI 看的项目说明文件约定（类似 README 但受众是模型）；lazycodex 的 init-deep 会分层生成</td></tr>
+      <tr><td>tree hash</td><td><code>git rev-parse "HEAD^{tree}"</code> 的短哈希，唯一标识"当前代码内容快照"（与 commit 无关，内容变了就变）；证据用它防翻旧账</td></tr>
+      <tr><td>RED→GREEN</td><td>先证明测试/验收点会失败（RED），实现后变绿（GREEN）：证明测试真的在测东西</td></tr>
+      <tr><td>tier triage</td><td>轻重分级：LIGHT（默认，精简流程）/ HEAVY（碰鉴权/支付/并发/迁移等必须全套纪律）；只升不降</td></tr>
+      <tr><td>决策完备（decision-complete）</td><td>计划里没有任何"待定"：执行者不需要再问任何问题就能开工</td></tr>
+      <tr><td>IntentGate</td><td>OmO Ultimate 的意图识别门（先分析真实意图再分类）；Light 版只有关键词触发</td></tr>
+      <tr><td>Hashline</td><td>OmO 的内容哈希行锚定编辑（LINE#ID）；ZCode 的 Edit 有 old_string 机制，暂不需要</td></tr>
+      <tr><td>boulder-state</td><td>OmO 的目标状态机核心包（西西弗斯的石头）；我们自研对应物是 <code>core/loop-state</code></td></tr>
+      <tr><td>SUL-1.0 / MIT</td><td>OmO 主仓 / lazycodex 仓各自的许可证；决定了我们能借什么（详见 PM 版 §5）</td></tr>
+    </table>
+  </details>
+  <details>
+    <summary>一手资料与继续阅读</summary>
+    <ul class="small">
+      <li><a href="https://github.com/code-yeongyu/lazycodex">lazycodex 仓库</a>：重点读 <code>plugins/omo/skills/ultrawork/SKILL.md</code>（行为契约范本）、<code>plugins/omo/.codex-plugin/plugin.json</code>（清单组织）、<code>plugins/omo/hooks/*.json</code>（钩子命名法）：MIT，可改写。</li>
+      <li><a href="https://github.com/code-yeongyu/oh-my-openagent">OmO 主仓</a>：重点读 <code>ROADMAP.md</code>（分层架构与"为何不搞统一抽象"）、<code>docs/manifesto.md</code>（产品哲学）、<code>packages/boulder-state/src/</code>（状态机设计，只读思想）：SUL-1.0，勿搬代码。</li>
+      <li>本机权威文档：ZCode 设置里的 zcode-guide 插件（diagnosing-hooks / diagnosing-plugins / diagnosing-skills / zcode-configuration-guide 四个技能 = ZCode 扩展面的官方说明书）。</li>
+      <li>本仓调研底稿：<code>docs/research-lazycodex-to-zcode.md</code>、<code>docs/research-oh-my-openagent.md</code>。</li>
+    </ul>
+  </details>
+</section>
+</div><!-- /content -->
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>LazyZCode 方案调研 · 初级开发人员版 · 2026-09-05 编制 · 2026-09-06 逆向源码复核修订与决策拍板回写 · 基于本机实测（ZCode 扩展面逐项验证）+ 两仓一手调研（GitHub 全量树与关键文件原文）编制</p>
+    <p><a href="./index.html">报告总览入口</a> ｜ 配套文档：<a href="./lazyzcode-report-pm.html">产品经理版</a> · <a href="./lazyzcode-report-full.html">合并终版</a></p>
+  </div>
+</footer>
+
+<button class="top-btn" onclick="window.scrollTo({top:0,behavior:\'smooth\'})" aria-label="回到顶部">回到顶部</button>
+<button id="themeBtn" class="theme-btn" onclick="toggleTheme()" title="切换深色 / 浅色模式" aria-label="切换主题">浅</button>
+<script>
+(function(){
+  var root=document.documentElement;
+  function saved(){try{return localStorage.getItem('lzy-theme')}catch(e){return null}}
+  var dark=saved()?saved()==='dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  function apply(){root.classList.toggle('dark',dark);var b=document.getElementById('themeBtn');if(b)b.textContent=dark?'浅色':'深色';}
+  window.toggleTheme=function(){dark=!dark;try{localStorage.setItem('lzy-theme',dark?'dark':'light')}catch(e){}apply();};
+document.querySelectorAll('table').forEach(function(t){var w=document.createElement('div');w.className='tscroll';t.parentNode.insertBefore(w,t);w.appendChild(t)});
+  apply();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LazyZCode 方案调研报告 · 产品经理版</title>
+<meta name="description" content="LazyZCode 方案调研报告（产品经理版）：全部候选方案的价值、成本、风险与推荐结论。">
+<style>
+:root{--bg:#F7F6F3;--card:#FFFFFF;--card2:#FAF9F6;--ink:#2F3437;--muted:#787774;--line:#E7E5E0;--accent:#1F6C9F;--accent-soft:#E1F3FE;--pro-bg:#EDF3EC;--pro-ink:#346538;--pro-line:#D8E4D5;--con-bg:#FDEBEC;--con-ink:#9F2F2D;--con-line:#F0D6D7;--neu-bg:#E1F3FE;--neu-ink:#1F6C9F;--neu-line:#CDE6F6;--warn-bg:#FBF3DB;--warn-ink:#956400;--warn-line:#EFDFAF;--vio-bg:#EFEAFB;--vio-ink:#5B4A9F;--vio-line:#DED4F2;--code-bg:#F0EFEB;--code-ink:#4A4E52;--shadow:0 1px 2px rgba(47,52,55,.04),0 10px 30px rgba(47,52,55,.05)}
+html.dark{--bg:#151513;--card:#1D1D1A;--card2:#22211D;--ink:#E6E4DE;--muted:#9B998F;--line:#2E2D28;--accent:#8FC3E8;--accent-soft:#16283A;--pro-bg:#1B291D;--pro-ink:#93C99B;--pro-line:#2C4030;--con-bg:#321B1C;--con-ink:#E89A97;--con-line:#4A2A2B;--neu-bg:#16283A;--neu-ink:#8FC3E8;--neu-line:#274156;--warn-bg:#2E2614;--warn-ink:#E0B45C;--warn-line:#463A1E;--vio-bg:#251F3D;--vio-ink:#B9A9E8;--vio-line:#3B3358;--code-bg:#23231F;--code-ink:#C8C5BC;--shadow:0 1px 2px rgba(0,0,0,.25),0 10px 30px rgba(0,0,0,.3);color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;color:var(--ink);background:var(--bg);line-height:1.85;font-size:16px;transition:background .25s,color .25s}
+::selection{background:var(--accent-soft)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+h1,h2,h3{text-wrap:balance}
+p{text-wrap:pretty}
+.wrap{max-width:1240px;margin:0 auto;padding:0 28px}
+@media(min-width:1080px){
+  body>.wrap{display:grid;grid-template-columns:250px minmax(0,1fr);column-gap:52px;align-items:start}
+  body>.wrap>nav.toc{grid-column:1;grid-row:1;position:sticky;top:32px;max-height:calc(100vh - 48px);overflow:auto;align-self:start}
+  body>.wrap>div.content{grid-column:2;grid-row:1;min-width:0}
+  footer .wrap{padding-left:330px}
+}
+/* 进度条 */
+.progress{position:fixed;top:0;left:0;right:0;height:3px;z-index:100;pointer-events:none}
+.progress::before{content:"";display:block;height:100%;background:var(--accent);transform-origin:0 50%;transform:scaleX(0)}
+@supports(animation-timeline:scroll()){.progress::before{animation:pgrow linear both;animation-timeline:scroll(root)}}
+@keyframes pgrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@media(prefers-reduced-motion:reduce){.progress{display:none}}
+/* 封面：纸面编辑风（浅色页 = 浅色封面，主题锁） */
+header.cover{background:var(--bg);color:var(--ink);padding:84px 0 60px;border-bottom:1px solid var(--line);position:relative;overflow:hidden}
+header.cover::before{content:"";position:absolute;inset:0;background:radial-gradient(58% 55% at 72% -6%,var(--accent-soft),transparent 72%);opacity:.55;pointer-events:none}
+header.cover .kicker{font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:11.5px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent)}
+header.cover h1{font-size:clamp(34px,4.4vw,50px);letter-spacing:-.02em;line-height:1.14;font-weight:800;margin:20px 0 14px;max-width:21em;position:relative}
+header.cover p.sub{color:var(--muted);max-width:44em;font-size:16.5px;margin:0;position:relative}
+.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px;position:relative}
+.meta span{border:1px solid var(--line);border-radius:6px;padding:4px 12px;font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:12.5px;color:var(--muted);background:var(--card)}
+/* 目录：桌面粘性侧栏 / 移动端轻卡片 */
+nav.toc b{font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:11px;letter-spacing:.22em;color:var(--muted);font-weight:600}
+nav.toc ol{margin:12px 0 0;padding:0 0 0 4px;list-style:none;counter-reset:toc}
+nav.toc li{margin:2px 0;counter-increment:toc}
+nav.toc li::before{content:counter(toc,decimal-leading-zero);font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:10.5px;color:var(--muted);opacity:.7;margin-right:9px}
+nav.toc a{color:var(--ink);display:inline-block;padding:3.5px 0;font-size:14px;border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--accent);text-decoration:none;border-bottom-color:var(--accent-soft)}
+@media(max-width:1079px){
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin:28px 0 8px}
+  nav.toc ol{columns:2;column-gap:36px}
+}
+@media(max-width:640px){nav.toc ol{columns:1}}
+/* 正文区 */
+section{margin:0 0 76px;border-top:1px solid var(--line);padding-top:34px}
+.content>section:first-of-type{border-top:none;padding-top:6px}
+h2{font-size:clamp(23px,2.4vw,29px);letter-spacing:-.01em;line-height:1.3;font-weight:700;margin:0 0 22px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+h2::before{content:"";display:inline-block;width:9px;height:9px;background:var(--accent);margin-right:13px;border-radius:2px;transform:translateY(-2px)}
+h2 .en{font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:11.5px;color:var(--muted);font-weight:400;margin-left:12px;letter-spacing:.08em}
+h3{font-size:19.5px;margin:30px 0 10px;color:var(--ink);letter-spacing:-.005em;font-weight:650}
+p.lead{color:var(--muted);margin:0 0 14px}
+section p{max-width:78ch}
+section li{max-width:76ch}
+/* 卡片：扁平 1px 边框，无投影 */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:26px 30px;margin:18px 0;transition:border-color .2s}
+.card:hover{border-color:#D6D3CC}
+html.dark .card:hover{border-color:#3B3A33}
+.card>h3:first-child,.card>h4:first-child,.card>p:first-child{margin-top:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:840px){.grid2,.grid3{grid-template-columns:1fr}}
+/* 语义淡彩卡（优势/劣势/中性） */
+.pc{border-radius:10px;padding:18px 22px;border:1px solid var(--line);background:var(--card)}
+.pc h4{margin:0 0 8px;font-size:15px}
+.pc ul{margin:0;padding-left:19px}
+.pc li{margin:7px 0}
+.pc.pro{background:var(--pro-bg);border-color:var(--pro-line)}
+.pc.pro h4{color:var(--pro-ink)}
+.pc.con{background:var(--con-bg);border-color:var(--con-line)}
+.pc.con h4{color:var(--con-ink)}
+.pc.neu{background:var(--neu-bg);border-color:var(--neu-line)}
+.pc.neu h4{color:var(--neu-ink)}
+.pc.vio{background:var(--vio-bg);border-color:var(--vio-line)}
+.pc.vio h4{color:var(--vio-ink)}
+/* 表格：编辑风细线表 */
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:16px 0;font-size:14px;font-variant-numeric:tabular-nums}
+th{background:var(--card2);color:var(--muted);text-align:left;padding:10px 14px;font-weight:600;font-size:12.5px;letter-spacing:.05em;border-bottom:1px solid var(--line)}
+td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top}
+tr:nth-child(even) td{background:var(--card2)}
+tr:first-child td{border-top:none}
+.good{color:var(--pro-ink);font-weight:600}
+.bad{color:var(--con-ink);font-weight:600}
+.mid{color:var(--warn-ink);font-weight:600}
+/* 标签：淡彩药丸 */
+.badge{display:inline-block;border-radius:999px;padding:2px 12px;font-size:12px;font-weight:600;vertical-align:middle;letter-spacing:.02em}
+.b-blue{background:var(--neu-bg);color:var(--neu-ink);border:1px solid var(--neu-line)}
+.b-green{background:var(--pro-bg);color:var(--pro-ink);border:1px solid var(--pro-line)}
+.b-red{background:var(--con-bg);color:var(--con-ink);border:1px solid var(--con-line)}
+.b-amber{background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line)}
+.b-gray{background:var(--card2);color:var(--muted);border:1px solid var(--line)}
+.b-vio{background:var(--vio-bg);color:var(--vio-ink);border:1px solid var(--vio-line)}
+/* 图表容器 */
+.fig{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;margin:20px 0;text-align:center}
+.fig .cap{font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:12px;color:var(--muted);margin-top:10px}
+/* 提示框：淡彩左线 */
+.callout{border-left:3px solid var(--neu-ink);background:var(--neu-bg);border-radius:0 10px 10px 0;padding:15px 22px;margin:18px 0}
+.callout.warn{border-left-color:var(--warn-ink);background:var(--warn-bg)}
+.callout.danger{border-left-color:var(--con-ink);background:var(--con-bg)}
+.callout.ok{border-left-color:var(--pro-ink);background:var(--pro-bg)}
+/* KPI */
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
+@media(max-width:840px){.kpi{grid-template-columns:1fr 1fr}}
+.kpi .box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 14px;text-align:center}
+.kpi .num{font-size:27px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi .lbl{font-size:12.5px;color:var(--muted);line-height:1.5}
+/* 代码 */
+code{background:var(--code-bg);border-radius:5px;padding:1.5px 7px;font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:.86em;color:var(--code-ink)}
+pre{background:#1B1B19;color:#D6D3CA;border:1px solid #2E2D28;border-radius:10px;padding:18px 22px;overflow-x:auto;font-size:13px;line-height:1.7}
+pre code{background:none;color:inherit;padding:0;font-size:13px}
+.c{color:#8FC3E8}.k{color:#E0B45C}.s{color:#93C99B}.cm{color:#8A877E;font-style:italic}.fn{color:#B9A9E8}
+/* 折叠：极简手风琴 */
+details{background:transparent;border:none;border-bottom:1px solid var(--line);border-radius:0;padding:6px 2px;margin:0}
+details:first-of-type{border-top:1px solid var(--line);margin-top:8px}
+details + table{margin-top:14px}
+summary{cursor:pointer;font-weight:600;color:var(--ink);padding:8px 0;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";float:right;font-weight:400;color:var(--muted);font-family:"SF Mono",Menlo,monospace;transition:transform .2s}
+details[open] summary::after{content:"3"}
+details[open]{padding-bottom:14px}
+/* 视角标签 / 小标签 */
+.aud{display:inline-block;border-radius:999px;padding:1px 11px;font-size:12px;font-weight:700;letter-spacing:.06em;margin-right:8px;vertical-align:middle}
+.aud-pm{background:var(--vio-bg);color:var(--vio-ink);border:1px solid var(--vio-line)}
+.aud-dev{background:var(--neu-bg);color:var(--neu-ink);border:1px solid var(--neu-line)}
+.tip{display:inline-block;background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:6px;padding:0 8px;font-size:12px;font-weight:600;color:var(--warn-ink)}
+.small{font-size:13px;color:var(--muted)}
+.up{font-size:12px;float:right}
+.up a{color:var(--muted);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:2px 10px;background:var(--card)}
+.up a:hover{color:var(--accent);border-color:var(--accent)}
+/* 悬浮控件 */
+.theme-btn{position:fixed;top:16px;right:16px;z-index:99;height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);box-shadow:var(--shadow);cursor:pointer;font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;transition:transform .15s,border-color .2s}
+.theme-btn:hover{transform:translateY(-1px);border-color:var(--accent)}
+.theme-btn:active{transform:scale(.97)}
+.top-btn{position:fixed;bottom:20px;right:16px;z-index:99;height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer;font-size:12.5px;box-shadow:var(--shadow);opacity:.85;transition:transform .15s,color .2s,opacity .2s;font-family:inherit}
+.top-btn:hover{opacity:1;color:var(--accent);transform:translateY(-2px)}
+.top-btn:active{transform:scale(.97)}
+/* 深色下 SVG 图表适配（按属性精准替换，语义彩色保留） */
+html.dark .fig svg text:not([fill]){fill:#D6D3CA}
+html.dark .fig svg [fill="#334"]{fill:#C9C6BD}
+html.dark .fig svg [fill="#5b6b80"]{fill:#9B998F}
+html.dark .fig svg [fill="#94a3b8"]{fill:#7D7B72}
+html.dark .fig svg [fill="#16233a"]{fill:#D6D3CA}
+html.dark .fig svg [fill="#eff6ff"]{fill:#20262E}
+html.dark .fig svg [fill="#ecfdf5"]{fill:#1E2921}
+html.dark .fig svg [fill="#fffbeb"]{fill:#2A2519}
+html.dark .fig svg [fill="#f5f3ff"]{fill:#26223A}
+html.dark .fig svg [fill="#fef2f2"]{fill:#2E1F1F}
+html.dark .fig svg rect[fill="#fff"]{fill:#191917}
+html.dark .fig svg [fill="#1e3a8a"]{fill:#8FB8E8}
+html.dark .fig svg [fill="#065f46"]{fill:#8FCFA8}
+html.dark .fig svg [fill="#92400e"]{fill:#E0B45C}
+html.dark .fig svg [fill="#5b21b6"]{fill:#B4A5E0}
+html.dark .fig svg [fill="#3730a3"]{fill:#9FA3DC}
+html.dark .fig svg [fill="#b91c1c"]{fill:#E89A97}
+html.dark .fig svg [fill="#b45309"]{fill:#D9A24A}
+html.dark .fig svg [fill="#047857"]{fill:#7FCBA4}
+html.dark .fig svg [fill="#0b1220"]{fill:#1B1B19}
+html.dark .fig svg [fill="#101a33"]{fill:#23221E}
+html.dark .fig svg [fill="#111827"]{fill:#23221E}
+html.dark .fig svg [stroke="#f3c6c6"]{stroke:#5A3334}
+html.dark .fig svg [stroke="#b7e4d0"]{stroke:#35543F}
+html.dark .fig svg [stroke="#2563eb"]{stroke:#4A6FA8}
+html.dark .fig svg [stroke="#059669"]{stroke:#3D8A68}
+html.dark .fig svg [stroke="#d97706"]{stroke:#A87E3B}
+html.dark .fig svg [stroke="#7c3aed"]{stroke:#7464BC}
+html.dark .fig svg [stroke="#4f46e5"]{stroke:#7578C4}
+html.dark .fig svg [stroke="#5b6b80"]{stroke:#5F5D55}
+html.dark .fig svg [stroke="#0f766e"]{stroke:#3A8A80}
+html.dark .fig svg [stroke="#94a3b8"]{stroke:#4A4840}
+/* 打印 */
+@media print{
+  .theme-btn,.top-btn,.progress{display:none!important}
+  nav.toc{position:static;max-height:none;border:none;background:none;padding:0}
+  body>.wrap{display:block}
+  body{background:#fff;font-size:12px}
+  .card,.fig,table,details{break-inside:avoid}
+  pre{white-space:pre-wrap;border-color:#ccc}
+  section{margin:0 0 40px}
+}
+
+/* ==== 响应式 v2：全尺寸适配 ==== */
+.tscroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin:16px 0;background:var(--card);scrollbar-width:thin}
+.tscroll table{border:none;border-radius:0;margin:0;background:transparent}
+.tscroll::-webkit-scrollbar{height:8px}
+.tscroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+.fig{overflow-x:auto;scrollbar-width:thin}
+.fig svg{min-width:760px}
+td,th{line-height:1.65}
+code{overflow-wrap:anywhere}
+html{scroll-padding-top:16px}
+nav.toc{scrollbar-width:thin}
+@media(max-width:1079px){
+  section{margin:0 0 54px;padding-top:26px}
+}
+@media(max-width:700px){
+  header.cover .wrap{padding-right:78px}
+}
+@media(max-width:640px){
+  body{font-size:15.5px}
+  .wrap{padding:0 20px}
+  header.cover{padding:54px 0 40px}
+  header.cover h1{font-size:30px}
+  .card{padding:20px 18px}
+  .fig{padding:14px 12px}
+  .pc{padding:15px 16px}
+  .callout{padding:12px 16px}
+  .kpi{gap:10px}
+  .kpi .num{font-size:23px}
+  h2{font-size:22px}
+  h3{font-size:18px;margin:24px 0 8px}
+  pre{padding:14px 16px;font-size:12.5px}
+  .meta{gap:8px}
+}
+@media print{
+  .tscroll{overflow:visible;border:none}
+  .tscroll table{border:1px solid #ccc}
+  .fig{overflow:visible}
+  .fig svg{min-width:0}
+}
+</style>
+</head>
+<body>
+<div class="progress" aria-hidden="true"></div>
+
+<header class="cover">
+  <div class="wrap">
+    <div class="kicker">LazyZCode · Research Report · For Product Managers</div>
+    <h1>给 ZCode 造一个「lazycodex」<br>方案优劣势深度调研报告</h1>
+    <p class="sub">lazycodex / oh-my-openagent（OmO）是目前最成功的「AI 编码智能体工作流强化层」之一（主仓 68.7k stars）。本报告回答一个问题：<b>我们应该用什么方式，把这套能力带到 ZCode 上？</b>：逐一深挖所有候选方案的优势、劣势、成本与风险，并给出推荐结论。</p>
+    <div class="meta">
+      <span>2026-09-05 编制 · 2026-09-06 复核修订与拍板</span>
+      <span>读者：产品经理</span>
+      <span>语言：中文（术语首次出现均有白话解释）</span>
+      <span>配套：初级开发版 + 合并终版</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <b>目录 CONTENTS</b>
+  <ol>
+    <li><a href="#s1">一页摘要（TL;DR）</a></li>
+    <li><a href="#s2">背景：这东西到底是什么</a></li>
+    <li><a href="#s3">社区口碑与真实数据</a></li>
+    <li><a href="#s4">参考方案深挖：三个版本 + ZCode 原生</a></li>
+    <li><a href="#s5">实现路径四选一（A/B/C/D）</a></li>
+    <li><a href="#s6">关键决策点与建议</a></li>
+    <li><a href="#s7">路线图与成本估算</a></li>
+    <li><a href="#s8">风险登记册</a></li>
+    <li><a href="#s9">成功指标（KPI）</a></li>
+    <li><a href="#s10">开放问题（已拍板）</a></li>
+    <li><a href="#s11">附录：术语速查 & 资料来源</a></li>
+  </ol>
+</nav>
+
+<div class="content">
+
+<!-- ================= S1 ================= -->
+<section id="s1">
+  <h2>一页摘要（TL;DR）<span class="en">Executive Summary</span><span class="up"><a href="#top">↑</a></span></h2>
+  <div class="card">
+    <p><b>结论先行：建议「全自研 LazyZCode 插件，以 MIT 协议的 lazycodex 为改写底稿、以 OmO 为思想参考」。2026-09-06 拍板：直接投入开源完整版（Phase 0~4，约 2 个月），MVP（Phase 0+1，约 2~3 周）为第一个验收里程碑。</b></p>
+    <table>
+      <tr><th style="width:24%">候选路径</th><th style="width:12%">综合评价</th><th>一句话理由</th></tr>
+      <tr><td><b>A</b> · 等 OmO 官方支持 ZCode</td><td><span class="badge b-red">不推荐</span></td><td>ZCode 不在官方路线图雷达上（连 Claude Code 都还是「探索中」），时间完全不可控，且许可证不允许我们等来的东西二次分发。</td></tr>
+      <tr><td><b>B</b> · Fork OmO 引擎写 ZCode 适配器</td><td><span class="badge b-amber">不建议</span></td><td>能复用 19 个核心包，但 <b>SUL-1.0 许可证封锁了开源分发</b>；上游正处大重构期，追上游成本极高。</td></tr>
+      <tr><td><b>C</b> · 以 lazycodex（MIT）为底稿移植</td><td><span class="badge b-green">推荐（作为底稿）</span></td><td>仓库整体 MIT，插件结构、技能文本、安装器模式都可合法借用改写；但其工具面是 Codex 专用的，需要系统性重写。</td></tr>
+      <tr><td><b>D</b> · 全自研（借鉴思想）</td><td><span class="badge b-green">推荐（作为主路径）</span></td><td>完全贴合 ZCode 独有能力（内置记忆、codegraph、computer-use），许可证干净可开源，不受制于上游；代价是工作量最大。</td></tr>
+    </table>
+    <p class="small">推荐组合 = <b>D 的架构 + C 的素材 + B 的分层思想 + A 的持续观察</b>。这是"拿来主义"与"自主可控"之间的最优解。</p>
+  </div>
+  <div class="kpi">
+    <div class="box"><div class="num">68.7k</div><div class="lbl">OmO 主仓 GitHub Stars<br>（品类Top1的证明）</div></div>
+    <div class="box"><div class="num">~3×</div><div class="lbl">社区实测 token 消耗<br>（相对裸宿主，最大差评）</div></div>
+    <div class="box"><div class="num">2~3 周</div><div class="lbl">LazyZCode MVP 估算<br>（单人 + AI 辅助）</div></div>
+    <div class="box"><div class="num">6 个</div><div class="lbl">ZCode vs Codex 钩子缺口<br>（决定架构的硬约束）</div></div>
+  </div>
+</section>
+
+<!-- ================= S2 ================= -->
+<section id="s2">
+  <h2>背景：这东西到底是什么<span class="en">Background</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">给非技术同学的三段话版本。</p>
+
+  <div class="card">
+    <h3>一个类比：AI 编码员需要一位「铁腕教练」</h3>
+    <p>现在的 AI 编码助手（Claude Code、Codex、ZCode 这类「宿主」）像一个技术很好但容易偷懒、半途而废的员工：<b>你说一句需求，他改两行代码就说"做完了"</b>，测试没跑、界面没看、文档没更。<br><br>
+    <b>lazycodex / OmO 就是给这个员工配的「铁腕教练 + 工作手册 + 考核系统」</b>：先逼他做计划（<code>ulw-plan</code>）、再按清单逐项执行（<code>start-work</code>）、每一项都要拿出真实证据（截图、接口返回值）才算过关（<code>ulw-loop</code>）、项目知识沉淀成册便于新人接手（<code>init-deep</code>）。它的口号 "Drop your tokens. Ultrawork. Done."（扔进 token，.ultrawork 开工，直到做完）就是这个意思。</p>
+  </div>
+
+  <div class="card">
+    <h3>它不是一个软件，而是一族「宿主插件」</h3>
+    <p>OmO 引擎本体像一个"中央厨房"，向三个宿主环境（称为 <b>edition 版本</b>）供餐：<b>Ultimate 版</b>（装进 OpenCode，功能最全）、<b>Light 版</b>（装进 OpenAI Codex，品牌名 lazycodex，轻量便携）、<b>Senpi 版</b>（独立命令行，不依赖任何宿主，测试版）。我们的北极星，就是<b>做出第四个版本：装进 ZCode 的版本</b>。</p>
+  </div>
+
+  <div class="fig">
+    <svg viewBox="0 0 960 300" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OmO 三版本与目标版本示意图">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto"><path d="M0 0L10 5L0 10z" fill="#5b6b80"/></marker>
+      </defs>
+      <rect x="330" y="16" width="300" height="58" rx="12" fill="#101a33"/>
+      <text x="480" y="41" text-anchor="middle" fill="#fff" font-size="17" font-weight="700">OmO 引擎（中央厨房）</text>
+      <text x="480" y="61" text-anchor="middle" fill="#9db2d6" font-size="11.5">19 个纯逻辑核心包 + 技能库 + 状态机</text>
+      <line x1="480" y1="74" x2="130" y2="140" stroke="#5b6b80" stroke-width="1.6" marker-end="url(#arr)"/>
+      <line x1="480" y1="74" x2="380" y2="140" stroke="#5b6b80" stroke-width="1.6" marker-end="url(#arr)"/>
+      <line x1="480" y1="74" x2="630" y2="140" stroke="#5b6b80" stroke-width="1.6" marker-end="url(#arr)"/>
+      <line x1="480" y1="74" x2="850" y2="140" stroke="#5b6b80" stroke-width="1.6" marker-end="url(#arr)" stroke-dasharray="6 5"/>
+      <g>
+        <rect x="30" y="145" width="200" height="120" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+        <text x="130" y="172" text-anchor="middle" font-size="15" font-weight="700" fill="#1e3a8a">Ultimate 版</text>
+        <text x="130" y="192" text-anchor="middle" font-size="11.5" fill="#334">宿主：OpenCode</text>
+        <text x="130" y="212" text-anchor="middle" font-size="11.5" fill="#334">11 个智能体 · 54+ 钩子</text>
+        <text x="130" y="230" text-anchor="middle" font-size="11.5" fill="#334">团队模式 · Hashline 编辑</text>
+        <text x="130" y="250" text-anchor="middle" font-size="11" font-weight="700" fill="#b91c1c">License：SUL-1.0（受限）</text>
+      </g>
+      <g>
+        <rect x="280" y="145" width="200" height="120" rx="12" fill="#ecfdf5" stroke="#059669" stroke-width="1.6"/>
+        <text x="380" y="172" text-anchor="middle" font-size="15" font-weight="700" fill="#065f46">Light 版 = lazycodex</text>
+        <text x="380" y="192" text-anchor="middle" font-size="11.5" fill="#334">宿主：OpenAI Codex</text>
+        <text x="380" y="212" text-anchor="middle" font-size="11.5" fill="#334">26 技能 · 23 钩子 · 证据闭环</text>
+        <text x="380" y="230" text-anchor="middle" font-size="11.5" fill="#334">3.4k stars · npx 一键装</text>
+        <text x="380" y="250" text-anchor="middle" font-size="11" font-weight="700" fill="#047857">License：MIT（可自由借用）</text>
+      </g>
+      <g>
+        <rect x="530" y="145" width="200" height="120" rx="12" fill="#fffbeb" stroke="#d97706" stroke-width="1.6"/>
+        <text x="630" y="172" text-anchor="middle" font-size="15" font-weight="700" fill="#92400e">Senpi 版（beta）</text>
+        <text x="630" y="192" text-anchor="middle" font-size="11.5" fill="#334">宿主：无（独立 CLI）</text>
+        <text x="630" y="212" text-anchor="middle" font-size="11.5" fill="#334">内嵌引擎 + 原生二进制</text>
+        <text x="630" y="230" text-anchor="middle" font-size="11.5" fill="#334">omo.json 配置首发地</text>
+        <text x="630" y="250" text-anchor="middle" font-size="11" font-weight="700" fill="#b45309">License：SUL-1.0（受限）</text>
+      </g>
+      <g>
+        <rect x="750" y="145" width="200" height="120" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2.4" stroke-dasharray="8 5"/>
+        <text x="850" y="172" text-anchor="middle" font-size="15" font-weight="700" fill="#5b21b6">LazyZCode（目标）</text>
+        <text x="850" y="192" text-anchor="middle" font-size="11.5" fill="#334">宿主：ZCode（我们在这）</text>
+        <text x="850" y="212" text-anchor="middle" font-size="11.5" fill="#334">本报告要论证怎么做</text>
+        <text x="850" y="230" text-anchor="middle" font-size="11.5" fill="#334">官方没做 · 也没在计划里</text>
+        <text x="850" y="250" text-anchor="middle" font-size="11" font-weight="700" fill="#5b21b6">License：自定（建议 MIT）</text>
+      </g>
+      <text x="480" y="292" text-anchor="middle" font-size="11" fill="#5b6b80">官方多宿主路线图现状：OpenCode 支持 / Codex 支持 / Senpi 支持 / Pi 部分 / Claude Code 探索中 / ZCode 不在列表</text>
+    </svg>
+    <div class="cap">图 1 · OmO 的三个已发行版本与我们想做的第四个版本（ZCode 版）</div>
+  </div>
+</section>
+
+<!-- ================= S3 ================= -->
+<section id="s3">
+  <h2>社区口碑与真实数据<span class="en">Community Signal</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">做产品决策不能只看 README 的自我表扬。以下是从 Reddit、第三方评测、GitHub Issue 挖到的真实用户声音。</p>
+
+  <div class="grid2">
+    <div class="pc pro">
+      <h4>好评侧（为什么它是品类第一）</h4>
+      <ul>
+        <li><b>"多智能体编排 100% 稳，领先同行光年"</b> ： r/ClaudeCode 高赞帖。</li>
+        <li><b>真实战果：</b>"一夜把 4.5 万行的桌面应用改造成 SaaS 网站"；"一天清掉 8000 条 ESLint 告警"。</li>
+        <li><b>超长无人值守运行：</b>作者演示 ultrawork 模式连续跑两天；用户："睡前下指令，醒来收网站"。</li>
+        <li>三版本同源、多宿主战略被验证可行（Codex 版发布即 3.4k stars）。</li>
+      </ul>
+    </div>
+    <div class="pc con">
+      <h4>差评侧（我们必须设计规避的坑）</h4>
+      <ul>
+        <li><b>Token 消耗约为裸宿主的 3 倍</b>（第三方评测 glukhov.org：产出与裸 OpenCode 几乎相同，账单 3 倍，警告"账单风险"）。</li>
+        <li>"<b>开头很快，两三个任务后 token 烧光，额度要等 4 小时恢复</b>"（r/opencodeCLI 多帖共鸣）。</li>
+        <li><b>臃肿、流程过严</b>：有人觉得"杀鸡用牛刀"，社区出现精简版 fork。</li>
+        <li><b>已知 bug 模式：</b>todo 续跑循环出现怪行为；Codex 版评审智能体在审批关口"沉默不回应"（lazycodex Issue #19）。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="fig">
+    <svg viewBox="0 0 860 210" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="token 消耗对比条形图">
+      <text x="430" y="26" text-anchor="middle" font-size="15" font-weight="700" fill="#16233a">Token 经济学：同一任务，产出相近，账单差 3 倍（第三方实测）</text>
+      <g font-size="12.5" fill="#334">
+        <text x="200" y="72" text-anchor="end">裸 OpenCode</text>
+        <rect x="215" y="56" width="260" height="26" rx="6" fill="#059669"/>
+        <text x="485" y="74" font-weight="700" fill="#047857">1×（基线）</text>
+        <text x="200" y="122" text-anchor="end">装 OmO 后</text>
+        <rect x="215" y="106" width="610" height="26" rx="6" fill="#dc2626" opacity=".85"/>
+        <text x="815" y="124" text-anchor="end" font-weight="700" fill="#fff">≈ 3×：多智能体并行与证据验证的代价</text>
+      </g>
+      <text x="430" y="178" text-anchor="middle" font-size="12" fill="#5b6b80">来源：glukhov.org 独立评测；Reddit 多帖引用同量级感受。注意：支持方观点认为"10x 生产力换 3x token 是划算的"，这恰是我们产品设计要回答的取舍题。</text>
+    </svg>
+    <div class="cap">图 2 · 最大的差评点是成本而非能力 ： LazyZCode 必须把「省钱档位」做成一等公民</div>
+  </div>
+
+  <div class="callout">
+    <b>对 LazyZCode 的产品启示：</b>① 用户的痛点不是"AI 不会写代码"，而是"不会把事情<b>做完做完好</b>"：这是我们的价值锚点；② 差评全部集中在<b>成本失控</b>与<b>流程僵化</b>，所以"轻/重分级（tier triage）默认开启、小额预算护栏、可一键退出纪律模式"应作为我们的差异化卖点；③ 上游已知的"评审代理沉默""续跑循环抽风"两类 bug，要在设计层面预防（详见开发版报告第 9 节）。
+  </div>
+</section>
+
+<!-- ================= S4 ================= -->
+<section id="s4">
+  <h2>参考方案深挖：三个版本 + ZCode 原生<span class="en">Reference Solutions</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">先把「市面上已有的四个选项」各自的优势、劣势挖透，再谈我们要走哪条路。</p>
+
+  <h3>4.1 OmO Ultimate 版（宿主：OpenCode）：功能天花板</h3>
+  <div class="card">
+    <p><b>它是什么：</b>最完整的版本。11 个分工明确的 AI 智能体（编排者 Sisyphus、深度工匠 Hephaestus、规划师 Prometheus、架构顾问 Oracle、资料管理员 Librarian 等）、54+ 个生命周期钩子（Team Mode 下 61 个）、5 个内置 MCP 工具（联网搜索 Exa、官方文档 Context7、GitHub 代码搜索 Grep.app）、团队模式（1 个 lead 指挥最多 8 个并行成员，tmux 分屏可视化）、<code>/goal</code> 持久目标、意图识别门 IntentGate、内容哈希锚定编辑 Hashline。</p>
+    <div class="grid2">
+      <div class="pc pro"><h4>优势</h4><ul>
+        <li><b>功能天花板 + 最大用户群</b>：所有新特性先在这验证，最久经考验。</li>
+        <li><b>完整的"纪律哲学"落地</b>：强制开场标记、目标预算、Todo 强制器（agent 偷懒就被拽回来）。</li>
+        <li><b>兼容 Claude Code 的 hooks/skills/MCP/插件</b>：生态迁移零成本，证明"跨宿主兼容"这条路能走通。</li>
+        <li>配 doctor 自检命令，安装/诊断体验完善。</li>
+      </ul></div>
+      <div class="pc con"><h4>劣势</h4><ul>
+        <li><b>与 OpenCode 深度耦合</b>：2700+ 文件的适配器，官方文档自己承认 OpenCode 插件 API "向主循环注入消息"会引发竞态与死循环（他们列了专门的《Why Not OpenCode-Native》）。</li>
+        <li><b>配置复杂到官方建议"让 AI 帮你装"</b>：订阅检测、11 个智能体各自配模型、逐家认证。</li>
+        <li><b>Token 消耗最高</b>（全功能默认全开）；TUI 界面耗 CPU；破坏性变更频繁。</li>
+        <li><b>SUL-1.0 许可证</b>：不可作为我们开源/商用的代码基础。</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <h3>4.2 OmO Light 版 / lazycodex（宿主：OpenAI Codex）：我们的正牌参考物</h3>
+  <div class="card">
+    <p><b>它是什么：</b>把引擎里"便携的部分"（规则注入、评论检查、LSP 诊断、ultrawork、ulw-loop 证据闭环、遥测）装进 Codex 插件体系。26 个技能、23 个钩子、16 个 TS 组件、8 个子智能体角色。<code>npx lazycodex-ai install</code> 一键安装，3.4k stars。</p>
+    <div class="grid2">
+      <div class="pc pro"><h4>优势</h4><ul>
+        <li><b>MIT 许可证（已核对原文）</b>：插件、技能文本、安装器模式全部可合法借鉴改写：这是我们最重要的"合法素材库"。</li>
+        <li><b>核心工作流完整且经过市场验证</b>：init-deep（项目记忆）→ ulw-plan（决策完备计划）→ start-work（执行）→ ulw-loop（证据绑定 git 提交树的验证闭环，上限 100/500 轮）。</li>
+        <li><b>轻量便携的设计哲学</b>：正是"给新宿主做轻量版"的现成范本：我们就是第四个宿主。</li>
+        <li>带 doctor / uninstall / 遥测开关，分发完成度高。</li>
+      </ul></div>
+      <div class="pc con"><h4>劣势</h4><ul>
+        <li><b>工具面深度绑定 Codex</b>：技能文本里全是 <code>spawn_agent</code>/<code>multi_agent_v1|v2</code> 等 Codex 专用接口协议，移植时<b>每一处都要重写</b>（ZCode 的子智能体接口完全不同）。</li>
+        <li><b>只认 "ulw/ultrawork" 关键词触发</b>（无 Ultimate 的 IntentGate 意图识别），入口体验较糙。</li>
+        <li><b>继承自 OmO 的成本问题</b>：社区反馈"烧额度太快"；评审代理沉默 bug（Issue #19）待上游修。</li>
+        <li>无团队模式、无内置 MCP、功能显著少于 Ultimate（为轻量付出的代价）。</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <h3>4.3 OmO Senpi 版（独立 CLI，beta）："不靠宿主"的第三条路</h3>
+  <div class="card">
+    <p><b>它是什么：</b><code>npm i -g omo-ai@beta</code> 安装的独立 <code>omo</code> 命令，自带内嵌引擎与平台原生二进制（macOS ARM/X64、Linux、Windows），不依赖任何宿主。新的 harness 中立配置 <code>omo.json</code> 先在这里落地。</p>
+    <div class="grid2">
+      <div class="pc pro"><h4>优势</h4><ul>
+        <li><b>不依赖宿主</b>：证明"引擎可以脱离宿主独立跑"，验证了中央厨房模式的终极形态。</li>
+        <li>原生二进制启动快；配置层（omo-config-core）是官方第一个"宿主中立"组件，方向与我们的需求一致。</li>
+      </ul></div>
+      <div class="pc con"><h4>劣势</h4><ul>
+        <li><b>仅 beta</b>（官方故意只走 beta 渠道，防止误装）；脱离宿主意味着<b>失去宿主的工具生态</b>（文件/终端/浏览器等都要自己带）。</li>
+        <li>npm 命名混乱风险：npm 上的 <code>omo</code> 是无关包，官方反复警告别装错。</li>
+        <li>SUL-1.0；对我们参考价值主要是架构信号，而非可用产品。</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <h3>4.4 基线方案：ZCode 原生（什么都不做）：我们的"土地肥力"</h3>
+  <div class="card">
+    <p><b>它是什么：</b>不做任何增强，直接用 ZCode 现有能力干活。以下为本机逐一实测验证的能力盘点。</p>
+    <div class="grid2">
+      <div class="pc pro"><h4>优势（家底比想象中厚）</h4><ul>
+        <li><b>插件体系与 Claude Code / Codex 同源</b>：<code>.zcode-plugin</code> 清单、skills / agents / hooks / MCP 均支持；可添加 GitHub 仓库或 URL zip 作为插件市场源（本机已装 anthropics 官方市场并可用）。</li>
+        <li><b>7 个生命周期钩子</b>（会话开始/用户输入/工具前后/权限/停止），支持上下文注入与工具拦截；<b>复核补充</b>：停止续跑必须带非空提醒内容（输出为空 = 永不续跑），且退出码 2 在「停止」时机等于"不许收工、继续干"。</li>
+        <li><b>独有增量资产</b>：内置项目级持久记忆、已装 codegraph 代码索引 MCP、computer-use / Android / iOS 自动化插件（lazycodex 的 visual-QA 类能力在 ZCode 有现成抓手）；<b>复核补充</b>：内置 browser-use 浏览器插件（MIT，可截图/录屏取证）与原生定时调度器（"无人值守"的宿主内备选路径）。</li>
+        <li>Agent 工具支持后台运行与消息通信，子智能体基建齐全。</li>
+      </ul></div>
+      <div class="pc con"><h4>劣势（我们存在的理由）</h4><ul>
+        <li><b>没有"工作流纪律层"</b>：没有计划门、没有证据验证、没有不许半途而废的机制：正是 lazycodex 填的坑。</li>
+        <li><b>没有角色化的子智能体库</b>与委派协议。</li>
+        <li><b>钩子缺口实为 6 个</b>（逆向复核：Codex 原生 12 事件 vs ZCode 7 事件）：最关键三个 = 无 SubagentStop（子智能体结束事件）、无 PreCompact（压缩前事件）、<b>Stop 续跑最多 3 次</b>且额度与后台任务通知共享（lazycodex 靠同类机制跑 100~500 轮循环）；另缺 SubagentStart / PostCompact / SessionEnd / Interrupt，对架构影响小。</li>
+        <li>配置文件钩子默认关闭（需显式启用）等细节坑位，见开发版报告。</li>
+      </ul></div>
+    </div>
+    <div class="callout ok"><b>小结：</b>ZCode 的"土地肥力"好（插件/钩子/子智能体/MCP/记忆全有），缺的只是 lazycodex 那一层"纪律与闭环"。<b>这正是 LazyZCode 的产品定位：不重造宿主，只补纪律层。</b></div>
+  </div>
+</section>
+
+<!-- ================= S5 ================= -->
+<section id="s5">
+  <h2>实现路径四选一（A/B/C/D）<span class="en">Build vs Borrow vs Wait</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">核心问题：用什么姿势拿到这套能力？四条路径逐一深挖。</p>
+
+  <div class="card">
+    <h3>路径 A · 等 OmO 官方出 ZCode 版 <span class="badge b-gray">零开发</span></h3>
+    <div class="grid2">
+      <div class="pc pro"><h4>优势</h4><ul>
+        <li>零开发成本，官方品质与持续维护。</li>
+        <li>若官方真做了，其核心包分层能保证多宿主一致性。</li>
+      </ul></div>
+      <div class="pc con"><h4>劣势</h4><ul>
+        <li><b>官方路线图上没有 ZCode，连 Claude Code 都只是"exploratory（探索中，未确认）"</b>：等待时间完全不可控（半年？永远？）。</li>
+        <li>等来的也<b>是 SUL-1.0</b>：我们不能基于它做二次分发或商业化。</li>
+        <li>官方版不会利用 ZCode 独有资产（内置记忆、codegraph、computer-use）。</li>
+      </ul></div>
+    </div>
+    <p class="small"><b>结论：不可作为计划，只可作为"竞品动态"持续观察（建议每季度看一眼 ROADMAP）。</b></p>
+  </div>
+
+  <div class="card">
+    <h3>路径 B · Fork OmO 引擎，为它写 ZCode 适配器 <span class="badge b-amber">复用最多，枷锁也最多</span></h3>
+    <div class="grid2">
+      <div class="pc pro"><h4>优势</h4><ul>
+        <li><b>复用度理论最高</b>：19 个宿主无关核心包（状态机、规则引擎、技能加载器、配置层）+ 17 个共享技能，理论上只写一个"ZCode 适配器"。</li>
+        <li>官方正在做"多宿主重构"，搭上顺风车可低成本跟进。</li>
+        <li>若做好，有机会作为官方第 5 个适配器贡献上游，获得社区背书。</li>
+      </ul></div>
+      <div class="pc con"><h4>劣势</h4><ul>
+        <li><b>致命伤：SUL-1.0 传染</b>。基于 OmO 代码的衍生品只能"免费非商业分发"，<b>意味着 LazyZCode 无法开源成 MIT 项目、无法商业化</b>：与北极星冲突。</li>
+        <li>上游正处剧烈重构期（包正在搬家、依赖关系尚未稳定），<b>追上游的 rebase 成本极高</b>；官方自己都说"不搞统一适配层抽象，宁可每个宿主重写"。</li>
+        <li>核心包是 TypeScript 重资产（memory-core 一个包 192 个文件），而我们大量功能在 ZCode 有原生替代（记忆→内置 memory；规则→工作区配置），搬过来反而是负担。</li>
+      </ul></div>
+    </div>
+    <p class="small"><b>结论：许可证一票否决（除非放弃开源/商用）。但其"分层思想"值得全盘吸收：学架构，不碰代码。</b></p>
+  </div>
+
+  <div class="card">
+    <h3>路径 C · 以 lazycodex（MIT）为底稿移植改写 <span class="badge b-green">性价比最高的"合法抄袭"</span></h3>
+    <div class="grid2">
+      <div class="pc pro"><h4>优势</h4><ul>
+        <li><b>许可证干净</b>：整仓 MIT，插件结构（技能 + 钩子 + 清单）、核心工作流的技能文本、安装器/doctor 模式都可改写后直接用，只需保留版权声明。</li>
+        <li><b>省掉最多的"从零试错"</b>：行为契约怎么写才让模型服从（强制开场标记、只升不降的分级、协议化子智能体消息），这些是踩坑换来的Know-how，文本现成。</li>
+        <li>测试组织方式（技能契约测试、钩子契约测试）同样可借鉴。</li>
+        <li><b>意外利好（源码复核）</b>：ZCode 插件发现层原生兼容四种清单风格（.zcode / .claude / .codex / .cursor-plugin），lazycodex 的清单结构可能免改名装载（待真机验证）——移植成本比本报告估算的还要低一截。</li>
+      </ul></div>
+      <div class="pc con"><h4>劣势</h4><ul>
+        <li><b>工具面翻译工作量实打实</b>：所有技能文本里的 Codex 子智能体协议要逐条改写为 ZCode 的 Agent 工具语义（无 fork_context/agent_type 参数），钩子要从 7 类 Codex 事件映射到 ZCode 的 7 个事件（名称都对不上）。</li>
+        <li>它的深循环依赖宿主侧续跑（100/500 轮），ZCode 只给 3 次：<b>架构必须改造而非照搬</b>。</li>
+        <li>"基于 lazycodex 改写"的品牌定位要处理好（避免被误认为官方或蹭名）。</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>路径 D · 全自研（借鉴思想，全部自写）<span class="badge b-green">推荐主路径</span></h3>
+    <div class="grid2">
+      <div class="pc pro"><h4>优势</h4><ul>
+        <li><b>许可证彻底干净</b>：自选 MIT/Apache，可开源、可商用、可进 ZCode 官方市场。</li>
+        <li><b>为 ZCode 而生</b>：天然利用内置记忆（替代 OmO memory-core 的重资产）、已装 codegraph（替代其 codegraph 组件）、computer-use（强化 visual-QA）；宿主内置多模型目录（10 家 provider，默认 GLM 套餐），预算分级护栏反而多了模型维度抓手。</li>
+        <li>架构可以比上游更干净：从第一天就避开他们后来才意识到的主循环注入风险。</li>
+        <li>完全自主的演进节奏，不受上游破坏性变更绑架。</li>
+      </ul></div>
+      <div class="pc con"><h4>劣势</h4><ul>
+        <li><b>工作量最大</b>：技能文本、状态机 CLI、安装器、文档、测试全部要自己产。</li>
+        <li>初期成熟度低：没有 68.7k stars 的信任背书，需要用文档与可验证的 demo 补。</li>
+        <li>容易"重造别人已踩平的坑"：必须严格照着两份调研报告里的"失败模式清单"做防御设计。</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <h3>四路径量化对比</h3>
+  <div class="fig">
+    <svg viewBox="0 0 960 330" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="四条路径评分对比">
+      <text x="480" y="26" text-anchor="middle" font-size="15" font-weight="700">四条实现路径综合评分（1~5 分，分数越高越好）</text>
+      <g font-size="12.5">
+        <!-- header -->
+        <text x="200" y="58" text-anchor="end" font-weight="700" fill="#5b6b80">维度 \ 路径</text>
+        <text x="330" y="58" text-anchor="middle" font-weight="700" fill="#334">A 等官方</text>
+        <text x="480" y="58" text-anchor="middle" font-weight="700" fill="#334">B Fork OmO</text>
+        <text x="630" y="58" text-anchor="middle" font-weight="700" fill="#334">C 移植 lazycodex</text>
+        <text x="800" y="58" text-anchor="middle" font-weight="700" fill="#334">D 全自研</text>
+        <!-- rows: label, then 4 bars max width 110 each, start x0 -->
+        <!-- 速度到MVP -->
+        <text x="200" y="92" text-anchor="end">到 MVP 的速度</text>
+        <rect x="275" y="80" width="22" height="14" rx="3" fill="#dc2626"/><text x="303" y="92">1</text>
+        <rect x="425" y="80" width="44" height="14" rx="3" fill="#d97706"/><text x="475" y="92">2</text>
+        <rect x="575" y="80" width="88" height="14" rx="3" fill="#059669"/><text x="669" y="92">4</text>
+        <rect x="745" y="80" width="66" height="14" rx="3" fill="#d97706"/><text x="817" y="92">3</text>
+        <!-- license -->
+        <text x="200" y="122" text-anchor="end">许可证干净度</text>
+        <rect x="275" y="110" width="44" height="14" rx="3" fill="#d97706"/><text x="325" y="122">2</text>
+        <rect x="425" y="110" width="22" height="14" rx="3" fill="#dc2626"/><text x="453" y="122">1</text>
+        <rect x="575" y="110" width="110" height="14" rx="3" fill="#059669"/><text x="691" y="122">5</text>
+        <rect x="745" y="110" width="110" height="14" rx="3" fill="#059669"/><text x="861" y="122">5</text>
+        <!-- 贴合ZCode -->
+        <text x="200" y="152" text-anchor="end">贴合 ZCode 特色</text>
+        <rect x="275" y="140" width="22" height="14" rx="3" fill="#dc2626"/><text x="303" y="152">1</text>
+        <rect x="425" y="140" width="44" height="14" rx="3" fill="#d97706"/><text x="475" y="152">2</text>
+        <rect x="575" y="140" width="66" height="14" rx="3" fill="#d97706"/><text x="647" y="152">3</text>
+        <rect x="745" y="140" width="110" height="14" rx="3" fill="#059669"/><text x="861" y="152">5</text>
+        <!-- 长期可控 -->
+        <text x="200" y="182" text-anchor="end">长期自主可控</text>
+        <rect x="275" y="170" width="22" height="14" rx="3" fill="#dc2626"/><text x="303" y="182">1</text>
+        <rect x="425" y="170" width="22" height="14" rx="3" fill="#dc2626"/><text x="453" y="182">1</text>
+        <rect x="575" y="170" width="88" height="14" rx="3" fill="#059669"/><text x="669" y="182">4</text>
+        <rect x="745" y="170" width="110" height="14" rx="3" fill="#059669"/><text x="861" y="182">5</text>
+        <!-- 开发成本(低=好) -->
+        <text x="200" y="212" text-anchor="end">开发成本（低=高分）</text>
+        <rect x="275" y="200" width="110" height="14" rx="3" fill="#059669"/><text x="391" y="212">5</text>
+        <rect x="425" y="200" width="66" height="14" rx="3" fill="#d97706"/><text x="497" y="212">3</text>
+        <rect x="575" y="200" width="66" height="14" rx="3" fill="#d97706"/><text x="647" y="212">3</text>
+        <rect x="745" y="200" width="22" height="14" rx="3" fill="#dc2626"/><text x="773" y="212">1</text>
+        <!-- 生态风险 -->
+        <text x="200" y="242" text-anchor="end">上游依赖风险（低=高分）</text>
+        <rect x="275" y="230" width="22" height="14" rx="3" fill="#dc2626"/><text x="303" y="242">1</text>
+        <rect x="425" y="230" width="22" height="14" rx="3" fill="#dc2626"/><text x="453" y="242">1</text>
+        <rect x="575" y="230" width="88" height="14" rx="3" fill="#059669"/><text x="669" y="242">4</text>
+        <rect x="745" y="230" width="110" height="14" rx="3" fill="#059669"/><text x="861" y="242">5</text>
+      </g>
+      <text x="480" y="292" text-anchor="middle" font-size="12.5" fill="#5b6b80">推荐组合：D（主路径）+ C（MIT 素材底稿）+ B 的分层思想 + A 的季度观察。综合得分：D 24 / C 23 / B 10 / A 11。</text>
+      <text x="480" y="314" text-anchor="middle" font-size="11" fill="#94a3b8">评分为项目组基于调研的主观量化，供决策参考；详细依据见上文各路径优劣势。</text>
+    </svg>
+    <div class="cap">图 3 · A/B/C/D 六维度评分：C 与 D 几乎并列，差异在于"前期速度"与"长期贴合度"的取舍：组合使用正好互补</div>
+  </div>
+</section>
+
+<!-- ================= S6 ================= -->
+<section id="s6">
+  <h2>关键决策点与建议<span class="en">Key Decisions</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">无论选哪条路径，下面六个决策都绕不开。<b>2026-09-06 已全部拍板</b>（原「待定」项已关闭），核验事实：npm 包名 <code>lazyzcode</code> 空闲；<code>lzy</code> 命令与同名既有包无冲突（该包未声明 bin）。</p>
+  <table>
+    <tr><th style="width:20%">决策点</th><th style="width:26%">选项</th><th style="width:34%">定案（2026-09-06）</th><th>核心理由</th></tr>
+    <tr><td><b>开源许可证</b></td><td>MIT / Apache-2.0 / 不开源</td><td><span class="good">MIT，不预留商业版</span></td><td>与 lazycodex 同款，最大化传播；差异化靠「省钱档 + ZCode 资产整合」，不靠许可证锁。</td></tr>
+    <tr><td><b>产品形态</b></td><td>纯 ZCode 插件 / 纯 npm CLI / 插件 + CLI 组合</td><td><span class="good">插件 + 轻量 CLI 组合</span></td><td>插件承载技能/钩子/角色（ZCode 原生分发渠道）；深循环状态机必须放 CLI 层（绕开 Stop 3 次上限），两者天然分工。</td></tr>
+    <tr><td><b>触发词</b></td><td>沿用 <code>ulw</code>（用户习惯） / 新造 <code>zw</code>（品牌独立）</td><td><span class="good"><code>zw</code> 主词 + <code>ulw</code> 兼容别名</span></td><td>双词识别成本≈0：zw 品牌独立、ZCode 用户零学习；ulw 保住 OmO 老用户迁移路径。</td></tr>
+    <tr><td><b>状态目录</b></td><td><code>.lazyzcode/</code> / 兼容 <code>.omo/</code></td><td><span class="good">.lazyzcode/</span></td><td>品牌清晰、避免与 OmO 工件混淆；结构上保持同构（plans/drafts/loop/evidence），心智可迁移。</td></tr>
+    <tr><td><b>技能文本语言</b></td><td>英文 / 中文 / 双语</td><td><span class="good">英文技能 + 中文文档</span></td><td>指令遵循类文本用英文在主流模型上表现最稳（上游同样全英文）；用户侧文档中文；中文版技能后置避免双份漂移。</td></tr>
+    <tr><td><b>目标用户首版</b></td><td>自己用 / ZCode 全体用户 / 企业</td><td><span class="good">开源完整版 Phase 0~4 一次到位（约 2 个月）</span></td><td>2026-09-06 拍板：直接投入完整开源版，开发过程即吃狗粮；MVP（Phase 0+1）仍是第一个验收里程碑。</td></tr>
+  </table>
+</section>
+
+<!-- ================= S7 ================= -->
+<section id="s7">
+  <h2>路线图与成本估算<span class="en">Roadmap & Cost</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">按"单人 + AI 结对"的口径粗估（实际以开发版报告的 Phase 0~4 任务分解为准）。</p>
+  <table>
+    <tr><th style="width:16%">阶段</th><th style="width:34%">交付物</th><th style="width:14%">估算（人日）</th><th style="width:18%">累计</th><th>里程碑验收标准</th></tr>
+    <tr><td><b>Phase 0</b><br>骨架</td><td>插件包结构（清单+技能/钩子/角色目录）、本地安装与热重载流程、CI 骨架</td><td>3~5</td><td>~1 周</td><td>一个最小插件能装进 ZCode，钩子能触发，技能能被 / 调出</td></tr>
+    <tr><td><b>Phase 1</b><br>核心工作流（MVP）</td><td>五大技能（ultrawork / ulw-plan / start-work / ulw-loop / init-deep 的 ZCode 版）+ 触发词钩子 + <code>lzy</code> CLI 最小状态机 + Stop 轻续跑</td><td>10~15</td><td>2~3 周</td><td>真实任务走完「计划→执行→证据验证」闭环，中途压缩会话后可恢复</td></tr>
+    <tr><td><b>Phase 2</b><br>角色与纪律</td><td>agents/ 角色库（规划评审、执行、检索等 4~6 个）、计划评审门、证据目录规范</td><td>5~8</td><td>~1 月</td><td>高精度模式下计划经双评审后才放行执行</td></tr>
+    <tr><td><b>Phase 3</b><br>代码智能整合</td><td>只整合现有资产：codegraph 接线、评论检查（钩子轻实现）、browser-use 终验取证面、原生调度器备选评估（规则注入钩子已砍——AGENTS.md 原生支持已证实）</td><td>5~8</td><td>~1.5 月</td><td>大仓库任务中主动利用代码索引，终验证据走真实表面</td></tr>
+    <tr><td><b>Phase 4</b><br>分发与运维</td><td><code>lzy doctor / uninstall</code>、GitHub 插件市场发布、文档站（可选）</td><td>3~5</td><td>~2 月</td><td>陌生用户按 README 10 分钟内从零装成并跑通首个任务</td></tr>
+  </table>
+  <div class="callout"><b>投入口径：</b>若目标只是"自己用"，Phase 0+1（约 2~3 周）即可收官；若要开源获客，建议做到 Phase 4（约 2 个月）。<b>2026-09-06 拍板：走开源完整版 Phase 0~4</b>，Phase 0 首日先做三件真机验证 spike（Edit old_string / 四风格清单装载 / Stop 预算共享行为）。对比参照：lazycodex 由作者 + AI 助手以同样模式维护，证明该量级项目单人 + AI 可持续。</div>
+</section>
+
+<!-- ================= S8 ================= -->
+<section id="s8">
+  <h2>风险登记册<span class="en">Risk Register</span><span class="up"><a href="#top">↑</a></span></h2>
+  <p class="lead">按 可能性 × 影响 排序；每条附缓解措施。</p>
+  <table>
+    <tr><th style="width:4%">#</th><th style="width:22%">风险</th><th style="width:8%">可能性</th><th style="width:8%">影响</th><th style="width:30%">说明</th><th>缓解措施</th></tr>
+    <tr><td>R1</td><td><b>上游竞争</b>：OmO 官方宣布支持 ZCode 或 Claude Code</td><td class="mid">中</td><td class="bad">高</td><td>官方一旦做，我们失去"唯一性"；但注意其多宿主清单至今未纳入 ZCode，Claude Code 也只是探索中</td><td>快速落地 MVP 抢先发；差异化押注 ZCode 独有资产（内置记忆 / codegraph / computer-use），做官方做不出的贴合度</td></tr>
+    <tr><td>R2</td><td><b>成本失控口碑</b>：继承 OmO "3× token" 差评</td><td class="bad">高</td><td class="bad">高</td><td>社区最大负面共识；GLM 套餐虽便宜，烧超额度同样卡等待</td><td>轻/重分级默认开启；预算护栏钩子（超限提醒/降档）；把"省 token"做成卖点而非副作用</td></tr>
+    <tr><td>R3</td><td><b>宿主演进</b>：ZCode 插件/钩子 API 变更</td><td class="mid">中</td><td class="mid">中</td><td>ZCode 插件体系较新，且<b>官方文档滞后于引擎</b>（本次源码复核纠错 4 处实证）；工作区钩子信任门已在引擎灰度而文档未提</td><td>以逆向引擎源码为事实源跟踪 API 演进；core 与宿主 API 物理隔离（分层架构）；契约测试覆盖钩子/清单；安装器坚持「装插件」而非「改配置文件」</td></tr>
+    <tr><td>R4</td><td><b>许可证污染</b>：误引入 SUL-1.0 代码/文本</td><td class="mid">低~中</td><td class="bad">高</td><td>两仓许可证不同，素材混杂时易误搬 OmO 主仓内容</td><td>素材白名单制：只允许引用 lazycodex（MIT）仓文件；借鉴 OmO 主仓仅限"思想级"；PR 审查清单加许可证项</td></tr>
+    <tr><td>R5</td><td><b>模型行为漂移</b>：技能文本对模型的约束力随模型版本波动</td><td class="mid">中</td><td class="mid">中</td><td>整套方案的本质是"用文本约束模型"，模型升级可能不服从某些指令</td><td>行为契约测试（对关键指令做回归验证）；关键纪律放钩子/CLI 等确定性层，文本只做最佳努力层</td></tr>
+    <tr><td>R6</td><td><b>上游已知 bug 类复发</b>：评审代理沉默、续跑循环异常</td><td class="mid">中</td><td class="mid">中</td><td>lazycodex Issue #19 与 Reddit 反馈的 continuation loop 怪行为，是同类架构的共同风险</td><td>子智能体通信加显式 ack/超时/降级路径（见开发版第 9 节）；续跑次数天然受 ZCode 3 次上限保护，深循环状态可恢复</td></tr>
+    <tr><td>R7</td><td><b>单人维护带宽</b></td><td class="mid">中</td><td class="mid">中</td><td>Phase 4 全量约 2 个月投入，后续长期维护</td><td>MVP 先行验证价值再扩投；文档/测试从 Phase 0 就建（降低接手成本）；技能即文本，社区可低成本贡献</td></tr>
+  </table>
+</section>
+
+<!-- ================= S9 ================= -->
+<section id="s9">
+  <h2>成功指标（KPI）<span class="en">Metrics</span><span class="up"><a href="#top">↑</a></span></h2>
+  <div class="card">
+    <h3>北极星指标</h3>
+    <p style="font-size:18px"><b>「无人值守任务完成率」</b>：用户下达目标后，不需要人工介入修细节、最终以真实表面证据（接口返回/截图/CLI 输出）验证通过的任务占比。这是 OmO 全部设计的哲学源头（"人类介入即失败信号"），也应是我们的。</p>
+    <h3>支撑指标</h3>
+    <table>
+      <tr><th>指标</th><th>定义</th><th>为什么重要</th></tr>
+      <tr><td>证据覆盖率</td><td>有真实表面证据的完成项 / 全部完成项</td><td>防"自称完成"；直接对应上游 "TESTS ALONE NEVER PROVE DONE" 的纪律</td></tr>
+      <tr><td>计划→完成转化率</td><td>ulw-plan 产出的清单最终全部勾完的比例</td><td>衡量工作流闭环是否真的在闭环</td></tr>
+      <tr><td>Token / 完成任务</td><td>每任务消耗 token 相对裸 ZCode 的倍数</td><td><b>守住 1.5× 以内是我们的差异化红线</b>（社区对 OmO 的 3× 差评是前车之鉴）</td></tr>
+      <tr><td>TTFV</td><td>安装到首次成功跑通任务的时间</td><td>开源获客的第一道漏斗；目标 &lt; 10 分钟</td></tr>
+      <tr><td>续跑恢复成功率</td><td>会话压缩/中断后，从状态目录成功恢复的比例</td><td>长任务可用性的底线</td></tr>
+      <tr><td>7 日留存</td><td>安装后 7 日内再次使用 ulw 工作流的用户占比</td><td>区分"尝鲜"与"真有用"</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ================= S10 ================= -->
+<section id="s10">
+  <h2>开放问题 → 拍板记录<span class="en">Decisions Made · 2026-09-06</span><span class="up"><a href="#top">↑</a></span></h2>
+  <div class="card">
+    <ol>
+      <li><b>命名与触发词</b> → ✅ 定案：<b>LazyZCode</b>；npm 包名 <code>lazyzcode</code>（已验证空闲）；CLI 命令 <code>lzy</code>（同名既有包未声明 bin，无冲突）；触发词 <code>zw</code> 主词 + <code>ulw</code> 兼容别名。</li>
+      <li><b>开源与商业化姿态</b> → ✅ 定案：<b>MIT，不预留商业版</b>（自研不受 SUL-1.0 限制；差异化不靠许可证锁）。</li>
+      <li><b>投入量级</b> → ✅ 定案：<b>开源完整版 Phase 0~4（约 2 个月）</b>，开发过程即吃狗粮。</li>
+      <li><b>首版范围取舍</b> → ✅ 定案：Phase 0~4 全做；Phase 3 收缩为「只整合现有资产」（codegraph / 评论检查 / browser-use 取证 / 调度器备选），规则注入钩子砍掉（AGENTS.md 原生自动读已源码证实）。</li>
+      <li><b>遥测与否</b> → ✅ 定案：<b>完全无遥测</b>（社区信任优先）；诊断能力由 <code>lzy doctor</code> 本地输出承担。待真机验证项（Edit old_string / 四风格清单 / Stop 预算共享）定于 Phase 0 首日统一 spike。</li>
+    </ol>
+  </div>
+  <div class="callout warn"><b>两条设计红线（源码复核推导，直接生效）：</b>① 安装器坚持「装插件」，永不改写用户配置文件——引擎已灰度工作区钩子信任门，手改配置的安装路径未来会被信任确认拦截；② 深循环 Stop 钩子的续跑额度与 ZCode 后台任务通知互相预留（3 次预算共享池）。</div>
+</section>
+
+<!-- ================= S11 ================= -->
+<section id="s11">
+  <h2>附录：术语速查 & 资料来源<span class="en">Appendix</span><span class="up"><a href="#top">↑</a></span></h2>
+  <details open>
+    <summary>术语速查（PM 版 · 白话）</summary>
+    <table>
+      <tr><th style="width:22%">术语</th><th>白话解释</th></tr>
+      <tr><td>宿主（Host/Harness）</td><td>跑 AI 编码员的软件本身，如 Codex、OpenCode、ZCode。类比：员工的"工位"。</td></tr>
+      <tr><td>插件（Plugin）</td><td>装进宿主的能力包。ZCode 插件可包含技能、钩子、子智能体角色、MCP 服务。</td></tr>
+      <tr><td>技能（Skill）</td><td>给 AI 看的"岗位操作手册"（一个 Markdown 文件），需要时才读，几乎零成本。</td></tr>
+      <tr><td>钩子（Hook）</td><td>在固定时机自动执行的"打卡机"：会话开始时注入规则、工具调用前把关、停止时决定要不要继续。</td></tr>
+      <tr><td>子智能体（Subagent）</td><td>主 AI 派出去干活的"分身"，干完汇报，不污染主对话记忆。</td></tr>
+      <tr><td>MCP</td><td>AI 连接外部工具的标准插座（查代码索引、跑浏览器、连 GitHub 都算）。</td></tr>
+      <tr><td>证据（Evidence）</td><td>证明"真做完了"的实证：接口返回截图、CLI 输出、数据库差异。上游纪律：测试通过≠做完。</td></tr>
+      <tr><td>tier triage（轻重分级）</td><td>开工前先给任务定档：轻任务走精简流程省钱，重任务才上全套纪律。</td></tr>
+      <tr><td>SUL-1.0</td><td>OmO 主仓的"可持续使用许可"：个人/内部随便用，但不能拿去做需要授权费的再分发：与我们开源目标冲突的关键。</td></tr>
+      <tr><td>MIT</td><td>最宽松的常见开源协议：可自由使用/修改/分发，保留版权声明即可。</td></tr>
+    </table>
+  </details>
+  <details>
+    <summary>资料来源（本报告全部事实的出处）</summary>
+    <ul class="small">
+      <li>仓库与官方文档：<a href="https://github.com/code-yeongyu/oh-my-openagent">oh-my-openagent（dev 分支，含 README/ROADMAP/LICENSE/manifesto/features）</a> · <a href="https://github.com/code-yeongyu/lazycodex">lazycodex（main 分支，含 MIT LICENSE、插件全量文件树、核心技能原文）</a> · <a href="https://omo.dev">omo.dev</a> · <a href="https://lazycodex.ai">lazycodex.ai</a></li>
+      <li>第三方评测与社区：<a href="https://www.glukhov.org/ai-devtools/opencode/oh-my-opencode-experience/">glukhov.org：Oh My Opencode 评测（3× token、账单风险）</a> · <a href="https://www.reddit.com/r/opencodeCLI/comments/1q425mn/does_ohmyopencode_really_provide_an_advantage/">Reddit：Does Oh-My-Opencode really provide an advantage?</a> · <a href="https://www.reddit.com/r/opencodeCLI/comments/1qdylr7/ohmyopencode_is_great_just_i_think_got_a_bit/">Reddit：great, just got a bit bloated（精简 fork 讨论与续跑循环问题）</a> · <a href="https://www.reddit.com/r/codex/comments/1ux3lry/">Reddit：OMO a.k.a Lazycodex is eating up my usage limit</a> · <a href="https://www.reddit.com/r/ClaudeCode/comments/1pp2tyw/ohmyopencode_has_been_a_gamechanger/">Reddit：gamechanger 好评</a></li>
+      <li>已知问题：<a href="https://github.com/code-yeongyu/lazycodex/issues/19">lazycodex Issue #19（评审代理沉默）</a></li>
+      <li>本地实测：ZCode 插件清单/钩子 schema/官方市场/已装插件（zcode-guide、document-skills 等）逐一验证，细节见开发版报告。</li>
+    </ul>
+  </details>
+</section>
+</div><!-- /content -->
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>LazyZCode 方案调研 · 产品经理版 · 2026-09-05 编制 · 2026-09-06 逆向源码复核修订与决策拍板回写 · 由 lazyzcode 项目组基于两轮一手调研（GitHub 全量文件树 + 本机 ZCode 实测 + 社区口碑挖掘）编制</p>
+    <p><a href="./index.html">报告总览入口</a> ｜ 配套文档：<a href="./lazyzcode-report-dev.html">初级开发人员版</a> · <a href="./lazyzcode-report-full.html">合并终版</a> · 调研底稿：docs/research-lazycodex-to-zcode.md · docs/research-oh-my-openagent.md</p>
+  </div>
+</footer>
+
+<button class="top-btn" onclick="window.scrollTo({top:0,behavior:\'smooth\'})" aria-label="回到顶部">回到顶部</button>
+<button id="themeBtn" class="theme-btn" onclick="toggleTheme()" title="切换深色 / 浅色模式" aria-label="切换主题">浅</button>
+<script>
+(function(){
+  var root=document.documentElement;
+  function saved(){try{return localStorage.getItem('lzy-theme')}catch(e){return null}}
+  var dark=saved()?saved()==='dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  function apply(){root.classList.toggle('dark',dark);var b=document.getElementById('themeBtn');if(b)b.textContent=dark?'浅色':'深色';}
+  window.toggleTheme=function(){dark=!dark;try{localStorage.setItem('lzy-theme',dark?'dark':'light')}catch(e){}apply();};
+document.querySelectorAll('table').forEach(function(t){var w=document.createElement('div');w.className='tscroll';t.parentNode.insertBefore(w,t);w.appendChild(t)});
+  apply();
+})();
+</script>
+</body>
+</html>

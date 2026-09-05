@@ -1,0 +1,103 @@
+# LazyZCode — 项目宪法（Agent 与贡献者必读）
+
+给 ZCode 造一个 lazycodex 同款的「AI 编码工作流纪律层」：让 AI 不只写代码，而是**计划 → 执行 → 拿证据 → 不做完不停**。本文件是本仓库的单一事实入口：ZCode 原生自动读取（无需任何配置），模型读完即可在本仓正确干活；细节引用 `docs/`，不在此复制。
+
+## 1. 北极星
+
+做 ZCode 版的 [lazycodex](https://github.com/code-yeongyu/lazycodex)（OmO 引擎的 Codex 发行版，MIT）。形态：**ZCode 插件 + 轻量 CLI（`lzy`）**——插件承载 skills/hooks/agents（纪律层），CLI 承载目标循环状态机与安装器。完整背景与论证见 `docs/reports/index.html`。
+
+## 2. 当前状态与下一步（2026-09-06）
+
+- 调研、逆向源码复核、六项关键决策拍板：**已完成**（见 §4）。
+- **P0 首日三 spike 全部完成**（2026-09-06，结果与证据：`docs/spikes/p0-day1.md`；五个探针与仓库 `test/spike/` 均已按约删除）：
+  - Spike 1（Edit old_string）：✅ hashline 不需要（P3 观察项关闭）；新红线「old_string 必须带原样精确缩进」。
+  - Spike 2（四风格清单）：✅ 安装型插件 **.zcode/.claude/.codex 三风格免改名装载成立，cursor 风格 cache 路径拒绝**（仅工作区可用）；**安装型插件必须「安装+启用」两步**（启用写 config `plugins.enabledPlugins`，只装不启用=没装）。
+  - Spike 3（Stop 注入/预算）：✅ 非空注入续跑、**≤3 硬顶**均活体实锤；同池扣减维持源码结论；新设计约束「Stop 钩子状态须按 sessionId 隔离」。
+- P0 骨架期待拍板（ADR 候选）：安装器 enable 步骤写 config 与红线 #1 的边界。下一步即 P0 骨架：插件包结构（`plugin/` + `core/` + `cli/`）、本地安装/热重载、`lzy status` 最小实现。
+
+## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
+
+1. 钩子恰为 **7 事件**（SessionStart/UserPromptSubmit/PreToolUse/PermissionRequest/PostToolUse/PostToolUseFailure/Stop）。对比 Codex 原生 12 事件**缺 6 个**：无 SubagentStop/SubagentStart/PreCompact/PostCompact/SessionEnd/Interrupt。
+2. Stop 续跑 **≤3 次**，且必须带**非空** additionalContexts（输出空 JSON 永不续跑）；exit 2 在 Stop 上 = block = 强制续跑（reason 注入为上下文）。
+3. 3 次预算是**共享池**：ZCode 后台任务通知也发 continue:true 抢同一预算——本项目的 Stop 钩子预算要与后台通知互相预留。
+4. ZCode **原生自动读 AGENTS.md**（逐级向上查找 + `~/.zcode/AGENTS.md` 多源合并 + 100KB 截断，以 `# agentsMd` 注入）→ 规则注入钩子不需要做。
+5. 宿主内置**多模型目录**（10 provider，默认 GLM 套餐）→ tier 预算护栏可借模型维度，不自研模型路由。
+6. 工作区钩子**信任门已在引擎灰度**（`workspace_hooks_*` 策略码，文档未提）→ 永不改写用户 config.json（见 §5 红线）。
+7. 事实源优先级：**reversed-zcode 引擎源码 > zcode-guide 官方文档**（文档存在滞后，已实证 4 处）。
+8. **cache 安装型插件默认禁用**：装载需「安装+启用」两步，启用态在 config `plugins.enabledPlugins`（Spike 2 实测）；cache 清单候选仅 `.zcode/.claude/.codex` 三种，`.cursor-plugin` 仅工作区 walk-up 路径接受。
+
+## 4. 决策速查表（2026-09-06 拍板，变更须同步本表）
+
+| # | 决策 | 定案 |
+|---|------|------|
+| 1 | 总体路径 | **D 全自研**；lazycodex（MIT）作底稿借鉴，OmO（SUL-1.0）只学思想 |
+| 2 | 范围投入 | **开源完整版 P0~P4**（约 2 个月，单人+AI 结对）；MVP（P0+P1，2~3 周）为首个验收里程碑 |
+| 3 | 许可证 | **MIT**，不预留商业版 |
+| 4 | 产品形态 | **插件 + 轻量 CLI**（Stop≤3 等硬约束推出，见 §3） |
+| 5 | 命名 | 项目 **LazyZCode**；npm 包 `lazyzcode`；CLI 命令 `lzy`；触发词 **`zw` 主词 + `ulw`/`ultrawork` 兼容别名** |
+| 6 | 状态目录 | **`.lazyzcode/`**（plans/drafts/loop/evidence；与宿主 `.zcode/` 划清边界） |
+| 7 | 技能文本语言 | **英文 SKILL.md + 中文文档**；manifest `description_i18n` 折中 |
+| 8 | P3 范围 | **只整合现有资产**：codegraph 接线、comment-checker（PostToolUse 轻钩子）、内置 browser-use 取证面、原生 scheduler 记入备选；规则注入钩子已砍 |
+| 9 | 遥测 | **完全无遥测**；诊断由 `lzy doctor` 本地输出承担 |
+| 10 | 验证排期 | 三 spike 已完成（2026-09-06）：Edit / 四风格装载 / Stop 注入与 ≤3 硬顶均实证，详见 `docs/spikes/p0-day1.md` |
+| 11 | 设计红线 | 见 §5，两条，直接生效 |
+
+## 5. 设计宪法与红线
+
+**表达层级：Skill > MCP > Tool > Hook**（OmO 官方原则）。能用技能文本（Markdown）解决的不写 MCP，前三层覆盖不了才写钩子。自检：这功能「不在线会不会世界崩塌？」不会 → 别放钩子。
+
+**两条红线（源码复核推导，任何实现不得违反）：**
+1. 安装器坚持「**装插件**」，永不改写用户 `config.json`——工作区钩子信任门灰度后，手改配置路径会被信任确认拦截。
+2. `lzy loop` 的 Stop 钩子预算与 ZCode 后台任务通知**互相预留**（3 次共享池，见 §3.3）。
+
+## 6. License 边界
+
+- **lazycodex 仓库（MIT）**：插件结构、技能契约文本、安装器模式可合法借用改写，须注明出处；素材白名单制，只准引该仓。
+- **OmO 主仓 oh-my-openagent（SUL-1.0）**：只学思想（分层架构、行为契约风格、设计哲学），**一行代码/文本都不搬**。
+- **本仓库**：MIT。全部代码与文本自写；PR 审查清单含许可证项。
+
+## 7. 仓库地图
+
+```
+AGENTS.md                    ← 本文件：单一事实入口（宪法）
+docs/
+  research-*.md              ← 调研底稿（报告的事实来源）
+  reports/index.html         ← 报告中心入口（另有 full/pm/dev 三份自包含 HTML）
+  reports/review-against-reversed.md  ← 逆向源码复核记录（4 纠错 + 6 新发现）
+  spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
+artifacts/                   ← 空（暂无产物）
+```
+
+## 8. 语言（先查此表再造词；与本表冲突以本表为准）
+
+**纪律层（discipline layer）**：本产品的价值层——计划门、证据验证、防半途而废。
+_Avoid_: 工作流强化层
+
+**目标循环（goal loop）**：`lzy loop` 驱动的「注册目标→逐步派发→证据验证→完成」状态机循环。
+_Avoid_: 深循环（仅架构讨论语境）、ulw-loop（上游名）
+
+**证据（evidence）**：绑定 tree hash 的真实表面取证（HTTP 返回/截图/CLI stdout）。
+_Avoid_: 测试结果（测试全绿≠证据）
+
+**tree hash**：`git rev-parse "HEAD^{tree}"` 的内容快照哈希；代码一变，旧证据作废。
+_Avoid_: commit hash（不同物）
+
+**实现项 / 终验项（N 项 / F 项）**：计划行语法的两类条目；F 项强制真实表面证据。
+_Avoid_: 普通 todo
+
+**tier（轻重分级）**：LIGHT 默认精简 / HEAVY 全套纪律；只升不降。
+_Avoid_: 模式切换
+
+**决策完备（decision-complete）**：计划无任何「待定」，执行者无需再问即可开工。
+_Avoid_: 草稿
+
+**触发词（trigger）**：`zw` 主词；`ulw` / `ultrawork` 为兼容别名。
+_Avoid_: 单用 ulw 指代本项目触发词
+
+## 9. 维护规则
+
+1. **决策变更 → 必须同步 §4 速查表**（一行一条 + 日期）；阶段推进 → 更新 §2 当前状态。
+2. 文件预算 **≤150 行**（远低于 ZCode 100KB 注入截断线）；细节一律引用 `docs/`，不复制正文。
+3. 新术语先查 §8；需要新词时按 CONTEXT-FORMAT 风格（定义 + _Avoid_）补入。
+4. **与本文件冲突的旧约定，以本文件为准。**
+5. 开发期新决策满足「难逆 / 无背景会费解 / 真取舍」三条件时，逐条立 `docs/adr/NNNN-*.md`（一段话即可）；已有拍板不补 ADR（rationale 已在报告）。

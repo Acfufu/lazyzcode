@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LazyZCode 调研报告中心 · 统一入口</title>
+<meta name="description" content="LazyZCode 方案调研：把 lazycodex / oh-my-openagent 的工作流纪律层带到 ZCode 的全部候选方案优劣势深挖。">
+<style>
+:root{--bg:#F7F6F3;--card:#FFFFFF;--card2:#FAF9F6;--ink:#2F3437;--muted:#787774;--line:#E7E5E0;--accent:#4C5399;--accent-soft:#E9EAF6;--pm:#1F6C9F;--pm-soft:#E1F3FE;--dev:#346538;--dev-soft:#EDF3EC;--full:#4C5399;--full-soft:#E9EAF6;--code-bg:#F0EFEB;--shadow:0 1px 2px rgba(47,52,55,.04),0 10px 30px rgba(47,52,55,.05)}
+html.dark{--bg:#151513;--card:#1D1D1A;--card2:#22211D;--ink:#E6E4DE;--muted:#9B998F;--line:#2E2D28;--accent:#A9B0E6;--accent-soft:#23273F;--pm:#8FC3E8;--pm-soft:#16283A;--dev:#93C99B;--dev-soft:#1B291D;--full:#A9B0E6;--full-soft:#23273F;--code-bg:#23231F;--shadow:0 1px 2px rgba(0,0,0,.25),0 10px 30px rgba(0,0,0,.3);color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;color:var(--ink);background:var(--bg);line-height:1.85;font-size:16px;transition:background .25s,color .25s}
+::selection{background:var(--accent-soft)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+h1,h2,h3{text-wrap:balance}
+p{text-wrap:pretty}
+.mono{font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace}
+.wrap{max-width:1080px;margin:0 auto;padding:0 28px}
+.progress{position:fixed;top:0;left:0;right:0;height:3px;z-index:100;pointer-events:none}
+.progress::before{content:"";display:block;height:100%;background:var(--accent);transform-origin:0 50%;transform:scaleX(0)}
+@supports(animation-timeline:scroll()){.progress::before{animation:pgrow linear both;animation-timeline:scroll(root)}}
+@keyframes pgrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@media(prefers-reduced-motion:reduce){.progress{display:none}}
+header.hero{background:var(--bg);padding:92px 0 64px;border-bottom:1px solid var(--line);position:relative;overflow:hidden}
+header.hero::before{content:"";position:absolute;inset:0;background:radial-gradient(55% 60% at 78% -8%,var(--accent-soft),transparent 70%);opacity:.55;pointer-events:none}
+header.hero .kicker{font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:11.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--accent)}
+header.hero h1{font-size:clamp(36px,5vw,56px);letter-spacing:-.02em;line-height:1.12;font-weight:800;margin:20px 0 16px;max-width:18em;position:relative}
+header.hero p.sub{color:var(--muted);max-width:44em;font-size:16.5px;margin:0;position:relative}
+.chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px;position:relative}
+.chips span{border:1px solid var(--line);border-radius:6px;padding:4px 12px;font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:12.5px;color:var(--muted);background:var(--card)}
+.guide{display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:14px;color:var(--muted);padding:26px 0;border-bottom:1px solid var(--line)}
+.guide b{color:var(--ink);font-weight:600;margin-right:6px}
+.guide .gsep{opacity:.35}
+.reports{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:40px 0 8px}
+.rcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:30px 32px;display:flex;flex-direction:column;transition:transform .18s,box-shadow .18s,border-color .18s;position:relative}
+.rcard:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.rcard.feature{grid-column:1 / -1;flex-direction:row;gap:36px;align-items:stretch;padding:36px 38px}
+@media(max-width:860px){.reports{grid-template-columns:1fr}.rcard.feature{flex-direction:column;gap:20px}}
+.rcard .tag{position:absolute;top:-11px;left:30px;font-size:11.5px;font-weight:700;letter-spacing:.08em;border-radius:999px;padding:2px 13px;background:var(--full-soft);color:var(--full);border:1px solid var(--full)}
+.rcard h2{font-size:21px;margin:0 0 2px;letter-spacing:-.01em}
+.rcard .en{font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.rcard p{font-size:14.5px;color:var(--muted);margin:12px 0 14px;flex:1}
+.rcard ul{margin:0 0 18px;padding-left:18px;font-size:13.5px;color:var(--muted)}
+.rcard li{margin:4px 0}
+.rcard .stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.rcard .stats span{font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:11.5px;border:1px solid var(--line);border-radius:6px;padding:2px 10px;color:var(--muted)}
+.rcard .open{display:inline-flex;align-items:center;gap:8px;border-radius:8px;padding:10px 20px;font-weight:600;font-size:14px;color:#fff;justify-content:center;align-self:flex-start;transition:transform .15s,filter .15s}
+.rcard .open:hover{text-decoration:none;filter:brightness(1.08)}
+.rcard .open:active{transform:scale(.98)}
+.rcard .mark{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:15px;font-weight:700;flex-shrink:0;margin-bottom:14px}
+.pm .mark{background:var(--pm-soft);color:var(--pm)}
+.dev .mark{background:var(--dev-soft);color:var(--dev)}
+.full .mark{background:var(--full-soft);color:var(--full)}
+.pm .open{background:var(--pm)}
+.dev .open{background:var(--dev)}
+.full .open{background:var(--full)}
+.rcard.feature .mark{width:52px;height:52px;font-size:17px}
+.rcard.feature h2{font-size:24px}
+.extra{border-top:1px solid var(--line);padding:34px 0 6px;margin:44px 0 0}
+.extra h3{margin:0 0 16px;font-size:17px;letter-spacing:-.005em}
+.extra h3 .no{font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:12px;color:var(--accent);margin-right:12px;font-weight:600}
+.extra ul{margin:0;padding:0;list-style:none}
+.extra li{padding:9px 0;border-bottom:1px solid var(--line);font-size:14.5px;color:var(--muted);display:flex;gap:12px;align-items:baseline}
+.extra li:last-child{border-bottom:none}
+.extra li b{color:var(--ink);font-weight:600;flex-shrink:0}
+.extra code{background:var(--code-bg);border-radius:5px;padding:1.5px 7px;font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:.86em;color:var(--ink)}
+.concl{display:grid;grid-template-columns:1fr 1fr;gap:0 40px}
+@media(max-width:760px){.concl{grid-template-columns:1fr}}
+.concl div{padding:12px 0;border-bottom:1px solid var(--line);font-size:14.5px;color:var(--muted)}
+.concl div b{color:var(--ink)}
+footer{text-align:center;color:var(--muted);font-size:13px;padding:40px 0 48px;border-top:1px solid var(--line);margin-top:52px}
+.theme-btn{position:fixed;top:16px;right:16px;z-index:99;height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);box-shadow:var(--shadow);cursor:pointer;font-family:"SF Mono","JetBrains Mono",Menlo,monospace;font-size:12.5px;display:inline-flex;align-items:center;transition:transform .15s,border-color .2s}
+.theme-btn:hover{transform:translateY(-1px);border-color:var(--accent)}
+.theme-btn:active{transform:scale(.97)}
+.top-btn{position:fixed;bottom:20px;right:16px;z-index:99;height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer;font-size:12.5px;box-shadow:var(--shadow);opacity:.85;transition:transform .15s,color .2s,opacity .2s;font-family:inherit}
+.top-btn:hover{opacity:1;color:var(--accent);transform:translateY(-2px)}
+@media print{.theme-btn,.top-btn,.progress{display:none}body{background:#fff}}
+
+/* ==== 响应式 v2 ==== */
+html{scroll-padding-top:16px}
+@media(max-width:700px){
+  header.hero .wrap{padding-right:86px}
+}
+@media(max-width:640px){
+  body{font-size:15.5px}
+  .wrap{padding:0 20px}
+  header.hero{padding:60px 0 44px}
+  header.hero h1{font-size:31px}
+  .rcard{padding:24px 22px}
+  .rcard.feature{padding:26px 22px}
+  .guide{font-size:13px;gap:10px}
+  .concl div{font-size:14px}
+}
+</style>
+</head>
+<body>
+<div class="progress" aria-hidden="true"></div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">LazyZCode · Research Reports</div>
+    <h1>LazyZCode 调研报告中心</h1>
+    <p class="sub">把 lazycodex / oh-my-openagent（OmO，68.7k 星）的「AI 编码工作流纪律层」带到 ZCode：全部候选方案的优、劣势深度调研。四份文档同源同证，ZCode 侧结论均经本机实测。</p>
+    <div class="chips">
+      <span>2026-09-05 编制 · 2026-09-06 复核修订 · 决策已拍板</span><span>4 份文档 · 6 图 · 20+ 表</span><span>右上角可切换 浅色 / 深色</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="guide">
+    <span><b>怎么选</b>关心价值与风险，读产品经理版</span><span class="gsep">｜</span>
+    <span><b>怎么选</b>要动手写代码，读开发版</span><span class="gsep">｜</span>
+    <span><b>怎么选</b>一次看全或存档引用，读合并终版</span>
+  </div>
+
+  <div class="reports">
+    <a class="rcard full feature" href="./lazyzcode-report-full.html">
+      <span class="tag">最完整 · 推荐通读</span>
+      <div>
+        <div class="mark">全</div>
+        <div class="en">Final Combined Edition</div>
+        <h2>合并终版</h2>
+      </div>
+      <div style="display:flex;flex-direction:column;flex:1">
+        <p>两份单行本合流的完整参考：15 节覆盖全部内容，段落标注「产品视角 / 技术视角」，适合通读、存档与团队传阅。</p>
+        <ul>
+          <li>4 个参考方案 + 4 条路径 + 6 个关键决策，全部带优劣势</li>
+          <li>机制解剖、失败模式防御、风险登记册、KPI、开放问题</li>
+        </ul>
+        <div class="stats"><span>15 节</span><span>6 图</span><span>12 表</span><span>双视角标注</span></div>
+        <span class="open">打开终版报告</span>
+      </div>
+    </a>
+
+    <a class="rcard pm" href="./lazyzcode-report-pm.html">
+      <div class="mark">PM</div>
+      <div class="en">For Product Managers</div>
+      <h2>产品经理版</h2>
+      <p>面向决策：各方案的价值、成本、风险与推荐结论，术语全部白话化，配类比解释。读完可以拍板做不做、做多大、怎么做。</p>
+      <ul>
+        <li>四条实现路径六维评分（等官方 / Fork / 移植 / 自研）</li>
+        <li>风险登记册 7 条、KPI 体系、成本估算（MVP 约 2~3 周）</li>
+        <li>社区口碑与 Token 经济学（3 倍消耗差评的来龙去脉）</li>
+      </ul>
+      <div class="stats"><span>11 节</span><span>5 图</span><span>8 表</span><span>零门槛</span></div>
+      <span class="open">打开 PM 版</span>
+    </a>
+
+    <a class="rcard dev" href="./lazyzcode-report-dev.html">
+      <div class="mark">DEV</div>
+      <div class="en">For Junior Developers</div>
+      <h2>初级开发人员版</h2>
+      <p>面向动手：6 个基础概念图解起步，解剖 lazycodex 机制（带代码），ZCode 钩子避坑 12 条，直到 MVP 文件清单。读完知道从哪个文件写起。</p>
+      <ul>
+        <li>概念科普：技能 / 钩子 / 子智能体 / MCP / 证据</li>
+        <li>ZCode 扩展面实测表 + hooks 避坑清单</li>
+        <li>三层推荐架构 + Phase 0/1 动手清单</li>
+      </ul>
+      <div class="stats"><span>11 节</span><span>3 图</span><span>10 表</span><span>代码示例 12 段</span></div>
+      <span class="open">打开开发版</span>
+    </a>
+  </div>
+
+  <div class="extra">
+    <h3><span class="no">A</span>调研底稿（Markdown，报告的事实来源）</h3>
+    <ul>
+      <li><b>lazycodex 与 ZCode</b><span>lazycodex 结构拆解 + ZCode 扩展面实测 + 概念映射表 + 分阶段路线，见 <code>docs/research-lazycodex-to-zcode.md</code></span></li>
+      <li><b>OmO 引擎深读</b><span>三版本 / 分层架构 / 设计哲学 / License 分水岭（lazycodex 为 MIT 可借用，OmO 主仓为 SUL-1.0 只学思想），见 <code>docs/research-oh-my-openagent.md</code></span></li>
+      <li><b>复核与拍板记录</b><span>2026-09-06 逆向源码复核（4 处纠错 + 6 项新发现）与六项关键决策拍板已回写三份报告，复核记录见 <code>docs/reports/review-against-reversed.md</code></span></li>
+      <li><b>一手来源</b><span><a href="https://github.com/code-yeongyu/lazycodex">github.com/code-yeongyu/lazycodex</a> 与 <a href="https://github.com/code-yeongyu/oh-my-openagent">github.com/code-yeongyu/oh-my-openagent</a>，官方站 <a href="https://omo.dev">omo.dev</a></span></li>
+    </ul>
+  </div>
+
+  <div class="extra">
+    <h3><span class="no">B</span>30 秒结论</h3>
+    <div class="concl">
+      <div><b>推荐路径</b>　全自研为主 + lazycodex 为 MIT 底稿 + OmO 分层思想（不碰其代码）+ 观察上游动态。</div>
+      <div><b>硬约束</b>　钩子缺口 6 个（vs Codex 12 事件），关键三缺：无 SubagentStop、无 PreCompact、Stop 续跑至多 3 次（需非空注入、预算与后台通知共享），深循环必须做成 lzy loop 命令行状态机。</div>
+      <div><b>最大差评</b>　社区实测 token 消耗约为裸宿主 3 倍，轻重分级默认开并加预算护栏，把省钱做成卖点。</div>
+      <div><b>投入</b>　已拍板（2026-09-06）：开源完整版 P0~P4 约 2 个月（单人 + AI 结对），MVP（P0+P1）为首个验收里程碑；许可证 MIT，不预留商业版。</div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  LazyZCode 项目调研 · 2026-09-05 · 本页与三份报告均为自包含单文件 HTML，可离线查看与打印
+</footer>
+
+<button class="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="回到顶部">回到顶部</button>
+<button id="themeBtn" class="theme-btn" onclick="toggleTheme()" title="切换深色 / 浅色模式" aria-label="切换主题">浅色</button>
+<script>
+(function(){
+  var root=document.documentElement;
+  function saved(){try{return localStorage.getItem('lzy-theme')}catch(e){return null}}
+  var dark=saved()?saved()==='dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  function apply(){root.classList.toggle('dark',dark);var b=document.getElementById('themeBtn');if(b)b.textContent=dark?'浅色':'深色';}
+  window.toggleTheme=function(){dark=!dark;try{localStorage.setItem('lzy-theme',dark?'dark':'light')}catch(e){}apply();};
+  apply();
+})();
+</script>
+</body>
+</html>

@@ -3,6 +3,37 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Rate-limit health check v3 (`lzy doctor`)**: scans the engine's local CLI
+  logs (last 2 days, read-only, streamed) for account-level 429 `rate_limited`
+  pressure and reports it as deduplicated hit **turns** (turnId composite-key
+  dedup; falls back to first-attempt counting when turnId coverage is low),
+  plus raw failure requests, fatal (judged-dead) turns, the last occurrence,
+  the longest sustained-hit run, and an empirical concurrency band (coherent
+  band only when buckets are clean and samples sufficient, otherwise one-sided
+  evidence: a "no fixed concurrency threshold" contrast, plus — when a
+  local-hour 3-hour ring window passes the 60% share / 10-turn / 100-started
+  floors — the concentration window rendered in local time). Three message
+  branches cover coherent band / one-sided evidence / no activity evidence;
+  the advice line quotes the measured bound instead of a hard-coded number.
+  Warn-only — never flips the exit code; absent logs degrade to skip. Zero
+  telemetry and no new configuration surface.
+- **Rate-limit discipline in the `zw` skill**: one goal loop at a time,
+  serial-by-default subagents (parallel only ≤2 for independent F-item
+  captures), behavioral guidance for 429-killed turns (no retry-bombing, no
+  replanning, clean stop, resume via `zw 继续`), and "risk trumps quota"
+  triage guidance that never lowers the HEAVY risk bar.
+- **Stratified trigger matching + conditional injection text
+  (`lazyzcode:zw` plugin)**: bare `zw` fires only at the start of the prompt;
+  the explicit skill name `lazyzcode:zw` (full-width colon accepted) fires
+  anywhere; `ulw`/`ultrawork` keep word-bounded any-position matching. The
+  injected text is conditional — engage on invocation, ignore on mere mention.
+  Mid-sentence `zw` no longer fires (supersedes the R4-4 CJK-adjacency
+  INJECT behavior, now silent).
+
 ## [0.0.1] - 2026-09-06
 
 First release: the AI coding-workflow discipline layer for ZCode —

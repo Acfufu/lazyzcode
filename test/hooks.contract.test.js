@@ -93,9 +93,29 @@ test("session-start：在跑目标注入下一步，坏 stdin 静默", () => {
   }
 });
 
-test("trigger：词边界注入矩阵", () => {
-  const inject = ["zw 帮我审查", "ulw 继续", "ultrawork now", "ZW 大写", "wz zw", "伊zw语"];
-  const silent = ["帮我 pwd 一下", "azw b", "ultraworks", "a_zw b", "", "hello world", "{bad json"];
+test("trigger：分层匹配注入矩阵（bare zw 句首锚定/显式全名任意/别名任意）", () => {
+  const inject = [
+    "zw 帮我审查", // bare zw 句首
+    "  zw 前导空白仍算句首",
+    "zw继续", // 后随 CJK 不拦（R4-4 口径，合意）
+    "ZW 大写", // 大写句首
+    "帮我查 lazyzcode:zw 的注入", // 显式全名，任意位置
+    "lazyzcode：zw 全角冒号也算显式",
+    "ulw 继续", // 别名任意位置
+    "ultrawork now",
+  ];
+  const silent = [
+    "wz zw", // 句中 bare zw：分层后不再触发（2026-09-07 行为变更）
+    "伊zw语", // 同上——R4-4「CJK 相邻 INJECT」被分层取代，改记账为静默
+    "zwift", // 后随拉丁标识符不触发
+    "帮我 pwd 一下",
+    "azw b",
+    "ultraworks",
+    "a_zw b",
+    "",
+    "hello world",
+    "{bad json",
+  ];
   for (const p of inject) {
     assert.match(JSON.parse(hook("trigger.js", { prompt: p }).out).additionalContext, /Trigger word/);
   }

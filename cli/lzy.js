@@ -232,7 +232,7 @@ function printHelp() {
   lzy install      安装并启用插件（落位引擎缓存 + 注册表 + 官方 plugins enable）
   lzy sync         重新部署仓库 plugin/ 载荷（热重载；新会话生效）；--watch 持续监听
   lzy status       检查引擎/安装/启用/装载/目标循环状态（只读；退出码 0=无 fail 级检查，warn/skip 不影响）
-  lzy doctor       深度本地诊断：status 全套 + hook 语法自检/node 下限/lzy 解析/状态卫生
+  lzy doctor       深度本地诊断：status 全套 + hook 语法自检/node 下限/lzy 解析/状态卫生/限流体检
   lzy uninstall    卸载插件（优先官方 plugins uninstall）
 
 目标循环（状态在工作区 .lazyzcode/）：

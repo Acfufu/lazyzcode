@@ -7,7 +7,8 @@ import { basename, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
 import { readRepoManifest } from "./installer.js";
-import { installPathFor, packageRoot, repoPluginDir } from "./paths.js";
+import { installPathFor, packageRoot, repoPluginDir, userCliLogDir } from "./paths.js";
+import { collectRateLimitStats } from "./ratelimit.js";
 
 const NODE_MAJOR_FLOOR = 20;
 
@@ -174,6 +175,85 @@ function checkPlatform(push) {
   }
 }
 
+// 账号级限流体检：扫引擎 cli 日志（近 2 日）统计 429 压力与经验并发带，warn-only 不翻转
+// 退出码。事实底稿与口径见 docs/research-glm-plan-rate-limit.md。
+function fmtLocal(ts) {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 游程人读化：120 分钟以内报分钟，以上折小时
+function fmtRunMin(min) {
+  if (min < 120) return `${min} 分钟`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h} 小时` : `${h} 小时 ${m} 分`;
+}
+
+async function checkRateLimit(push) {
+  const logDir = userCliLogDir();
+  let stats;
+  try {
+    stats = await collectRateLimitStats(logDir);
+  } catch (err) {
+    push("rate-limit", "warn", `限流体检故障（fail-soft）：${err?.message ?? err}`);
+    return;
+  }
+  if (!stats.available) {
+    push("rate-limit", "skip", `无引擎日志可扫（${logDir}）`);
+    return;
+  }
+  if (stats.rateLimited === 0) {
+    push("rate-limit", "ok", `近 ${stats.spanHours ?? stats.files * 24}h 无账号级限流记录`);
+    return;
+  }
+  // 三分支渲染：经验带连贯 / 单边证据（不连贯） / 无活跃面证据（band=null）。
+  // 只测不嘱：建议行数字只取实测边界（maxClean），无实测时无数字；固定「≤3」类处方已废除。
+  const unit = stats.caliber === "turn" ? "回合" : "次首撞";
+  const spanH = stats.spanHours ?? stats.files * 24;
+  const head =
+    `近 ${spanH}h 账号限流 ${stats.turns} ${unit}` +
+    `（失败请求 ${stats.rateLimited} 次、判死 ${stats.fatal}、最近 ${fmtLocal(stats.lastAt)}）`;
+  let mid;
+  let advice;
+  const extra = [];
+  if (stats.band && stats.band.coherent) {
+    mid =
+      `；经验带：≤${stats.band.maxClean} 会话同开安全、≥${stats.band.minDirty} 即撞线；` +
+      `并发按套餐分级（Max>Pro>Lite）`;
+    advice = `建议目标循环一次一个、活跃主会话 ≤${stats.band.maxClean} 为宜、判死后等数分钟再 zw 继续`;
+  } else if (stats.band) {
+    const contrast =
+      stats.band.maxClean > 0
+        ? `实测 ${stats.band.maxClean} 会话同开未撞线、${stats.band.minDirty} 会话也撞线（分钟级活跃为下界）`
+        : `实测 ${stats.band.minDirty} 会话也撞线（分钟级活跃为下界，无净活跃对照）`;
+    mid = `；无固定并发阈值：${contrast}，有效边界随套餐与时段浮动`;
+    if (stats.concentration) {
+      const c = stats.concentration;
+      const p2 = (n) => String(n).padStart(2, "0");
+      extra.push(
+        `撞线集中在本地 ${p2(c.startHour)}:00–${p2(c.endHour)}:00（占 ${Math.max(1, Math.round(c.sharePct / 10))} 成）`
+      );
+    }
+    if (stats.longestRunMin > 0) extra.push(`最长连撞 ${fmtRunMin(stats.longestRunMin)}`);
+    advice = `建议目标循环一次一个、活跃主会话宜少并错开集中时段、判死后等数分钟再 zw 继续`;
+  } else {
+    mid = `；日志缺并发活跃记录，无法估计并发边界`;
+    advice = `建议目标循环一次一个、活跃主会话宜少、判死后等数分钟再 zw 继续`;
+  }
+  // 渲染优先级：标题 → 阈值句 → 集中段 → 游程 → 建议行；超 300 字符先砍集中段再砍游程，建议行永不砍
+  const adviceStr = `；${advice}`;
+  const budget = 300 - [...adviceStr].length;
+  let detail = head + mid;
+  for (const piece of extra) {
+    if ([...`${detail}；${piece}`].length <= budget) detail += `；${piece}`;
+  }
+  detail += adviceStr;
+  push("rate-limit", "warn", detail);
+}
+
 export async function collectDoctor(cwd = process.cwd()) {
   const checks = [];
   const push = (name, state, detail) => checks.push({ name, state, detail });
@@ -192,10 +272,11 @@ export async function collectDoctor(cwd = process.cwd()) {
     checkLzyPath,
     (p) => checkLoopState(p, cwd),
     checkPlatform,
+    (p) => checkRateLimit(p),
   ];
   for (const step of steps) {
     try {
-      step(push);
+      await step(push);
     } catch (err) {
       push("doctor", "warn", `自检项故障（fail-soft）：${err?.message ?? err}`);
     }

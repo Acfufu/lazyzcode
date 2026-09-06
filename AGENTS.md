@@ -19,22 +19,30 @@
 - **MVP 活体验收通过（2026-09-06）**：五项检查全 ✅——检查 1 活体（真实会话 `zw 继续` 首行 `**ZW** engaged`）、检查 4 活体（Stop 拉回 1/2→2/2 后止，用户明令优先）、检查 2/3/5 CLI 实证（评审门 PASS+--review、F 项无证据拒绝、改码后「过期 1 finish 会被拦」）；记录在探针仓 `ACCEPTANCE-RECORD.md`（探针可删）。**Mimosa deep 复扫 0 findings（seal sha256:81151e73…，依赖面 partial 如实记账）**。
 - **P3 资产整合已落地（2026-09-06）**：comment-checker PostToolUse 轻钩子（goal.json 在场闸门、命中 TODO/FIXME/XXX/HACK 与调试残留经 additionalContext 轻提示不阻断、上限 5 处 ≤300 字符、fail-open；PostToolUse 输出契约逆向实锤 zcode.cjs:36794-36796）+ codegraph 接线（zw SKILL.md/explorer.md 补索引侦察指引；status.js 增 codegraph 诊断，**缺席=skip 不翻转退出码**；paths.js 增 userCliConfigPath 只读解析）+ browser-use 取证面文本（SKILL.md/qa-executor 补 ego-browser/curl 手法，control-browser 仅主代理）。实证：模拟 stdin 三场景 + status 检查行 + 引擎注册 hooks:4。
 - **P4 发布就绪已落地（2026-09-06）**：`lzy doctor`（status 全套 + hook 语法自检
-  [vm 解析 worker，含 hooks.json 注册校验]/node 下限/lzy 解析/状态卫生/平台立场，零遥测）+ 发布材料（LICENSE、
-  package.json 去 private + files 排除 .mimosa、CHANGELOG、npm scripts 补全 doctor/loop/step）+
-  README 用户 10 分钟快速开始 + docs 脱敏（机器路径泛化）。`npm publish --dry-run` 实证 24
-  文件零敏感物。**真 npm publish 与 GitHub 市场发布待用户动作**（npm 账号/公开仓库）。
+  [vm 解析 worker，含 hooks.json 注册校验]/node 下限/lzy 解析/状态卫生/平台立场，零遥测）+ 发布材料
+  （LICENSE、package.json 去 private + files 排除 .mimosa、CHANGELOG、npm scripts 补全）+
+  README 用户 10 分钟快速开始 + docs 脱敏。`npm publish --dry-run` 实证 24 文件零敏感物。**真发布待用户动作**。
 - **五轮双审核 + 修复轮已落地（2026-09-06/07）**：报告 `docs/reviews/`（41 发现：0 P0/2 P1/15 P2/24 P3，
-  红线全部活体证实）；修复轮收口全部 P1+P2（abandon 修复、注册表防损坏、原子部署、跨进程锁、
-  fail-open 语义、VERDICT 记号解析、计划门行号+行级豁免、hooks.json 自检等），新增契约测试三件套 +
-  GitHub Actions（`npm test` 13 用例零依赖）与发布备料（repository 元数据 + `docs/release-checklist.md`）。
+  红线全部活体证实）；修复轮收口全部 P1+P2（abandon 修复、注册表防损坏、原子部署、跨进程锁等），
+  新增契约测试三件套 + GitHub Actions 与发布备料（repository 元数据 + `docs/release-checklist.md`）；
   剩余 24 条 P3 按「顺带修」记账（评审报告处置记录）。
 - **P3 清账 + 钩子环境加固已落地（2026-09-07，goal p3-sweep-hook-env）**：评审剩余 17 条 P3 全修
-  （R2-12 维持不修）；新发现并活体实锤「引擎以自身 env 直接 spawn 钩子，GUI 直启场景 PATH 无
-  node → 裸 `node` 钩子静默全灭」（引擎 env 随 ZCode.app 启动方式而变；诊断记录
-  `docs/diagnostics/2026-09-07-hook-spawn-env.md`）→ 四钩子改走 `run-hook.sh` 启动器
-  （nvm/homebrew fallback）+ `lzy doctor` 增 `hook-node` 检查；契约测试增至 22 用例零依赖。
+  （R2-12 维持不修）；实锤「引擎以自身 env 直接 spawn 钩子，GUI 直启场景 PATH 无
+  node → 裸 `node` 钩子静默全灭」（诊断 `docs/diagnostics/2026-09-07-hook-spawn-env.md`）→
+  四钩子改走 `run-hook.sh` 启动器（nvm/homebrew fallback）+ doctor 增 `hook-node`；契约测试增至 22 用例。
+- **限流纪律已落地（2026-09-07，goal rate-limit-discipline）**：用户 zw 会话撞 GLM 套餐账号级
+  1302/429（多会话并发打满；实测 ≤5 活跃会话安全、≥6 持续撞线）。`lzy doctor` 增 `rate-limit`
+  体检（近 2 日引擎日志只读流式扫描：429 计数/判死/lastAt/经验并发带，warn-only；自适配=
+  经验测量，决策 #16）；zw SKILL.md 增 Rate-limit discipline 段（一次一循环/子代理默认串行/
+  risk trumps quota/429 判死恢复）。底稿 `docs/research-glm-plan-rate-limit.md`（A/B 双审定稿）。
+- **限流体检 v3 + 触发词分层已落地（2026-09-07，goal rl-v3-trigger-strata）**：doctor rate-limit 升级回合计数
+  （turnId 复合键去重，覆盖率不足降级首撞口径）/脏桶直方图/最长连撞/集中段三门槛/三分支话术，建议行改实测边界
+  （固定 ≤3 废除）；触发词分层=bare zw 仅句首、lazyzcode:zw 显式全名、ulw/ultrawork 不变，注入文案条件双路（R4-4 变更记账）。
+- **钩子启动器活体复验通过（2026-09-07，GUI 直启新会话）**：zw 触发词 UserPromptSubmit 注入恢复
+  （原文到达对话）；本会话四类钩子事件 hook.run.failed=0，当日旧会话对照 551 条/20 会话全灭
+  （PostToolUse 469/UPS 33/Stop 29/SessionStart 20）；doctor hook-node 实锤启动器兜底解析
+  nvm node。诊断记录 §4 复验口径三条全数兑现。
 - 下一步：真发布（用户按 `docs/release-checklist.md` 择机执行）；运行期反馈迭代。
-  新会话应活体复验钩子（GUI 直启下触发词/SessionStart 恢复即为启动器生效实锤）。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 
@@ -66,6 +74,7 @@
 | 13 | Stop 预算细分 | lzy Stop 钩子每会话最多请求 **2 次**续跑，预留 1 次给引擎后台通知（红线 #2 具体化；计数按 sessionId 隔离，2026-09-06） |
 | 14 | 证据时效语义 | F 项证据绑 `HEAD^{tree}`（提交粒度）：**先提交再取证**；未提交改动不入 hash，工作区脏时 CLI 警告（`.lazyzcode/` 自身不计脏，2026-09-06） |
 | 15 | P2 纪律阵容 | 三只读角色（explorer/plan-reviewer/qa-executor）；计划评审门 **REVISE 拒绝采纳、--force 不越过**，HEAVY 强制过门 / LIGHT 自查；触发词钩子做（UserPromptSubmit，词边界防误触）（用户拍板 2026-09-06） |
+| 16 | 限流自适配路线 | **经验测量**，非声明式配置：套餐档位本地不可探测（2026-09-07 实查），doctor 从本地日志实测 429 压力与经验并发带，零新增配置面（用户拍板 2026-09-07） |
 
 ## 5. 设计宪法与红线
 
@@ -124,6 +133,13 @@ _Avoid_: 草稿
 
 **触发词（trigger）**：`zw` 主词；`ulw` / `ultrawork` 为兼容别名。
 _Avoid_: 单用 ulw 指代本项目触发词
+
+**经验并发带（empirical concurrency band）**：doctor 从本地日志实测的「无 429 桶最高活跃
+会话数 / 有 429 桶最低活跃会话数」；连贯且样本足量才输出。
+_Avoid_: 并发上限（平台侧数值，本地测不到）
+
+**回合（turn）**：一次去重后的模型请求；引擎重试产生多条限流事件仍属一回合，doctor 限流
+标题按回合计。_Avoid_: 请求次数（含重试的原始条数）
 
 ## 9. 维护规则
 

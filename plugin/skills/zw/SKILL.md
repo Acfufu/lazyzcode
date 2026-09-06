@@ -28,6 +28,11 @@ Then run the tier triage below and follow the workflow. No preamble before it.
 - **HEAVY** — multi-file features, architecture, anything risky or vague. Explore
   first (read code, run quick probes), then plan every step.
 - Escalate LIGHT→HEAVY freely when you discover scope. **Never downgrade.**
+  Quota pressure may inform the initial triage choice (see Rate-limit
+  discipline) — it never lowers the risk bar.
+- **Mention ≠ invocation.** If the user message only mentions zw/ulw in passing
+  (meta-discussion about this project — its hooks, status, docs, trigger design),
+  do not engage the loop: answer the question directly.
 
 ## The workflow
 
@@ -137,6 +142,31 @@ keep working, never declare victory.
   stop cleanly; the next session's SessionStart hook re-injects the loop state.
 - `lzy loop status` at any time to re-ground yourself (also after compaction).
 
+## Rate-limit discipline (provider concurrency)
+
+Model access is a provider-side concurrency quota shared across ALL your
+sessions (GLM plans cap it per tier — Max > Pro > Lite; error `1302` /
+429 `rate_limited` means the account hit it). This is NOT the 3-continue
+Stop pool from Continuation — two different pools, never confuse them.
+
+- **One active goal loop at a time.** Do not run several `zw` loops in
+  parallel sessions; serialize batches instead.
+- **Subagents default to serial.** explorer / plan-reviewer / qa-executor run
+  one at a time; go parallel (≤2) only to capture several independent F-item
+  evidences.
+- **A turn died with 429/`1302 rate limited`?** Do not retry-bomb, do not
+  replan. Close the session cleanly — `.lazyzcode/` lost nothing — and tell
+  the user to resume with `zw 继续` (or `lzy loop step`) after a few minutes,
+  when the quota window has room again.
+- **Risk trumps quota.** HEAVY costs more calls (review gate, evidence
+  capture, Stop pulls); when quota is tight, genuinely contained work may
+  start LIGHT — but anything risky or vague is HEAVY regardless of quota.
+  This applies only at triage; once engaged, never downgrade.
+- **Before multi-session work**, run `lzy doctor`: its `rate-limit` line
+  reports your account's recent 429 pressure and empirical concurrency band
+  (or one-sided evidence when no coherent band exists — degradation is the
+  normal path under attribution drift).
+
 ## Red lines
 
 1. Never write the user's `config.json`; plugin enabling flows only through the
@@ -158,9 +188,12 @@ writer: agents report, you decide and record via `lzy`.
 
 ## Trigger
 
-The plugin's UserPromptSubmit hook injects this skill's bootstrap when your
-message contains `zw`, `ulw`, or `ultrawork`. The skill can also be invoked
-explicitly (`/zw` or the Skill tool). Aliases are equal — `zw` is the primary.
+The plugin's UserPromptSubmit hook injects this skill's bootstrap on stratified
+matches: a prompt **starting with** `zw` (`zw <task>`), or containing the
+explicit skill name `lazyzcode:zw` (full-width colon works too), or containing
+`ulw` / `ultrawork` anywhere (word-bounded). A bare `zw` mentioned mid-sentence
+does not fire. The skill can also be invoked explicitly (`/zw` or the Skill
+tool). Aliases are equal — `zw` is the primary.
 
 ## CLI cheat sheet
 
@@ -174,3 +207,4 @@ explicitly (`/zw` or the Skill tool). Aliases are equal — `zw` is the primary.
 | `lzy loop verify` | evidence freshness report (exit 1 when stale/unbound evidence **or no goal exists**) |
 | `lzy loop finish` | final gate: all done + fresh evidence |
 | `lzy loop abandon` / `lzy loop reset` | give up / clear state |
+| `lzy doctor` | deep local diagnostics incl. rate-limit pressure (zero telemetry) |

@@ -34,6 +34,12 @@ export function userCliConfigPath() {
   return join(cliRoot(), "config.json");
 }
 
+// 引擎 cli 日志目录（每日 zcode-YYYY-MM-DD.jsonl，现存保留约 7 天）——只读扫描面，
+// 供 doctor 的限流体检用。
+export function userCliLogDir() {
+  return join(cliRoot(), "log");
+}
+
 // hook 脚本枚举：路径解析归本模块（doctor.js 只拿结果列表作 spawn 参数，污点不跨文件）。
 export function hookScriptPaths(rootDir) {
   try {

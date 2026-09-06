@@ -31,11 +31,16 @@ plan-reviewer 评审门）→ 逐步执行 → 对终验项在真实表面取证
 ```bash
 lzy uninstall        # 优先走引擎官方 plugins uninstall
 lzy status           # 快速体检（退出码 0=无 fail 级检查，warn/skip 不影响）
-lzy doctor           # 深度诊断：status 全套 + hook 语法自检（含 hooks.json 注册校验）/node 下限/钩子 node 解析/lzy 解析/状态卫生
+lzy doctor           # 深度诊断：status 全套 + hook 语法自检（含 hooks.json 注册校验）/node 下限/钩子 node 解析/lzy 解析/状态卫生/限流体检
 ```
 
 排障速查：
 
+- **`[1302] 您的账户已达到速率限制`（429）**：GLM 套餐的账号级并发限流（按档位分级
+  Max>Pro>Lite），多会话并行时易触发。`lzy doctor` 的 `rate-limit` 行给出近两日限流
+  统计与实测并发边界（经验带或单边证据）；并发压低有益、目标循环一次只跑一个；被
+  429 判死的会话等数分钟后 `zw 继续` 即可接上（状态在 `.lazyzcode/` 不丢）。机制与
+  实测详见 `docs/research-glm-plan-rate-limit.md`。
 - **钩子全无反应**（触发词/Stop 拉回/轻提示都不动）：十有八九是引擎 spawn 钩子的 PATH
   里没有 node（从 Dock 直启 ZCode.app 的常见场景）。`lzy doctor` 的 `hook-node` 行给出判定；
   插件自带 `run-hook.sh` 启动器会自动扫 nvm/homebrew 兜底，详见
@@ -79,8 +84,9 @@ lzy loop finish                      # 终验：全部 done + F 项证据 tree h
   钩子状态按 sessionId 隔离，异常一律放行（绝不劫持无关会话）。
 - 循环状态在 `.lazyzcode/loop/`（goal.json + sessions/ 计数），计划放 `.lazyzcode/plans/`；
   与宿主 `.zcode/` 划清边界，建议加入 `.gitignore` 或按需提交。
-- 触发词 `zw`（兼容 `ulw`/`ultrawork`）：UserPromptSubmit 钩子自动注入 zw 编排引导
-  （词边界匹配防误触）；技能文本（`plugin/skills/zw/SKILL.md`）承载完整编排协议。
+- 触发词分层：`zw` 仅句首触发；显式全名 `lazyzcode:zw` 任意位置触发（全半角冒号均可）；
+  `ulw`/`ultrawork` 维持任意位置词边界。UserPromptSubmit 钩子条件注入——发起则注入
+  zw 编排引导、仅提及则静默不劫持；技能文本（`plugin/skills/zw/SKILL.md`）承载完整编排协议。
 - **纪律角色**：三只读子代理——`lazyzcode:explorer`（计划前侦察，大仓库可走 codegraph
   索引）、`lazyzcode:plan-reviewer`（计划评审门）、`lazyzcode:qa-executor`（真实表面取证，
   Web/HTTP 面可用 ego-browser/curl）。HEAVY 目标计划必须过评审门：判决 REVISE 会被

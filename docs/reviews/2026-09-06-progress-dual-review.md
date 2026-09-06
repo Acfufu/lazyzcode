@@ -247,7 +247,7 @@
 17. R4-4 触发词边界为 ASCII 标识符级（CJK 相邻触发，良性）；`verify` 无目标 exit 1 未写进文档
 18. R4-5 SKILL.md 低述终态占用，`reset` 前置未写明
 
-处置对照（2026-09-07）：①R1-3→`1dbd9e3` ②R1-4→`1dbd9e3`（mkdir 轻锁超时放行）③R1-5①→`1dbd9e3`（fd1 直写）/②→`cdadaf3`（白名单校验）④R2-8→`61187f6` ⑤R2-9→`61187f6`（note 300/evidence 4000）⑥R2-10→`61187f6` ⑦R2-11→`61187f6`（reset 连带清理+doctor 卫生查）⑧R2-12 维持不修（语义正确、指引已到位）⑨R3-7→`c5ba72e`（升格字节幂等）⑩R3-8→`c5ba72e` ⑪R3-9→`cdadaf3`（env 改替换语义）⑫R3-10→`3c03977` ⑬R3-12→`c5ba72e`（逐文件核验+结构化归属）⑭R3-13→`61187f6` ⑮R4-2→`1dbd9e3` ⑯R4-3→`1dbd9e3` ⑰R4-4→SKILL.md 补 verify 退出码（`d144ae4` 后续 docs 提交）；CJK 词边界维持现状（判良性）⑱R4-5→SKILL.md 补 reset 前置。
+处置对照（2026-09-07）：①R1-3→`1dbd9e3` ②R1-4→`1dbd9e3`（mkdir 轻锁超时放行）③R1-5①→`1dbd9e3`（fd1 直写）/②→`cdadaf3`（白名单校验）④R2-8→`61187f6` ⑤R2-9→`61187f6`（note 300/evidence 4000）⑥R2-10→`61187f6` ⑦R2-11→`61187f6`（reset 连带清理+doctor 卫生查）⑧R2-12 维持不修（语义正确、指引已到位）⑨R3-7→`c5ba72e`（升格字节幂等）⑩R3-8→`c5ba72e` ⑪R3-9→`cdadaf3`（env 改替换语义）⑫R3-10→`3c03977` ⑬R3-12→`c5ba72e`（逐文件核验+结构化归属）⑭R3-13→`61187f6` ⑮R4-2→`1dbd9e3` ⑯R4-3→`1dbd9e3` ⑰R4-4→SKILL.md 补 verify 退出码（`d144ae4` 后续 docs 提交）；CJK 词边界维持现状（判良性）；2026-09-07 触发词分层落地（goal rl-v3-trigger-strata）后句中 bare `zw` 不再触发，「伊zw语 → INJECT」变为静默（分层匹配 + 条件双路注入文案，行为变更在此记账）⑱R4-5→SKILL.md 补 reset 前置。
 另记（修复轮带入的新发现）：引擎以自身 env 直接 spawn 钩子命令，GUI 直启场景 PATH 无 node → 裸 `node` 四钩子静默全灭（本会话触发词注入缺席活体佐证；2026-09-06 验收能跑系当从带 nvm 的终端启动）→ 四钩子改走 `run-hook.sh` 启动器 + doctor 增 `hook-node` 检查（`73966c8`），诊断全文 `docs/diagnostics/2026-09-07-hook-spawn-env.md`；契约测试增至 22 用例（`26894ec`）。
 
 ### 新记账（修复轮评审带入）

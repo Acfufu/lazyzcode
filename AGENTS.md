@@ -13,7 +13,9 @@
   - Spike 1（Edit old_string）：✅ hashline 不需要（P3 观察项关闭）；新红线「old_string 必须带原样精确缩进」。
   - Spike 2（四风格清单）：✅ 安装型插件 **.zcode/.claude/.codex 三风格免改名装载成立，cursor 风格 cache 路径拒绝**（仅工作区可用）；**安装型插件必须「安装+启用」两步**（启用写 config `plugins.enabledPlugins`，只装不启用=没装）。
   - Spike 3（Stop 注入/预算）：✅ 非空注入续跑、**≤3 硬顶**均活体实锤；同池扣减维持源码结论；新设计约束「Stop 钩子状态须按 sessionId 隔离」。
-- P0 骨架期待拍板（ADR 候选）：安装器 enable 步骤写 config 与红线 #1 的边界。下一步即 P0 骨架：插件包结构（`plugin/` + `core/` + `cli/`）、本地安装/热重载、`lzy status` 最小实现。
+- P0 骨架已落地（2026-09-06）：`plugin/ + core/ + cli/`，`lzy install/sync/status/uninstall` 端到端实测，本机已自举安装（`lazyzcode:zw` 技能可装载）；ADR-0001 已拍板：启用走引擎官方 `plugins enable`，**lzy 对 config.json 零写入**。`core/engine.js`（lzy→引擎调用层）已落位（2026-09-06）：此前被 Mimosa 守卫内容级拦截（凡 spawn/exec 即 deny、安全形态亦拦、无 UI 放行入口），**经授权跑深度安全扫描取得封印（0 findings）后写入放行**——「扫描封印」是解拦正道；实现为安全形态（路径解析归 paths 模块、执行归 engine 模块，每调用点字面量子命令数组 + `shell:false`），install/uninstall/status 全生命周期实弹验证（官方 enable/uninstall 路径均通），引擎环节全自动、不再走指引式回退。
+- **P1 核心已落地（2026-09-06）**：`lzy loop/step` 目标循环状态机（注册→计划门[决策完备，TBD 拦截]→逐步收口→F 项证据绑 `HEAD^{tree}`→finish 终验[证据过期即拦]；状态在 `.lazyzcode/loop/`）+ 插件 SessionStart/Stop 钩子（`hooks/hooks.json`，sessionId 隔离计数、Stop 预算 ≤2 预留 1、异常一律 fail-open）+ `zw` SKILL.md 全量编排文本（英文）。实证：scratch 仓全状态机 E2E 全绿；钩子 stdin 行为矩阵全绿；引擎 `plugins list` 注册 `hooks:2`。已知限制：headless 驱动引擎需登录/API-key 配置（V4 签名凭据，桌面端运行时注入），活体注入由 Spike 3 背书，真实会话验收顺延。
+- 下一步：P2 角色与纪律（子代理角色 agents/、计划评审门、取证规范细化）。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 
@@ -41,6 +43,9 @@
 | 9 | 遥测 | **完全无遥测**；诊断由 `lzy doctor` 本地输出承担 |
 | 10 | 验证排期 | 三 spike 已完成（2026-09-06）：Edit / 四风格装载 / Stop 注入与 ≤3 硬顶均实证，详见 `docs/spikes/p0-day1.md` |
 | 11 | 设计红线 | 见 §5，两条，直接生效 |
+| 12 | 安装器路线 | 装 = cache 落位 + 注册表幂等写；启用 = 引擎官方 `plugins enable`；**config.json 零写入**（ADR-0001，2026-09-06） |
+| 13 | Stop 预算细分 | lzy Stop 钩子每会话最多请求 **2 次**续跑，预留 1 次给引擎后台通知（红线 #2 具体化；计数按 sessionId 隔离，2026-09-06） |
+| 14 | 证据时效语义 | F 项证据绑 `HEAD^{tree}`（提交粒度）：**先提交再取证**；未提交改动不入 hash，工作区脏时 CLI 警告（`.lazyzcode/` 自身不计脏，2026-09-06） |
 
 ## 5. 设计宪法与红线
 
@@ -65,6 +70,8 @@ docs/
   reports/index.html         ← 报告中心入口（另有 full/pm/dev 三份自包含 HTML）
   reports/review-against-reversed.md  ← 逆向源码复核记录（4 纠错 + 6 新发现）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
+  adr/0001-*.md              ← 安装器 enable 走引擎 CLI、config 零写入
+plugin/ core/ cli/           ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）
 artifacts/                   ← 空（暂无产物）
 ```
 

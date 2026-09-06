@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { watch } from "node:fs";
 import { install, sync, uninstall, readRepoManifest } from "../core/installer.js";
 import { collectStatus } from "../core/status.js";
+import { collectDoctor } from "../core/doctor.js";
 import { createEngineCli } from "../core/engine.js";
 import { createGit } from "../core/git.js";
 import {
@@ -49,6 +50,15 @@ function parseArgs(args) {
 async function cmdStatus() {
   const { checks, ok } = await collectStatus();
   console.log("lzy status");
+  for (const c of checks) {
+    console.log(`  ${ICON[c.state]} ${c.name.padEnd(12)} ${c.detail}`);
+  }
+  process.exitCode = ok ? 0 : 1;
+}
+
+async function cmdDoctor() {
+  const { checks, ok } = await collectDoctor();
+  console.log("lzy doctor（本地诊断，零遥测）");
   for (const c of checks) {
     console.log(`  ${ICON[c.state]} ${c.name.padEnd(12)} ${c.detail}`);
   }
@@ -113,9 +123,15 @@ async function cmdLoop(args) {
       return;
     }
     case "plan": {
-      if (!_[1]) throw new LoopError("用法：lzy loop plan <计划文件> [--force]");
-      const goal = adoptPlan(cwd, resolve(cwd, _[1]), { force: f.force === true });
+      if (!_[1]) throw new LoopError("用法：lzy loop plan <计划文件> [--review \"plan-reviewer: PASS …\"] [--force]");
+      const review = typeof f.review === "string" ? f.review : null;
+      const goal = adoptPlan(cwd, resolve(cwd, _[1]), { force: f.force === true, review });
       console.log(`✔ 计划门通过：${goal.steps.length} 项已采纳（N:${goal.steps.filter((s) => s.kind === "N").length} F:${goal.steps.filter((s) => s.kind === "F").length}）`);
+      if (review) {
+        console.log(`  评审记录：${goal.review.verdict} · ${goal.review.at}`);
+      } else {
+        console.log("  ⚠ 未带 --review：HEAVY tier 须先过 plan-reviewer 评审门（判决 PASS 后带 --review 采纳）");
+      }
       console.log("  下一步：lzy loop start 开跑");
       return;
     }
@@ -197,6 +213,7 @@ function printHelp() {
   lzy install      安装并启用插件（落位引擎缓存 + 注册表 + 官方 plugins enable）
   lzy sync         重新部署仓库 plugin/ 载荷（热重载；新会话生效）；--watch 持续监听
   lzy status       检查引擎/安装/启用/装载/目标循环状态（只读，退出码 0=健康）
+  lzy doctor       深度本地诊断：status 全套 + hook 语法自检/node 下限/lzy 解析/状态卫生
   lzy uninstall    卸载插件（优先官方 plugins uninstall）
 
 目标循环（状态在工作区 .lazyzcode/）：
@@ -231,6 +248,8 @@ async function main() {
       return cmdSync(args);
     case "status":
       return cmdStatus();
+    case "doctor":
+      return cmdDoctor();
     case "uninstall":
       return cmdUninstall();
     case "loop":

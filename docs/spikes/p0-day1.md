@@ -3,11 +3,11 @@
 > 日期：2026-09-06。执行依据：AGENTS.md §4 决策 #10（验证排期）。
 > 环境：macOS（darwin 25.6.0 arm64）· ZCode Desktop v3.11.2（build 89817f5b）· 引擎 CLI（zcode 0.16.5，
 > `zcode.cjs`）headless 真机会话 + 交互会话实测。
-> 逆向源码实际位置：`/Users/acfufu/Codehub/reversed/reversed-zcode/source/cli/zcode.cjs`
+> 逆向源码实际位置：`~/Codehub/reversed/reversed-zcode/source/cli/zcode.cjs`
 > （sha256 9c8d427d…28257，下文行号以它为准）。
 > **注意**：live 引擎 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` sha256 为 e9f1868c…3266b8，
 > 与 reversed 副本**不同**（版本漂移）；本 spike 涉及的装载/启用/预算关键结构已在 live 副本复核一致。
-> 证据归档：`/tmp/lzy-spike3-archive-20260906/`（探针脚本原件 + 各实验 stop-log / session-start 日志）。
+> 证据归档：临时归档目录（2026-09-06 会话后已清理；探针脚本原件 + 各实验 stop-log / session-start 日志）。
 
 ---
 
@@ -104,4 +104,4 @@ cursor 被拒的引擎诊断（`plugins list --verbose`）：`[error] plugin_man
 
 ## 清理记录（2026-09-06）
 
-五个探针已按约删除：`installed_plugins.json` 恢复 spike 前备份（`installed_plugins.json.bak-20260906-spike`）、config 移除 5 条 `enabledPlugins` 项（原备份 `config.json.bak-20260906-spike-enable`）、缓存目录与 `/tmp/lzy-spike3` 已删、仓库 `test/spike/` 已删（git 历史保留）。原始日志与探针脚本归档于 `/tmp/lzy-spike3-archive-20260906/`。
+五个探针已按约删除：`installed_plugins.json` 恢复 spike 前备份（`installed_plugins.json.bak-20260906-spike`）、config 移除 5 条 `enabledPlugins` 项（原备份 `config.json.bak-20260906-spike-enable`）、缓存目录与系统临时目录已删、仓库 `test/spike/` 已删（git 历史保留）。原始日志与探针脚本归档于临时归档目录（会话后已清理）。

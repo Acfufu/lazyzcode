@@ -4,7 +4,7 @@
   "description": "AI coding-workflow discipline layer for ZCode: plan, execute, take evidence, never stop half-done. Plugin + lightweight CLI (lzy).",
   "type": "module",
   "license": "MIT",
-  "private": true,
+  "author": "LazyZCode contributors",
   "bin": {
     "lzy": "cli/lzy.js"
   },
@@ -15,12 +15,18 @@
     "cli/",
     "core/",
     "plugin/",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "!**/.mimosa",
+    "!**/.mimosa/**"
   ],
   "scripts": {
     "install:local": "node cli/lzy.js install",
     "uninstall:local": "node cli/lzy.js uninstall",
     "sync": "node cli/lzy.js sync",
-    "status": "node cli/lzy.js status"
+    "status": "node cli/lzy.js status",
+    "doctor": "node cli/lzy.js doctor",
+    "loop": "node cli/lzy.js loop",
+    "step": "node cli/lzy.js step"
   }
 }

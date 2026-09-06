@@ -15,7 +15,15 @@
   - Spike 3（Stop 注入/预算）：✅ 非空注入续跑、**≤3 硬顶**均活体实锤；同池扣减维持源码结论；新设计约束「Stop 钩子状态须按 sessionId 隔离」。
 - P0 骨架已落地（2026-09-06）：`plugin/ + core/ + cli/`，`lzy install/sync/status/uninstall` 端到端实测，本机已自举安装（`lazyzcode:zw` 技能可装载）；ADR-0001 已拍板：启用走引擎官方 `plugins enable`，**lzy 对 config.json 零写入**。`core/engine.js`（lzy→引擎调用层）已落位（2026-09-06）：此前被 Mimosa 守卫内容级拦截（凡 spawn/exec 即 deny、安全形态亦拦、无 UI 放行入口），**经授权跑深度安全扫描取得封印（0 findings）后写入放行**——「扫描封印」是解拦正道；实现为安全形态（路径解析归 paths 模块、执行归 engine 模块，每调用点字面量子命令数组 + `shell:false`），install/uninstall/status 全生命周期实弹验证（官方 enable/uninstall 路径均通），引擎环节全自动、不再走指引式回退。
 - **P1 核心已落地（2026-09-06）**：`lzy loop/step` 目标循环状态机（注册→计划门[决策完备，TBD 拦截]→逐步收口→F 项证据绑 `HEAD^{tree}`→finish 终验[证据过期即拦]；状态在 `.lazyzcode/loop/`）+ 插件 SessionStart/Stop 钩子（`hooks/hooks.json`，sessionId 隔离计数、Stop 预算 ≤2 预留 1、异常一律 fail-open）+ `zw` SKILL.md 全量编排文本（英文）。实证：scratch 仓全状态机 E2E 全绿；钩子 stdin 行为矩阵全绿；引擎 `plugins list` 注册 `hooks:2`。已知限制：headless 驱动引擎需登录/API-key 配置（V4 签名凭据，桌面端运行时注入），活体注入由 Spike 3 背书，真实会话验收顺延。
-- 下一步：P2 角色与纪律（子代理角色 agents/、计划评审门、取证规范细化）。
+- **P2 角色与纪律已落地（2026-09-06）**：三只读子代理角色 `plugin/agents/`（explorer 侦察 / plan-reviewer 计划评审 / qa-executor 证据执行，英文 prompt + 固定输出契约，引擎对 agents/ 目录自动发现无需 manifest 声明）+ 计划评审门（`lzy loop plan --review` 记录评审，**REVISE 判决拒绝采纳且 --force 不越过**；HEAVY 强制过门、LIGHT 自查）+ UserPromptSubmit 触发词钩子（zw/ulw/ultrawork 注入 zw 引导，词边界匹配防误触）。实证：触发词矩阵/评审门三态/引擎注册 hooks:3 全绿。
+- **MVP 活体验收通过（2026-09-06）**：五项检查全 ✅——检查 1 活体（真实会话 `zw 继续` 首行 `**ZW** engaged`）、检查 4 活体（Stop 拉回 1/2→2/2 后止，用户明令优先）、检查 2/3/5 CLI 实证（评审门 PASS+--review、F 项无证据拒绝、改码后「过期 1 finish 会被拦」）；记录在探针仓 `ACCEPTANCE-RECORD.md`（探针可删）。**Mimosa deep 复扫 0 findings（seal sha256:81151e73…，依赖面 partial 如实记账）**。
+- **P3 资产整合已落地（2026-09-06）**：comment-checker PostToolUse 轻钩子（goal.json 在场闸门、命中 TODO/FIXME/XXX/HACK 与调试残留经 additionalContext 轻提示不阻断、上限 5 处 ≤300 字符、fail-open；PostToolUse 输出契约逆向实锤 zcode.cjs:36794-36796）+ codegraph 接线（zw SKILL.md/explorer.md 补索引侦察指引；status.js 增 codegraph 诊断，**缺席=skip 不翻转退出码**；paths.js 增 userCliConfigPath 只读解析）+ browser-use 取证面文本（SKILL.md/qa-executor 补 ego-browser/curl 手法，control-browser 仅主代理）。实证：模拟 stdin 三场景 + status 检查行 + 引擎注册 hooks:4。
+- **P4 发布就绪已落地（2026-09-06）**：`lzy doctor`（status 全套 + hook 语法自检[node --check
+  走 stdin + vm worker]/node 下限/lzy 解析/状态卫生/平台立场，零遥测）+ 发布材料（LICENSE、
+  package.json 去 private + files 排除 .mimosa、CHANGELOG、npm scripts 补全 doctor/loop/step）+
+  README 用户 10 分钟快速开始 + docs 脱敏（机器路径泛化）。`npm publish --dry-run` 实证 24
+  文件零敏感物。**真 npm publish 与 GitHub 市场发布待用户动作**（npm 账号/公开仓库）。
+- 下一步：真发布（用户 npm publish / GitHub 市场另立项）；运行期反馈迭代。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 
@@ -46,6 +54,7 @@
 | 12 | 安装器路线 | 装 = cache 落位 + 注册表幂等写；启用 = 引擎官方 `plugins enable`；**config.json 零写入**（ADR-0001，2026-09-06） |
 | 13 | Stop 预算细分 | lzy Stop 钩子每会话最多请求 **2 次**续跑，预留 1 次给引擎后台通知（红线 #2 具体化；计数按 sessionId 隔离，2026-09-06） |
 | 14 | 证据时效语义 | F 项证据绑 `HEAD^{tree}`（提交粒度）：**先提交再取证**；未提交改动不入 hash，工作区脏时 CLI 警告（`.lazyzcode/` 自身不计脏，2026-09-06） |
+| 15 | P2 纪律阵容 | 三只读角色（explorer/plan-reviewer/qa-executor）；计划评审门 **REVISE 拒绝采纳、--force 不越过**，HEAVY 强制过门 / LIGHT 自查；触发词钩子做（UserPromptSubmit，词边界防误触）（用户拍板 2026-09-06） |
 
 ## 5. 设计宪法与红线
 
@@ -72,6 +81,7 @@ docs/
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
   adr/0001-*.md              ← 安装器 enable 走引擎 CLI、config 零写入
 plugin/ core/ cli/           ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）
+README.md LICENSE CHANGELOG.md  ← 开源门面（README 含用户 10 分钟快速开始）
 artifacts/                   ← 空（暂无产物）
 ```
 

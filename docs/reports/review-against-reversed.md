@@ -1,9 +1,9 @@
 # 报告复核：基于 ZCode / Codex Desktop 逆向源码的事实核验
 
 > 复核日期：2026-09-05
-> 证据源：`/Users/acfufu/Codehub/ohmyzcode/reversed/reversed-zcode`（ZCode Desktop v3.11.2，build 89817f5b，Electron 41.0.3）
-> 　　　　`/Users/acfufu/Codehub/ohmyzcode/reversed/reversed-chatgpt`（OpenAI Codex Desktop 26.901.31953，Chromium 152）
-> ※ 2026-09-06 起逆向源码统一以 **`/Users/acfufu/Codehub/reversed/`** 为准（zcode.cjs sha256 与复核时副本一致，本文全部行号继续有效）。
+> 证据源：`~/Codehub/ohmyzcode/reversed/reversed-zcode`（ZCode Desktop v3.11.2，build 89817f5b，Electron 41.0.3）
+> 　　　　`~/Codehub/ohmyzcode/reversed/reversed-chatgpt`（OpenAI Codex Desktop 26.901.31953，Chromium 152）
+> ※ 2026-09-06 起逆向源码统一以 **`~/Codehub/reversed/`** 为准（zcode.cjs sha256 与复核时副本一致，本文全部行号继续有效）。
 > 被复核对象：本目录 `lazyzcode-report-{full,pm,dev}.html` 与 `index.html`（事实来源为 docs/ 下两份调研底稿）
 > 方法：报告中的每条 ZCode / Codex 事实主张 → 在逆向还原源码（prettier 反压缩，字符串/控制流与发布版一致）中逐条 grep 定位。
 

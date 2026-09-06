@@ -1,6 +1,6 @@
 // 路径定位：引擎 zcode.cjs、ZCode CLI 插件根、注册表、仓库内插件载荷。
 // P0 只覆盖 macOS 布局；其他平台由 lzy status 明确报「未找到」，绝不盲猜。
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir, platform } from "node:os";
@@ -28,6 +28,21 @@ export function pluginsRoot() {
 
 export function registryPath() {
   return join(pluginsRoot(), "installed_plugins.json");
+}
+
+export function userCliConfigPath() {
+  return join(cliRoot(), "config.json");
+}
+
+// hook 脚本枚举：路径解析归本模块（doctor.js 只拿结果列表作 spawn 参数，污点不跨文件）。
+export function hookScriptPaths(rootDir) {
+  try {
+    return readdirSync(join(rootDir, "hooks"))
+      .filter((f) => f.endsWith(".js"))
+      .map((f) => join(rootDir, "hooks", f));
+  } catch {
+    return [];
+  }
 }
 
 export function engineCandidates() {

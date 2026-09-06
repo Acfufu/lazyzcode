@@ -1,6 +1,29 @@
 {
-  "description": "LazyZCode goal-loop hooks: session bootstrap and Stop continuation (budget-capped, sessionId-isolated)",
+  "description": "LazyZCode goal-loop hooks: trigger-word bootstrap, session bootstrap, Stop continuation (budget-capped, sessionId-isolated) and comment-checker advisory (goal-gated, inject-only)",
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${ZCODE_PLUGIN_ROOT}/hooks/comment-checker.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${ZCODE_PLUGIN_ROOT}/hooks/trigger.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

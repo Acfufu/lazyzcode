@@ -39,10 +39,15 @@ lzy loop register <slug> --title "<goal in one line>"
 
 slug: kebab-case. One active goal per workspace.
 
-### 2 · Plan (decision-complete gate)
+### 2 · Plan (decision-complete gate + review gate)
 
-Explore what is needed, then write the plan to `.lazyzcode/plans/<slug>.md` as a
-checklist:
+Explore what is needed — for **HEAVY** goals spawn the `lazyzcode:explorer` agent
+with 3–8 specific questions instead of sweeping alone — then write the plan to
+`.lazyzcode/plans/<slug>.md` as a checklist. In large repos, recon should lean on
+the code index when available: the user-level `codegraph` MCP (tool
+`codegraph_explore`, pass `projectPath`) or its CLI (`codegraph status/query/…`,
+already whitelisted for the explorer via Bash) — fall back to plain grep/read when
+no index exists for the target repo.
 
 ```
 - [N1] <implementation step>
@@ -59,10 +64,20 @@ Rules:
 - Every F item names its surface in the title (e.g. "F1 · CLI stdout shows
   parsed record matches fixture").
 
-Adopt and start (the gate rejects undecided plans):
+**Review gate** — the plan does not go live on your word alone:
+
+- **HEAVY (mandatory)**: spawn the `lazyzcode:plan-reviewer` agent with the goal
+  and plan path. On `VERDICT: PASS` adopt with the review record:
+  `lzy loop plan .lazyzcode/plans/<slug>.md --review "plan-reviewer: PASS — <one-line summary>"`.
+  On `VERDICT: REVISE` the CLI rejects adoption — fix the plan per the review
+  items and re-review; never bypass with `--force`.
+- **LIGHT**: run the reviewer's checklist yourself (decision-complete, F surfaces
+  named, scope tight). `--review` optional.
+
+Then start:
 
 ```
-lzy loop plan .lazyzcode/plans/<slug>.md
+lzy loop plan .lazyzcode/plans/<slug>.md [--review "plan-reviewer: PASS …"]
 lzy loop start
 ```
 
@@ -81,11 +96,21 @@ lzy step done N1 --note "<what was done, one line>"
 
 ### 4 · Evidence (F items)
 
+For each F item, either verify it yourself or — when the surface needs careful
+command-by-command capture — spawn `lazyzcode:qa-executor` with the item and the
+suggested command; it returns verbatim observed output and a MATCH verdict.
+
 `lzy step done F1 --evidence "<the observable result you actually saw>"`
 
 - **Tests alone never prove done.** Green tests are necessary, not sufficient.
 - Run the real surface: hit the endpoint, take the screenshot, run the CLI and
-  read its stdout. Record what you observed, not what you hope.
+  read its stdout. For web/HTTP surfaces prefer read-only HTTP via `curl` or the
+  Bash-driven `ego-browser` skill (`serverFetch`/`browserFetch`/`captureScreenshot`
+  helpers) — screenshots and response bodies are first-class F-item evidence.
+  The built-in browser-use skill (`control-browser`) is main-agent-only and
+  cannot be used inside subagents. Record what you observed, not what you hope.
+  Evidence from qa-executor must quote its observed output, never its
+  conclusions alone.
 - Code changed after you captured evidence? The evidence is stale — `lzy loop
   finish` will reject it. Re-verify on the current code and re-record.
 
@@ -117,6 +142,23 @@ keep working, never declare victory.
 2. Evidence is tree-hash-bound. Tests alone ≠ evidence.
 3. `.lazyzcode/` is the loop's single source of truth — if speech and state
    disagree, trust the state, then fix the speech.
+
+## Roles (plugin agents)
+
+| Agent | Use it for | Notes |
+|---|---|---|
+| `lazyzcode:explorer` | HEAVY planning recon: answer specific questions with `path:line` evidence | read-only; never edits |
+| `lazyzcode:plan-reviewer` | HEAVY plan gate before `lzy loop plan` | returns VERDICT: PASS/REVISE; read-only |
+| `lazyzcode:qa-executor` | F-item evidence capture on the real surface | returns verbatim output + MATCH verdict |
+
+All three are read-only discipline roles. The main agent (you) stays the sole
+writer: agents report, you decide and record via `lzy`.
+
+## Trigger
+
+The plugin's UserPromptSubmit hook injects this skill's bootstrap when your
+message contains `zw`, `ulw`, or `ultrawork`. The skill can also be invoked
+explicitly (`/zw` or the Skill tool). Aliases are equal — `zw` is the primary.
 
 ## CLI cheat sheet
 

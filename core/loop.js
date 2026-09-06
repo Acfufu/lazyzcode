@@ -98,8 +98,14 @@ function parsePlanItems(body) {
   return items;
 }
 
-export function adoptPlan(cwd, planFile, { force = false } = {}) {
+export function adoptPlan(cwd, planFile, { force = false, review = null } = {}) {
   const goal = requireActive(cwd, "planning");
+  // 评审门（宪法 §4 #15）：评审判决 REVISE = 拒绝采纳，--force 不越过（修计划重审才是正道）。
+  if (review && /\bREVISE\b/i.test(review)) {
+    throw new LoopError(
+      `计划评审未过门（plan-reviewer 判决 REVISE）。按评审意见修计划、重跑评审后再采纳；评审记录：${review.slice(0, 200)}`,
+    );
+  }
   let body;
   try {
     body = readFileSync(planFile, "utf8");
@@ -124,6 +130,9 @@ export function adoptPlan(cwd, planFile, { force = false } = {}) {
     throw new LoopError("计划里没有清单项（语法：- [N1] … / - [F1] …，F 项需真实表面证据）");
   }
   goal.planPath = relative(cwd, planFile) || planFile;
+  goal.review = review
+    ? { by: "plan-reviewer", verdict: /\bPASS\b/i.test(review) ? "PASS" : "UNVERIFIED", summary: review.slice(0, 500), at: new Date().toISOString() }
+    : null;
   goal.steps = items.map((it) => ({
     id: it.id,
     kind: it.kind,

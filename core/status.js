@@ -1,10 +1,17 @@
-// lzy status：全只读检查。启用态以引擎官方 `plugins list --json` 为准（ADR-0001），
-// 不读、更不写用户 config.json。
+// lzy status：全只读检查。启用态以引擎官方 `plugins list --json` 为准（ADR-0001）；
+// 对用户 config.json 永不写入——只读诊断段（codegraph 探测）允许读它。
+// 诊断探测 spawn 沿 git.js 安全形态：可执行为字面量常量、argv 字面量、shell:false。
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createEngineCli, findInstalledPlugin } from "./engine.js";
 import { readGoal } from "./loop.js";
-import { findEngine, installPathFor, pluginId } from "./paths.js";
+import {
+  findEngine,
+  installPathFor,
+  pluginId,
+  userCliConfigPath,
+} from "./paths.js";
 import { findRegistryEntry, readRepoManifest } from "./installer.js";
 
 // 返回 {checks: [{name, state, detail}], ok}
@@ -91,6 +98,32 @@ export async function collectStatus() {
       goal.status === "done" ? "ok" : "warn",
       `${goal.slug} · ${goal.status} · ${done}/${goal.steps.length} 步`,
     );
+  }
+
+  // 可选资产：codegraph 代码索引。缺席=skip（不翻转退出码），可用性分 MCP 配置与 CLI 两路。
+  const cfgPath = userCliConfigPath();
+  let mcpConfigured = false;
+  try {
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    mcpConfigured = Boolean(cfg?.mcp?.servers?.codegraph);
+  } catch {
+    mcpConfigured = false; // config 缺失/不可读不属故障，按未配置处理
+  }
+  const cliProbe = spawnSync("codegraph", ["--version"], {
+    shell: false,
+    timeout: 10_000,
+    encoding: "utf8",
+  });
+  const cliOk = !cliProbe.error && cliProbe.status === 0;
+  const cliVersion = String(cliProbe.stdout ?? "").trim();
+  if (mcpConfigured && cliOk) {
+    push("codegraph", "ok", `MCP 已配置（${cfgPath}）+ CLI 可用${cliVersion ? `（${cliVersion}）` : ""}`);
+  } else if (mcpConfigured) {
+    push("codegraph", "ok", `MCP 已配置（${cfgPath}）；CLI 不在 PATH（MCP 工具仍可用）`);
+  } else if (cliOk) {
+    push("codegraph", "ok", `CLI 可用${cliVersion ? `（${cliVersion}）` : ""}；用户级 MCP 未配置`);
+  } else {
+    push("codegraph", "skip", "codegraph 未配置（可选资产，跳过）");
   }
 
   const criticalFail = checks.some((c) => c.state === "fail");

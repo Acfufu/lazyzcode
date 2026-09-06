@@ -1,4 +1,5 @@
-// 引擎调用层：lzy → ZCode 引擎官方 CLI 的唯一通道（core/ 唯一含 spawn 的文件）。
+// 引擎调用层：lzy → ZCode 引擎官方 CLI 的唯一通道（引擎调用唯一 spawn 在本文件；
+// status.js 的诊断探测 spawn 沿 git.js 同款安全形态，不属引擎调用）。
 // 引擎路径解析在 paths.js（findEngine），本模块只执行：可执行文件恒为当前 node
 // （process.execPath，受信常量），每个调用点的子命令数组字面量写死 + shell:false，
 // 不存在任何命令拼接形态。对用户 config.json 零写入（ADR-0001）。

@@ -26,6 +26,10 @@ import { findEngine, repoPluginDir } from "../core/paths.js";
 const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 
 // `--key value` / `--key=value` / 裸旗标 → { _: 位置参数, f: 旗标表 }
+// 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
+// `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）。
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence"]);
+
 function parseArgs(args) {
   const _ = [];
   const f = {};
@@ -34,8 +38,13 @@ function parseArgs(args) {
     if (a.startsWith("--")) {
       const eq = a.indexOf("=");
       if (eq > 0) {
-        f[a.slice(2, eq)] = a.slice(eq + 1);
-      } else if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        const v = a.slice(eq + 1);
+        f[a.slice(2, eq)] = v === "true" ? true : v === "false" ? false : v;
+      } else if (
+        VALUE_FLAGS.has(a.slice(2)) &&
+        i + 1 < args.length &&
+        !args[i + 1].startsWith("--")
+      ) {
         f[a.slice(2)] = args[++i];
       } else {
         f[a.slice(2)] = true;
@@ -86,7 +95,12 @@ async function cmdSyncOnce() {
 }
 
 async function cmdSync(args) {
-  if (args.includes("--watch")) {
+  const watchArg = args.find((a) => a === "--watch" || a.startsWith("--watch="));
+  if (watchArg && watchArg !== "--watch") {
+    // 不再静默退化（评审 R3-13a）：显式告知按一次性执行。
+    console.error(`[lzy] ⚠ ${watchArg} 形式不支持（--watch 不接值）；本次按一次性 sync 执行`);
+  }
+  if (watchArg) {
     await cmdSyncOnce();
     console.log(`[lzy] watching ${repoPluginDir()} (--watch，Ctrl-C 退出)`);
     let timer = null;
@@ -104,7 +118,11 @@ async function cmdSync(args) {
 async function cmdUninstall() {
   const r = await uninstall();
   console.log("lzy uninstall");
-  console.log(`  ✔ ${r.id} 已卸载`);
+  console.log(
+    r.installed
+      ? `  ✔ ${r.id} 已卸载`
+      : `  ➖ 未发现 ${r.id} 的安装物（注册表与缓存均无记录，无改动）`,
+  );
   for (const s of r.steps) console.log(`  · ${s}`);
 }
 
@@ -148,6 +166,7 @@ async function cmdLoop(args) {
       for (const [label, list] of [["新鲜", fresh], ["过期", stale], ["未绑定", unbound]]) {
         console.log(`  ${label} ${list.length}${list.length ? `：${list.map((s) => s.id).join(" ")}` : ""}`);
       }
+      process.exitCode = stale.length + unbound.length > 0 ? 1 : 0;
       return;
     }
     case "finish": {
@@ -212,7 +231,7 @@ function printHelp() {
 安装管理：
   lzy install      安装并启用插件（落位引擎缓存 + 注册表 + 官方 plugins enable）
   lzy sync         重新部署仓库 plugin/ 载荷（热重载；新会话生效）；--watch 持续监听
-  lzy status       检查引擎/安装/启用/装载/目标循环状态（只读，退出码 0=健康）
+  lzy status       检查引擎/安装/启用/装载/目标循环状态（只读；退出码 0=无 fail 级检查，warn/skip 不影响）
   lzy doctor       深度本地诊断：status 全套 + hook 语法自检/node 下限/lzy 解析/状态卫生
   lzy uninstall    卸载插件（优先官方 plugins uninstall）
 
@@ -222,12 +241,13 @@ function printHelp() {
   lzy loop start                            开跑（planning → executing，记基线 tree hash）
   lzy loop status                           查看进度与下一步
   lzy step done <ID> [--note …] [--evidence …]  收口一步（F 项必须带真实表面证据）
-  lzy loop verify                           证据时效核对（tree hash 绑定）
+  lzy loop verify                           证据时效核对（退出码 0=全部新鲜，1=有过期/未绑定）
   lzy loop finish                           终验完成（全部 done + F 证据新鲜才放行）
   lzy loop abandon / reset                  放弃 / 清除状态
 
 环境：
-  LZY_ZCODE_ENGINE  显式指定引擎 zcode.cjs 路径（默认找 /Applications/ZCode.app/...）
+  LZY_ZCODE_ENGINE  显式指定引擎 zcode.cjs 路径；设置后替换默认候选（默认找 /Applications/ZCode.app/...，
+                    也因此可指向不存在路径来测试「引擎缺失→手动启用」回退）
 
 设计红线：lzy 对用户 config.json 零写入；启用一律经引擎官方命令（docs/adr/0001）。
 证据纪律：F 项证据绑定 tree hash，代码一变旧证据作废；测试全绿≠证据。`);

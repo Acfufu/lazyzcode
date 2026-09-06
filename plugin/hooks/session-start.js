@@ -11,6 +11,7 @@ import {
 
 try {
   const input = readStdinJson();
+  if (!input) failOpen(); // 无/坏 stdin：静默（评审 R1-2，对齐 stop.js）
   const cwd = inputCwd(input);
   const goal = readGoal(cwd);
 

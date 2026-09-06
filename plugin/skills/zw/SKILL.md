@@ -37,7 +37,9 @@ Then run the tier triage below and follow the workflow. No preamble before it.
 lzy loop register <slug> --title "<goal in one line>"
 ```
 
-slug: kebab-case. One active goal per workspace.
+slug: kebab-case. One active goal per workspace. A finished (`done`) or abandoned goal
+still occupies the slot — run `lzy loop reset` first to clear it (reset removes loop
+state; your evidence lives in commits and the plan file, not in the reset state).
 
 ### 2 · Plan (decision-complete gate + review gate)
 
@@ -169,6 +171,6 @@ explicitly (`/zw` or the Skill tool). Aliases are equal — `zw` is the primary.
 | `lzy loop start` | planning → executing, records base tree hash |
 | `lzy loop status` | progress, next step, evidence freshness |
 | `lzy step done <ID> [--note] [--evidence]` | complete a step (F requires evidence) |
-| `lzy loop verify` | evidence freshness report |
+| `lzy loop verify` | evidence freshness report (exit 1 when stale/unbound evidence **or no goal exists**) |
 | `lzy loop finish` | final gate: all done + fresh evidence |
 | `lzy loop abandon` / `lzy loop reset` | give up / clear state |

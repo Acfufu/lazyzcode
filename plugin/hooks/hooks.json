@@ -1,5 +1,5 @@
 {
-  "description": "LazyZCode goal-loop hooks: trigger-word bootstrap, session bootstrap, Stop continuation (budget-capped, sessionId-isolated) and comment-checker advisory (goal-gated, inject-only)",
+  "description": "LazyZCode goal-loop hooks: trigger-word bootstrap, session bootstrap, Stop continuation (budget-capped, sessionId-isolated) and comment-checker advisory (goal-gated, inject-only). All commands run via run-hook.sh so node resolves even when the engine spawns hooks with a PATH that has no node.",
   "hooks": {
     "PostToolUse": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${ZCODE_PLUGIN_ROOT}/hooks/comment-checker.js\"",
+            "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" comment-checker.js",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${ZCODE_PLUGIN_ROOT}/hooks/trigger.js\"",
+            "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" trigger.js",
             "timeout": 10
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${ZCODE_PLUGIN_ROOT}/hooks/session-start.js\"",
+            "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" session-start.js",
             "timeout": 10
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${ZCODE_PLUGIN_ROOT}/hooks/stop.js\"",
+            "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" stop.js",
             "timeout": 10
           }
         ]

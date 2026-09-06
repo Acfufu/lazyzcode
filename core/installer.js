@@ -9,7 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { createEngineCli } from "./engine.js";
 import {
   MARKETPLACE,
@@ -30,15 +30,18 @@ function sha256File(p) {
 }
 
 function readRegistry() {
+  let raw;
   try {
-    const reg = JSON.parse(readFileSync(registryPath(), "utf8"));
-    return {
-      version: reg.version ?? 1,
-      plugins: Array.isArray(reg.plugins) ? reg.plugins : [],
-    };
-  } catch {
-    return { version: 1, plugins: [] };
+    raw = readFileSync(registryPath(), "utf8");
+  } catch (err) {
+    if (err?.code === "ENOENT") return { version: 1, plugins: [] };
+    throw err; // 损坏/无权限：必须上抛。空表回写会抹掉注册表里其他插件的条目（评审 R3-1）。
   }
+  const reg = JSON.parse(raw);
+  return {
+    version: reg.version ?? 1,
+    plugins: Array.isArray(reg.plugins) ? reg.plugins : [],
+  };
 }
 
 function writeRegistryAtomic(reg) {
@@ -76,9 +79,21 @@ function registryEntry(manifest, installPath) {
   };
 }
 
+// 除 updatedAt 外逐字段等值（评审 R3-7：语义幂等升格为字节幂等，重复 install 不再漂移注册表）。
+function entryEquals(a, b) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if (k === "updatedAt") continue;
+    if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) return false;
+  }
+  return true;
+}
+
 export function upsertRegistryEntry(manifest, installPath) {
   const reg = readRegistry();
   const entry = registryEntry(manifest, installPath);
+  const prev = reg.plugins.find((p) => p.id === entry.id);
+  if (prev && entryEquals(prev, entry)) return prev; // 全等即跳过重写：注册表字节不漂移
   reg.plugins = [...reg.plugins.filter((p) => p.id !== entry.id), entry];
   writeRegistryAtomic(reg);
   return entry;
@@ -97,12 +112,31 @@ export function removeFromRegistry(id) {
   return reg.plugins.length < before;
 }
 
+// 守卫运行态（.mimosa/）与系统杂物（.DS_Store）不得进缓存；.zcode-plugin 是清单目录必须保留。
+function isDotResidue(rel) {
+  return rel
+    .split(/[\\/]/)
+    .some((seg) => seg.startsWith(".") && seg !== ".zcode-plugin");
+}
+
 // 把仓库 plugin/ 载荷整目录部署到引擎缓存（也是 lzy sync 的热重载原语）。
+// 先落同父 tmp 再整体换装：并发会话不会看到 rm→cp 空窗里的半份载荷（评审 R3-3）。
 export function deployFiles(manifest) {
   const dest = installPathFor(manifest);
-  rmSync(dest, { recursive: true, force: true });
-  mkdirSync(dirname(dest), { recursive: true });
-  cpSync(repoPluginDir(), dest, { recursive: true });
+  const parent = dirname(dest);
+  mkdirSync(parent, { recursive: true });
+  const tmp = join(parent, `.${basename(dest)}.${process.pid}.${Date.now()}.tmp`);
+  try {
+    cpSync(repoPluginDir(), tmp, {
+      recursive: true,
+      filter: (src) => !isDotResidue(relative(repoPluginDir(), src)),
+    });
+    rmSync(dest, { recursive: true, force: true });
+    renameSync(tmp, dest);
+  } catch (err) {
+    rmSync(tmp, { recursive: true, force: true });
+    throw err;
+  }
   return dest;
 }
 
@@ -153,17 +187,21 @@ export async function uninstall() {
     steps.push(`官方卸载未成功：${result.error ?? result.stderr ?? ""}`);
   }
 
-  const stillRegistered = findRegistryEntry(manifest) !== null;
-  if (stillRegistered) {
+  // 先读记录再删账：缓存路径用注册表里的 installPath——manifest 版本可能已变，
+  // 按 manifest 推导会删错版本、留下孤儿（评审 R3-5）。注册表损坏时 readRegistry 上抛=拒绝在账目不明时动文件。
+  const entry = findRegistryEntry(manifest);
+  if (entry) {
     removeFromRegistry(id);
-    steps.push("已从注册表移除（回退路径）");
+    steps.push("已从注册表移除");
   }
   if (!engineRemoved) {
     steps.push(
       `可选清理：官方命令可一并移除 config 中的启用残留\n  zcode plugins uninstall ${id} --force`,
     );
   }
-  rmSync(installPathFor(manifest), { recursive: true, force: true });
+  rmSync(entry?.installPath ?? installPathFor(manifest), { recursive: true, force: true });
 
-  return { id, engineRemoved, fallbackUsed: stillRegistered || !engineRemoved, steps };
+  // installed=是否真有安装物被动过：cli 头行按事实给 ✔/➖，不再无中生有打绿勾（评审 R3-8）。
+  const installed = Boolean(entry) || engineRemoved;
+  return { id, engineRemoved, installed, fallbackUsed: entry !== null || !engineRemoved, steps };
 }

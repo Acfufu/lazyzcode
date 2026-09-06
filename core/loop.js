@@ -2,11 +2,15 @@
 // 证据验证（F 项绑定 tree hash，代码一变旧证据作废）→ 完成。
 // 状态落工作区 .lazyzcode/loop/goal.json（与宿主 .zcode/ 划清边界，宪法 §4 决策 #6）。
 // 本模块零 spawn（tree hash 经 core/git.js 取），全部同步语义。
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 
 export const GOAL_VERSION = 1;
 const ACTIVE_STATES = new Set(["planning", "executing"]);
+
+// --note / --evidence 入账上限（评审 R2-9）
+export const NOTE_MAX = 300;
+export const EVIDENCE_MAX = 4000;
 
 export class LoopError extends Error {}
 
@@ -19,11 +23,20 @@ export function goalPath(cwd) {
 }
 
 export function readGoal(cwd) {
+  let goal;
   try {
-    return JSON.parse(readFileSync(goalPath(cwd), "utf8"));
+    goal = JSON.parse(readFileSync(goalPath(cwd), "utf8"));
   } catch {
     return null;
   }
+  // 版本快败：schema 不符的状态文件会在远离成因处被误读（评审 R2-10）。
+  if (goal && typeof goal === "object" && goal.version !== GOAL_VERSION) {
+    throw new LoopError(
+      `goal 状态文件版本不兼容（盘上 v${goal.version}，本 lzy 期望 v${GOAL_VERSION}）；` +
+        `lzy loop reset 清除后重新注册`,
+    );
+  }
+  return goal;
 }
 
 function writeGoal(cwd, goal) {
@@ -34,10 +47,59 @@ function writeGoal(cwd, goal) {
   renameSync(tmp, p);
 }
 
+// ── 跨进程互斥：goal.json 的 read-modify-write 必须串行，后写覆盖会丢步骤（评审 R2-5）──
+const LOCK_STALE_MS = 10_000; // 持锁者死亡（进程被杀）后锁可抢
+const LOCK_WAIT_MS = 5_000;
+
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function withLock(cwd, fn) {
+  const lock = join(loopDir(cwd), ".lock");
+  mkdirSync(loopDir(cwd), { recursive: true });
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      mkdirSync(lock); // mkdir 原子性：同刻只有一个进程能建成
+      break;
+    } catch (err) {
+      if (err?.code !== "EEXIST") throw err;
+      let ageMs = 0;
+      try {
+        ageMs = Date.now() - statSync(join(lock, "owner.json")).mtimeMs;
+      } catch {
+        ageMs = 0; // owner 还没写完 = 刚加的锁，继续等
+      }
+      if (ageMs > LOCK_STALE_MS) {
+        rmSync(lock, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() > deadline) {
+        throw new LoopError(
+          "目标循环被另一进程持锁（等待超时）。确认没有并发 lzy 后可删除 .lazyzcode/loop/.lock",
+        );
+      }
+      sleepMs(50);
+    }
+  }
+  try {
+    writeFileSync(
+      join(lock, "owner.json"),
+      `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`,
+      { mode: 0o600 },
+    );
+    return fn();
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+}
+
 function requireActive(cwd, ...states) {
   const goal = readGoal(cwd);
   if (!goal) throw new LoopError("本目录没有目标（先 lzy loop register）");
-  if (states && !states.includes(goal.status)) {
+  // 空 states = 不限状态（abandon/reset 路径）；空数组是真值，必须按长度判。
+  if (states.length > 0 && !states.includes(goal.status)) {
     throw new LoopError(
       `目标 ${goal.slug} 当前状态 ${goal.status}，此操作要求 ${states.join("/")}`,
     );
@@ -98,10 +160,24 @@ function parsePlanItems(body) {
   return items;
 }
 
-export function adoptPlan(cwd, planFile, { force = false, review = null } = {}) {
+// 评审判决解析：优先认 VERDICT: 记号（plan-reviewer 契约）——命中即采信，忽略评审正文里的普通用词
+// （如 PASS 附言写着 revise 某行，不再误拒，评审 R2-3）；无记号回退关键词扫描保持兼容。
+function parseVerdict(review) {
+  const m = review.match(/\bVERDICT:\s*(PASS|REVISE)\b/i);
+  if (m) return m[1].toUpperCase();
+  if (/\bREVISE\b/i.test(review)) return "REVISE";
+  if (/\bPASS\b/i.test(review)) return "PASS";
+  return "UNVERIFIED";
+}
+
+export function adoptPlan(cwd, planFile, opts = {}) {
+  return withLock(cwd, () => doAdoptPlan(cwd, planFile, opts));
+}
+
+function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
   const goal = requireActive(cwd, "planning");
-  // 评审门（宪法 §4 #15）：评审判决 REVISE = 拒绝采纳，--force 不越过（修计划重审才是正道）。
-  if (review && /\bREVISE\b/i.test(review)) {
+  // 评审门（宪法 §4 #15）：判决 REVISE = 拒绝采纳，--force 不越过（修计划重审才是正道）。
+  if (review && parseVerdict(review) === "REVISE") {
     throw new LoopError(
       `计划评审未过门（plan-reviewer 判决 REVISE）。按评审意见修计划、重跑评审后再采纳；评审记录：${review.slice(0, 200)}`,
     );
@@ -113,15 +189,18 @@ export function adoptPlan(cwd, planFile, { force = false, review = null } = {}) 
     throw new LoopError(`计划文件不可读：${planFile}`);
   }
   if (!force) {
-    const undecided = body
-      .split(/\r?\n/)
-      .filter((l) => UNDECIDED_RE.test(l))
-      .map((l) => l.trim());
-    if (undecided.length > 0) {
+    // 逐行报行号+摘录，并给行级豁免 <!--lzy:allow-->：正文提及（如「尚无定论」）不再逼人全有全无地 --force（评审 R2-7）。
+    const hits = [];
+    for (const [i, line] of body.split(/\r?\n/).entries()) {
+      if (line.includes("<!--lzy:allow-->")) continue;
+      if (UNDECIDED_RE.test(line)) hits.push(`L${i + 1}: ${line.trim().slice(0, 80)}`);
+    }
+    if (hits.length > 0) {
       throw new LoopError(
-        `计划未决策完备（含 TBD/待定 标记 ${undecided.length} 处）。先消除待定项再开跑；确要带病开工用 --force。\n  ${undecided
-          .slice(0, 3)
-          .join("\n  ")}`,
+        `计划未决策完备（含未决标记 ${hits.length} 处）。消除标记后重跑；确要带病开工用 --force；` +
+          `若某行只是正文提及而非未决事项，行尾加 <!--lzy:allow--> 豁免。\n  ${hits
+            .slice(0, 5)
+            .join("\n  ")}`,
       );
     }
   }
@@ -130,8 +209,9 @@ export function adoptPlan(cwd, planFile, { force = false, review = null } = {}) 
     throw new LoopError("计划里没有清单项（语法：- [N1] … / - [F1] …，F 项需真实表面证据）");
   }
   goal.planPath = relative(cwd, planFile) || planFile;
+  const verdict = review ? parseVerdict(review) : null;
   goal.review = review
-    ? { by: "plan-reviewer", verdict: /\bPASS\b/i.test(review) ? "PASS" : "UNVERIFIED", summary: review.slice(0, 500), at: new Date().toISOString() }
+    ? { by: "plan-reviewer", verdict: verdict === "PASS" ? "PASS" : "UNVERIFIED", summary: review.slice(0, 500), at: new Date().toISOString() }
     : null;
   goal.steps = items.map((it) => ({
     id: it.id,
@@ -148,6 +228,10 @@ export function adoptPlan(cwd, planFile, { force = false, review = null } = {}) 
 
 // ── 3. 开跑：planning → executing，记录基线 tree hash ──────────────────────
 export function startLoop(cwd, git) {
+  return withLock(cwd, () => doStartLoop(cwd, git));
+}
+
+function doStartLoop(cwd, git) {
   const goal = requireActive(cwd, "planning");
   if (goal.steps.length === 0) {
     throw new LoopError("计划门未过：先 lzy loop plan <文件> 采纳清单");
@@ -160,7 +244,11 @@ export function startLoop(cwd, git) {
 }
 
 // ── 4. 逐步完成：F 项强制证据 + 绑定当时 tree hash；已完成步骤可重跑以重新取证 ──
-export function completeStep(cwd, git, id, { note = null, evidence = null } = {}) {
+export function completeStep(cwd, git, id, opts = {}) {
+  return withLock(cwd, () => doCompleteStep(cwd, git, id, opts));
+}
+
+function doCompleteStep(cwd, git, id, { note = null, evidence = null } = {}) {
   const goal = requireActive(cwd, "executing");
   const step = goal.steps.find((s) => s.id === id);
   if (!step) {
@@ -169,18 +257,31 @@ export function completeStep(cwd, git, id, { note = null, evidence = null } = {}
     );
   }
   const rebinding = step.status === "done";
-  if (step.kind === "F" && !evidence?.trim()) {
-    throw new LoopError(
-      `终验项 ${id} 必须带 --evidence（真实表面取证：HTTP 返回/截图/CLI stdout；测试全绿≠证据）`,
-    );
-  }
+  // 长度上限：状态文件要常驻且每次 status/verify 重解析，巨串入账会让全流程变慢（评审 R2-9；
+  // 上限对齐项目自身纪律——note 同 comment-checker 的 300，evidence 容忍一段 stdout 摘录）。
   const trimmedNote = note?.trim() || null;
+  if (trimmedNote && trimmedNote.length > NOTE_MAX) {
+    throw new LoopError(`--note 超上限 ${NOTE_MAX} 字符（当前 ${trimmedNote.length}）；请凝成一两句`);
+  }
+  const trimmedEvidence = evidence?.trim() ?? null;
+  if (step.kind === "F") {
+    if (!trimmedEvidence) {
+      throw new LoopError(
+        `终验项 ${id} 必须带 --evidence（真实表面取证：HTTP 返回/截图/CLI stdout；测试全绿≠证据）`,
+      );
+    }
+    if (trimmedEvidence.length > EVIDENCE_MAX) {
+      throw new LoopError(
+        `--evidence 超上限 ${EVIDENCE_MAX} 字符（当前 ${trimmedEvidence.length}）；请只摘录关键输出`,
+      );
+    }
+  }
   step.status = "done";
   step.doneAt = new Date().toISOString();
   step.note = trimmedNote ?? (rebinding ? step.note : null);
   step.evidence =
     step.kind === "F"
-      ? { text: evidence.trim(), treeHash: git ? git.treeHash() : null, at: step.doneAt }
+      ? { text: trimmedEvidence, treeHash: git ? git.treeHash() : null, at: step.doneAt }
       : null;
   writeGoal(cwd, goal);
   return { goal, step, rebinding, dirty: git ? git.dirty() : false };
@@ -205,6 +306,10 @@ export function verifyEvidence(cwd, git) {
 
 // ── 6. 完成：全部步骤 done + F 项证据全部新鲜 ──────────────────────────────
 export function finishLoop(cwd, git) {
+  return withLock(cwd, () => doFinishLoop(cwd, git));
+}
+
+function doFinishLoop(cwd, git) {
   const goal = requireActive(cwd, "executing");
   const pending = goal.steps.filter((s) => s.status !== "done");
   if (pending.length > 0) {
@@ -213,11 +318,19 @@ export function finishLoop(cwd, git) {
     );
   }
   const { current, stale, unbound } = verifyEvidence(cwd, git);
-  const bad = [...stale, ...unbound];
-  if (bad.length > 0) {
+  // 过期（代码后变，重取证即可）与未绑定（git 缺失，重取证也无济于事）必须分诊，药方不同（评审 R2-4）。
+  if (stale.length > 0) {
     throw new LoopError(
-      `证据已过期（代码在取证后变更，tree hash 对不上）：${bad.map((s) => s.id).join(" ")}。` +
+      `证据已过期（代码在取证后变更，tree hash 对不上）：${stale.map((s) => s.id).join(" ")}。` +
         `在当前代码上重新取证后重跑 lzy step done <id> --evidence …（current=${current ?? "未知"}）`,
+    );
+  }
+  if (unbound.length > 0) {
+    throw new LoopError(
+      `证据未绑定 tree hash：${unbound.map((s) => s.id).join(" ")}。` +
+        (current
+          ? "证据缺少 tree hash，重新取证即可绑定。"
+          : "本目录不是 git 仓库或还没有任何提交——先 git init 并提交，再重新取证。"),
     );
   }
   goal.status = "done";
@@ -227,6 +340,10 @@ export function finishLoop(cwd, git) {
 }
 
 export function abandonLoop(cwd) {
+  return withLock(cwd, () => doAbandonLoop(cwd));
+}
+
+function doAbandonLoop(cwd) {
   const goal = requireActive(cwd);
   goal.status = "abandoned";
   goal.finishedAt = new Date().toISOString();
@@ -235,8 +352,40 @@ export function abandonLoop(cwd) {
 }
 
 export function resetLoop(cwd) {
+  return withLock(cwd, () => doResetLoop(cwd));
+}
+
+// 孤儿/残留清理（评审 R2-11）：kill -9 落在 tmp 写入与 rename 之间会留孤儿 .tmp；
+// 会话计数器在 goal 清除后也成悬空状态。doctor 的状态卫生与 reset 指引共用此语义。
+function cleanupLoopResidue(cwd) {
+  const dir = loopDir(cwd);
+  const goalName = basename(goalPath(cwd));
+  let cleaned = 0;
+  try {
+    for (const f of readdirSync(dir)) {
+      if (f.startsWith(`.${goalName}.`) && f.endsWith(".tmp")) {
+        rmSync(join(dir, f), { force: true });
+        cleaned++;
+      }
+    }
+  } catch {}
+  try {
+    for (const f of readdirSync(join(dir, "sessions"))) {
+      rmSync(join(dir, "sessions", f), { recursive: true, force: true });
+      cleaned++;
+    }
+  } catch {}
+  return cleaned;
+}
+
+function doResetLoop(cwd) {
   const goal = readGoal(cwd);
-  if (!goal) throw new LoopError("本目录没有目标，无需 reset");
+  const cleaned = cleanupLoopResidue(cwd);
+  if (!goal) {
+    rmSync(goalPath(cwd), { force: true });
+    if (cleaned === 0) throw new LoopError("本目录没有目标，无需 reset");
+    return { slug: "（仅残留状态，已清理）" };
+  }
   rmSync(goalPath(cwd), { force: true });
   return goal;
 }

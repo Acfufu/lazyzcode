@@ -19,26 +19,31 @@ const MAX_DETAIL = 300;
 function findHits(re, text, label) {
   const hits = [];
   for (const m of text.matchAll(re)) {
+    // 行号按 new_string/content 片段内计算：标注「片段L…」如实呈现，不冒充文件行号（评审 R4-2）。
     const line = text.slice(0, m.index).split("\n").length;
-    hits.push(`${label}:L${line} ${m[0]}`);
+    hits.push(`${label}:片段L${line} ${m[0]}`);
   }
   return hits;
 }
 
-function summarize(hits) {
+function composeMessage(hits) {
   const listed = hits.slice(0, MAX_LISTED);
   let detail = listed.join("；");
   const overflow = hits.length - listed.length;
   if (overflow > 0) detail += `；…及 ${overflow} 处更多`;
-  if (detail.length > MAX_DETAIL) detail = `${detail.slice(0, MAX_DETAIL)}…`;
-  return detail;
+  return (
+    `[lzy] comment-checker：本次写入内容含 ${hits.length} 处待留意注释 → ${detail}。` +
+    `若有意保留请忽略；若属临时调试/半成品标记，建议在收口前清理（只提示，不阻断）。`
+  );
 }
 
 try {
   const input = readStdinJson();
+  if (!input) failOpen(); // 无/坏 stdin：静默（评审 R1-2）
   const cwd = inputCwd(input);
   const goal = readGoal(cwd);
-  if (!goal) failOpen();
+  // 只陪在跑的目标：done/abandoned 的 goal.json 还在盘上，不得永远提示（评审 R4-1）；缺 status 视为在跑（兼容手工构造的状态）。
+  if (!goal || (goal.status && goal.status !== "executing")) failOpen();
 
   const toolName = typeof input?.tool_name === "string" ? input.tool_name : "";
   const toolInput = input?.tool_input ?? {};
@@ -53,11 +58,10 @@ try {
   const hits = [...findHits(MARKER_RE, text, "标记"), ...findHits(DEBUG_RE, text, "调试")];
   if (hits.length === 0) failOpen();
 
-  emit({
-    additionalContext:
-      `[lzy] comment-checker：本次写入内容含 ${hits.length} 处待留意注释 → ${summarize(hits)}。` +
-      `若有意保留请忽略；若属临时调试/半成品标记，建议在收口前清理（只提示，不阻断）。`,
-  });
+  // ≤300 守卫施加在最终整串上（评审 R4-3：原先只截内层 detail，守卫形同虚设）。
+  let message = composeMessage(hits);
+  if (message.length > MAX_DETAIL) message = `${message.slice(0, MAX_DETAIL)}…`;
+  emit({ additionalContext: message });
   process.exit(0);
 } catch {
   failOpen();

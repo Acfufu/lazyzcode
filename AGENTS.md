@@ -18,12 +18,23 @@
 - **P2 角色与纪律已落地（2026-09-06）**：三只读子代理角色 `plugin/agents/`（explorer 侦察 / plan-reviewer 计划评审 / qa-executor 证据执行，英文 prompt + 固定输出契约，引擎对 agents/ 目录自动发现无需 manifest 声明）+ 计划评审门（`lzy loop plan --review` 记录评审，**REVISE 判决拒绝采纳且 --force 不越过**；HEAVY 强制过门、LIGHT 自查）+ UserPromptSubmit 触发词钩子（zw/ulw/ultrawork 注入 zw 引导，词边界匹配防误触）。实证：触发词矩阵/评审门三态/引擎注册 hooks:3 全绿。
 - **MVP 活体验收通过（2026-09-06）**：五项检查全 ✅——检查 1 活体（真实会话 `zw 继续` 首行 `**ZW** engaged`）、检查 4 活体（Stop 拉回 1/2→2/2 后止，用户明令优先）、检查 2/3/5 CLI 实证（评审门 PASS+--review、F 项无证据拒绝、改码后「过期 1 finish 会被拦」）；记录在探针仓 `ACCEPTANCE-RECORD.md`（探针可删）。**Mimosa deep 复扫 0 findings（seal sha256:81151e73…，依赖面 partial 如实记账）**。
 - **P3 资产整合已落地（2026-09-06）**：comment-checker PostToolUse 轻钩子（goal.json 在场闸门、命中 TODO/FIXME/XXX/HACK 与调试残留经 additionalContext 轻提示不阻断、上限 5 处 ≤300 字符、fail-open；PostToolUse 输出契约逆向实锤 zcode.cjs:36794-36796）+ codegraph 接线（zw SKILL.md/explorer.md 补索引侦察指引；status.js 增 codegraph 诊断，**缺席=skip 不翻转退出码**；paths.js 增 userCliConfigPath 只读解析）+ browser-use 取证面文本（SKILL.md/qa-executor 补 ego-browser/curl 手法，control-browser 仅主代理）。实证：模拟 stdin 三场景 + status 检查行 + 引擎注册 hooks:4。
-- **P4 发布就绪已落地（2026-09-06）**：`lzy doctor`（status 全套 + hook 语法自检[node --check
-  走 stdin + vm worker]/node 下限/lzy 解析/状态卫生/平台立场，零遥测）+ 发布材料（LICENSE、
+- **P4 发布就绪已落地（2026-09-06）**：`lzy doctor`（status 全套 + hook 语法自检
+  [vm 解析 worker，含 hooks.json 注册校验]/node 下限/lzy 解析/状态卫生/平台立场，零遥测）+ 发布材料（LICENSE、
   package.json 去 private + files 排除 .mimosa、CHANGELOG、npm scripts 补全 doctor/loop/step）+
   README 用户 10 分钟快速开始 + docs 脱敏（机器路径泛化）。`npm publish --dry-run` 实证 24
   文件零敏感物。**真 npm publish 与 GitHub 市场发布待用户动作**（npm 账号/公开仓库）。
-- 下一步：真发布（用户 npm publish / GitHub 市场另立项）；运行期反馈迭代。
+- **五轮双审核 + 修复轮已落地（2026-09-06/07）**：报告 `docs/reviews/`（41 发现：0 P0/2 P1/15 P2/24 P3，
+  红线全部活体证实）；修复轮收口全部 P1+P2（abandon 修复、注册表防损坏、原子部署、跨进程锁、
+  fail-open 语义、VERDICT 记号解析、计划门行号+行级豁免、hooks.json 自检等），新增契约测试三件套 +
+  GitHub Actions（`npm test` 13 用例零依赖）与发布备料（repository 元数据 + `docs/release-checklist.md`）。
+  剩余 24 条 P3 按「顺带修」记账（评审报告处置记录）。
+- **P3 清账 + 钩子环境加固已落地（2026-09-07，goal p3-sweep-hook-env）**：评审剩余 17 条 P3 全修
+  （R2-12 维持不修）；新发现并活体实锤「引擎以自身 env 直接 spawn 钩子，GUI 直启场景 PATH 无
+  node → 裸 `node` 钩子静默全灭」（引擎 env 随 ZCode.app 启动方式而变；诊断记录
+  `docs/diagnostics/2026-09-07-hook-spawn-env.md`）→ 四钩子改走 `run-hook.sh` 启动器
+  （nvm/homebrew fallback）+ `lzy doctor` 增 `hook-node` 检查；契约测试增至 22 用例零依赖。
+- 下一步：真发布（用户按 `docs/release-checklist.md` 择机执行）；运行期反馈迭代。
+  新会话应活体复验钩子（GUI 直启下触发词/SessionStart 恢复即为启动器生效实锤）。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 
@@ -80,7 +91,10 @@ docs/
   reports/review-against-reversed.md  ← 逆向源码复核记录（4 纠错 + 6 新发现）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
   adr/0001-*.md              ← 安装器 enable 走引擎 CLI、config 零写入
+  reviews/                   ← 五轮双审核报告与处置记录（2026-09-06/07）
+  diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
 plugin/ core/ cli/           ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）
+test/  .github/              ← 契约测试三件套（node:test 零依赖）+ CI 骨架
 README.md LICENSE CHANGELOG.md  ← 开源门面（README 含用户 10 分钟快速开始）
 artifacts/                   ← 空（暂无产物）
 ```

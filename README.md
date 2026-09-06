@@ -8,7 +8,7 @@ ZCode 原生自动读取；细节见 `docs/`。
 
 ## 快速开始（10 分钟）
 
-前置：macOS + ZCode 桌面端已安装并登录；Node ≥ 20。
+前置：macOS + ZCode 桌面端已安装并登录；Node ≥ 20；git（目标循环的证据绑定 tree hash，必需）。
 
 ```bash
 npm i -g lazyzcode   # 获得 lzy 命令与插件载荷
@@ -30,9 +30,18 @@ plan-reviewer 评审门）→ 逐步执行 → 对终验项在真实表面取证
 
 ```bash
 lzy uninstall        # 优先走引擎官方 plugins uninstall
-lzy status           # 快速体检（退出码 0=健康）
-lzy doctor           # 深度诊断：status 全套 + hook 语法自检/node 下限/lzy 解析/状态卫生
+lzy status           # 快速体检（退出码 0=无 fail 级检查，warn/skip 不影响）
+lzy doctor           # 深度诊断：status 全套 + hook 语法自检（含 hooks.json 注册校验）/node 下限/钩子 node 解析/lzy 解析/状态卫生
 ```
+
+排障速查：
+
+- **钩子全无反应**（触发词/Stop 拉回/轻提示都不动）：十有八九是引擎 spawn 钩子的 PATH
+  里没有 node（从 Dock 直启 ZCode.app 的常见场景）。`lzy doctor` 的 `hook-node` 行给出判定；
+  插件自带 `run-hook.sh` 启动器会自动扫 nvm/homebrew 兜底，详见
+  `docs/diagnostics/2026-09-07-hook-spawn-env.md`。
+- **`lzy: command not found`**：CLI 未全局安装（`npm i -g lazyzcode`）或 npm 全局 bin
+  不在当前 shell PATH；临时可用 `node <仓库>/cli/lzy.js …` 直调。
 
 ## 开发者路径（改代码/贡献）
 

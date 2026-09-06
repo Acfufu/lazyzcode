@@ -20,7 +20,7 @@ export function createGit(cwd) {
       return /^[0-9a-f]{40,64}$/.test(out) ? out : null;
     },
     // 工作区有未提交改动时为 true（证据应跟随提交：先提交再取证，否则证据可辩驳）。
-    // .lazyzcode/ 的循环状态文件不算（那是 lzy 自己的账本，不是被验证的代码）。
+    // 只排除 .lazyzcode/ 自身的账本：精确路径判定，含该子串的其他路径（如 backup.lazyzcode/）照常报警（评审 R2-2）。
     dirty() {
       const r = spawnSync("git", ["status", "--porcelain"], {
         cwd,
@@ -31,7 +31,13 @@ export function createGit(cwd) {
       if (r.error || r.status !== 0) return false;
       return (r.stdout ?? "")
         .split(/\r?\n/)
-        .some((line) => line.trim() && !line.includes(".lazyzcode/"));
+        .some((line) => {
+          const raw = line.slice(3).trim(); // porcelain v1：XY<空格>path
+          if (!raw) return false;
+          const renamed = raw.includes(" -> ") ? raw.split(" -> ").pop() : raw;
+          const p = renamed.replace(/^"(.*)"$/, "$1"); // git 对特殊字符路径加引号
+          return p !== ".lazyzcode" && !p.startsWith(".lazyzcode/");
+        });
     },
   };
 }

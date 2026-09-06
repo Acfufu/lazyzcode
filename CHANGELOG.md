@@ -32,7 +32,7 @@ plan, execute, take evidence, never stop half-done.
 - **Installer**: `lzy install` / `sync` / `status` / `doctor` / `uninstall`.
   Enabling flows only through the engine's official `plugins enable`;
   `lzy` never writes the user's `config.json` (ADR-0001). `lzy doctor` adds
-  hook syntax self-check (vm-parse only), node version floor, `lzy` PATH-shim
+  hook syntax self-check (vm-parse only, incl. hooks.json registry validation), node version floor, `lzy` PATH-shim
   report, `.lazyzcode/` state hygiene and platform notice — fully local,
   zero telemetry.
 - **codegraph wiring**: `lzy status` reports codegraph availability
@@ -44,3 +44,29 @@ plan, execute, take evidence, never stop half-done.
   guessing.
 - Published artifacts ship `cli/`, `core/`, `plugin/` plus README/LICENSE/
   CHANGELOG; session-state and tool directories are excluded.
+
+### Fixed (2026-09-07 · P3 sweep + hook spawn-env hardening)
+
+- **Hooks now survive node-less engine environments**: the engine spawns hook
+  commands with its own env PATH, which lacks node when ZCode.app is launched
+  from the Dock (all four hooks then fail silently — node ENOENT happens before
+  any fail-open can run). All hook commands now route through
+  `plugin/hooks/run-hook.sh` (PATH lookup → nvm/homebrew fallback → log + exit 0);
+  `lzy doctor` gained a `hook-node` check. Full analysis:
+  `docs/diagnostics/2026-09-07-hook-spawn-env.md`.
+- Session ids are sanitized before being used in state file names; the Stop
+  counter read-modify-write is lock-guarded (concurrent same-session hooks can
+  no longer over-issue the 2-continue budget); hook output is written with a
+  single synchronous `write(2)`.
+- Registry writes are now byte-idempotent (repeat installs no longer bump
+  `updatedAt`); `uninstall` reports "nothing installed" honestly; `status`
+  verifies the deployed payload file-by-file and attributes engine diagnostics
+  by structured fields.
+- CLI arg parsing: `--force=true` works, `--force` no longer swallows a
+  following path; `--note`/`--evidence` length caps (300/4000); incompatible
+  goal-state versions fail fast with a reset pointer; `lzy loop reset` also
+  clears session counters and orphan tmp files; `--watch=<value>` warns instead
+  of silently degrading; `LZY_ZCODE_ENGINE` now replaces the candidate list,
+  making the engine-missing fallback testable.
+- comment-checker: line hints are labeled as fragment-relative (`片段L2`),
+  and the 300-char cap applies to the whole injected message.

@@ -5,6 +5,14 @@
   "type": "module",
   "license": "MIT",
   "author": "LazyZCode contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acfufu/lazyzcode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/acfufu/lazyzcode/issues"
+  },
+  "homepage": "https://github.com/acfufu/lazyzcode#readme",
   "bin": {
     "lzy": "cli/lzy.js"
   },
@@ -21,6 +29,7 @@
     "!**/.mimosa/**"
   ],
   "scripts": {
+    "test": "node --test",
     "install:local": "node cli/lzy.js install",
     "uninstall:local": "node cli/lzy.js uninstall",
     "sync": "node cli/lzy.js sync",

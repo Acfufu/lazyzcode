@@ -47,12 +47,12 @@ export function hookScriptPaths(rootDir) {
 
 export function engineCandidates() {
   const fromEnv = process.env.LZY_ZCODE_ENGINE;
-  const list = [];
-  if (fromEnv) list.push(fromEnv);
+  // env 设置即整体替换默认候选：让「引擎缺失→手动启用回退」路径可被测试触达（评审 R3-9）。
+  if (fromEnv) return [fromEnv];
   if (platform() === "darwin") {
-    list.push("/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs");
+    return ["/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs"];
   }
-  return list;
+  return [];
 }
 
 export function findEngine() {
@@ -67,13 +67,18 @@ export function pluginId(manifest) {
 }
 
 export function installPathFor(manifest) {
-  return join(
-    pluginsRoot(),
-    "cache",
-    MARKETPLACE,
-    manifest.name ?? PLUGIN_NAME,
-    manifest.version,
-  );
+  // manifest 字段直入 join 前先校验：version 缺失此前是 TypeError、name 含 / 可逸出
+  // cache 目录——都换成清晰报错（评审 R1-5②）。
+  const name = manifest?.name ?? PLUGIN_NAME;
+  const version = manifest?.version;
+  const OK_RE = /^[A-Za-z0-9._-]+$/;
+  if (typeof name !== "string" || !OK_RE.test(name)) {
+    throw new Error(`manifest.name 不合法：${JSON.stringify(name) ?? "（缺失）"}（仅限字母数字._-）`);
+  }
+  if (typeof version !== "string" || !OK_RE.test(version)) {
+    throw new Error(`manifest.version 不合法：${JSON.stringify(version) ?? "（缺失）"}（仅限字母数字._-）`);
+  }
+  return join(pluginsRoot(), "cache", MARKETPLACE, name, version);
 }
 
 export { packageRoot };

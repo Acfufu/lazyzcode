@@ -25,4 +25,5 @@ lzy 安装器分两步，全程对用户 `config.json` 零写入：
 
 - 引擎定位失败 = install/enable 失败（明确报错）；环境变量 `LZY_ZCODE_ENGINE` 可显式指定引擎 `zcode.cjs` 路径。
 - uninstall 优先官方 `plugins uninstall --force`，失败时回退为手工清注册表条目 + 删缓存目录。
-- status 不读 config，一律以 `plugins list --json` 的 `enabled` 字段为准。
+- 启用态判定一律以 `plugins list --json` 的 `enabled` 字段为准。status 对 config **只写禁区不变**；
+  只读诊断段（codegraph MCP 探测，2026-09-07 起）允许读它——零写入红线不受影响。

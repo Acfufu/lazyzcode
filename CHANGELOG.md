@@ -34,6 +34,25 @@ versioning is SemVer.
   Mid-sentence `zw` no longer fires (supersedes the R4-4 CJK-adjacency
   INJECT behavior, now silent).
 
+### Changed
+
+- **Bilingual README in the lazycodex README form**: `README.md` is now
+  English-first with a complete Chinese mirror at `README.zh-CN.md`; the two
+  cross-link at the top. Structure follows the lazycodex README (MIT, credited
+  under License); all text is written for LazyZCode.
+- **Bilingual documentation set in the lazycodex.ai/docs form**
+  (`docs/guide/en.md` + `docs/guide/zh.md`): single-scroll pages with the
+  same information architecture — Install, Getting started (overview, first
+  goal loop, FAQ), Triggers & protocol, Concepts (plan gate, evidence,
+  continuation budget, agents, hooks, rate-limit), Reference (CLI, checks,
+  state, limitations). All content derived from the actual CLI, hooks, and
+  skill text.
+- **GitHub Pages documentation site (Jekyll, source = `/docs`)**: dark-theme
+  layout in the spirit of the lazycodex docs — sticky sidebar with the five
+  nav groups, EN/ZH switcher, landing page; the guide markdown stays the
+  single content source (also rendered on GitHub). Enabled after the repo
+  goes public via Pages settings (step 13 of the release checklist).
+
 ## [0.0.1] - 2026-09-06
 
 First release: the AI coding-workflow discipline layer for ZCode —

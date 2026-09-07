@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="{{ page.lang | default: 'en' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.title | default: site.title }} | {{ site.title }}</title>
+  <meta name="description" content="{{ site.description }}">
+  <meta name="theme-color" content="#0e1012">
+  <link rel="stylesheet" href="{{ site.baseurl }}/assets/docs.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="{{ site.baseurl }}/"><span class="brand-mark" aria-hidden="true"></span>LazyZCode</a>
+      <nav class="header-nav">
+        {% if page.lang == 'zh' %}
+          <a href="{{ site.baseurl }}/guide/en/">English</a>
+          <span class="here">简体中文</span>
+        {% else %}
+          <span class="here">English</span>
+          <a href="{{ site.baseurl }}/guide/zh/">简体中文</a>
+        {% endif %}
+        <a class="btn" href="https://github.com/acfufu/lazyzcode">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="wrap layout">
+    <aside class="sidebar" aria-label="Documentation">
+      {% if page.lang == 'zh' %}
+        {% include nav-zh.html %}
+      {% else %}
+        {% include nav-en.html %}
+      {% endif %}
+    </aside>
+    <main class="content" id="content">
+      {{ content }}
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>MIT License · <a href="https://github.com/acfufu/lazyzcode">github.com/acfufu/lazyzcode</a></p>
+      <p>Workflow inspired by <a href="https://github.com/code-yeongyu/lazycodex">lazycodex</a> (MIT); OmO (SUL-1.0) ideas only. Docs structure follows the lazycodex docs with credit.</p>
+    </div>
+  </footer>
+</body>
+</html>

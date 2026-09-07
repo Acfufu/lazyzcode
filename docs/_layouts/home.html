@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ site.title }} — {{ site.description }}</title>
+  <meta name="description" content="{{ site.description }}">
+  <meta name="theme-color" content="#0e1012">
+  <link rel="stylesheet" href="{{ site.baseurl }}/assets/docs.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="{{ site.baseurl }}/"><span class="brand-mark" aria-hidden="true"></span>LazyZCode</a>
+      <nav class="header-nav">
+        <a class="btn" href="https://github.com/acfufu/lazyzcode">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="home-hero">
+    <h1>LazyZCode</h1>
+    <p>{{ site.description }}</p>
+    <div class="lang-cards">
+      <a class="lang-card" href="{{ site.baseurl }}/guide/en/">
+        <b>Documentation</b>
+        <span>Install, first goal loop, triggers &amp; protocol, concepts, CLI reference.</span>
+      </a>
+      <a class="lang-card" href="{{ site.baseurl }}/guide/zh/">
+        <b>简体中文文档</b>
+        <span>安装、第一个目标循环、触发与协议、概念、CLI 参考。</span>
+      </a>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>MIT License · <a href="https://github.com/acfufu/lazyzcode">github.com/acfufu/lazyzcode</a></p>
+      <p>Workflow inspired by <a href="https://github.com/code-yeongyu/lazycodex">lazycodex</a> (MIT); OmO (SUL-1.0) ideas only.</p>
+    </div>
+  </footer>
+</body>
+</html>

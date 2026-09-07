@@ -96,15 +96,16 @@
 AGENTS.md                    ← 本文件：单一事实入口（宪法）
 docs/
   research-*.md              ← 调研底稿（报告的事实来源）
-  reports/index.html         ← 报告中心入口（另有 full/pm/dev 三份自包含 HTML）
-  reports/review-against-reversed.md  ← 逆向源码复核记录（4 纠错 + 6 新发现）
+  reports/                   ← 报告中心（index.html + full/pm/dev 三份 HTML）+ 逆向源码复核记录
+  guide/en.md guide/zh.md    ← 用户文档（lazycodex.ai/docs 同构，双语单页；兼 Pages 站内容源）
+  _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
   adr/0001-*.md              ← 安装器 enable 走引擎 CLI、config 零写入
   reviews/                   ← 五轮双审核报告与处置记录（2026-09-06/07）
   diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
 plugin/ core/ cli/           ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）
 test/  .github/              ← 契约测试三件套（node:test 零依赖）+ CI 骨架
-README.md LICENSE CHANGELOG.md  ← 开源门面（README 含用户 10 分钟快速开始）
+README.md（英）+ README.zh-CN.md（中）LICENSE CHANGELOG.md  ← 开源门面（lazycodex 同构双语说明）
 artifacts/                   ← 空（暂无产物）
 ```
 

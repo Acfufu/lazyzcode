@@ -24,6 +24,7 @@
     "core/",
     "plugin/",
     "README.md",
+    "README.zh-CN.md",
     "CHANGELOG.md",
     "!**/.mimosa",
     "!**/.mimosa/**"

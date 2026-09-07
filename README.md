@@ -1,106 +1,253 @@
-# LazyZCode
+<div align="center">
 
-给 ZCode 造一个 lazycodex 同款的 **AI 编码工作流纪律层**：让 AI 不只写代码，
-而是 **计划 → 执行 → 拿证据 → 不做完不停**。形态：**ZCode 插件 + 轻量 CLI（`lzy`）**。
+  <h1>LazyZCode</h1>
 
-仓库根 [AGENTS.md](AGENTS.md) 是项目宪法（北极星 / 硬约束 / 决策速查表 / 红线 / 术语表），
-ZCode 原生自动读取；细节见 `docs/`。
+  <p><strong>The discipline layer for ZCode.</strong><br />
+  Plan → execute → take evidence → never stop half-done.</p>
 
-## 快速开始（10 分钟）
+  <p>
+    <a href="docs/guide/en.md">Docs</a>
+    ·
+    <a href="#-install-10-minutes">Install</a>
+    ·
+    <a href="#-cli-commands">Commands</a>
+    ·
+    <a href="#-what-is-this">What is this?</a>
+  </p>
 
-前置：macOS + ZCode 桌面端已安装并登录；Node ≥ 20；git（目标循环的证据绑定 tree hash，必需）。
+  <p>English · <a href="README.zh-CN.md">简体中文</a></p>
 
-```bash
-npm i -g lazyzcode   # 获得 lzy 命令与插件载荷
-lzy install          # 落位引擎缓存 + 注册表 + 引擎官方 plugins enable
-lzy doctor           # 本地自检（零遥测）：引擎/安装/启用/hook 语法/node 版本
-```
+  <br />
+</div>
 
-然后在任意项目目录新开一个 ZCode 会话，第一条消息输入：
+> [!NOTE]
+> **ZCode already writes code. LazyZCode makes it finish.**
+>
+> Coding agents are great at starting work and optimistic about declaring it
+> done. The fix is not another prompt — it is a loop: a decision-complete plan
+> gate, evidence captured on real surfaces and bound to a git tree hash, and a
+> Stop hook that pulls the agent back until the goal is verifiably complete.
+>
+> ```bash
+> npm i -g lazyzcode && lzy install
+> ```
 
-```
-zw 帮我实现 <你的目标>
-```
+## 🚀 Install (10 minutes)
 
-`zw` 触发词会注入目标循环编排：模型注册目标 → 写决策完备计划（HEAVY 目标强制过
-plan-reviewer 评审门）→ 逐步执行 → 对终验项在真实表面取证（绑定 git tree hash）→
-`lzy loop finish` 通过才算完成；中途停手会被 Stop 钩子拉回（每会话 ≤2 次）。
-
-## 卸载 / 诊断
-
-```bash
-lzy uninstall        # 优先走引擎官方 plugins uninstall
-lzy status           # 快速体检（退出码 0=无 fail 级检查，warn/skip 不影响）
-lzy doctor           # 深度诊断：status 全套 + hook 语法自检（含 hooks.json 注册校验）/node 下限/钩子 node 解析/lzy 解析/状态卫生/限流体检
-```
-
-排障速查：
-
-- **`[1302] 您的账户已达到速率限制`（429）**：GLM 套餐的账号级并发限流（按档位分级
-  Max>Pro>Lite），多会话并行时易触发。`lzy doctor` 的 `rate-limit` 行给出近两日限流
-  统计与实测并发边界（经验带或单边证据）；并发压低有益、目标循环一次只跑一个；被
-  429 判死的会话等数分钟后 `zw 继续` 即可接上（状态在 `.lazyzcode/` 不丢）。机制与
-  实测详见 `docs/research-glm-plan-rate-limit.md`。
-- **钩子全无反应**（触发词/Stop 拉回/轻提示都不动）：十有八九是引擎 spawn 钩子的 PATH
-  里没有 node（从 Dock 直启 ZCode.app 的常见场景）。`lzy doctor` 的 `hook-node` 行给出判定；
-  插件自带 `run-hook.sh` 启动器会自动扫 nvm/homebrew 兜底，详见
-  `docs/diagnostics/2026-09-07-hook-spawn-env.md`。
-- **`lzy: command not found`**：CLI 未全局安装（`npm i -g lazyzcode`）或 npm 全局 bin
-  不在当前 shell PATH；临时可用 `node <仓库>/cli/lzy.js …` 直调。
-
-## 开发者路径（改代码/贡献）
+Prerequisites: macOS, the ZCode desktop app (logged in), Node ≥ 20, git
+(evidence binding uses tree hashes, so git is required).
 
 ```bash
-git clone <本仓库> && cd lazyzcode
-npm run install:local     # 安装并启用插件（落位引擎缓存 + 注册表 + 官方 plugins enable）
-npm run sync              # 热重载：重新部署 plugin/ 载荷（新会话生效）；node cli/lzy.js sync --watch 持续监听
-npm run status            # lzy status（只读）
-npm run uninstall:local   # 卸载
+npm i -g lazyzcode   # the lzy CLI + the plugin payload
+lzy install          # deploy to the engine cache + register + enable
+lzy doctor           # local health report (zero telemetry)
 ```
 
-- 插件载荷在 `plugin/`（`.zcode-plugin/plugin.json` + `skills/zw` + `hooks/` + `agents/`），逻辑在 `core/`，CLI 入口 `cli/lzy.js`。
-- 零 npm 依赖，Node ≥ 20，纯 ESM。
-- 引擎定位：默认找 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`，
-  可用 `LZY_ZCODE_ENGINE` 覆盖。**仅覆盖 macOS 引擎布局**；其他平台由 `lzy status`
-  明确报「未找到」，绝不盲猜。
-- 设计红线（[ADR-0001](docs/adr/0001-installer-enable-via-engine-cli.md)）：
-  **lzy 对用户 `config.json` 零写入**——启用一律经引擎官方 `plugins enable`。
+`lzy install` never writes your `config.json` — enabling flows only through the
+engine's official `plugins enable` ([ADR-0001](docs/adr/0001-installer-enable-via-engine-cli.md)).
 
-## 目标循环
+### Start your first goal loop
+
+Open a fresh ZCode session in any project and type:
 
 ```
-lzy loop register <slug> --title …   # 注册目标（planning）
-lzy loop plan <计划.md>              # 计划门：采纳 N/F 清单，默认拒绝待定项
-lzy loop start                       # 开跑（记录基线 tree hash）
-lzy step done <ID> [--evidence …]    # 收口一步；F 项必须带真实表面证据
-lzy loop finish                      # 终验：全部 done + F 项证据 tree hash 新鲜
+zw implement <your goal>
 ```
 
-- 计划清单语法：`- [N1] 实现步骤…` / `- [F1] 终验步骤（命名真实表面）…`。
-- **证据纪律**：F 项证据绑定 `git rev-parse HEAD^{tree}`——先提交再取证；
-  代码一变证据过期，`finish` 会拦下并要求在当前代码上重新取证。
-- **续跑机制**：Stop 钩子在目标未完时请求引擎续跑（每会话 ≤2 次，
-  给引擎 3 次共享池中的后台通知预留 1 次）；SessionStart 钩子开场注入循环现状。
-  钩子状态按 sessionId 隔离，异常一律放行（绝不劫持无关会话）。
-- 循环状态在 `.lazyzcode/loop/`（goal.json + sessions/ 计数），计划放 `.lazyzcode/plans/`；
-  与宿主 `.zcode/` 划清边界，建议加入 `.gitignore` 或按需提交。
-- 触发词分层：`zw` 仅句首触发；显式全名 `lazyzcode:zw` 任意位置触发（全半角冒号均可）；
-  `ulw`/`ultrawork` 维持任意位置词边界。UserPromptSubmit 钩子条件注入——发起则注入
-  zw 编排引导、仅提及则静默不劫持；技能文本（`plugin/skills/zw/SKILL.md`）承载完整编排协议。
-- **纪律角色**：三只读子代理——`lazyzcode:explorer`（计划前侦察，大仓库可走 codegraph
-  索引）、`lazyzcode:plan-reviewer`（计划评审门）、`lazyzcode:qa-executor`（真实表面取证，
-  Web/HTTP 面可用 ego-browser/curl）。HEAVY 目标计划必须过评审门：判决 REVISE 会被
-  CLI 拒绝采纳，`--force` 不越过。
-- **comment-checker 轻钩子**：Edit/Write 落盘内容含 TODO/FIXME/XXX/HACK 标记或调试残留
-  时经 additionalContext 轻提示（只提示不阻断；仅在有目标循环的工作区生效）。
+The `zw` trigger injects the full orchestration protocol: the model registers
+the goal → writes a decision-complete plan (HEAVY goals must pass the
+plan-reviewer gate) → executes step by step → captures real-surface evidence
+for every final-verification item (bound to `git rev-parse HEAD^{tree}`) →
+`lzy loop finish` must pass before anything counts as done. Stop early, and the
+Stop hook pulls the agent back (at most 2 continuations per session).
 
-## 已知限制
+### Verify it worked
 
-- headless（`--prompt`）驱动引擎需显式模型配置与登录凭据（桌面端运行时注入）；
-  CLI 活体会话验收顺延，机制正确性由 Spike 3（`docs/spikes/p0-day1.md`）背书。
-- 仅覆盖 macOS 引擎布局；其他平台由 `lzy status` 明确报「未找到」。
+```bash
+lzy status           # quick check; exit code 0 = no fail-level findings
+lzy doctor           # deep local diagnostics, all offline
+```
 
-## License
+### Uninstall
 
-MIT（[LICENSE](LICENSE)）。借用以 [lazycodex](https://github.com/code-yeongyu/lazycodex)
-（MIT）为限；OmO 主仓（SUL-1.0）只学思想，不搬代码。
+```bash
+lzy uninstall        # prefers the engine's official plugins uninstall
+```
+
+## ⚡ CLI Commands
+
+| Command | Type this | What it does |
+| --- | --- | --- |
+| `install` | `lzy install` | Deploy the plugin payload to the engine cache, register, and enable (official engine path only; zero `config.json` writes) |
+| `sync` | `lzy sync [--watch]` | Hot-reload the payload after edits; `--watch` keeps syncing on change |
+| `status` | `lzy status` | Quick health check; exit 0 = no fail-level findings (warn/skip do not flip it) |
+| `doctor` | `lzy doctor` | Full diagnostics — see below |
+| Goal loop | `lzy loop register <slug> --title "…"` → `lzy loop plan <plan.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | The state machine: register → plan gate → execute → evidence → finish gate |
+| `uninstall` | `lzy uninstall` | Removes the deployed cache and the registry entry |
+
+### What `lzy doctor` checks
+
+Engine and install state, enabled flags, hook syntax self-check (vm-parsed in a
+worker, including `hooks.json` registry validation), node version floor,
+`hook-node` resolution (the launcher's nvm/homebrew fallback for GUI-launched
+sessions), the `lzy` PATH shim, `.lazyzcode/` state hygiene, a platform notice,
+and GLM plan rate-limit pressure (last 2 days of engine logs, read-only:
+deduplicated 429 turns, fatal turns, longest sustained run, and an empirical
+concurrency band — warn-only, never flips the exit code). Fully local, zero
+telemetry, no new configuration surface.
+
+## Use the built-in workflows
+
+LazyZCode should be judged by what it actually installs: one plugin
+(`lazyzcode:zw`), four hooks, three read-only agents, and the `lzy` CLI.
+
+### 1. Trigger words inject the protocol
+
+| Trigger | Fires |
+| --- | --- |
+| `zw` | at the start of the prompt only |
+| `lazyzcode:zw` | anywhere; the full-width colon `：` works too |
+| `ulw` / `ultrawork` | anywhere, word-bounded |
+
+Injection is conditional: an invocation engages the protocol, a mere mention
+("how does the `zw` trigger work?") is ignored and answered directly.
+
+### 2. The goal loop is the spine
+
+- **Plan gate.** Plans are N/F checklists (`- [N1] …` implementation items,
+  `- [F1] …` final-verification items). Undecided items (TBD) are rejected;
+  the plan must be decision-complete. HEAVY goals must additionally pass the
+  plan-reviewer: a `REVISE` verdict refuses adoption and `--force` cannot
+  bypass it.
+- **Evidence gate.** Every F item needs evidence from a real surface (CLI
+  stdout, an HTTP response, a screenshot) bound to
+  `git rev-parse HEAD^{tree}` — commit first, capture after. Change the code
+  and the evidence expires; `finish` rejects stale evidence and demands a
+  re-capture on the current tree.
+- **Continuation, bounded.** While a loop is open, the Stop hook requests up to
+  2 continuations per session — deliberately reserving 1 of the engine's
+  shared pool of 3 for background notifications. Counters are isolated per
+  sessionId; any hook error fails open and never hijacks unrelated sessions.
+
+Loop state lives in `.lazyzcode/` (`loop/goal.json`, `plans/`), clearly
+separated from the host's `.zcode/`. A finished loop frees its slot via
+`lzy loop reset`.
+
+### 3. Discipline agents ride ZCode's native sub-agents
+
+Three read-only roles ship inside the plugin's `agents/` directory; the engine
+discovers them automatically:
+
+| Role | Use it for |
+| --- | --- |
+| `lazyzcode:explorer` | Pre-plan reconnaissance; codegraph index guidance for large repos |
+| `lazyzcode:plan-reviewer` | The plan review gate (decision-completeness, hidden risks, real F-item surfaces) |
+| `lazyzcode:qa-executor` | Real-surface evidence capture; ego-browser/curl for web surfaces |
+
+Spawn them through the Agent tool with the role as `subagent_type` — the child
+runs read-only with that contract:
+
+```jsonc
+Agent({ "subagent_type": "lazyzcode:explorer", "prompt": "TASK: map the auth flow end to end." })
+```
+
+### 4. Advisory hooks, not nagware
+
+`comment-checker` watches Edit/Write output for `TODO`/`FIXME`/`XXX`/`HACK`
+markers and debug residue (`console.log`, `debugger`) and nudges through
+`additionalContext` — inject-only, never blocks, capped at 5 hits per event,
+and active only in workspaces with an open goal loop. SessionStart re-injects
+loop state so a fresh session picks up where the last one left off.
+
+### Troubleshooting quick list
+
+- **`[1302] rate limit` (GLM plan):** account-level concurrency limiting.
+  `lzy doctor`'s `rate-limit` line reports measured pressure and an empirical
+  bound; keep one goal loop at a time, few parallel main sessions, and after a
+  fatal 429 wait a few minutes, then `zw continue` — state in `.lazyzcode/`
+  survives.
+- **Hooks do nothing at all:** usually the engine's hook environment lacks
+  `node` (ZCode.app launched from the Dock). `lzy doctor`'s `hook-node` line
+  diagnoses it; the bundled `run-hook.sh` launcher falls back to nvm/homebrew
+  automatically. Details:
+  [docs/diagnostics/2026-09-07-hook-spawn-env.md](docs/diagnostics/2026-09-07-hook-spawn-env.md).
+- **`lzy: command not found`:** install globally (`npm i -g lazyzcode`) or call
+  `node <repo>/cli/lzy.js …` directly.
+
+## 💤 What is this?
+
+**LazyZCode** packages the [lazycodex](https://github.com/code-yeongyu/lazycodex)
+discipline workflow as a native ZCode plugin plus a lightweight CLI.
+
+Think [LazyVim](https://github.com/LazyVim/LazyVim) for
+[lazy.nvim](https://github.com/folke/lazy.nvim) — but for ZCode.
+
+The harness part is discipline: a plan gate, evidence-bound completion, and a
+bounded continuation budget. ZCode already ships the skills/hooks/agents
+machinery; LazyZCode is the workflow that makes them finish what they start.
+
+## 🧩 What you get
+
+| Feature | Description |
+| --- | --- |
+| 🎯 **Goal loop** | Register → plan → execute → verify, as a CLI state machine that survives session restarts |
+| 🚧 **Plan gate** | Decision-complete plans only; TBD rejected; HEAVY plans must pass the reviewer gate (`REVISE` refuses adoption) |
+| 🔬 **Evidence discipline** | F-item evidence bound to a git tree hash; stale evidence cannot pass `finish` |
+| 🪝 **Bounded continuation** | Stop hook pulls the agent back, max 2 per session, budget shared fairly with background notifications |
+| ⌨️ **Trigger words** | `zw` / `lazyzcode:zw` / `ulw` / `ultrawork`, stratified matching, mention ≠ invocation |
+| 🕵️ **Read-only agents** | explorer / plan-reviewer / qa-executor, auto-discovered by the engine |
+| 💬 **comment-checker** | Advisory TODO/debug-residue nudges; never blocks |
+| 🩺 **`lzy doctor`** | Offline health report incl. hook-node resolution and rate-limit pressure |
+| 🔒 **Privacy & red lines** | Zero telemetry; `lzy` never writes your `config.json` |
+
+## 🧠 Why "done" needs evidence
+
+Do not be surprised when LazyZCode refuses to celebrate. A plan checkbox is a
+claim; only real-surface evidence is a fact. That is why F items must name the
+surface they will capture (a CLI's stdout, an HTTP response, a screenshot), why
+the evidence is bound to `git rev-parse HEAD^{tree}` (content snapshot of the
+commit — the moment code changes, old evidence is stale by construction), and
+why `lzy loop finish` re-checks freshness instead of trusting a summary. Tests
+being green is not evidence; a test run is one surface among several.
+
+The same philosophy sets the continuation budget. ZCode gives a session 3
+stop-continuations, shared with background task notifications; LazyZCode's Stop
+hook spends at most 2 of them, per session, and fails open on any error — the
+loop is meant to pull work back across a lazy stop, not to trap the session.
+
+## 🏗️ Architecture
+
+LazyZCode is a plugin (the discipline layer) plus a CLI (the loop state
+machine). Zero npm dependencies, Node ≥ 20, pure ESM.
+
+```
+lazyzcode/
+├── plugin/   → the lazyzcode:zw plugin: skills/zw, hooks/ (4, via run-hook.sh), agents/ (3)
+├── core/     → shared logic: loop, installer, doctor, ratelimit, engine, git, paths, status
+├── cli/      → the lzy entry (cli/lzy.js) + syntax-check worker
+├── test/     → contract tests (node:test, zero deps) + GitHub Actions (node 20/22/24)
+└── docs/     → research notes, ADRs, five review rounds, diagnostics
+```
+
+Design rule of thumb: **Skill > MCP > Tool > Hook.** Anything that survives
+being offline lives in skill text; hooks are the last resort. The installer
+installs plugins and nothing else — enabling goes through the engine's official
+`plugins enable`, so your `config.json` is never touched.
+
+### Known limitations
+
+- The engine layout detection covers macOS only; other platforms report
+  "not found" instead of guessing.
+- Driving the engine headlessly (`--prompt`) requires the desktop's injected
+  model credentials; the mechanism is validated by probes, live headless
+  acceptance is deferred.
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).
+
+The name and workflow are inspired by
+[lazycodex](https://github.com/code-yeongyu/lazycodex) (MIT); structure and
+installer patterns are borrowed within its license, with credit.
+[oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) (OmO) is
+SUL-1.0: only ideas were learned, no code or text was copied.

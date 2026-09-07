@@ -1,0 +1,23 @@
+# LazyZCode GitHub Pages（source = 仓库 /docs 目录）
+# 注意：若仓库改名或换组织，同步改下方 baseurl 与 docs/release-checklist.md 的对应条目。
+title: LazyZCode
+description: The discipline layer for ZCode — plan, execute, take evidence, never stop half-done.
+url: https://acfufu.github.io
+baseurl: /lazyzcode
+markdown: GFM
+highlighter: rouge
+permalink: pretty
+
+defaults:
+  - scope:
+      path: "guide/en.md"
+    values:
+      layout: guide
+      lang: en
+      title: Documentation
+  - scope:
+      path: "guide/zh.md"
+    values:
+      layout: guide
+      lang: zh
+      title: 文档

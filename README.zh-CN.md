@@ -29,6 +29,11 @@
 > 决策完备的计划门、绑定 git tree hash 的真实表面取证、以及一个把提前停手的代理拉回来的
 > Stop 钩子——直到目标可验证地完成。
 >
+> 同一门纪律，三个节拍：
+> **做完**你开的头——带计划门与证据门的目标循环。
+> **记住**你建过的东西——分层 `AGENTS.md` 项目记忆。
+> **接着走**你不在场的时间——定时唤起只继续已开目标，天然错峰。
+>
 > ```bash
 > npm i -g lazyzcode && lzy install
 > ```
@@ -66,6 +71,17 @@ lzy status           # 快速体检；退出码 0 = 无 fail 级检查
 lzy doctor           # 深度本地诊断，全程离线
 ```
 
+### 之后的路
+
+第一个目标循环是整个产品的缩影。它身后还有两个节拍：
+
+1. **记住你建过的东西。** 在成熟项目里跑 `lazyzcode:init-deep` 技能，草拟分层
+   `AGENTS.md` 项目地图——草稿先行，你点头才写盘。`lzy agents-md` 审计覆盖
+   缺口；`lzy doctor` 的 `agents-md` 行巡逻采纳情况（warn-only）。
+2. **接着走你不在场的时间。** 在引擎自带自动化里挂一个唤起，prompt 写
+   `zw 继续（无人值守：…）`。无人值守会话只继续已开目标——绝不自立新目标——
+   `lzy doctor` 的 `schedule` 行从你的实测限流时段反推错峰窗口。
+
 ### 卸载
 
 ```bash
@@ -81,20 +97,24 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | `status` | `lzy status` | 快速体检；退出码 0 = 无 fail 级检查（warn/skip 不影响） |
 | `doctor` | `lzy doctor` | 全量诊断——见下 |
 | 目标循环 | `lzy loop register <slug> --title "…"` → `lzy loop plan <计划.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | 状态机：注册 → 计划门 → 执行 → 证据 → 终验门 |
+| 证据包 | `lzy loop export` | 重导出证据包（`<slug>.report.md`）；`finish` 时亦自动归档 |
+| `agents-md` | `lzy agents-md` | 项目记忆审计：够格目录与覆盖缺口 |
 | `uninstall` | `lzy uninstall` | 删除已部署缓存与注册表条目 |
 
 ### `lzy doctor` 都查什么
 
 引擎与安装状态、启用标志、钩子语法自检（worker 内 vm 解析，含 `hooks.json`
 注册校验）、node 版本下限、`hook-node` 解析（启动器的 nvm/homebrew 兜底，专治
-GUI 直启场景）、`lzy` PATH shim、`.lazyzcode/` 状态卫生、平台提示，以及 GLM
+GUI 直启场景）、`lzy` PATH shim、`.lazyzcode/` 状态卫生、平台提示、GLM
 套餐限流压力（近 2 日引擎日志只读扫描：去重后的 429 回合、判死回合、最长连撞、
-经验并发带——warn-only，不翻退出码）。全程本地、零遥测、零新增配置面。
+经验并发带——warn-only，不翻退出码）、项目记忆采纳审计（`agents-md`，
+warn-only），以及无人值守的错峰窗口建议（`schedule`，与限流同一份实测数据
+反推——数据沉默时 skip，绝不拍脑袋）。全程本地、零遥测、零新增配置面。
 
 ## 使用内置工作流
 
-LazyZCode 该按它实际装了什么来评价：一个插件（`lazyzcode:zw`）、四个钩子、
-三只只读代理、一个 `lzy` CLI。
+LazyZCode 该按它实际装了什么来评价：一个插件——两个技能（`zw`、`init-deep`）、
+四个钩子、三只只读代理——和一个 `lzy` CLI。
 
 ### 1. 触发词注入编排协议
 
@@ -145,6 +165,20 @@ Agent({ "subagent_type": "lazyzcode:explorer", "prompt": "TASK: 梳理 auth 流�
 只提示不阻断、每次事件至多 5 处、且只在有开放目标循环的工作区生效。
 SessionStart 重注入循环现状，新会话接着上次干。
 
+### 5. 项目记忆喂给计划门
+
+`lazyzcode:init-deep` 草拟仓库的分层 `AGENTS.md` 地图（根 + 够格子目录）。
+写盘前必经你点头；已有文件只给补丁建议；密钥与本机路径不碰。ZCode 原生读取
+`AGENTS.md`，地图免费搭进此后每个会话——HEAVY 规划在花计划门之前先看它。
+`lzy agents-md` 列出够格目录与覆盖缺口。
+
+### 6. 无人值守，在轨道上
+
+引擎自带自动化可以定时唤起新会话，prompt 写 `zw 继续（无人值守：…）`。唤起
+协议是只继续：绝不注册新目标、绝不采纳计划——决策完备门永远留给人。约束来自
+续跑预算、429 判死、串行子代理、≥1 小时间隔；`lzy doctor` 的 `schedule` 行从
+实测限流集中时段反推错峰窗口。
+
 ### 排障速查
 
 - **`[1302] 速率限制`（GLM 套餐）：** 账号级并发限流。`lzy doctor` 的
@@ -175,6 +209,9 @@ skills/hooks/agents 机器，LazyZCode 是让它们把活干完的那层工作�
 | 🎯 **目标循环** | 注册 → 计划 → 执行 → 验证的 CLI 状态机，会话重启不丢状态 |
 | 🚧 **计划门** | 只收决策完备的计划；TBD 拒绝；HEAVY 计划强制过评审门（`REVISE` 拒绝采纳） |
 | 🔬 **证据纪律** | F 项证据绑 git tree hash；过期证据过不了 `finish` |
+| 📦 **证据包** | `--evidence-file` 附件（哈希绑定的副本）与 `lzy loop export`——`finish` 自动归档 `<slug>.report.md` |
+| 🗂️ **项目记忆** | `init-deep` 草拟分层 `AGENTS.md` 地图；人点头才写盘，`lzy agents-md` 审计缺口 |
+| 🌙 **无人值守** | 定时唤起只继续已开目标、绝不立新目标；错峰窗口来自 `lzy doctor schedule` |
 | 🪝 **有界续跑** | Stop 钩子把代理拉回来，每会话至多 2 次，与后台通知公平分享预算 |
 | ⌨️ **触发词** | `zw` / `lazyzcode:zw` / `ulw` / `ultrawork`，分层匹配，提及 ≠ 发起 |
 | 🕵️ **只读代理** | explorer / plan-reviewer / qa-executor，引擎自动发现 |
@@ -201,8 +238,8 @@ Node ≥ 20、纯 ESM。
 
 ```
 lazyzcode/
-├── plugin/   → lazyzcode:zw 插件：skills/zw、hooks/（4 个，经 run-hook.sh）、agents/（3 只）
-├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、engine、git、paths、status
+├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（4 个，经 run-hook.sh）、agents/（3 只）
+├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、agentsmd、engine、git、paths、status
 ├── cli/      → lzy 入口（cli/lzy.js）+ 语法检查 worker
 ├── test/     → 契约测试（node:test 零依赖）+ GitHub Actions（node 20/22/24）
 └── docs/     → 调研底稿、ADR、五轮评审、诊断记录

@@ -292,6 +292,39 @@ wins once the budget is spent.
 SessionStart re-injects the loop state, so a fresh session continues where
 the previous one stopped.
 
+## Project memory
+
+Planning heavily against a codebase nobody has mapped wastes the plan gate.
+`lazyzcode:init-deep`, the plugin's second skill, builds **layered project
+memory**: a root `AGENTS.md` map plus maps for qualifying subdirectories
+(build entry points, directories with 40+ files, directories the root already
+mentions). ZCode reads `AGENTS.md` natively, so the map rides into every
+future session — no hook required.
+
+The skill is conservative by contract: it drafts first and writes only after
+your approval; existing files receive patch suggestions, never overwrites;
+secrets and machine-local paths stay out. It touches only the `AGENTS.md`
+layer — personal lessons go to the host's native memory at a zw finish.
+
+`lzy agents-md` lists qualifying directories and coverage gaps; `lzy doctor`'s
+`agents-md` line audits adoption (warn-only: a repo without a root map is
+skipped, not nagged). HEAVY planning consults the map when one exists.
+
+## Unattended
+
+Unattended mode is the same goal loop on a schedule. The engine's built-in
+automation wakes a fresh session with `zw continue (unattended: …)`; the wake
+cadence is off-peak by design — `lzy doctor`'s `schedule` line derives an
+8-hour window opposite your measured rate-limit concentration hours, when the
+log data supports one.
+
+The guardrail is structural, not a promise: an unattended session **continues
+the open goal only** — it never registers a new goal and never writes or
+adopts a plan, because the decision-complete gate needs a human. With nothing
+to continue it exits cleanly, and the wake-up itself is bounded by the
+continuation budget, fatal-429 handling, serial subagents, and ≥1-hour
+spacing between runs.
+
 ## Discipline agents
 
 Three read-only roles ship in the plugin's `agents/` directory and are
@@ -345,13 +378,10 @@ Behavioral rules the zw skill carries:
 - After a fatal 429 (a turn judged dead after the engine's retries): stop
   cleanly, wait a few minutes, then `zw continue` — the loop state survives.
 
-**Unattended (host automation)**: the engine's built-in scheduler can wake a
-fresh session on a schedule; the wake prompt is
-`zw continue (unattended: …)`. Protocol in the zw skill's Unattended section:
-continue only — never start a goal or adopt plans unattended, bounded by the
-Stop budget, ≥1h interval. For the timetable, read `lzy doctor`'s `schedule`
-line: it derives the off-peak window from your own measured concentration
-(and follows it as the data changes) instead of a guess.
+**Unattended (host automation)**: scheduling and the continue-only protocol
+live in [Unattended](#unattended); the off-peak window comes from `lzy
+doctor`'s `schedule` line — derived from your own measured concentration
+hours, not a guess.
 
 ## CLI reference
 

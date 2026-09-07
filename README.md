@@ -30,6 +30,12 @@
 > gate, evidence captured on real surfaces and bound to a git tree hash, and a
 > Stop hook that pulls the agent back until the goal is verifiably complete.
 >
+> One discipline, three beats:
+> **Finish** what you start — the goal loop with plan & evidence gates.
+> **Remember** what you build — layered `AGENTS.md` project memory.
+> **Keep going** while you're away — scheduled wake-ups that continue the open
+> goal only, off-peak by design.
+>
 > ```bash
 > npm i -g lazyzcode && lzy install
 > ```
@@ -70,6 +76,20 @@ lzy status           # quick check; exit code 0 = no fail-level findings
 lzy doctor           # deep local diagnostics, all offline
 ```
 
+### Your next moves
+
+The first goal loop is the whole product in miniature. Two more beats wait
+behind it:
+
+1. **Remember what you build.** In a mature project, run the
+   `lazyzcode:init-deep` skill to draft a layered `AGENTS.md` project map —
+   draft first, nothing written until you approve. `lzy agents-md` audits
+   coverage; `lzy doctor`'s `agents-md` line patrols adoption (warn-only).
+2. **Keep going while you're away.** Mount a wake-up in the engine's own
+   automation with `zw continue (unattended: …)`. Unattended sessions continue
+   the open goal only — never start a new one — and `lzy doctor`'s `schedule`
+   line suggests an off-peak window from your measured rate-limit hours.
+
 ### Uninstall
 
 ```bash
@@ -85,6 +105,8 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | `status` | `lzy status` | Quick health check; exit 0 = no fail-level findings (warn/skip do not flip it) |
 | `doctor` | `lzy doctor` | Full diagnostics — see below |
 | Goal loop | `lzy loop register <slug> --title "…"` → `lzy loop plan <plan.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | The state machine: register → plan gate → execute → evidence → finish gate |
+| Evidence bundle | `lzy loop export` | Re-export the evidence bundle (`<slug>.report.md`); also auto-archived at `finish` |
+| `agents-md` | `lzy agents-md` | Project-memory audit: qualifying directories and coverage gaps |
 | `uninstall` | `lzy uninstall` | Removes the deployed cache and the registry entry |
 
 ### What `lzy doctor` checks
@@ -93,15 +115,19 @@ Engine and install state, enabled flags, hook syntax self-check (vm-parsed in a
 worker, including `hooks.json` registry validation), node version floor,
 `hook-node` resolution (the launcher's nvm/homebrew fallback for GUI-launched
 sessions), the `lzy` PATH shim, `.lazyzcode/` state hygiene, a platform notice,
-and GLM plan rate-limit pressure (last 2 days of engine logs, read-only:
+GLM plan rate-limit pressure (last 2 days of engine logs, read-only:
 deduplicated 429 turns, fatal turns, longest sustained run, and an empirical
-concurrency band — warn-only, never flips the exit code). Fully local, zero
+concurrency band — warn-only, never flips the exit code), a project-memory
+adoption audit (`agents-md`, warn-only), and a suggested off-peak window for
+unattended runs (`schedule`, derived from the same measured concentration
+data — skipped, never guessed, when the data is silent). Fully local, zero
 telemetry, no new configuration surface.
 
 ## Use the built-in workflows
 
-LazyZCode should be judged by what it actually installs: one plugin
-(`lazyzcode:zw`), four hooks, three read-only agents, and the `lzy` CLI.
+LazyZCode should be judged by what it actually installs: one plugin — two
+skills (`zw`, `init-deep`), four hooks, three read-only agents — and the
+`lzy` CLI.
 
 ### 1. Trigger words inject the protocol
 
@@ -161,6 +187,24 @@ markers and debug residue (`console.log`, `console.debug`, `debugger`) and nudge
 and active only in workspaces with an open goal loop. SessionStart re-injects
 loop state so a fresh session picks up where the last one left off.
 
+### 5. Project memory feeds the plan gate
+
+`lazyzcode:init-deep` drafts a layered `AGENTS.md` map of the repo (root plus
+qualifying subdirectories). You approve before anything is written; existing
+files get patch suggestions only, and secrets or machine-local paths stay out.
+ZCode reads `AGENTS.md` natively, so the map rides into every later session —
+and HEAVY planning consults it before spending the plan gate. `lzy agents-md`
+lists qualifying directories and coverage gaps.
+
+### 6. Unattended, on rails
+
+The engine's built-in automation can wake a fresh session on a schedule with
+`zw continue (unattended: …)`. The wake protocol is continue-only: it never
+registers a new goal and never adopts a plan — the decision-complete gate
+stays human. It is bounded by the continuation budget, fatal-429 handling,
+serial subagents, and ≥1-hour spacing, and `lzy doctor`'s `schedule` line
+derives an off-peak window from your measured rate-limit concentration hours.
+
 ### Troubleshooting quick list
 
 - **`[1302] rate limit` (GLM plan):** account-level concurrency limiting.
@@ -195,6 +239,9 @@ machinery; LazyZCode is the workflow that makes them finish what they start.
 | 🎯 **Goal loop** | Register → plan → execute → verify, as a CLI state machine that survives session restarts |
 | 🚧 **Plan gate** | Decision-complete plans only; TBD rejected; HEAVY plans must pass the reviewer gate (`REVISE` refuses adoption) |
 | 🔬 **Evidence discipline** | F-item evidence bound to a git tree hash; stale evidence cannot pass `finish` |
+| 📦 **Evidence bundle** | `--evidence-file` attachments (hash-bound copies) and `lzy loop export` — finish auto-archives a `<slug>.report.md` |
+| 🗂️ **Project memory** | `init-deep` drafts layered `AGENTS.md` maps; human-approved writes, `lzy agents-md` audits gaps |
+| 🌙 **Unattended** | Scheduled wake-ups continue the open goal only, never start new ones; off-peak window from `lzy doctor schedule` |
 | 🪝 **Bounded continuation** | Stop hook pulls the agent back, max 2 per session, budget shared fairly with background notifications |
 | ⌨️ **Trigger words** | `zw` / `lazyzcode:zw` / `ulw` / `ultrawork`, stratified matching, mention ≠ invocation |
 | 🕵️ **Read-only agents** | explorer / plan-reviewer / qa-executor, auto-discovered by the engine |
@@ -224,8 +271,8 @@ machine). Zero npm dependencies, Node ≥ 20, pure ESM.
 
 ```
 lazyzcode/
-├── plugin/   → the lazyzcode:zw plugin: skills/zw, hooks/ (4, via run-hook.sh), agents/ (3)
-├── core/     → shared logic: loop, installer, doctor, ratelimit, engine, git, paths, status
+├── plugin/   → the lazyzcode plugin: skills/zw + skills/init-deep, hooks/ (4, via run-hook.sh), agents/ (3)
+├── core/     → shared logic: loop, installer, doctor, ratelimit, agentsmd, engine, git, paths, status
 ├── cli/      → the lzy entry (cli/lzy.js) + syntax-check worker
 ├── test/     → contract tests (node:test, zero deps) + GitHub Actions (node 20/22/24)
 └── docs/     → research notes, ADRs, five review rounds, diagnostics

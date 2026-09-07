@@ -5,6 +5,10 @@ versioning is SemVer.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.0.2] - 2026-09-08
+
 ### Added
 
 - **Unattended mode via host automation (ADR-0003)**: schedule wake-ups with
@@ -119,6 +123,14 @@ versioning is SemVer.
   "On this page" toggle on small screens, wide diagrams and tables scroll
   horizontally instead of shrinking into illegibility, CJK line-height is
   relaxed, long words break safely, and touch targets grow on mobile.
+- **Three-beat narrative across every entry surface**: the READMEs, the
+  landing page, and the bilingual guide now tell one story — finish what you
+  start (goal loop), remember what you build (project memory), keep going
+  while you're away (unattended, continue-only). The READMEs catch up to the
+  0.0.2 facts (two skills, `lzy agents-md` / `lzy loop export`, `agents-md` /
+  `schedule` doctor checks, a "Your next moves" section); the landing page
+  grows two feature cards; the guide gains dedicated Project memory and
+  Unattended concept sections.
 
 ## [0.0.1] - 2026-09-06
 

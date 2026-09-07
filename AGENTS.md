@@ -25,14 +25,14 @@
 - **限流体检 v3 + 触发词分层已落地（2026-09-07，goal rl-v3-trigger-strata）**：doctor rate-limit 升级回合计数
   （turnId 复合键去重，覆盖率不足降级首撞口径）/脏桶直方图/最长连撞/集中段三门槛/三分支话术，建议行改实测边界
   （固定 ≤3 废除）；触发词分层=bare zw 仅句首、lazyzcode:zw 显式全名、ulw/ultrawork 不变，注入文案条件双路（R4-4 变更记账）。
-- **钩子启动器活体复验通过（2026-09-07，GUI 直启新会话）**：zw 触发词 UserPromptSubmit 注入恢复
-  （原文到达对话）；本会话四类钩子事件 hook.run.failed=0，当日旧会话对照 551 条/20 会话全灭
-  （PostToolUse 469/UPS 33/Stop 29/SessionStart 20）；doctor hook-node 实锤启动器兜底解析
-  nvm node。诊断记录 §4 复验口径三条全数兑现。
+- **钩子启动器活体复验通过（2026-09-07，GUI 直启新会话）**：zw 触发词注入恢复（原文到达对话）；本会话四类钩子事件
+  hook.run.failed=0，当日旧会话对照 551 条/20 会话全灭（PostToolUse 469/UPS 33/Stop 29/SessionStart 20）；
+  doctor hook-node 实锤兜底解析 nvm node。诊断记录 §4 复验口径三条全数兑现。
 - **文档站与品牌资产已落地（2026-09-07，goal docs-site-redesign）**：双语 guide（lazycodex.ai/docs 同构，en/zh 各 18 节锚点）+ Jekyll Pages 站（source=/docs，GFM 渲染）+「Verified Mark」品牌资产（mark/logo/favicon SVG，Z 末笔收于证据圆点）+ 版面重设计（暗色设计系统/侧栏五组图标/scrollspy）；验证工具链入库 `scripts/docs-preview/`（构建/爬链/锚点三脚本，dev-only 独立依赖，根包零依赖不破）。后续增量：开发者图文页、三态主题+多端适配、全局语言胶囊、头部顺序（92649d6…e0dafbf）。
 - **tier-2 增量已落地（2026-09-08，狗粮驱动）**：F 项证据附件（`--evidence-file` 复制入 `.lazyzcode/evidence/` 绑 sha256，≤4/项）+ 证据包导出（finish 自动归档 + `lzy loop export`，reset 不清）+ 带内调度建议（`bandAdvisory` 实测数据→并行上限，`lzy loop start` 打印并发纪律行，fail-open）+ finish 收尾写项目 memory（技能文本承载，零新钩子）；狗粮：10 目标全流程、钩子失败 568→1、限流集中本地 0–3 点。
 - **tier-1 init-deep 已落地（2026-09-08，ADR-0002）**：独立技能 `lazyzcode:init-deep`（分层 AGENTS.md 项目记忆；草稿先行、人点头才写、已有文件只出补丁）+ `core/agentsmd.js` 确定性资格谓词/覆盖审计 + `lzy agents-md` 详单 + doctor `agents-md` 检查（warn-only，根缺失=skip）；深度 3 零旗标；只写 AGENTS.md 层（仓库面），memory 归 zw 收尾。
 - **tier-1 无人值守已落地（2026-09-08，ADR-0003）**：调度走宿主自动化、lzy 零写入零调度代码；唤起协议六条在 zw SKILL.md Unattended 段（句首「zw 继续」、只推进 executing、planning 态不立新计划干净退出、Stop 预算/429 判死自然封顶、≥1h 间隔）；doctor 增 `schedule` 行（`scheduleAdvisory` 从实测集中段反推错峰窗口，无证据=skip）。
+- **产品叙事完整性已落地（2026-09-08）**：单主轴三节拍（做完/记住/接着走）——README 双语补齐 0.0.2 事实（NOTE 弧线、两技能自述、「之后的路」、CLI/doctor 清单、架构树）+ 首页特性卡 4→6（护栏式 Unattended 句式）+ 双语 guide 新增项目记忆/无人值守概念节（锚点 18→20）；并入 0.0.2 发布提交，push/publish 留用户。
 - 下一步：真发布（用户按 `docs/release-checklist.md` 择机执行）；运行期反馈迭代。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）

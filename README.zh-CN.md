@@ -1,5 +1,7 @@
 <div align="center">
 
+  <img src="docs/assets/logo.svg" alt="LazyZCode" width="120">
+
   <h1>LazyZCode</h1>
 
   <p><strong>ZCode 的纪律层。</strong><br />
@@ -139,7 +141,7 @@ Agent({ "subagent_type": "lazyzcode:explorer", "prompt": "TASK: 梳理 auth 流�
 ### 4. 轻提示钩子，不是唠叨
 
 `comment-checker` 盯着 Edit/Write 落盘内容里的 `TODO`/`FIXME`/`XXX`/`HACK`
-标记与调试残留（`console.log`、`debugger`），经 `additionalContext` 轻提示——
+标记与调试残留（`console.log`、`console.debug`、`debugger`），经 `additionalContext` 轻提示——
 只提示不阻断、每次事件至多 5 处、且只在有开放目标循环的工作区生效。
 SessionStart 重注入循环现状，新会话接着上次干。
 

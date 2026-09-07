@@ -9,7 +9,6 @@
   <script>(function(){try{var t=localStorage.getItem("lzy-theme")||"auto";if(t==="auto")t=window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t;}catch(e){}})();</script>
   <link rel="icon" type="image/svg+xml" href="{{ site.baseurl }}/assets/favicon.svg">
   <link rel="stylesheet" href="{{ site.baseurl }}/assets/docs.css">
-  <script src="{{ site.baseurl }}/assets/docs.js" defer></script>
   <script src="{{ site.baseurl }}/assets/theme.js" defer></script>
 </head>
 <body>
@@ -18,11 +17,11 @@
       <a class="brand" href="{{ site.baseurl }}/"><img src="{{ site.baseurl }}/assets/mark.svg" alt="" width="22" height="22">LazyZCode</a>
       <nav class="header-nav">
         {% if page.lang == 'zh' %}
-          <a class="nav-link" href="{{ site.baseurl }}/developers/zh/">开发者</a>
-          <a class="lang-toggle" href="{{ site.baseurl }}/guide/en/" title="Switch to English" aria-label="Switch to English"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.9 5.7 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z"/></svg><span>EN</span></a>
+          <a class="nav-link" href="{{ site.baseurl }}/guide/zh/">文档</a>
+          <a class="lang-toggle" href="{{ site.baseurl }}/developers/en/" title="Switch to English" aria-label="Switch to English"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.9 5.7 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z"/></svg><span>EN</span></a>
         {% else %}
-          <a class="nav-link" href="{{ site.baseurl }}/developers/en/">Developers</a>
-          <a class="lang-toggle" href="{{ site.baseurl }}/guide/zh/" title="切换到简体中文" aria-label="切换到简体中文"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.9 5.7 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z"/></svg><span>中文</span></a>
+          <a class="nav-link" href="{{ site.baseurl }}/guide/en/">Docs</a>
+          <a class="lang-toggle" href="{{ site.baseurl }}/developers/zh/" title="切换到简体中文" aria-label="切换到简体中文"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.9 5.7 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z"/></svg><span>中文</span></a>
         {% endif %}
         <div class="theme-toggle" role="group" aria-label="Theme">
           <button type="button" data-theme-set="dark" aria-label="Dark theme" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
@@ -34,16 +33,8 @@
     </div>
   </header>
 
-  <div class="wrap layout">
-    <aside class="sidebar" id="sidebar" aria-label="Documentation">
-      {% if page.lang == 'zh' %}
-        {% include nav-zh.html %}
-      {% else %}
-        {% include nav-en.html %}
-      {% endif %}
-    </aside>
-    <main class="content" id="content">
-      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="sidebar">{% if page.lang == 'zh' %}本页目录{% else %}On this page{% endif %}<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
+  <div class="wrap page">
+    <main class="content">
       {{ content }}
     </main>
   </div>

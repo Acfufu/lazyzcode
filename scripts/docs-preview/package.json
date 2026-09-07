@@ -1,0 +1,14 @@
+{
+  "name": "lazyzcode-docs-preview",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only docs-site builder and checkers. Mirrors the Jekyll /docs GitHub Pages build (layouts, pretty permalinks, relative .md links, GFM heading slugs). Never shipped: the root package.json stays zero-dependency and the npm files whitelist excludes scripts/.",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node check-links.mjs && node check-anchors.mjs"
+  },
+  "dependencies": {
+    "marked": "^18.0.11",
+    "marked-gfm-heading-id": "^4.1.4"
+  }
+}

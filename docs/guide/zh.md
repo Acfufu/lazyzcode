@@ -318,6 +318,7 @@ lzy version                     打印版本
 | `files` | 部署缓存与仓库载荷逐文件一致 |
 | `enabled` | 引擎把插件列为已启用 |
 | `codegraph` | Codegraph MCP/CLI 在场性（缺席 = `skip`） |
+| `loop` | 本目录目标循环进度（无循环 = `skip`；循环开着为 `warn`） |
 | `hooks` | 钩子语法自检（worker 内 vm 解析）+ `hooks.json` 注册校验 |
 | `node` | Node 版本下限（≥ 20） |
 | `hook-node` | 钩子启动器从哪条路径解析 node |

@@ -21,3 +21,15 @@ defaults:
       layout: guide
       lang: zh
       title: 文档
+  - scope:
+      path: "developers/en.md"
+    values:
+      layout: page
+      lang: en
+      title: For developers
+  - scope:
+      path: "developers/zh.md"
+    values:
+      layout: page
+      lang: zh
+      title: 开发者视角

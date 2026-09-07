@@ -1,5 +1,7 @@
 <div align="center">
 
+  <img src="docs/assets/logo.svg" alt="LazyZCode" width="120">
+
   <h1>LazyZCode</h1>
 
   <p><strong>The discipline layer for ZCode.</strong><br />
@@ -154,7 +156,7 @@ Agent({ "subagent_type": "lazyzcode:explorer", "prompt": "TASK: map the auth flo
 ### 4. Advisory hooks, not nagware
 
 `comment-checker` watches Edit/Write output for `TODO`/`FIXME`/`XXX`/`HACK`
-markers and debug residue (`console.log`, `debugger`) and nudges through
+markers and debug residue (`console.log`, `console.debug`, `debugger`) and nudges through
 `additionalContext` — inject-only, never blocks, capped at 5 hits per event,
 and active only in workspaces with an open goal loop. SessionStart re-injects
 loop state so a fresh session picks up where the last one left off.

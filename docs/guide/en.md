@@ -370,6 +370,7 @@ do.
 | `files` | Deployed cache matches the repo payload, file by file |
 | `enabled` | The engine lists the plugin as enabled |
 | `codegraph` | Codegraph MCP/CLI availability (absence = `skip`) |
+| `loop` | Goal-loop progress in this directory (skip when none; warns while a loop is open) |
 | `hooks` | Hook syntax self-check (vm-parsed in a worker) + `hooks.json` registry validation |
 | `node` | Node version floor (≥ 20) |
 | `hook-node` | Which path the hook launcher resolves node from |

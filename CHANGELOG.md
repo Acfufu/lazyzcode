@@ -52,6 +52,27 @@ versioning is SemVer.
   nav groups, EN/ZH switcher, landing page; the guide markdown stays the
   single content source (also rendered on GitHub). Enabled after the repo
   goes public via Pages settings (step 13 of the release checklist).
+- **Docs-site visual redesign ("The Verified Mark")**: new brand SVG assets
+  (`mark` / `logo` / `favicon` — a Z whose final stroke lands on the evidence
+  dot), a refined dark design system (layered surfaces, hairlines, single teal
+  accent, scrollspy sidebar with group icons), a redesigned landing page, and
+  a committed dev-only preview toolchain in `scripts/docs-preview/` (build +
+  link-crawl + anchor checks; the root package stays zero-dependency).
+- **Illustrated developer page (`docs/developers/en.md` + `zh.md`)**:
+  hand-drawn inline SVG diagrams in the site design language — system
+  architecture, goal-loop state machine, evidence staleness, hook lifecycle —
+  plus extension contracts (agent roles, trigger regexes, hook output schema)
+  and the build/test/preview toolchain. Served under `/developers/` via a new
+  sidebar-less `page` layout and linked from the site header.
+- **Theme switching (dark / light / system) across all docs pages**: a
+  three-state header toggle persists to localStorage; an inline head snippet
+  resolves the theme before first paint (no flash), a no-JS visitor falls
+  back to `prefers-color-scheme`, system changes apply live, and the
+  `theme-color` meta follows. Diagrams recolor via CSS variables.
+- **Multi-device readability**: the guide sidebar collapses into a
+  "On this page" toggle on small screens, wide diagrams and tables scroll
+  horizontally instead of shrinking into illegibility, CJK line-height is
+  relaxed, long words break safely, and touch targets grow on mobile.
 
 ## [0.0.1] - 2026-09-06
 

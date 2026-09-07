@@ -20,15 +20,8 @@
 - **P3 资产整合已落地（2026-09-06）**：comment-checker PostToolUse 轻钩子（goal.json 在场闸门、命中 TODO/FIXME/XXX/HACK 与调试残留经 additionalContext 轻提示不阻断、上限 5 处 ≤300 字符、fail-open；PostToolUse 输出契约逆向实锤 zcode.cjs:36794-36796）+ codegraph 接线（zw SKILL.md/explorer.md 补索引侦察指引；status.js 增 codegraph 诊断，**缺席=skip 不翻转退出码**；paths.js 增 userCliConfigPath 只读解析）+ browser-use 取证面文本（SKILL.md/qa-executor 补 ego-browser/curl 手法，control-browser 仅主代理）。实证：模拟 stdin 三场景 + status 检查行 + 引擎注册 hooks:4。
 - **P4 发布就绪已落地（2026-09-06）**：`lzy doctor`（status 全套 + hook 语法自检[vm 解析 worker，含 hooks.json 注册校验]/node 下限/lzy 解析/状态卫生/平台立场，零遥测）+ 发布材料（LICENSE、package.json 去 private + files 排除 .mimosa、CHANGELOG、npm scripts 补全）+ README 用户 10 分钟快速开始 + docs 脱敏；`npm publish --dry-run` 实证 24 文件零敏感物。**真发布待用户动作**。
 - **五轮双审核 + 修复轮已落地（2026-09-06/07）**：报告 `docs/reviews/`（41 发现：0 P0/2 P1/15 P2/24 P3，红线全部活体证实）；修复轮收口全部 P1+P2（abandon 修复、注册表防损坏、原子部署、跨进程锁等），新增契约测试三件套 + GitHub Actions 与发布备料（repository 元数据 + `docs/release-checklist.md`）；剩余 24 条 P3 按「顺带修」记账（评审报告处置记录）。
-- **P3 清账 + 钩子环境加固已落地（2026-09-07，goal p3-sweep-hook-env）**：评审剩余 17 条 P3 全修
-  （R2-12 维持不修）；实锤「引擎以自身 env 直接 spawn 钩子，GUI 直启场景 PATH 无
-  node → 裸 `node` 钩子静默全灭」（诊断 `docs/diagnostics/2026-09-07-hook-spawn-env.md`）→
-  四钩子改走 `run-hook.sh` 启动器（nvm/homebrew fallback）+ doctor 增 `hook-node`；契约测试增至 22 用例。
-- **限流纪律已落地（2026-09-07，goal rate-limit-discipline）**：用户 zw 会话撞 GLM 套餐账号级
-  1302/429（多会话并发打满；实测 ≤5 活跃会话安全、≥6 持续撞线）。`lzy doctor` 增 `rate-limit`
-  体检（近 2 日引擎日志只读流式扫描：429 计数/判死/lastAt/经验并发带，warn-only；自适配=
-  经验测量，决策 #16）；zw SKILL.md 增 Rate-limit discipline 段（一次一循环/子代理默认串行/
-  risk trumps quota/429 判死恢复）。底稿 `docs/research-glm-plan-rate-limit.md`（A/B 双审定稿）。
+- **P3 清账 + 钩子环境加固已落地（2026-09-07，goal p3-sweep-hook-env）**：评审剩余 17 条 P3 全修（R2-12 维持不修）；实锤「GUI 直启场景引擎 env PATH 无 node → 裸 `node` 钩子静默全灭」（`docs/diagnostics/2026-09-07-hook-spawn-env.md`）→ 四钩子改走 `run-hook.sh` 启动器（nvm/homebrew fallback）+ doctor 增 `hook-node`；契约测试增至 22 用例。
+- **限流纪律已落地（2026-09-07，goal rate-limit-discipline）**：用户 zw 会话撞 GLM 套餐账号级 1302/429（多会话并发打满；实测 ≤5 活跃会话安全、≥6 持续撞线）。`lzy doctor` 增 `rate-limit` 体检（近 2 日引擎日志只读流式扫描：429 计数/判死/lastAt/经验并发带，warn-only；自适配=经验测量，决策 #16）；zw SKILL.md 增 Rate-limit discipline 段（一次一循环/子代理默认串行/risk trumps quota/429 判死恢复）。底稿 `docs/research-glm-plan-rate-limit.md`（A/B 双审定稿）。
 - **限流体检 v3 + 触发词分层已落地（2026-09-07，goal rl-v3-trigger-strata）**：doctor rate-limit 升级回合计数
   （turnId 复合键去重，覆盖率不足降级首撞口径）/脏桶直方图/最长连撞/集中段三门槛/三分支话术，建议行改实测边界
   （固定 ≤3 废除）；触发词分层=bare zw 仅句首、lazyzcode:zw 显式全名、ulw/ultrawork 不变，注入文案条件双路（R4-4 变更记账）。
@@ -37,6 +30,9 @@
   （PostToolUse 469/UPS 33/Stop 29/SessionStart 20）；doctor hook-node 实锤启动器兜底解析
   nvm node。诊断记录 §4 复验口径三条全数兑现。
 - **文档站与品牌资产已落地（2026-09-07，goal docs-site-redesign）**：双语 guide（lazycodex.ai/docs 同构，en/zh 各 18 节锚点）+ Jekyll Pages 站（source=/docs，GFM 渲染）+「Verified Mark」品牌资产（mark/logo/favicon SVG，Z 末笔收于证据圆点）+ 版面重设计（暗色设计系统/侧栏五组图标/scrollspy）；验证工具链入库 `scripts/docs-preview/`（构建/爬链/锚点三脚本，dev-only 独立依赖，根包零依赖不破）。后续增量：开发者图文页、三态主题+多端适配、全局语言胶囊、头部顺序（92649d6…e0dafbf）。
+- **tier-2 增量已落地（2026-09-08，狗粮驱动）**：F 项证据附件（`--evidence-file` 复制入 `.lazyzcode/evidence/` 绑 sha256，≤4/项）+ 证据包导出（finish 自动归档 + `lzy loop export`，reset 不清）+ 带内调度建议（`bandAdvisory` 实测数据→并行上限，`lzy loop start` 打印并发纪律行，fail-open）+ finish 收尾写项目 memory（技能文本承载，零新钩子）；狗粮：10 目标全流程、钩子失败 568→1、限流集中本地 0–3 点。
+- **tier-1 init-deep 已落地（2026-09-08，ADR-0002）**：独立技能 `lazyzcode:init-deep`（分层 AGENTS.md 项目记忆；草稿先行、人点头才写、已有文件只出补丁）+ `core/agentsmd.js` 确定性资格谓词/覆盖审计 + `lzy agents-md` 详单 + doctor `agents-md` 检查（warn-only，根缺失=skip）；深度 3 零旗标；只写 AGENTS.md 层（仓库面），memory 归 zw 收尾。
+- **tier-1 无人值守已落地（2026-09-08，ADR-0003）**：调度走宿主自动化、lzy 零写入零调度代码；唤起协议六条在 zw SKILL.md Unattended 段（句首「zw 继续」、只推进 executing、planning 态不立新计划干净退出、Stop 预算/429 判死自然封顶、≥1h 间隔）；doctor 增 `schedule` 行（`scheduleAdvisory` 从实测集中段反推错峰窗口，无证据=skip）。
 - 下一步：真发布（用户按 `docs/release-checklist.md` 择机执行）；运行期反馈迭代。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
@@ -95,7 +91,7 @@ docs/
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
-  adr/0001-*.md              ← 安装器 enable 走引擎 CLI、config 零写入
+  adr/000{1,2,3}-*.md         ← 安装器 enable 走引擎 CLI、config 零写入 / init-deep 角色分配 / 无人值守走宿主自动化
   reviews/ release-checklist.md  ← 评审报告/处置记录（2026-09-06/07/08）+ 发布清单（13 步含 Pages）
   diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
 plugin/ core/ cli/           ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）
@@ -135,8 +131,15 @@ _Avoid_: 单用 ulw 指代本项目触发词
 会话数 / 有 429 桶最低活跃会话数」；连贯且样本足量才输出。
 _Avoid_: 并发上限（平台侧数值，本地测不到）
 
-**回合（turn）**：一次去重后的模型请求；引擎重试产生多条限流事件仍属一回合，doctor 限流
-标题按回合计。_Avoid_: 请求次数（含重试的原始条数）
+**回合（turn）**：一次去重后的模型请求；引擎重试产生多条限流事件仍属一回合，doctor 限流标题按回合计。_Avoid_: 请求次数（含重试的原始条数）
+
+**项目记忆（init-deep）**：init-deep 技能生成的分层 AGENTS.md 地图（根 + 有资格子目录），
+随 git 入库=仓库/团队面；个人教训归内置 memory（zw 收尾）。资格谓词=构建入口/文件数>40/根提及（纯代码可判）；写盘必经草稿先行（ADR-0002）。_Avoid_: 项目知识库、复杂度打分
+
+**无人值守模式（unattended）**：宿主自动化定时唤起、只推进 executing 目标、绝不立新计划的
+运行形态（ADR-0003）。_Avoid_: 全自动模式、自动驾驶
+
+**错峰窗口（off-peak window）**：doctor 从实测限流集中段反推的建议自动化挂载时段（对侧净弧中央 8h）。_Avoid_: 并发上限、空闲时段
 
 ## 9. 维护规则
 

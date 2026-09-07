@@ -214,11 +214,12 @@ scope abandonment) and the rate-limit rules below.
 ```
 lzy loop register <slug> --title "…"    # planning state
 lzy loop plan <file> [--review "…"] [--force]
-lzy loop start                          # records the base tree hash
-lzy step done <ID> [--note "…"] [--evidence "…"]
+lzy loop start                          # records the base tree hash + prints the measured 并发纪律 advisory
+lzy step done <ID> [--note "…"] [--evidence "…"] [--evidence-file <file>]…
 lzy loop status                         # progress, next step, evidence freshness
 lzy loop verify                         # evidence freshness audit (exit 1 = stale/unbound)
-lzy loop finish                         # the final gate
+lzy loop finish                         # the final gate; auto-archives the evidence bundle
+lzy loop export                         # re-export the evidence bundle
 lzy loop abandon | lzy loop reset       # give up / clear state
 ```
 
@@ -227,8 +228,16 @@ lzy loop abandon | lzy loop reset       # give up / clear state
   HEAVY goals refuse to adopt a plan without a PASS review, and a `REVISE`
   verdict is refused even with `--force`.
 - `lzy loop start` freezes the base tree hash; drift is reported against it.
+  It also prints a 并发纪律 line — a subagent parallelism cap computed from
+  your measured 429 data (see [rate-limit discipline](#rate-limit-discipline)).
 - `lzy step done` on an F item without `--evidence` is refused. Re-running
-  with new evidence re-binds it (marked ↻ re-captured).
+  with new evidence re-binds it (marked ↻ re-captured). `--evidence-file`
+  (repeatable, ≤4 per F item) attaches the capture itself — screenshots,
+  response dumps; `lzy` copies each file into `.lazyzcode/evidence/` and binds
+  its sha256 next to the tree hash.
+- `lzy loop finish` archives an evidence bundle to
+  `.lazyzcode/evidence/<slug>.report.md` (review verdict, step notes, F-item
+  evidence with attachments); `lzy loop export` re-exports it any time.
 - `lzy loop verify` is the audit-only variant of the finish gate (exit 1 when
   evidence is stale or unbound, or when no goal exists).
 - `lzy loop abandon` gives up while keeping the record; `lzy loop reset`
@@ -327,14 +336,28 @@ only; it never flips the exit code.
 Behavioral rules the zw skill carries:
 
 - **One goal loop at a time**; parallel main sessions kept few.
-- Subagents run **serial by default** (parallel only for independent F-item
-  captures, ≤ 2).
+- Subagent parallelism is **measured, not guessed**: `lzy loop start` prints a
+  并发纪律 cap from the same data — serial while a hit is recent or the
+  current hour falls in the measured concentration window; ≤2 only on a
+  coherent clean band.
 - **Risk trumps quota**: quota pressure may pick LIGHT at triage; it never
   lowers a HEAVY risk bar.
 - After a fatal 429 (a turn judged dead after the engine's retries): stop
   cleanly, wait a few minutes, then `zw continue` — the loop state survives.
 
+**Unattended (host automation)**: the engine's built-in scheduler can wake a
+fresh session on a schedule; the wake prompt is
+`zw continue (unattended: …)`. Protocol in the zw skill's Unattended section:
+continue only — never start a goal or adopt plans unattended, bounded by the
+Stop budget, ≥1h interval. For the timetable, read `lzy doctor`'s `schedule`
+line: it derives the off-peak window from your own measured concentration
+(and follows it as the data changes) instead of a guess.
+
 ## CLI reference
+
+Project memory: the `lazyzcode:init-deep` skill generates a layered AGENTS.md
+map (root + qualifying subdirectories), drafts first — nothing is written
+without your approval; `lzy doctor` patrols coverage on every run.
 
 ```
 lzy install                     deploy plugin + registry + official enable
@@ -344,18 +367,21 @@ lzy doctor                      deep local diagnostics (zero telemetry)
 lzy uninstall                   remove cache + registry entry
 lzy loop register <slug> --title <t>    create the goal (planning)
 lzy loop plan <file> [--review <v>] [--force]   adopt the N/F checklist
-lzy loop start                  planning → executing; records base tree hash
+lzy loop start                  planning → executing; records base tree hash + 并发纪律 advisory
 lzy loop status                 progress, next step, evidence freshness
 lzy loop verify                 evidence freshness audit (exit 1 = stale/unbound/no goal)
-lzy step done <ID> [--note <t>] [--evidence <t>]
-lzy loop finish                 final gate: all done + all evidence fresh
+lzy step done <ID> [--note <t>] [--evidence <t>] [--evidence-file <f>]…
+lzy loop finish                 final gate: all done + all evidence fresh; archives evidence bundle
+lzy loop export                 re-export the evidence bundle (<slug>.report.md)
 lzy loop abandon                give up, keep the record
 lzy loop reset                  clear loop state (incl. session counters, orphan tmp)
+lzy agents-md                   layered AGENTS.md audit (exit 1 = gaps/overcaps)
 lzy version                     print version
 ```
 
-Flags: `--note` is capped at 300 chars, `--evidence` at 4000; `--force=true`
-and `--force` are equivalent; `--watch=<value>` warns (it takes no value).
+Flags: `--note` is capped at 300 chars, `--evidence` at 4000, `--evidence-file`
+is repeatable (≤4 per F item, each ≤20 MB); `--force=true` and `--force` are
+equivalent; `--watch=<value>` warns (it takes no value).
 
 ## Diagnostics
 
@@ -377,7 +403,9 @@ do.
 | `lzy-path` | Whether `lzy` resolves on PATH |
 | `state` | `.lazyzcode/` hygiene (orphan temp files, goal state) |
 | `platform` | Platform notice (macOS-only detection) |
+| `agents-md` | Layered AGENTS.md coverage audit (skip when no root file; `lzy agents-md` for details) |
 | `rate-limit` | GLM plan 429 pressure from the last 2 days of engine logs |
+| `schedule` | Off-peak advisory: suggested automation window derived from the measured concentration (skip without evidence) |
 
 ## State & configuration
 

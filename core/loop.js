@@ -2,8 +2,9 @@
 // 证据验证（F 项绑定 tree hash，代码一变旧证据作废）→ 完成。
 // 状态落工作区 .lazyzcode/loop/goal.json（与宿主 .zcode/ 划清边界，宪法 §4 决策 #6）。
 // 本模块零 spawn（tree hash 经 core/git.js 取），全部同步语义。
-import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
+import { createHash } from "node:crypto";
 
 export const GOAL_VERSION = 1;
 const ACTIVE_STATES = new Set(["planning", "executing"]);
@@ -11,6 +12,9 @@ const ACTIVE_STATES = new Set(["planning", "executing"]);
 // --note / --evidence 入账上限（评审 R2-9）
 export const NOTE_MAX = 300;
 export const EVIDENCE_MAX = 4000;
+// 证据附件上限：单 F 项 ≤4 个文件、单个 ≤20MB（截图/响应转储足够；防手滑塞巨物）
+export const EVIDENCE_FILES_MAX = 4;
+export const EVIDENCE_FILE_MAX_BYTES = 20 * 1024 * 1024;
 
 export class LoopError extends Error {}
 
@@ -248,7 +252,42 @@ export function completeStep(cwd, git, id, opts = {}) {
   return withLock(cwd, () => doCompleteStep(cwd, git, id, opts));
 }
 
-function doCompleteStep(cwd, git, id, { note = null, evidence = null } = {}) {
+// 证据附件：把取证产物（截图/响应转储）复制进 .lazyzcode/evidence/ 并绑 sha256——
+// 原件在 /tmp 会被清，副本让证据包自包含（.lazyzcode/ 不计工作区脏，决策 #14）。
+function attachEvidenceFiles(cwd, goal, step, files) {
+  if (!files || files.length === 0) return undefined;
+  if (step.kind !== "F") {
+    throw new LoopError(`附件证据仅 F 项支持（${step.id} 是 ${step.kind} 项）；N 项的完成由 note 承载`);
+  }
+  if (files.length > EVIDENCE_FILES_MAX) {
+    throw new LoopError(`附件超上限：最多 ${EVIDENCE_FILES_MAX} 个/项（当前 ${files.length}）`);
+  }
+  const outDir = join(cwd, ".lazyzcode", "evidence");
+  mkdirSync(outDir, { recursive: true });
+  return files.map((src, i) => {
+    let st;
+    try {
+      st = statSync(src);
+    } catch {
+      throw new LoopError(`证据文件不可读：${src}`);
+    }
+    if (!st.isFile()) throw new LoopError(`证据路径不是文件：${src}`);
+    if (st.size > EVIDENCE_FILE_MAX_BYTES) {
+      throw new LoopError(`证据文件超上限 ${EVIDENCE_FILE_MAX_BYTES} bytes：${src}（${st.size}）`);
+    }
+    const ext = (/(\.[a-z0-9]{1,9})$/i.exec(basename(src))?.[1] ?? ".bin").toLowerCase();
+    const dest = join(outDir, `${goal.slug}.${step.id}.${i + 1}${ext}`);
+    copyFileSync(src, dest);
+    return {
+      path: relative(cwd, dest),
+      name: basename(src),
+      sha256: createHash("sha256").update(readFileSync(dest)).digest("hex"),
+      bytes: st.size,
+    };
+  });
+}
+
+function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = null } = {}) {
   const goal = requireActive(cwd, "executing");
   const step = goal.steps.find((s) => s.id === id);
   if (!step) {
@@ -279,9 +318,15 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null } = {}) {
   step.status = "done";
   step.doneAt = new Date().toISOString();
   step.note = trimmedNote ?? (rebinding ? step.note : null);
+  const attached = attachEvidenceFiles(cwd, goal, step, files);
   step.evidence =
     step.kind === "F"
-      ? { text: trimmedEvidence, treeHash: git ? git.treeHash() : null, at: step.doneAt }
+      ? {
+          text: trimmedEvidence,
+          treeHash: git ? git.treeHash() : null,
+          at: step.doneAt,
+          ...(attached ? { files: attached } : {}),
+        }
       : null;
   writeGoal(cwd, goal);
   return { goal, step, rebinding, dirty: git ? git.dirty() : false };
@@ -337,6 +382,42 @@ function doFinishLoop(cwd, git) {
   goal.finishedAt = new Date().toISOString();
   writeGoal(cwd, goal);
   return goal;
+}
+
+// ── 7. 证据包导出：goal 的可审阅档案（评审判决/步骤注记/F 项证据+附件清单）──
+// 人在接管前要快速看清「凭什么说做完了」，这就是那份材料（OmO 哲学：接管=失败信号，
+// 接管时人需要证据，不是结论）。落 .lazyzcode/evidence/<slug>.report.md，reset 不清它。
+export function exportReport(cwd, git) {
+  const goal = readGoal(cwd);
+  if (!goal) throw new LoopError("本目录没有目标");
+  if (goal.steps.length === 0) {
+    throw new LoopError(`目标 ${goal.slug} 还没采纳计划，无可导出（先 lzy loop plan）`);
+  }
+  const done = goal.steps.filter((s) => s.status === "done").length;
+  const current = git ? git.treeHash() : null;
+  const lines = [
+    `# 目标循环报告：${goal.slug} — ${goal.title}`,
+    "",
+    `- 状态 ${goal.status} · 创建 ${goal.createdAt} · 完成 ${goal.finishedAt ?? "—"}`,
+    `- 计划 ${goal.planPath ?? "未采纳"} · 评审 ${goal.review ? `${goal.review.verdict}（${goal.review.by}）` : "未评审"}`,
+    `- 基线 tree ${(goal.baseTreeHash ?? "未知").slice(0, 10)} · 当前 tree ${(current ?? "未知").slice(0, 10)} · 步骤 ${done}/${goal.steps.length}`,
+    "",
+    "## 步骤",
+  ];
+  for (const s of goal.steps) {
+    const mark = s.status === "done" ? "✔" : "·";
+    lines.push(`- ${mark} ${s.id} [${s.kind}] ${s.title}${s.note ? ` — ${s.note}` : ""}`);
+    if (s.evidence) {
+      lines.push(`  - 证据 @ tree ${(s.evidence.treeHash ?? "未绑定").slice(0, 10)} · ${s.evidence.at}：${s.evidence.text}`);
+      for (const f of s.evidence.files ?? []) {
+        lines.push(`  - 附件 \`${f.path}\`（sha256 ${f.sha256.slice(0, 16)}… · ${f.bytes} bytes）`);
+      }
+    }
+  }
+  const p = join(cwd, ".lazyzcode", "evidence", `${goal.slug}.report.md`);
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, `${lines.join("\n")}\n`);
+  return { path: relative(cwd, p) };
 }
 
 export function abandonLoop(cwd) {
@@ -406,7 +487,8 @@ export function formatStatus(cwd, git) {
       const mark = s.status === "done" ? "✔" : "·";
       const ev =
         s.kind === "F" && s.evidence
-          ? ` 证据@${(s.evidence.treeHash ?? "未绑定").slice(0, 10)}`
+          ? ` 证据@${(s.evidence.treeHash ?? "未绑定").slice(0, 10)}` +
+            (s.evidence.files?.length ? ` · 附件 ${s.evidence.files.length}` : "")
           : "";
       lines.push(`  ${mark} ${s.id.padEnd(4)} [${s.kind}] ${s.title}${ev}`);
     }

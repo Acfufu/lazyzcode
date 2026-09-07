@@ -8,7 +8,8 @@ import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
 import { readRepoManifest } from "./installer.js";
 import { installPathFor, packageRoot, repoPluginDir, userCliLogDir } from "./paths.js";
-import { collectRateLimitStats } from "./ratelimit.js";
+import { collectRateLimitStats, scheduleAdvisory } from "./ratelimit.js";
+import { auditAgentsMd } from "./agentsmd.js";
 
 const NODE_MAJOR_FLOOR = 20;
 
@@ -175,6 +176,30 @@ function checkPlatform(push) {
   }
 }
 
+// AGENTS.md 分层审计巡逻（tier-1 init-deep，ADR-0002）：纯代码资格谓词 + 覆盖审计，
+// warn-only 不翻退出码。根文件不存在→skip（不催 adoption，init-deep 技能负责提案）。
+function checkAgentsMd(push, cwd) {
+  let a;
+  try {
+    a = auditAgentsMd(cwd);
+  } catch (err) {
+    push("agents-md", "skip", `审计失败（fail-soft）：${err?.message ?? err}`);
+    return;
+  }
+  if (!a.rootExists) {
+    push("agents-md", "skip", "根 AGENTS.md 不存在（lazyzcode:init-deep 可生成分层项目记忆）");
+    return;
+  }
+  if (a.missing.length === 0 && a.over.length === 0) {
+    const qualifying = a.dirs.filter((d) => d.qualifies).length;
+    push("agents-md", "ok", `分层覆盖完整（资格 ${qualifying} · 缺 0 · 超限 0；lzy agents-md 详单）`);
+    return;
+  }
+  const miss = a.missing.length > 0 ? `缺 ${a.missing.length}（${a.missing.slice(0, 3).join(" ")}${a.missing.length > 3 ? "…" : ""}）` : "缺 0";
+  const over = a.over.length > 0 ? `超限 ${a.over.length}（${a.over.slice(0, 2).map((o) => `${o.path} ${o.lines} 行`).join("、")}${a.over.length > 2 ? "…" : ""}）` : "超限 0";
+  push("agents-md", "warn", `${miss} · ${over}（lzy agents-md 详单；lazyzcode:init-deep 补齐，草稿先行）`);
+}
+
 // 账号级限流体检：扫引擎 cli 日志（近 2 日）统计 429 压力与经验并发带，warn-only 不翻转
 // 退出码。事实底稿与口径见 docs/research-glm-plan-rate-limit.md。
 function fmtLocal(ts) {
@@ -203,10 +228,12 @@ async function checkRateLimit(push) {
   }
   if (!stats.available) {
     push("rate-limit", "skip", `无引擎日志可扫（${logDir}）`);
+    push("schedule", "skip", "无引擎日志——无人值守窗口无从实测，任意时段均可（建议 ≥1h 间隔）");
     return;
   }
   if (stats.rateLimited === 0) {
     push("rate-limit", "ok", `近 ${stats.spanHours ?? stats.files * 24}h 无账号级限流记录`);
+    push("schedule", "skip", "无集中段证据——任意时段均可挂自动化，建议 ≥1h 间隔");
     return;
   }
   // 三分支渲染：经验带连贯 / 单边证据（不连贯） / 无活跃面证据（band=null）。
@@ -252,6 +279,13 @@ async function checkRateLimit(push) {
   }
   detail += adviceStr;
   push("rate-limit", "warn", detail);
+  // 错峰窗口（无人值守调度，ADR-0003）：与限流体检同源同扫描，不重复读日志
+  const adv = scheduleAdvisory(stats);
+  if (adv) {
+    push("schedule", "warn", `${adv.text}；无人值守唤起建议 ≥1h 间隔（协议见 zw 技能 Unattended 段）`);
+  } else {
+    push("schedule", "skip", "无集中段证据——任意时段均可挂自动化，建议 ≥1h 间隔");
+  }
 }
 
 export async function collectDoctor(cwd = process.cwd()) {
@@ -272,6 +306,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     checkLzyPath,
     (p) => checkLoopState(p, cwd),
     checkPlatform,
+    (p) => checkAgentsMd(p, cwd),
     (p) => checkRateLimit(p),
   ];
   for (const step of steps) {

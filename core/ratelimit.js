@@ -209,3 +209,60 @@ export async function collectRateLimitStats(logDir, { maxFiles = 2 } = {}) {
   }
   return stats;
 }
+
+// ── 带内调度建议（测量→调度闭环）：把实测统计翻译成 zw 子代理并行上限 ──────
+// 宁可保守：最近 60min 内撞线或当前处于实测集中段 → 串行；连贯经验带且净桶安全界
+// ≥2 → 上限 2（与 zw 技能默认并行纪律一致）；数据不足/带不连贯 → 保守串行。
+// 纯函数：stats 是 collectRateLimitStats 的产物，now 可注入以便测试。
+export function bandAdvisory(stats, now = new Date()) {
+  if (!stats?.available) {
+    return { cap: 2, reason: "无限流数据（无引擎日志）——沿用技能默认（≤2，仅限独立取证）" };
+  }
+  if (stats.rateLimited === 0) {
+    return { cap: 2, reason: "近期日志无 429——沿用技能默认（≤2，仅限独立取证）" };
+  }
+  // lastAt 在未来（时钟偏差）也按「刚撞线」保守处理
+  const recentMin = stats.lastAt
+    ? Math.round((now.getTime() - Date.parse(stats.lastAt)) / 60_000)
+    : null;
+  if (recentMin !== null && Number.isFinite(recentMin) && recentMin <= 60) {
+    return { cap: 1, reason: `${Math.max(0, recentMin)} 分钟前仍在撞线——建议串行，等窗口回落` };
+  }
+  const c = stats.concentration;
+  if (c) {
+    const h = now.getHours();
+    const inWindow =
+      c.startHour <= c.endHour ? h >= c.startHour && h < c.endHour : h >= c.startHour || h < c.endHour;
+    if (inWindow) {
+      return {
+        cap: 1,
+        reason: `当前处于实测限流集中段（本地 ${c.startHour}–${c.endHour} 点，份额 ${c.sharePct}%）——建议串行/错峰`,
+      };
+    }
+  }
+  const b = stats.band;
+  if (b?.coherent && b.maxClean >= 2) {
+    return {
+      cap: 2,
+      reason: `实测经验带：净桶 ${b.maxClean} 会话无 429 / ${b.minDirty} 会话即撞线——独立 F 项取证可 ≤2 并行`,
+    };
+  }
+  return { cap: 1, reason: "经验带不连贯（归因漂移下是常态）——保守串行" };
+}
+
+// ── 错峰窗口建议（无人值守调度，ADR-0003）：从实测集中段反推自动化挂载时段 ──
+// 集中段 [start, start+3) 本地小时 → 净弧 21h；建议窗口 = 净弧中央的 8 小时：
+// start = (集中段终点 + 6) % 24（(21/2 向下取整 10) − 4）。纯函数，now 可注入测试。
+// 无集中段证据 → null（doctor 走 skip，不凭空捏窗口）。
+export function scheduleAdvisory(stats) {
+  const c = stats?.concentration;
+  if (!c) return null;
+  const start = (c.endHour + 6) % 24;
+  const end = (start + 8) % 24;
+  const p2 = (n) => String(n).padStart(2, "0");
+  return {
+    startHour: start,
+    endHour: end,
+    text: `建议自动化窗口：本地 ${p2(start)}:00–${p2(end)}:00（避开实测集中段 ${p2(c.startHour)}:00–${p2(c.endHour)}:00，占 ${Math.max(1, Math.round(c.sharePct / 10))} 成）`,
+  };
+}

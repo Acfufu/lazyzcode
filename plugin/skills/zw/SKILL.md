@@ -54,7 +54,9 @@ with 3–8 specific questions instead of sweeping alone — then write the plan 
 the code index when available: the user-level `codegraph` MCP (tool
 `codegraph_explore`, pass `projectPath`) or its CLI (`codegraph status/query/…`,
 already whitelisted for the explorer via Bash) — fall back to plain grep/read when
-no index exists for the target repo.
+no index exists for the target repo. If the repo has no root AGENTS.md yet,
+suggest running `lazyzcode:init-deep` first — the plan gate reads better with a
+project map in place.
 
 ```
 - [N1] <implementation step>
@@ -118,6 +120,11 @@ suggested command; it returns verbatim observed output and a MATCH verdict.
   cannot be used inside subagents. Record what you observed, not what you hope.
   Evidence from qa-executor must quote its observed output, never its
   conclusions alone.
+- **File evidence**: attach the capture itself with
+  `lzy step done F1 --evidence "<what the capture shows>" --evidence-file
+  <path>` (repeatable, ≤4 files per F item). `lzy` copies each file into
+  `.lazyzcode/evidence/` and binds its sha256. The text still has to say what
+  the capture shows — a PNG nobody describes is not evidence.
 - Code changed after you captured evidence? The evidence is stale — `lzy loop
   finish` will reject it. Re-verify on the current code and re-record.
 
@@ -130,6 +137,14 @@ lzy loop finish
 Passes only when every step is done AND every F item's evidence tree-hash equals
 the current code. This is the only valid "done". 不做完不停 — if finish rejects,
 keep working, never declare victory.
+
+On success `finish` archives an evidence bundle to
+`.lazyzcode/evidence/<slug>.report.md` (plan verdict, step notes, F-item
+evidence with attachments). Then close the loop with a memory ritual: distill
+**2–3 durable, repo-specific lessons** from this goal (flaky verification
+surfaces, required headers/flags, slow suites — things the next goal would
+otherwise rediscover) and save them to your native project memory, one memory
+file per lesson (`type: project`). Future sessions pick them up automatically.
 
 ## Continuation (how the Stop hook drives you)
 
@@ -151,9 +166,13 @@ Stop pool from Continuation — two different pools, never confuse them.
 
 - **One active goal loop at a time.** Do not run several `zw` loops in
   parallel sessions; serialize batches instead.
-- **Subagents default to serial.** explorer / plan-reviewer / qa-executor run
-  one at a time; go parallel (≤2) only to capture several independent F-item
-  evidences.
+- **Subagent parallelism is measured, not guessed.** `lzy loop start` prints a
+  并发纪律 line — a parallelism cap computed from your real 429 data (recent
+  hits, the measured concentration window, the empirical concurrency band).
+  Follow it: cap 1 = run explorer / plan-reviewer / qa-executor strictly one
+  at a time; cap 2 = go parallel only to capture several independent F-item
+  evidences. No advisory printed (no log data) → assume the conservative
+  default of ≤2 for independent captures only.
 - **A turn died with 429/`1302 rate limited`?** Do not retry-bomb, do not
   replan. Close the session cleanly — `.lazyzcode/` lost nothing — and tell
   the user to resume with `zw 继续` (or `lzy loop step`) after a few minutes,
@@ -166,6 +185,37 @@ Stop pool from Continuation — two different pools, never confuse them.
   reports your account's recent 429 pressure and empirical concurrency band
   (or one-sided evidence when no coherent band exists — degradation is the
   normal path under attribution drift).
+
+## Unattended mode (scheduled wake-ups)
+
+A host-side automation (the engine's scheduler — cron-style, persistent, per
+workspace) can wake a fresh session on a schedule to drive an open goal loop.
+The wake prompt is plain text; say **`zw 继续`** so the stratified trigger
+fires and this skill's bootstrap loads. `lzy doctor`'s `schedule` line
+suggests the off-peak window measured from your own 429 data.
+
+Protocol for a wake-up session (this IS a red-line contract, not a suggestion):
+
+1. **Continue only.** Re-ground with `lzy loop status`, then push the current
+   pending step exactly as the workflow says (commit → evidence → `lzy step
+   done`).
+2. **Never start a new goal.** No goal in the workspace, or goal in
+   `planning` state? Exit cleanly and say so — plan adoption needs a human
+   (the decision-complete gate requires interviewing the user, which a wake-up
+   cannot do).
+3. **Stop budget is the boundary.** Push until the Stop hook's 2-continue
+   budget is spent or a step completes; then end cleanly. Do not pad, do not
+   replan, do not ask questions into the void.
+4. **Dying turn?** Same as rate-limit discipline: close cleanly, lose
+   nothing — the next wake-up resumes from `.lazyzcode/`.
+5. **Serial subagents** regardless of the 并发纪律 cap unless the loop is
+   executing F-item captures and the cap allows 2.
+
+Suggested automation prompt (host-side configuration, ≥1h interval):
+
+```
+zw 继续（无人值守：只推进 executing 目标；无目标或 planning 态则干净退出并说明；不做完不停）
+```
 
 ## Red lines
 
@@ -201,10 +251,11 @@ tool). Aliases are equal — `zw` is the primary.
 |---|---|
 | `lzy loop register <slug> --title …` | create goal (planning) |
 | `lzy loop plan <file> [--force]` | adopt checklist (rejects TBD) |
-| `lzy loop start` | planning → executing, records base tree hash |
+| `lzy loop start` | planning → executing; prints the measured 并发纪律 advisory |
 | `lzy loop status` | progress, next step, evidence freshness |
-| `lzy step done <ID> [--note] [--evidence]` | complete a step (F requires evidence) |
+| `lzy step done <ID> [--note] [--evidence] [--evidence-file …]` | complete a step (F requires evidence; files bound by sha256) |
 | `lzy loop verify` | evidence freshness report (exit 1 when stale/unbound evidence **or no goal exists**) |
-| `lzy loop finish` | final gate: all done + fresh evidence |
+| `lzy loop finish` | final gate: all done + fresh evidence; auto-archives the evidence bundle |
+| `lzy loop export` | re-export the evidence bundle to `.lazyzcode/evidence/<slug>.report.md` |
 | `lzy loop abandon` / `lzy loop reset` | give up / clear state |
 | `lzy doctor` | deep local diagnostics incl. rate-limit pressure (zero telemetry) |

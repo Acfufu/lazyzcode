@@ -13,6 +13,7 @@ import {
   abandonLoop,
   adoptPlan,
   completeStep,
+  exportReport,
   finishLoop,
   formatStatus,
   readGoal,
@@ -21,33 +22,46 @@ import {
   startLoop,
   verifyEvidence,
 } from "../core/loop.js";
-import { findEngine, repoPluginDir } from "../core/paths.js";
+import { findEngine, repoPluginDir, userCliLogDir } from "../core/paths.js";
+import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
+import { auditAgentsMd, formatAgentsMd } from "../core/agentsmd.js";
 
 const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 
 // `--key value` / `--key=value` / 裸旗标 → { _: 位置参数, f: 旗标表 }
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
-// `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence"]);
+// `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
+// MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file"]);
+const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
   const _ = [];
   const f = {};
+  const push = (k, v) => {
+    if (MULTI_FLAGS.has(k)) {
+      if (!Array.isArray(f[k])) f[k] = typeof f[k] === "string" ? [f[k]] : [];
+      f[k].push(v);
+    } else {
+      f[k] = v;
+    }
+  };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a.startsWith("--")) {
       const eq = a.indexOf("=");
       if (eq > 0) {
+        const k = a.slice(2, eq);
         const v = a.slice(eq + 1);
-        f[a.slice(2, eq)] = v === "true" ? true : v === "false" ? false : v;
+        push(k, v === "true" ? true : v === "false" ? false : v);
       } else if (
         VALUE_FLAGS.has(a.slice(2)) &&
         i + 1 < args.length &&
         !args[i + 1].startsWith("--")
       ) {
-        f[a.slice(2)] = args[++i];
+        push(a.slice(2), args[++i]);
       } else {
-        f[a.slice(2)] = true;
+        push(a.slice(2), true);
       }
     } else {
       _.push(a);
@@ -158,6 +172,15 @@ async function cmdLoop(args) {
       console.log(`✔ 目标循环开跑：${goal.slug}（基线 tree ${(goal.baseTreeHash ?? "未知").slice(0, 10)}）`);
       const next = goal.steps[0];
       console.log(`  下一步 → ${next.id} [${next.kind}] ${next.title}`);
+      // 带内调度建议（tier-2）：实测限流数据 → 子代理并行上限。尽力而为（fail-open），
+      // 扫描失败/无日志都不阻断开跑。
+      try {
+        const stats = await collectRateLimitStats(userCliLogDir());
+        if (stats.available) {
+          const adv = bandAdvisory(stats, new Date());
+          console.log(`  并发纪律：子代理并行上限 ${adv.cap} —— ${adv.reason}`);
+        }
+      } catch {}
       return;
     }
     case "verify": {
@@ -173,6 +196,18 @@ async function cmdLoop(args) {
       const goal = finishLoop(cwd, git);
       console.log(`✔✔ 目标完成：${goal.slug} — ${goal.title}`);
       console.log("  全部步骤收口，F 项证据绑定当前 tree hash。不做完不停——这次真的做完了。");
+      try {
+        const r = exportReport(cwd, git);
+        console.log(`  证据包已归档：${r.path}（人接管评审从这份材料开始）`);
+      } catch (e) {
+        console.log(`  ⚠ 证据包导出失败：${e.message}`);
+      }
+      console.log("  收尾：把本目标 2–3 条可复用教训写进宿主项目 memory，下个会话自动可用。");
+      return;
+    }
+    case "export": {
+      const r = exportReport(cwd, git);
+      console.log(`✔ 证据包已导出：${r.path}`);
       return;
     }
     case "abandon": {
@@ -189,7 +224,7 @@ async function cmdLoop(args) {
       console.log(formatStatus(cwd, git));
       return;
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/verify/finish/abandon/reset）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/verify/finish/export/abandon/reset）`);
   }
 }
 
@@ -201,9 +236,16 @@ async function cmdStep(args) {
   }
   if (!_[1]) throw new LoopError("缺少步骤 ID：lzy step done <ID> …");
   const cwd = process.cwd();
+  const rawFiles = f["evidence-file"];
+  const files = Array.isArray(rawFiles)
+    ? rawFiles.map((p) => resolve(cwd, p))
+    : typeof rawFiles === "string"
+      ? [resolve(cwd, rawFiles)]
+      : null;
   const { step, goal, rebinding, dirty } = completeStep(cwd, createGit(cwd), _[1], {
     note: typeof f.note === "string" ? f.note : null,
     evidence: typeof f.evidence === "string" ? f.evidence : null,
+    files,
   });
   console.log(`${rebinding ? "↻" : "✔"} 步骤${rebinding ? "重取证" : "完成"}：${step.id} [${step.kind}] ${step.title}（${goal.steps.filter((s) => s.status === "done").length}/${goal.steps.length}）`);
   if (dirty) {
@@ -211,6 +253,9 @@ async function cmdStep(args) {
   }
   if (step.evidence) {
     console.log(`  证据已绑定 tree ${(step.evidence.treeHash ?? "未绑定").slice(0, 10)}：${step.evidence.text.slice(0, 80)}`);
+    for (const file of step.evidence.files ?? []) {
+      console.log(`  附件 ${file.path}（sha256 ${file.sha256.slice(0, 12)}… · ${file.bytes} bytes）`);
+    }
   }
   const pending = goal.steps.find((s) => s.status === "pending");
   console.log(pending ? `  下一步 → ${pending.id} [${pending.kind}] ${pending.title}` : "  全部步骤已收口 → lzy loop finish 做终验");
@@ -223,6 +268,17 @@ async function cmdVersion() {
   } catch {}
   const ev = createEngineCli(findEngine()).version();
   console.log(`lzy ${v}（插件载荷同版本）· 引擎 ${ev ?? "未找到"}`);
+}
+
+// ── 项目记忆（AGENTS.md 分层审计，tier-1 init-deep）────────────────────────
+async function cmdAgentsMd() {
+  const cwd = process.cwd();
+  console.log("lzy agents-md（AGENTS.md 分层审计——只读，写盘归 init-deep 技能且草稿先行）");
+  const a = auditAgentsMd(cwd);
+  for (const line of formatAgentsMd(a).split("\n")) {
+    console.log(`  ${line}`);
+  }
+  process.exitCode = a.missing.length + a.over.length > 0 ? 1 : 0;
 }
 
 function printHelp() {
@@ -238,12 +294,18 @@ function printHelp() {
 目标循环（状态在工作区 .lazyzcode/）：
   lzy loop register <slug> --title <标题>   注册目标（进入 planning）
   lzy loop plan <计划文件> [--force]        计划门：采纳 N/F 清单（默认拒绝待定项）
-  lzy loop start                            开跑（planning → executing，记基线 tree hash）
+  lzy loop start                            开跑（planning → executing，打印实测并发纪律行）
   lzy loop status                           查看进度与下一步
-  lzy step done <ID> [--note …] [--evidence …]  收口一步（F 项必须带真实表面证据）
+  lzy step done <ID> [--note …] [--evidence …] [--evidence-file <文件>]…
+                                            收口一步（F 项必须带真实表面证据；附件复制入
+                                            .lazyzcode/evidence/ 并绑 sha256，≤4 个/项）
   lzy loop verify                           证据时效核对（退出码 0=全部新鲜，1=有过期/未绑定）
-  lzy loop finish                           终验完成（全部 done + F 证据新鲜才放行）
+  lzy loop finish                           终验完成（全部 done + F 证据新鲜才放行；自动归档证据包）
+  lzy loop export                           重导出证据包到 .lazyzcode/evidence/<slug>.report.md
   lzy loop abandon / reset                  放弃 / 清除状态
+
+项目记忆（AGENTS.md 分层，确定性审计——写盘归 init-deep 技能且草稿先行）：
+  lzy agents-md    资格谓词+覆盖审计详单（退出码 0=覆盖完整无超限，1=有缺口/超限）
 
 环境：
   LZY_ZCODE_ENGINE  显式指定引擎 zcode.cjs 路径；设置后替换默认候选（默认找 /Applications/ZCode.app/...，
@@ -276,6 +338,8 @@ async function main() {
       return cmdLoop(args.slice(1));
     case "step":
       return cmdStep(args.slice(1));
+    case "agents-md":
+      return cmdAgentsMd();
     case "version":
     case "--version":
     case "-v":

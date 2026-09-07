@@ -226,7 +226,10 @@ lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 - 证据绑定 `git rev-parse HEAD^{tree}`——当前提交的内容快照。**先提交，再
   取证。** 未提交的改动不算数。
 - 代码一变，旧证据*按构造*过期。终验门重查新鲜度，拒绝过期与未绑定证据。
-- 取证材料可归档到 `.lazyzcode/evidence/`。
+- 取证产物（截图/响应转储）用 `--evidence-file` 随证据入账：`lzy` 复制进
+  `.lazyzcode/evidence/` 并绑定 sha256（每 F 项 ≤4 个）；`lzy loop finish`
+  自动归档证据包到 `.lazyzcode/evidence/<slug>.report.md`，`lzy loop export`
+  随时重导出。
 - `lazyzcode:qa-executor` 代理为此而生：派它去跑取证，并原样报告它实际观察到
   的东西——命令与原始输出。它的天职是对抗证据造假。
 
@@ -277,13 +280,23 @@ GLM 套餐实行**账号级**并发限流（`[1302]` / 429）。没有可以配�
 zw 技能承载的行为规则：
 
 - **一次只跑一个目标循环**；并行主会话宜少。
-- 子代理**默认串行**（仅独立 F 项取证可并行，≤ 2）。
+- 子代理并行度**靠实测、不靠猜**：`lzy loop start` 用同一份实测数据打印
+  「并发纪律」行——刚撞线或处于实测集中段→串行；连贯干净经验带→≤2。
 - **风险压过配额**：配额压力可以在 triage 时选 LIGHT，但绝不降低 HEAVY 的风险
   门槛。
 - 被 429 判死（引擎重试耗尽判回合死）后：干净收尾，等几分钟，`zw 继续`——
   循环状态还在。
 
+**无人值守（宿主自动化）**：引擎自带 scheduler 可定时唤起新会话，唤起 prompt
+写 `zw 继续（无人值守：…）`；协议见 zw 技能 Unattended 段——只推进 executing
+目标、planning 态绝不立新计划、Stop 预算自然封顶、间隔 ≥1h。挂载时段看
+`lzy doctor` 的 `schedule` 行：它从你自己的实测集中段反推错峰窗口（集中段
+变了窗口自动跟着变），而不是拍脑袋。
+
 ## CLI 参考
+
+项目记忆：`lazyzcode:init-deep` 技能生成分层 AGENTS.md 地图（根 + 有资格子目录），
+**草稿先行**——未经你点头不落任何盘；`lzy doctor` 每次跑都巡逻覆盖。
 
 ```
 lzy install                     部署插件 + 注册表 + 官方启用
@@ -293,18 +306,21 @@ lzy doctor                      深度本地诊断（零遥测）
 lzy uninstall                   删缓存 + 注册表条目
 lzy loop register <slug> --title <标题>    建目标（planning）
 lzy loop plan <文件> [--review <判决>] [--force]   采纳 N/F 清单
-lzy loop start                  planning → executing；记录基线 tree hash
+lzy loop start                  planning → executing；记录基线 tree hash + 打印实测并发纪律行
 lzy loop status                 进度、下一步、证据新鲜度
 lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑定/无目标）
-lzy step done <ID> [--note <注记>] [--evidence <证据>]
-lzy loop finish                 终验门：全部 done + 全部证据新鲜
+lzy step done <ID> [--note <注记>] [--evidence <证据>] [--evidence-file <文件>]…
+lzy loop finish                 终验门：全部 done + 全部证据新鲜；自动归档证据包
+lzy loop export                 重导出证据包（<slug>.report.md）
 lzy loop abandon                放弃，留档
 lzy loop reset                  清循环状态（含会话计数、孤儿临时文件）
+lzy agents-md                   AGENTS.md 分层审计（退出码 1 = 缺口/超限）
 lzy version                     打印版本
 ```
 
-旗标：`--note` 上限 300 字符、`--evidence` 上限 4000；`--force=true` 与
-`--force` 等价；`--watch=<值>` 会警告（它不吃值）。
+旗标：`--note` 上限 300 字符、`--evidence` 上限 4000、`--evidence-file` 可重复
+（每 F 项 ≤4 个、单个 ≤20MB）；`--force=true` 与 `--force` 等价；`--watch=<值>`
+会警告（它不吃值）。
 
 ## 诊断
 
@@ -325,7 +341,9 @@ lzy version                     打印版本
 | `lzy-path` | `lzy` 能否在 PATH 上解析 |
 | `state` | `.lazyzcode/` 卫生（孤儿临时文件、goal 状态） |
 | `platform` | 平台提示（仅 macOS 探测） |
+| `agents-md` | AGENTS.md 分层覆盖审计（根缺失 = `skip`；`lzy agents-md` 详单） |
 | `rate-limit` | 近 2 日引擎日志的 GLM 套餐 429 压力 |
+| `schedule` | 错峰窗口建议：从实测集中段反推自动化挂载时段（无集中段证据 = `skip`） |
 
 ## 状态与配置
 

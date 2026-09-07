@@ -7,6 +7,52 @@ versioning is SemVer.
 
 ### Added
 
+- **Unattended mode via host automation (ADR-0003)**: schedule wake-ups with
+  the engine's own scheduler — the wake prompt is `zw 继续（无人值守：…）`, the
+  loop survives via SessionStart re-injection, and `lzy` stays zero-write,
+  zero-scheduling-code. The wake-up protocol lives in the `zw` skill's
+  Unattended section: continue only (never start a goal or adopt plans
+  unattended — the decision-complete gate needs a human), bounded by the Stop
+  budget and clean 429 exits, ≥1h interval.
+- **Off-peak schedule advisory (`scheduleAdvisory` + doctor `schedule`
+  line)**: derives the suggested automation window from the measured 429
+  concentration (the 8h center of the clean arc opposite the window) — the
+  timetable follows your own data instead of a guess; no concentration
+  evidence → skip.
+- **Layered project memory (`lazyzcode:init-deep`)**: generates or updates a
+  layered AGENTS.md map — root file plus per-directory files for qualifying
+  subdirectories — so the engine's native AGENTS.md auto-read has a fresh,
+  lean map. Drafts first: nothing is written without explicit human approval
+  (existing files get proposed patches, never silent rewrites). Depth ≤3 and
+  zero flags by default (override in conversation).
+- **Deterministic AGENTS.md audit (`core/agentsmd.js` + `lzy agents-md` +
+  doctor `agents-md` check)**: the qualifying predicate (build entry present /
+  >40 direct files / mentioned as `<dir>/` in the root file) and the coverage
+  audit are pure code — reproducible across runs, auditable in review. A root
+  mention doubles as a coverage declaration, so deliberate exemptions need no
+  extra state file. Warn-only in doctor; root file missing = skip (adoption
+  stays opt-in). Role split (model proposes / human approves / code enforces /
+  doctor patrols) recorded in ADR-0002.
+- **File evidence for F items (`--evidence-file`)**: attach the capture itself
+  (screenshot, response dump) when closing an F item — repeatable, ≤4 files
+  per item, ≤20 MB each. `lzy` copies each file into `.lazyzcode/evidence/`
+  and binds sha256 + byte size next to the tree hash, so evidence survives
+  `/tmp` cleanup; the `--evidence` text still has to say what the capture
+  shows.
+- **Evidence bundle export (`lzy loop export`, auto-archived on finish)**:
+  renders the goal's review verdict, step notes, and every F item's evidence
+  (tree hash, timestamps, attachment list with sha256) into
+  `.lazyzcode/evidence/<slug>.report.md` — the human-readable record a
+  takeover review starts from. Survives `lzy loop reset`.
+- **Measured concurrency advisory (`bandAdvisory`)**: turns the doctor's
+  empirical 429 data into a subagent parallelism cap — serial while a hit is
+  <60 min old or the current local hour falls in the measured concentration
+  window; ≤2 only on a coherent clean band; conservative serial when the band
+  is incoherent. `lzy loop start` prints it as a 并发纪律 line (best-effort,
+  never blocks the start; no log data → no line).
+- **`zw` finish ritual**: after a loop passes finish, distill 2–3 durable,
+  repo-specific lessons into the host's native project memory (skill text
+  only — no new hook, per the Skill > Hook layering).
 - **Rate-limit health check v3 (`lzy doctor`)**: scans the engine's local CLI
   logs (last 2 days, read-only, streamed) for account-level 429 `rate_limited`
   pressure and reports it as deduplicated hit **turns** (turnId composite-key

@@ -29,9 +29,10 @@ try {
           `（${doneCount}/${steps.length} 步）。下一步 ${next.id} [${next.kind}] ${next.title}。` +
           `纪律：计划→执行→证据→不做完不停；收口用 node <lazyzcode>/cli/lzy.js step done ${next.id}` +
           (next.kind === "F" ? " --evidence <真实表面取证>" : "") +
-          `。查看全局：node <lazyzcode>/cli/lzy.js loop status`
+          `。查看全局：node <lazyzcode>/cli/lzy.js loop status；发「zw 继续」即认领接管（ADR-0004）`
         : `[lzy] 本目录目标循环「${goal.slug}」全部步骤已收口，终验门未过：` +
-          `运行 node <lazyzcode>/cli/lzy.js loop finish 完成 F 项证据时效终验。`,
+          `运行 node <lazyzcode>/cli/lzy.js loop finish 完成 F 项证据时效终验；` +
+          `发「zw 继续」即认领接管（ADR-0004）。`,
     });
     process.exit(0);
   }

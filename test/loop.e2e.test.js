@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -134,6 +134,35 @@ test("git-less 目录：证据未绑定与 finish 的分诊文案（R2-4 回归�
     assert.equal(fin.code, 1);
     assert.match(fin.out, /未绑定/);
     assert.match(fin.out, /不是 git 仓库/); // 药方可执行，不再误诊「过期」
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("fail-fast（ADR-0006）：空目录写命令报错且不留 .lazyzcode/ 疤痕", () => {
+  const d = repo({ git: false });
+  try {
+    const r = lzy(["step", "done", "N1", "--note", "n"], d);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /本目录没有目标/);
+    assert.ok(r.out.includes(join(d, ".lazyzcode", "loop")), "报错应含实际检查的绝对路径");
+    assert.equal(existsSync(join(d, ".lazyzcode")), false); // withLock 前判空，无空壳疤痕
+    assert.equal(lzy(["loop", "finish"], d).code, 1);
+    assert.equal(existsSync(join(d, ".lazyzcode")), false);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("恢复式报错（ADR-0006）：status 读面报实际检查路径 + 恢复指引，不报错", () => {
+  const d = repo({ git: false });
+  try {
+    const r = lzy(["loop", "status"], d);
+    assert.equal(r.code, 0); // 读面：打印指引而非抛错
+    assert.match(r.out, /本目录没有目标循环状态/);
+    assert.ok(r.out.includes(join(d, ".lazyzcode", "loop")));
+    assert.match(r.out, /恢复/);
+    assert.match(r.out, /宿主工作区|工作区根/);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

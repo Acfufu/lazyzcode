@@ -108,6 +108,46 @@ test("reset 连带清理会话计数与孤儿 tmp；无目标无残留时拒绝�
   }
 });
 
+test("doctor 疤痕巡逻（ADR-0006）：空壳 loop 目录→warn 指手动 rm；目录缺席→干净", () => {
+  const runDoctor = (d, h) =>
+    spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+      cwd: d,
+      encoding: "utf8",
+      timeout: 120_000,
+      env: { ...process.env, HOME: h },
+    });
+  const lineOf = (out, name) => out.split(/\r?\n/).find((l) => l.includes(name));
+  // 疤痕态：有 .lazyzcode/loop/ 无 goal.json（旧版写命令疤痕）→ warn 且指引手动 rm -r；
+  // 并与 reset 互证：null-goal 空壳报「无需 reset」，清不掉目录本身
+  const d1 = scratch();
+  const h1 = scratch();
+  try {
+    mkdirSync(join(d1, ".lazyzcode", "loop"), { recursive: true });
+    const r = runDoctor(d1, h1);
+    const state = lineOf(`${r.stdout ?? ""}${r.stderr ?? ""}`, "state");
+    assert.ok(state, "doctor 输出应含 state 行");
+    assert.match(state, /空壳疤痕/);
+    assert.match(state, /rm -r/);
+    const r2 = lzy(["loop", "reset"], d1);
+    assert.equal(r2.status, 1);
+    assert.match(r2.stderr, /无需 reset/);
+  } finally {
+    cleanup(d1, h1);
+  }
+  // 干净态：目录整体缺席 → ok（不误报疤痕）
+  const d2 = scratch();
+  const h2 = scratch();
+  try {
+    const r = runDoctor(d2, h2);
+    const state = lineOf(`${r.stdout ?? ""}${r.stderr ?? ""}`, "state");
+    assert.ok(state, "doctor 输出应含 state 行");
+    assert.match(state, /干净/);
+    assert.doesNotMatch(state, /疤痕/);
+  } finally {
+    cleanup(d2, h2);
+  }
+});
+
 test("注册表字节幂等：重复 upsert 不重写、updatedAt 不漂移（R3-7）", () => {
   const d = scratch();
   try {

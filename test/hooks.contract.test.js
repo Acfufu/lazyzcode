@@ -44,7 +44,7 @@ function cleanup(...dirs) {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 }
 
-test("stop：预算 0/1 次续跑并计数，第 3 次请求 continue:false（≤2 预留 1）", () => {
+test("stop：预算 0/1 次续跑并计数；零推进第 3 次 stuck 弃拉且不耗预算（ADR-0004）", () => {
   const d = scratch();
   try {
     goalAt(d);
@@ -56,11 +56,48 @@ test("stop：预算 0/1 次续跑并计数，第 3 次请求 continue:false（�
     const o2 = JSON.parse(hook("stop.js", inp).out);
     assert.equal(o2.continue, true);
     assert.match(o2.additionalContext, /2\/2/);
+    // 零推进第 3 次：stuck 判定先于预算消耗——continue:false 显式（评审 R1-1），
+    // continues 保持 2（弃拉不耗预算，红线 #2 上限不变）
     const o3 = JSON.parse(hook("stop.js", inp).out);
-    assert.equal(o3.continue, false); // 评审 R1-1：显式 false，不得省略键
+    assert.equal(o3.continue, false);
+    assert.match(o3.additionalContext, /stuck/);
+    const counter = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), "utf8"));
+    assert.equal(counter.continues, 2);
+    assert.equal(counter.stuck, true);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("stop：有推进时预算耗尽走「已用尽」路径（振数自愈，上限 2 不变）", () => {
+  const d = scratch();
+  try {
+    const inp = { sessionId: "s", cwd: d };
+    goalAt(d, "executing", [
+      { id: "N1", kind: "N", status: "pending" },
+      { id: "N2", kind: "N", status: "pending" },
+      { id: "N3", kind: "N", status: "pending" },
+    ]);
+    counterAt(d, "s", 0);
+    assert.equal(JSON.parse(hook("stop.js", inp).out).continue, true); // 首拉快照，c=1
+    goalAt(d, "executing", [
+      { id: "N1", kind: "N", status: "done" },
+      { id: "N2", kind: "N", status: "pending" },
+      { id: "N3", kind: "N", status: "pending" },
+    ]);
+    assert.equal(JSON.parse(hook("stop.js", inp).out).continue, true); // 有推进，c=2
+    goalAt(d, "executing", [
+      { id: "N1", kind: "N", status: "done" },
+      { id: "N2", kind: "N", status: "done" },
+      { id: "N3", kind: "N", status: "pending" },
+    ]);
+    const o3 = JSON.parse(hook("stop.js", inp).out); // 再推进但预算尽 → 已用尽
+    assert.equal(o3.continue, false);
     assert.match(o3.additionalContext, /已用尽/);
     const counter = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), "utf8"));
     assert.equal(counter.continues, 2);
+    assert.equal(counter.stuck, false); // 有推进：振数与 stuck 自愈
+    assert.equal(counter.stallCount, 0);
   } finally {
     cleanup(d);
   }

@@ -2,6 +2,7 @@
 // 铁律：任何异常都吞掉并输出 {} —— 钩子故障绝不劫持无关会话（spike 3 教训）。
 import {
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -58,7 +59,16 @@ export function readGoal(cwd) {
   }
 }
 
-export function readSessionCounter(cwd, sessionId) {
+// 会话状态全量读取（ADR-0004 认领制）：已知字段缺省兜底，未知字段原样保留（合并写不丢）。
+// lastDoneCount=null 语义=「首拉」（下次拉回起才开始计振）。
+export function readSessionState(cwd, sessionId) {
+  const state = {
+    continues: 0,
+    claimedAt: null,
+    stallCount: 0,
+    lastDoneCount: null,
+    stuck: false,
+  };
   try {
     const raw = JSON.parse(
       readFileSync(
@@ -66,24 +76,78 @@ export function readSessionCounter(cwd, sessionId) {
         "utf8",
       ),
     );
-    return Number.isInteger(raw?.continues) && raw.continues >= 0 ? raw.continues : 0;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      Object.assign(state, raw);
+      state.continues =
+        Number.isInteger(raw.continues) && raw.continues >= 0 ? raw.continues : 0;
+      state.claimedAt =
+        typeof raw.claimedAt === "string" && raw.claimedAt ? raw.claimedAt : null;
+      state.stallCount =
+        Number.isInteger(raw.stallCount) && raw.stallCount >= 0 ? raw.stallCount : 0;
+      state.lastDoneCount =
+        Number.isInteger(raw.lastDoneCount) && raw.lastDoneCount >= 0
+          ? raw.lastDoneCount
+          : null;
+      state.stuck = raw.stuck === true;
+    }
   } catch {
-    return 0;
+    // 文件缺失/损坏 = 全缺省（损坏 JSON 记 0，与预算口径一致）
   }
+  return state;
 }
 
-export function writeSessionCounter(cwd, sessionId, continues) {
-  // 由调用方兜底 try/catch；写失败只损失预算计数精度，不影响会话。
+export function readSessionCounter(cwd, sessionId) {
+  return readSessionState(cwd, sessionId).continues;
+}
+
+// 读-合-写：只动 patch 里给的字段，claimedAt 等其余字段原样保留。
+// 由调用方兜底 try/catch；写失败只损失记账精度，不影响会话。
+export function writeSessionState(cwd, sessionId, patch) {
   const dir = join(cwd, ".lazyzcode", "loop", "sessions");
   mkdirSync(dir, { recursive: true });
   const target = join(dir, `${sanitizeSessionId(sessionId)}.json`);
+  let merged = {};
+  try {
+    const raw = JSON.parse(readFileSync(target, "utf8"));
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) merged = raw;
+  } catch {
+    // 无文件/损坏 = 从干净状态起写
+  }
+  Object.assign(merged, patch ?? {});
+  if (!Number.isInteger(merged.continues) || merged.continues < 0) merged.continues = 0;
+  merged.updatedAt = new Date().toISOString();
   const tmp = `${target}.${process.pid}.tmp`;
-  writeFileSync(
-    tmp,
-    `${JSON.stringify({ continues, updatedAt: new Date().toISOString() })}\n`,
-    { mode: 0o600 },
-  );
+  writeFileSync(tmp, `${JSON.stringify(merged)}\n`, { mode: 0o600 });
   renameSync(tmp, target);
+}
+
+export function writeSessionCounter(cwd, sessionId, continues) {
+  writeSessionState(cwd, sessionId, { continues });
+}
+
+// 认领集（ADR-0004）：认领谓词=会话文件含 claimedAt 字段——文件存在≠认领，
+// 纯振数文件（stop 侧给未认领会话记 stall 用）不算认领。
+export function listClaims(cwd) {
+  const dir = join(cwd, ".lazyzcode", "loop", "sessions");
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return []; // 目录不存在 = 空认领集（现状目录级行为）
+  }
+  const claims = [];
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue; // 连 .lock-<sid> 目录与 .pid.tmp 一起排除
+    try {
+      const raw = JSON.parse(readFileSync(join(dir, name), "utf8"));
+      if (raw && typeof raw === "object" && typeof raw.claimedAt === "string" && raw.claimedAt) {
+        claims.push(name.slice(0, -".json".length));
+      }
+    } catch {
+      // 损坏文件不算认领
+    }
+  }
+  return claims;
 }
 
 // Stop 计数器读改写的轻量互斥（评审 R1-4）：mkdir 原子锁 + 5s 过期抢；

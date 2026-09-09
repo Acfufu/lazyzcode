@@ -138,6 +138,15 @@ Passes only when every step is done AND every F item's evidence tree-hash equals
 the current code. This is the only valid "done". 不做完不停 — if finish rejects,
 keep working, never declare victory.
 
+**Commit ledger (ADR-0005).** Every commit made inside a goal carries a trailer-style
+pointer `Goal: <slug>#<step>` (e.g. `Goal: ledger-discipline#N3`) — humans and agents alike;
+historical commits are never rewritten to add it. `lzy doctor`'s `ledger` line patrols
+coverage (warn-only).
+
+**Evidence opt-in.** If the plan declares "evidence go-to-repo", copy the archived bundle
+to `docs/evidence/<slug>.md` after an explicit human nod. Goals whose plans say
+"zero repo writes" are never touched by this.
+
 On success `finish` archives an evidence bundle to
 `.lazyzcode/evidence/<slug>.report.md` (plan verdict, step notes, F-item
 evidence with attachments). Then close the loop with a memory ritual: distill
@@ -145,6 +154,23 @@ evidence with attachments). Then close the loop with a memory ritual: distill
 surfaces, required headers/flags, slow suites — things the next goal would
 otherwise rediscover) and save them to your native project memory, one memory
 file per lesson (`type: project`). Future sessions pick them up automatically.
+
+## Host workspace (cross-repo goals)
+
+Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
+(that repo is the **host workspace** — loop state registers there, ADR-0006):
+
+- The session stays rooted at the host. Run `lzy` only from the host root —
+  prefix commands with `cd <host-root> &&` (Bash cwd persists across calls,
+  and the engine's cwd reset is not guaranteed on failure/timeout paths).
+- Inside code repos use absolute paths or `git -C <repo>` — never `cd` away
+  and forget the way back.
+- Directory resolution is strict-cwd (no walk-up): a missing-goal error prints
+  the exact path it checked — return to the host root; don't expect a flag to
+  relax it.
+- Take F-item evidence **after the last code-repo commit**; if a sibling repo
+  gains commits before `finish`, re-verify and re-record (the freshness gate
+  only sees the host tree). Never `register` from a non-host root.
 
 ## Continuation (how the Stop hook drives you)
 
@@ -155,7 +181,8 @@ file per lesson (`type: project`). Future sessions pick them up automatically.
   do not summarize, do not ask questions — work.
 - Budget exhausted with steps remaining? State plainly which steps remain and
   stop cleanly; the next session's SessionStart hook re-injects the loop state.
-- `lzy loop status` at any time to re-ground yourself (also after compaction).
+- `lzy loop status` at any time to re-ground yourself (also after compaction);
+  for cross-repo goals, return to the host root before running it.
 
 ## Rate-limit discipline (provider concurrency)
 

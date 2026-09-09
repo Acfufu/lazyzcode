@@ -432,6 +432,8 @@ do.
 | `hook-node` | Which path the hook launcher resolves node from |
 | `lzy-path` | Whether `lzy` resolves on PATH |
 | `state` | `.lazyzcode/` hygiene (orphan temp files, goal state) |
+| `claims` | Claim patrol: who claimed the open goal loop, stuck markers; zero claims = "unclaimed" notice (warn, never flips the exit code) |
+| `ledger` | Commit-ledger patrol: share of goal-era commits missing the `Goal:` trailer (warn, never flips the exit code) |
 | `platform` | Platform notice (macOS-only detection) |
 | `agents-md` | Layered AGENTS.md coverage audit (skip when no root file; `lzy agents-md` for details) |
 | `rate-limit` | GLM plan 429 pressure from the last 2 days of engine logs |

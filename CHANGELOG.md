@@ -5,7 +5,17 @@ versioning is SemVer.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Host workspace discipline (ADR-0006)**: cross-repo goal loops anchor at the
+  host repo — strict-cwd resolution (no walk-up), write commands fail fast
+  before they can leave empty `.lazyzcode/loop/` scar directories (reset keeps
+  its null-goal cleanup contract), every no-goal error prints the exact path it
+  checked plus a recovery hint, `lzy doctor` patrols empty-loop scars, and
+  claim registration narrows to invocation-grade triggers (leading `zw` /
+  explicit `lazyzcode:zw` / leading `ulw`·`ultrawork`; mid-sentence mentions
+  still get the injection but no claim — ADR-0004 amendment). The `zw` skill
+  gains a "Host workspace (cross-repo goals)" section.
 
 ## [0.0.2] - 2026-09-08
 

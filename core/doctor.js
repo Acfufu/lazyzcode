@@ -10,6 +10,8 @@ import { readRepoManifest } from "./installer.js";
 import { installPathFor, packageRoot, repoPluginDir, userCliLogDir } from "./paths.js";
 import { collectRateLimitStats, scheduleAdvisory } from "./ratelimit.js";
 import { auditAgentsMd } from "./agentsmd.js";
+import { scanSessionFlags } from "./loop.js";
+import { createGit } from "./git.js";
 
 const NODE_MAJOR_FLOOR = 20;
 
@@ -150,7 +152,25 @@ function checkLoopState(push, cwd) {
       push(
         "state",
         "warn",
-        `无进行中目标但有残留（会话计数 ${sessions} 个、孤儿 tmp ${orphanTmp} 个；lzy loop reset 清理）`,
+        `无进行中目标但有残留（会话文件 ${sessions} 个、孤儿 tmp ${orphanTmp} 个；lzy loop reset 清理）`,
+      );
+      return;
+    }
+    // 疤痕巡逻（ADR-0006）：loop/ 目录在而 goal.json 全无的纯空壳——旧版写命令 withLock
+    // 的 mkdirSync 遗留（fail-fast 落地后不再新产）。reset 对 null-goal 空壳报「无需 reset」
+    // 清不掉目录本身，指引手动 rm -r。与上方残留 warn 分流，不重复告警。
+    let emptyScar = false;
+    try {
+      readdirSync(dir); // 能列目录 = 目录在场（内容已由上方 sessions/orphanTmp 排除为空壳形态）
+      emptyScar = true;
+    } catch {
+      emptyScar = false; // 目录缺席 = 真干净
+    }
+    if (emptyScar) {
+      push(
+        "state",
+        "warn",
+        `.lazyzcode/loop/ 空壳疤痕（有目录无 goal.json；reset 会报「无需 reset」清不掉）——手动 rm -r ${dir} 清除`,
       );
     } else {
       push("state", "ok", "无目标循环状态（干净）");
@@ -166,6 +186,67 @@ function checkLoopState(push, cwd) {
     return;
   }
   push("state", "ok", `goal ${goal?.slug ?? "?"} 在场（status/loop status 详查）；会话计数 ${sessions} 个`);
+}
+
+// 认领检查（ADR-0004 认领制读面）：孤儿双口径——正向：executing goal 零认领=待认领
+// （无人值守接管信号，warn）；反向残留（认领文件而无 goal）由 state 检查承担。
+// warn/skip only：认领状态是运行形态不是故障，绝不翻转 doctor 退出码（fail-soft 纪律）。
+function checkClaims(push, cwd) {
+  let goal = null;
+  try {
+    goal = JSON.parse(readFileSync(join(cwd, ".lazyzcode", "loop", "goal.json"), "utf8"));
+  } catch {
+    goal = null;
+  }
+  if (goal?.status !== "executing") {
+    push("claims", "skip", "非 executing 或无目标，认领不生效");
+    return;
+  }
+  const { claims, stuck } = scanSessionFlags(cwd);
+  const stuckNote = stuck.length > 0 ? `；⚠ stuck ${stuck.length} 个（${stuck.join(" ")}），推进步骤即自愈` : "";
+  if (claims.length > 0) {
+    push("claims", "ok", `认领 ${claims.length} 个（${claims.join(" ")}）——Stop 拉回仅限认领会话${stuckNote}`);
+  } else {
+    push(
+      "claims",
+      "warn",
+      "待认领（孤儿）：零认领，Stop 拉回维持目录级现状；任一会话发「zw 继续」即认领接管",
+    );
+  }
+}
+
+// 提交账本巡逻（ADR-0005）：goal 起点后的提交缺 `Goal:` 尾注的比例。
+// warn-only：账本是约定纪律，缺指针不阻断任何流程，doctor 可见即可。
+export function checkLedger(push, cwd) {
+  let goal = null;
+  try {
+    goal = JSON.parse(readFileSync(join(cwd, ".lazyzcode", "loop", "goal.json"), "utf8"));
+  } catch {
+    goal = null;
+  }
+  if (goal?.status !== "executing" || typeof goal.createdAt !== "string" || !goal.createdAt) {
+    push("ledger", "skip", "非 executing 或无 goal，提交账本不适用");
+    return;
+  }
+  const git = createGit(cwd);
+  const ledger = git ? git.goalLedger(goal.createdAt) : null;
+  if (ledger === null) {
+    push("ledger", "skip", "git 不可用，账本巡逻跳过");
+    return;
+  }
+  if (ledger.total === 0) {
+    push("ledger", "skip", "goal 起点后暂无提交");
+    return;
+  }
+  if (ledger.missing === 0) {
+    push("ledger", "ok", `Goal 指针 ${ledger.total}/${ledger.total}（ADR-0005）`);
+  } else {
+    push(
+      "ledger",
+      "warn",
+      `goal 起点后 ${ledger.total} 条提交、${ledger.missing} 条缺 Goal 指针（补尾注或接受；约定见 ADR-0005）`,
+    );
+  }
 }
 
 function checkPlatform(push) {
@@ -305,6 +386,8 @@ export async function collectDoctor(cwd = process.cwd()) {
     checkHookNode,
     checkLzyPath,
     (p) => checkLoopState(p, cwd),
+    (p) => checkClaims(p, cwd),
+    (p) => checkLedger(p, cwd),
     checkPlatform,
     (p) => checkAgentsMd(p, cwd),
     (p) => checkRateLimit(p),

@@ -118,7 +118,10 @@ sessions), the `lzy` PATH shim, `.lazyzcode/` state hygiene, a platform notice,
 GLM plan rate-limit pressure (last 2 days of engine logs, read-only:
 deduplicated 429 turns, fatal turns, longest sustained run, and an empirical
 concurrency band — warn-only, never flips the exit code), a project-memory
-adoption audit (`agents-md`, warn-only), and a suggested off-peak window for
+adoption audit (`agents-md`, warn-only), a claim patrol for the open goal loop
+(`claims`: who claimed it, stuck markers, zero-claim orphan notice — warn-only),
+commit-ledger coverage (`ledger`: goal-era commits missing the `Goal:` trailer — warn-only),
+and a suggested off-peak window for
 unattended runs (`schedule`, derived from the same measured concentration
 data — skipped, never guessed, when the data is silent). Fully local, zero
 telemetry, no new configuration surface.

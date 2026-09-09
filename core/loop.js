@@ -99,9 +99,25 @@ function withLock(cwd, fn) {
   }
 }
 
+// 恢复式报错（ADR-0006 严格就地语义）：无 goal 的全部出口共用同一文案源——报出实际检查的
+// 绝对路径 + 一行恢复指引（目录解析不 walk-up，走错目录时人需要知道该回哪个根）。
+function noGoalMessage(cwd) {
+  return (
+    `本目录没有目标循环状态（已检查 ${loopDir(cwd)}）。` +
+    `恢复：在注册了目标的工作区根重跑此命令；多仓目标回宿主工作区根；新建用 lzy loop register <slug> --title …`
+  );
+}
+
+// 写命令 fail-fast（ADR-0006）：withLock 的 mkdirSync 会在没有 goal 的目录上留下
+// .lazyzcode/loop/ 空壳疤痕，故进锁前先判空即抛（文案走 noGoalMessage 同源）。
+// reset 显式豁免：null-goal 残留清理语义是契约（p3-sweep.contract.test.js 固化）。
+function requireGoalPreLock(cwd) {
+  if (!readGoal(cwd)) throw new LoopError(noGoalMessage(cwd));
+}
+
 function requireActive(cwd, ...states) {
   const goal = readGoal(cwd);
-  if (!goal) throw new LoopError("本目录没有目标（先 lzy loop register）");
+  if (!goal) throw new LoopError(noGoalMessage(cwd));
   // 空 states = 不限状态（abandon/reset 路径）；空数组是真值，必须按长度判。
   if (states.length > 0 && !states.includes(goal.status)) {
     throw new LoopError(
@@ -175,6 +191,7 @@ function parseVerdict(review) {
 }
 
 export function adoptPlan(cwd, planFile, opts = {}) {
+  requireGoalPreLock(cwd);
   return withLock(cwd, () => doAdoptPlan(cwd, planFile, opts));
 }
 
@@ -232,6 +249,7 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
 
 // ── 3. 开跑：planning → executing，记录基线 tree hash ──────────────────────
 export function startLoop(cwd, git) {
+  requireGoalPreLock(cwd);
   return withLock(cwd, () => doStartLoop(cwd, git));
 }
 
@@ -249,6 +267,7 @@ function doStartLoop(cwd, git) {
 
 // ── 4. 逐步完成：F 项强制证据 + 绑定当时 tree hash；已完成步骤可重跑以重新取证 ──
 export function completeStep(cwd, git, id, opts = {}) {
+  requireGoalPreLock(cwd);
   return withLock(cwd, () => doCompleteStep(cwd, git, id, opts));
 }
 
@@ -335,7 +354,7 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
 // ── 5. 证据时效：F 项证据的 tree hash 是否仍等于当前工作树 ─────────────────
 export function verifyEvidence(cwd, git) {
   const goal = readGoal(cwd);
-  if (!goal) throw new LoopError("本目录没有目标");
+  if (!goal) throw new LoopError(noGoalMessage(cwd));
   const current = git ? git.treeHash() : null;
   const fresh = [];
   const stale = [];
@@ -351,6 +370,7 @@ export function verifyEvidence(cwd, git) {
 
 // ── 6. 完成：全部步骤 done + F 项证据全部新鲜 ──────────────────────────────
 export function finishLoop(cwd, git) {
+  requireGoalPreLock(cwd);
   return withLock(cwd, () => doFinishLoop(cwd, git));
 }
 
@@ -389,7 +409,7 @@ function doFinishLoop(cwd, git) {
 // 接管时人需要证据，不是结论）。落 .lazyzcode/evidence/<slug>.report.md，reset 不清它。
 export function exportReport(cwd, git) {
   const goal = readGoal(cwd);
-  if (!goal) throw new LoopError("本目录没有目标");
+  if (!goal) throw new LoopError(noGoalMessage(cwd));
   if (goal.steps.length === 0) {
     throw new LoopError(`目标 ${goal.slug} 还没采纳计划，无可导出（先 lzy loop plan）`);
   }
@@ -421,6 +441,7 @@ export function exportReport(cwd, git) {
 }
 
 export function abandonLoop(cwd) {
+  requireGoalPreLock(cwd);
   return withLock(cwd, () => doAbandonLoop(cwd));
 }
 
@@ -472,9 +493,36 @@ function doResetLoop(cwd) {
 }
 
 // ── 展示 ────────────────────────────────────────────────────────────────────
+// 会话旗标扫描（ADR-0004 读面）：认领谓词=文件含 claimedAt（纯振数文件不算认领）；
+// stuck=显式 true（原地无进展两振停拉标记）。目录缺失/文件损坏一律静默跳过。
+export function scanSessionFlags(cwd) {
+  const claims = [];
+  const stuck = [];
+  let names;
+  try {
+    names = readdirSync(join(loopDir(cwd), "sessions"));
+  } catch {
+    return { claims, stuck };
+  }
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue; // 连 .lock-<sid> 目录与 .pid.tmp 一起排除
+    try {
+      const raw = JSON.parse(readFileSync(join(loopDir(cwd), "sessions", name), "utf8"));
+      if (raw && typeof raw === "object") {
+        const sid = name.slice(0, -".json".length);
+        if (typeof raw.claimedAt === "string" && raw.claimedAt) claims.push(sid);
+        if (raw.stuck === true) stuck.push(sid);
+      }
+    } catch {
+      // 损坏文件跳过
+    }
+  }
+  return { claims, stuck };
+}
+
 export function formatStatus(cwd, git) {
   const goal = readGoal(cwd);
-  if (!goal) return "（本目录没有目标循环状态；lzy loop register <slug> --title … 开始）";
+  if (!goal) return noGoalMessage(cwd);
   const done = goal.steps.filter((s) => s.status === "done");
   const lines = [
     `目标 ${goal.slug} — ${goal.title}`,
@@ -491,6 +539,17 @@ export function formatStatus(cwd, git) {
             (s.evidence.files?.length ? ` · 附件 ${s.evidence.files.length}` : "")
           : "";
       lines.push(`  ${mark} ${s.id.padEnd(4)} [${s.kind}] ${s.title}${ev}`);
+    }
+  }
+  if (goal.status === "executing") {
+    const flags = scanSessionFlags(cwd);
+    if (flags.claims.length > 0) {
+      lines.push(`  认领 ${flags.claims.length}：${flags.claims.join(" ")}（仅认领会话会被 Stop 拉回）`);
+    } else {
+      lines.push("  认领 0（待认领：任一会话发「zw 继续」即接管）");
+    }
+    if (flags.stuck.length > 0) {
+      lines.push(`  ⚠ stuck ${flags.stuck.length}：${flags.stuck.join(" ")}（原地无进展两振停拉，推进步骤即自愈）`);
     }
   }
   if (git && (goal.status === "executing" || goal.status === "done")) {

@@ -2,17 +2,22 @@
 // Stop 钩子：目标循环未完成时请求引擎续跑（不做完不停）。
 // 纪律（源码+spike3 实锤）：非空 additionalContexts 才续跑；≤3 硬顶且与后台通知共享池；
 // 状态按 sessionId 隔离、按 cwd 限定生效——没有 .lazyzcode/loop/goal.json 的目录一律 {} 放手。
+// 认领制（ADR-0004）：目录内存在认领会话时只拉认领会话（空集=现状目录级行为，单调收紧）；
+// 进度振数：拉回后步骤零推进两振写 stuck 提前弃拉（不消耗预算），有推进自愈。
 import {
   MAX_STOP_CONTINUES,
   emit,
   failOpen,
   inputCwd,
   inputSessionId,
+  listClaims,
   readGoal,
   readSessionCounter,
+  readSessionState,
   readStdinJson,
+  sanitizeSessionId,
   withSessionLock,
-  writeSessionCounter,
+  writeSessionState,
 } from "./hook-lib.js";
 
 try {
@@ -27,6 +32,13 @@ try {
     failOpen(); // 无目标 / planning / done / abandoned：引擎说了算
   }
 
+  // 认领闸门（ADR-0004）：认领谓词=会话文件含 claimedAt（纯振数文件不算认领）。
+  // 空集=现状（首个认领出现前人人可被拉）；非空且本会话不在集=旁路会话，放手。
+  const claims = listClaims(cwd);
+  if (claims.length > 0 && !claims.includes(sanitizeSessionId(sessionId))) {
+    failOpen();
+  }
+
   const steps = Array.isArray(goal.steps) ? goal.steps : [];
   const pending = steps.filter((s) => s?.status !== "done");
   const doneCount = steps.length - pending.length;
@@ -36,10 +48,27 @@ try {
     // 计数器读改写套轻量锁：并发同 session 两读 used=0 会多发续跑（评审 R1-4）；
     // 锁拿不到就无锁放行，绝不阻断会话。
     const payload = withSessionLock(cwd, sessionId, () => {
-      const used = readSessionCounter(cwd, sessionId);
+      const state = readSessionState(cwd, sessionId);
+      // 进度振数（ADR-0004）：首拉（lastDoneCount=null）只记快照不计振；
+      // 有推进（doneCount 变化，含步骤重开）清振清 stuck 自愈；零推进 stallCount+1，
+      // 两振写 stuck 提前弃拉——stuck 判定先于预算消耗，弃拉不消耗 continues（红线 #2）。
+      const progressed = state.lastDoneCount !== null && doneCount !== state.lastDoneCount;
+      const stallCount =
+        state.lastDoneCount === null || progressed ? 0 : state.stallCount + 1;
+      if (stallCount >= 2) {
+        writeSessionState(cwd, sessionId, { stallCount, stuck: true });
+        return {
+          continue: false,
+          additionalContext:
+            `[lzy] 目标循环 ${goal.slug} 连续两振原地无进展（done ${doneCount}/${steps.length}），` +
+            `已停拉（stuck）。排查阻塞后推进步骤即自愈；未完成项：${pending.map((s) => s.id).join(" ")}。`,
+        };
+      }
+      const used = state.continues;
       if (used >= MAX_STOP_CONTINUES) {
         // 预算用尽：不请求续跑（引擎会照常结束会话），只留一条一次性上下文提示账目与余项。
         // continue:false 必须显式——省略键的形态引擎侧行为无活体证据，不能赌（评审 R1-1）。
+        writeSessionState(cwd, sessionId, { stallCount, stuck: false, lastDoneCount: doneCount });
         return {
           continue: false,
           additionalContext:
@@ -48,7 +77,12 @@ try {
             `下次会话 SessionStart 会提醒续接。`,
         };
       }
-      writeSessionCounter(cwd, sessionId, used + 1);
+      writeSessionState(cwd, sessionId, {
+        continues: used + 1,
+        stallCount,
+        stuck: false,
+        lastDoneCount: doneCount,
+      });
       return {
         continue: true,
         additionalContext:
@@ -68,6 +102,8 @@ try {
     const used = readSessionCounter(cwd, sessionId);
     if (used < MAX_STOP_CONTINUES) {
       writeSessionCounter(cwd, sessionId, used + 1);
+      // 全收口态下 stuck 已无意义，清掉防读面滞留显示（ADR-0004 显示自愈一致性）
+      writeSessionState(cwd, sessionId, { stallCount: 0, stuck: false });
       return {
         continue: true,
         additionalContext:

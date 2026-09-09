@@ -362,6 +362,8 @@ lzy version                     打印版本
 | `hook-node` | 钩子启动器从哪条路径解析 node |
 | `lzy-path` | `lzy` 能否在 PATH 上解析 |
 | `state` | `.lazyzcode/` 卫生（孤儿临时文件、goal 状态） |
+| `claims` | 认领巡逻：谁认领了进行中目标、stuck 停拉标记；零认领 = 「待认领」提示（warn，不翻退出码） |
+| `ledger` | 提交账本巡逻：goal 起点后提交缺 `Goal:` 尾注的比例（warn，不翻退出码） |
 | `platform` | 平台提示（仅 macOS 探测） |
 | `agents-md` | AGENTS.md 分层覆盖审计（根缺失 = `skip`；`lzy agents-md` 详单） |
 | `rate-limit` | 近 2 日引擎日志的 GLM 套餐 429 压力 |

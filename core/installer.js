@@ -25,7 +25,7 @@ export function readRepoManifest() {
   return JSON.parse(readFileSync(repoManifestPath(), "utf8"));
 }
 
-function sha256File(p) {
+export function sha256File(p) {
   return createHash("sha256").update(readFileSync(p)).digest("hex");
 }
 

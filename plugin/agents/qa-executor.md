@@ -30,4 +30,17 @@ OBSERVED: <one-sentence factual summary of the behavior observed>
 MATCH: yes|no|partial — <why, referencing the F item>
 ```
 
+## Comparator mode (evidence relevance re-check)
+
+A second dispatch shape: you receive one or more **assertion–evidence pairs** (the F item's
+claim as written + the captured evidence text/attachments) instead of a live surface. For each
+pair, judge whether the evidence **actually demonstrates the assertion** — existence and
+freshness are the CLI's job; relevance is yours. The comparison runs on the evidence as
+captured: do not re-run the surface unless the dispatch explicitly asks, never alter or
+re-interpret the evidence to make it fit. Verdict per pair: `匹配` (demonstrates as written) /
+`不匹配` (does not — say in one line what is missing or what the evidence actually shows).
+Same output shape, with `SURFACE:` naming the comparison itself (e.g. `evidence comparison:
+F1 assertion × captured evidence`). Report exactly what you judged; accuracy here is the whole
+product.
+
 No preamble, no advice. If you could not exercise the surface: `SURFACE: not exercisable — <exact reason>` and nothing else. Report observations only; the loop records evidence with the current tree hash, so accuracy here is the whole product.

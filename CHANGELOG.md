@@ -5,8 +5,37 @@ versioning is SemVer.
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-09-10
+
 ### Added
 
+- **Session-runaway guardrails (incident-guardrails)**: `lzy loop handoff
+  --snapshot <file>` registers a directory-level anonymous marker that the Stop
+  hook consumes atomically (exactly one winner) to release a cleanly-closing
+  session without spending the continue budget — a proper handoff is handing
+  execution back to the user, not quitting half-done. A `PostToolUseFailure`
+  tripwire (`^mcp__` tools only) warns once when the same tool fails twice in
+  a 10-minute window — successes don't reset the streak, only the TTL does —
+  steering toward switching tools or closing via handoff (hooks:4→5). `lzy
+  status`'s payload check now compares file contents (sha256), not just the
+  path set — a stale cache no longer reports "identical" (proven in a real
+  incident). zw's Continuation section gains a tool-fire-loop escape contract;
+  `lzy loop status` surfaces claim/handoff markers. Also fixes a latent bug:
+  the all-steps-done finish reminder crashed on an unimported helper since
+  0.0.2 (caught by the new contract tests).
+- **Evidence comparison & salvageable artifacts (comparator-salvage)**: HEAVY
+  finish protocols now dispatch `qa-executor` in a comparator mode over each F
+  item's assertion–evidence pair — existence and freshness were machine gates,
+  relevance was nobody's; a `不匹配` verdict sends the agent back for a real
+  re-capture (protocol-level block, zero CLI/doctor code). Plans gain
+  handoff-able-step guidance (every N item carries its own pointers; the
+  plan-reviewer audits weak handoff as WARN/P3). When a loop is reset or
+  abandoned, `lzy` inventories salvageable artifacts into
+  `.lazyzcode/loop/salvage/<slug>.md` — uncommitted changes, footnoted
+  commits, asset pointers — and `lzy loop status` surfaces stubs in both the
+  no-goal and goal-present views (the moment after a reset is the primary
+  salvage moment). Dependency-graph parallel claiming is recorded as design
+  debt with explicit promotion triggers (ADR-0004 second amendment).
 - **Transport-death diagnostics (ADR-0008)**: `lzy doctor` gains a
   `transport` line counting turns that died before reaching the server
   (ENETDOWN and the errno family, matched primarily from `statusMessage` —

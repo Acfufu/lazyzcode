@@ -60,8 +60,9 @@ zw 帮我实现 <你的目标>
 ```
 
 `zw` 触发词注入完整编排协议：模型注册目标 → 写决策完备计划（HEAVY 目标强制过
-plan-reviewer 评审门，并显性申报已知未知、每条带证伪途径）→ 逐步执行 → 对每个
-终验项在真实表面取证（绑定 `git rev-parse HEAD^{tree}`）→ `lzy loop finish`
+plan-reviewer 评审门，并显性申报已知未知、每条带证伪途径；步骤自带指针、可为
+不在场的接管者独立执行）→ 逐步执行 → 对每个终验项在真实表面取证（绑定
+`git rev-parse HEAD^{tree}`）→ finish 前逐项做证据对照、`lzy loop finish`
 通过才算完成。中途停手会被 Stop 钩子拉回（每会话至多 2 次续跑）。
 
 ### 验证装好了
@@ -82,6 +83,11 @@ lzy doctor           # 深度本地诊断，全程离线
    `zw 继续（无人值守：…）`。无人值守会话只继续已开目标——绝不自立新目标——
    `lzy doctor` 的 `schedule` 行从你的实测限流时段反推错峰窗口。
 
+脚手架的力量有外部佐证：Anthropic 报告其模型在 Prove2Me 脚手架上用 11 天
+形式化了费马大定理，而 3 个消费级订阅 3 天即证 Vinogradov 三素数定理——
+放大产出的不是模型本身，是那份对的外架。lazyzcode 是同一思路在软件工程里
+的样子。
+
 ### 卸载
 
 ```bash
@@ -98,6 +104,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | `doctor` | `lzy doctor` | 全量诊断——见下 |
 | 目标循环 | `lzy loop register <slug> --title "…"` → `lzy loop plan <计划.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | 状态机：注册 → 计划门 → 执行 → 证据 → 终验门 |
 | 证据包 | `lzy loop export` | 重导出证据包（`<slug>.report.md`）；`finish` 时亦自动归档 |
+| 交接 | `lzy loop handoff --snapshot <文件>` | 登记干净交接——下个 Stop 放行一次，不消耗续跑预算 |
 | `agents-md` | `lzy agents-md` | 项目记忆审计：够格目录与覆盖缺口 |
 | `uninstall` | `lzy uninstall` | 删除已部署缓存与注册表条目 |
 

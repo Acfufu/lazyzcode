@@ -1,5 +1,5 @@
 {
-  "description": "LazyZCode goal-loop hooks: trigger-word bootstrap, session bootstrap, Stop continuation (budget-capped, sessionId-isolated) and comment-checker advisory (goal-gated, inject-only). All commands run via run-hook.sh so node resolves even when the engine spawns hooks with a PATH that has no node.",
+  "description": "LazyZCode goal-loop hooks: trigger-word bootstrap, session bootstrap, Stop continuation (budget-capped, sessionId-isolated), comment-checker advisory (goal-gated, inject-only) and the same-tool failure-streak tripwire (PostToolUseFailure, MCP-only, TTL window, warn-once). All commands run via run-hook.sh so node resolves even when the engine spawns hooks with a PATH that has no node.",
   "hooks": {
     "PostToolUse": [
       {
@@ -8,6 +8,18 @@
           {
             "type": "command",
             "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" comment-checker.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "^mcp__",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" tripwire.js",
             "timeout": 10
           }
         ]

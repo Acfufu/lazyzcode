@@ -21,6 +21,7 @@
 |---|------|------|------|------|------|
 | 0 | 2026-09-07 | 全部钩子（环境级） | 天然 | GUI 直启致引擎 env 无 node，四钩子静默全灭（累计 895+ 次 hook.run.failed）；纪律层靠 zw 技能文本存活、循环未崩——暴露「静默失败无感知」真问题；产出 run-hook.sh 启动器（nvm/homebrew fallback）+ doctor hook-node 检查 | docs/diagnostics/2026-09-07-hook-spawn-env.md |
 | 1 | 2026-09-09 | 计划评审门 | 影子（goal ablation-confidence） | 自查 5 条全执行注意级（0 P1/P2）vs 评审 3 轮累计 MUST-FIX 2 + WARN 10；去重后评审独有 P1×1（计划行文踩门禁词——研究禁词的当口把禁词写进计划，自指面）+ P2×1（漏 nav 侧栏条目致 F2 的 21/21 必挂）+ P3×9；独有 P1/P2 = 2 > 0 → **门挣得成本**。诚实注记：自查者即计划作者，霍桑偏差方向为高估自查；P1 的性质（知道规则仍踩规则）佐证「预防效应」真实存在 | 本行 + goal 评审记录（`loop plan --review` 摘要）+ `.lazyzcode/plans/ablation-confidence.md` |
+| 2 | 2026-09-10 | 计划评审门 | 影子（goal comparator-salvage） | 自查 P3×1（F1 带尾注提交构造未写明）+成稿前自纠 1（F2 锚点数含糊→预注 21/21）vs 评审 3 轮累计 MUST-FIX 3 + WARN 3（全闭环零遗留）：R1 独有 P1×2（已知未知#1 证伪面指错载体——F1 scratch 隔离装不到技能层机制；status 无 goal 分支早退 loop.js:525 漏测）+W×2；R2 独有 P1×1（安装缓存滞后——F4 会拿旧契约判新机制的假证伪风险，lzy sync 前置缺失）+W×1；R3 PASS。独有 P1/P2 = 3 > 0 → **门挣得成本（连续 >0 第 2 样本，距「影子测不出」判据还差 5 连 ≈0）**。自指注记：本轮评审对象含评审角色自身职责的扩展（对照=qa-executor 新职责） | 本行 + goal 评审记录 + `.lazyzcode/plans/comparator-salvage.md` |
 
 ## 维护
 

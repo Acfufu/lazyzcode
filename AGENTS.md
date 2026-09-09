@@ -28,6 +28,8 @@
 - **宿主工作区纪律已落地（2026-09-09，goal host-workspace-discipline，ADR-0006/决策 #19）**：跨仓目标循环寄宿主仓（严格 cwd 不 walk-up）+ 写命令 fail-fast（withLock 空壳疤痕根治，reset 契约豁免）+ 无 goal 出口恢复式报错（统一文案源：绝对路径+回宿主根指引）+ 认领写面收窄至唤起级（ADR-0004 修正案，/ulw 提及误认领 specimen）+ doctor 疤痕巡逻；多树证据绑定记名债务（升格=跨仓漏判误 finish）。下一步：真发布 + 官方市场卡位（用户按 `docs/release-checklist.md` 择机执行）；运行期反馈迭代。
 - **已知未知显性 + 消融账本已落地（2026-09-10，goal ablation-confidence，ADR-0007/决策 #20）**：HEAVY 计划强制「已知未知」节（1–3 条假设各带证伪途径，「无」须一行扫过说明；LIGHT 建议）+ 影子消融制度化（计划自查→评审门→差集按 P0-P3 记账，预注册判据防降档；天然消融被动补录），协议与账本 `docs/ablation.md`；计划门零代码改动（禁词黑名单不动，「未知」二字永不入表——契约钉三枚）；首验即正名：影子实验评审独有 P1×1+P2×1 → 门挣得成本；65/65 测试绿、文档站锚点双语 21/21。
 - **传输死亡诊断面已落地（2026-09-10，goal doctor-transport-deaths，ADR-0008）**：doctor `transport` 行与限流分族计数（errno 主判据在 statusMessage——实锤 ENETDOWN 事故 reason=unknown，按 reason 白名单必漏触发事故本身；fake-ip 198.18.0.0/15 命中给 TUN 直连提示；绝不进并发带/错峰窗数学）；429 谓词零语义变化（真日志基线 diff 字段级为空作护栏）；69/69 测试绿。
+- **会话失控护栏已落地（2026-09-10，goal incident-guardrails，ADR-0009/决策 #22）**：Stop 交接放行（`lzy loop handoff` 目录级匿名标记+unlink 原子消费+放行不耗预算，消费清振数防重入误振）+ PostToolUseFailure 空转绊线（`^mcp__` TTL 连击 warn 一次，hooks:4→5）+ status files 逐文件 sha256 内容比对（路径集合比对对「文件在而内容过期」失明——09-09 事故实锤）+ zw SKILL.md 工具空转逃逸契约；源起 sess_95421d3d 空转事故，探针活体实证 Failure 注入通道；86/86 测试绿；顺手修 writeSessionCounter 潜伏 bug（全收口 finish 提醒自 0.0.2 必炸走 failOpen）。
+- **证据对照与工件回收已落地（2026-09-10，goal comparator-salvage，费马启示三件包）**：HEAVY finish 前派 qa-executor 证据对照（断言×证据逐对判匹配/不匹配，协议级阻断，CLI/doctor 零代码）+ 步骤自含指引与评审 WARN 检查点 + reset/abandon 盘点可回收工件入存根（status 双分支读面）+ 依赖图并行认领记债（决策 #21，ADR-0004 修正案二）；74/74 测试绿、锚点双语 21/21。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 
@@ -63,6 +65,8 @@
 | 18 | 透明账本 | **提交尾注 `Goal: <slug>#<步号>`**（人和 AI 遵守，历史不补）+ doctor `ledger` 行巡逻覆盖率（warn-only）；证据 opt-in 入库（计划声明+人点头→docs/evidence/）；AI 署名不加（ADR-0005，2026-09-09） |
 | 19 | 宿主工作区 | **跨仓目标循环寄宿主仓**：`.lazyzcode/` 与 `lzy` 只在宿主根，严格 cwd 不 walk-up；写命令 fail-fast（防空壳疤痕，reset 豁免）+ 无 goal 出口恢复式报错；证据时效门只见宿主树（多树绑定记债，升格=跨仓漏判误 finish）；ADR-0006（2026-09-09） |
 | 20 | 已知未知与消融 | **HEAVY 计划强制「已知未知」节**（未验证前提≠推迟决策，1–3 条各带证伪途径，「无」须一行说明）+ 影子消融记账（评审差集按 P0-P3；预注册判据：连续 5 HEAVY 目标独有 P1/P2≈0 → 只许「维持现状或真消融终审」绝不降档）；门禁词黑名单不动（ADR-0007，2026-09-09） |
+| 21 | 依赖图并行认领 | **记债不实现**：计划依赖边+无阻塞步认领（同目标多工人，worktree 覆盖不了的形态）；升格触发器=并行带实测≥2/同目标撞槽再发/多模型分发现实化，前置件=角色指模型走宿主目录（§3.5 不推翻）+doctor 按 provider 分桶测带（ADR-0004 修正案二，2026-09-10） |
+| 22 | 交接放行 | **目录级匿名标记+原子消费**：模型收尾前 `lzy loop handoff --snapshot <file>` 落 `loop/handoff.json`，Stop 一次性 unlink 消费（恰一赢家）后显式 `continue:false` 放行——不入 3 池不耗预算；消费清本会话振数/stuck；匿名=模型在 Bash 拿不到自己 sessionId，拒绝一切转抄身份设计；滥用对冲=快照必填（存在+mtime≤24h）；多认领撞窗记已知边界（ADR-0009，2026-09-10） |
 
 ## 5. 设计宪法与红线
 
@@ -88,7 +92,7 @@ docs/
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
-  adr/000{1..7}-*.md          ← enable 走引擎 CLI+config 零写入 / init-deep 角色分配 / 无人值守宿主自动化 / 拉回走认领制 / 透明账本尾注 / 宿主工作区就地语义 / 已知未知申报+消融账本
+  adr/000{1..9}-*.md          ← enable 走引擎 CLI+config 零写入 / init-deep 角色分配 / 无人值守宿主自动化 / 拉回走认领制 / 透明账本尾注 / 宿主工作区就地语义 / 已知未知申报+消融账本 / 传输死亡诊断面 / 交接放行
   reviews/ release-checklist.md  ← 评审报告/处置记录（2026-09-06/07/08）+ 发布清单（13 步含 Pages）
   diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
 plugin/ core/ cli/           ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）
@@ -100,33 +104,15 @@ artifacts/                   ← 本地产物（已 gitignore，不入库）
 
 ## 8. 语言（先查此表再造词；与本表冲突以本表为准）
 
-**纪律层（discipline layer）**：本产品的价值层——计划门、证据验证、防半途而废。
-_Avoid_: 工作流强化层
-
-**目标循环（goal loop）**：`lzy loop` 驱动的「注册目标→逐步派发→证据验证→完成」状态机循环。
-_Avoid_: 深循环（仅架构讨论语境）、ulw-loop（上游名）
-
-**证据（evidence）**：绑定 tree hash 的真实表面取证（HTTP 返回/截图/CLI stdout）。
-_Avoid_: 测试结果（测试全绿≠证据）
-
-**tree hash**：`git rev-parse "HEAD^{tree}"` 的内容快照哈希；代码一变，旧证据作废。
-_Avoid_: commit hash（不同物）
-
-**实现项 / 终验项（N 项 / F 项）**：计划行语法的两类条目；F 项强制真实表面证据。
-_Avoid_: 普通 todo
-
-**tier（轻重分级）**：LIGHT 默认精简 / HEAVY 全套纪律；只升不降。
-_Avoid_: 模式切换
-
-**决策完备（decision-complete）**：计划无任何「待定」，执行者无需再问即可开工。
-_Avoid_: 草稿
-
-**触发词（trigger）**：`zw` 主词；`ulw` / `ultrawork` 为兼容别名。
-_Avoid_: 单用 ulw 指代本项目触发词
-
-**经验并发带（empirical concurrency band）**：doctor 从本地日志实测的「无 429 桶最高活跃
-会话数 / 有 429 桶最低活跃会话数」；连贯且样本足量才输出。
-_Avoid_: 并发上限（平台侧数值，本地测不到）
+**纪律层（discipline layer）**：本产品的价值层——计划门、证据验证、防半途而废。_Avoid_: 工作流强化层
+**目标循环（goal loop）**：`lzy loop` 驱动的「注册目标→逐步派发→证据验证→完成」状态机循环。_Avoid_: 深循环（仅架构讨论语境）、ulw-loop（上游名）
+**证据（evidence）**：绑定 tree hash 的真实表面取证（HTTP 返回/截图/CLI stdout）。_Avoid_: 测试结果（测试全绿≠证据）
+**tree hash**：`git rev-parse "HEAD^{tree}"` 的内容快照哈希；代码一变，旧证据作废。_Avoid_: commit hash（不同物）
+**实现项 / 终验项（N 项 / F 项）**：计划行语法的两类条目；F 项强制真实表面证据。_Avoid_: 普通 todo
+**tier（轻重分级）**：LIGHT 默认精简 / HEAVY 全套纪律；只升不降。_Avoid_: 模式切换
+**决策完备（decision-complete）**：计划无任何「待定」，执行者无需再问即可开工。_Avoid_: 草稿
+**触发词（trigger）**：`zw` 主词；`ulw` / `ultrawork` 为兼容别名。_Avoid_: 单用 ulw 指代本项目触发词
+**经验并发带（empirical concurrency band）**：doctor 从本地日志实测的「无 429 桶最高活跃会话数 / 有 429 桶最低活跃会话数」；连贯且样本足量才输出。_Avoid_: 并发上限（平台侧数值，本地测不到）
 
 **回合（turn）**：一次去重后的模型请求；引擎重试产生多条限流事件仍属一回合，doctor 限流标题按回合计。_Avoid_: 请求次数（含重试的原始条数）
 **项目记忆（init-deep）**：init-deep 技能生成的分层 AGENTS.md 地图（根 + 有资格子目录），
@@ -135,11 +121,14 @@ _Avoid_: 并发上限（平台侧数值，本地测不到）
 运行形态（ADR-0003）。_Avoid_: 全自动模式、自动驾驶
 **错峰窗口（off-peak window）**：doctor 从实测限流集中段反推的建议自动化挂载时段（对侧净弧中央 8h）。_Avoid_: 并发上限、空闲时段
 **认领（claim）**：会话对进行中目标循环的接管登记（唤起级触发命中时 UPS 写 `claimedAt` 入会话文件；句中提及不写——ADR-0004 修正案）；Stop 拉回只作用于认领会话，集合语义可多会话并存。**旁路会话（bystander session）**=同目录未认领循环的会话（如纯问答），不受 Stop 拉回、SessionStart 广播照收。_Avoid_: 会话独占、锁定（无 SessionEnd，独占会死锁）、脏会话
+**交接快照（handoff snapshot）**：模型主动收尾时写入计划文件的精确续跑状态（剩余路径+下一步动作），经 `lzy loop handoff` 登记为目录级匿名标记后，Stop 钩子消费即放行（一次性、不耗预算，ADR-0009）——交接是把执行权交还用户，非半途而废。_Avoid_: 认领（注册表侧登记）、Handoff-able steps（计划步自含性）、放弃（无放行，直接弃目标）
 **宿主工作区（host workspace）**：跨仓目标中寄宿 `.lazyzcode/` 状态与循环命令的仓库——会话以它为根，代码可在兄弟仓；严格 cwd 不 walk-up（ADR-0006）。_Avoid_: 元仓库、主仓、状态目录、代码仓
 **提交账本（commit ledger）**：提交尾注 `Goal: <slug>#<步号>`，每条改动可回溯目标循环（ADR-0005）；doctor `ledger` 行巡逻覆盖率。_Avoid_: AI 署名尾注（另议）、提交即日志
 **已知未知（known unknowns）**：HEAVY 计划末尾强制申报的未验证前提节（1–3 条各带证伪途径；「无」须一行说明扫过哪里）——与门禁词互补：前提可申报，决策不可推迟（ADR-0007）。
 _Avoid_: 待定事项、风险管理清单
 **传输死亡（transport death）**：引擎 turn 在网络传输层失败、请求未达服务端（ENETDOWN/ECONNRESET 等 errno 族，主判据在 statusMessage；引擎常误标 retryable=false）；doctor `transport` 行分族计数、绝不进并发带/错峰窗数学（ADR-0008）。_Avoid_: 断网（过泛）、网络繁忙（服务端杀流另一族）、网络错误（与 429 混淆）
+**证据对照（comparator）**：F 项断言与已取证据的相关性核验——存在性与新鲜度是机器门，真证明断言所言归对照；HEAVY finish 前 qa-executor 逐对判「匹配/不匹配」，不匹配协议级阻断（CLI 零代码）。_Avoid_: 证据验证（泛化，存在性+新鲜度义已占用）、测试全绿
+**可回收工件（salvageable artifacts）**：被 reset/abandon 终止的目标循环残留的可复用产出（未提交改动、带尾注提交、计划与证据包）；销毁时盘点入 `.lazyzcode/loop/salvage/` 存根，status 双分支显示。_Avoid_: 废弃物、垃圾（负资产谬）
 
 ## 9. 维护规则
 

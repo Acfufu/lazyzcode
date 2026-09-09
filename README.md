@@ -65,10 +65,12 @@ zw implement <your goal>
 The `zw` trigger injects the full orchestration protocol: the model registers
 the goal → writes a decision-complete plan (HEAVY goals must pass the
 plan-reviewer gate and declare their known unknowns, each with a falsification
-path) → executes step by step → captures real-surface evidence
+path; every step carries its own pointers so a fresh claimer can run it) →
+executes step by step → captures real-surface evidence
 for every final-verification item (bound to `git rev-parse HEAD^{tree}`) →
-`lzy loop finish` must pass before anything counts as done. Stop early, and the
-Stop hook pulls the agent back (at most 2 continuations per session).
+runs an evidence comparison per item, and `lzy loop finish` must pass before
+anything counts as done. Stop early, and the Stop hook pulls the agent back
+(at most 2 continuations per session).
 
 ### Verify it worked
 
@@ -91,6 +93,12 @@ behind it:
    the open goal only — never start a new one — and `lzy doctor`'s `schedule`
    line suggests an off-peak window from your measured rate-limit hours.
 
+The scaffolding thesis has external proof: Anthropic reported its model
+formalized Fermat's Last Theorem in Lean in 11 days on the Prove2Me scaffold,
+and three consumer subscriptions proved Vinogradov's three-primes theorem in
+three days — what multiplied the output was not the model alone but the right
+scaffold. LazyZCode is that idea for software engineering.
+
 ### Uninstall
 
 ```bash
@@ -107,6 +115,7 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | `doctor` | `lzy doctor` | Full diagnostics — see below |
 | Goal loop | `lzy loop register <slug> --title "…"` → `lzy loop plan <plan.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | The state machine: register → plan gate → execute → evidence → finish gate |
 | Evidence bundle | `lzy loop export` | Re-export the evidence bundle (`<slug>.report.md`); also auto-archived at `finish` |
+| Handoff | `lzy loop handoff --snapshot <file>` | Register a clean handoff — the next Stop releases once, without spending the continue budget |
 | `agents-md` | `lzy agents-md` | Project-memory audit: qualifying directories and coverage gaps |
 | `uninstall` | `lzy uninstall` | Removes the deployed cache and the registry entry |
 

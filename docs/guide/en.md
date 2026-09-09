@@ -220,6 +220,7 @@ lzy loop status                         # progress, next step, evidence freshnes
 lzy loop verify                         # evidence freshness audit (exit 1 = stale/unbound)
 lzy loop finish                         # the final gate; auto-archives the evidence bundle
 lzy loop export                         # re-export the evidence bundle
+lzy loop handoff --snapshot <file>      # register a clean handoff; next Stop releases once
 lzy loop abandon | lzy loop reset       # give up / clear state
 ```
 
@@ -240,6 +241,11 @@ lzy loop abandon | lzy loop reset       # give up / clear state
   evidence with attachments); `lzy loop export` re-exports it any time.
 - `lzy loop verify` is the audit-only variant of the finish gate (exit 1 when
   evidence is stale or unbound, or when no goal exists).
+- `lzy loop handoff --snapshot <file>` registers a clean handoff: the next
+  Stop consumes the marker once and releases the session without spending the
+  continue budget (the goal stays `executing`; state lives on disk). The
+  snapshot must exist and have been modified within 24h — no real snapshot,
+  no handoff. `lzy loop reset`/`abandon` sweeps a leftover marker.
 - `lzy loop abandon` gives up while keeping the record; `lzy loop reset`
   clears state (including session counters and orphan temp files) so the next
   loop can start.
@@ -292,6 +298,13 @@ falsifiable, and is a "none" credible?
 - Captured material can be archived under `.lazyzcode/evidence/`.
 - The `lazyzcode:qa-executor` agent exists for this: spawn it to run the
   capture and report what it actually observed, verbatim.
+- **Evidence comparison (comparator).** Existence and freshness are checked
+  mechanically; whether the evidence actually *demonstrates* the claim is not —
+  no CLI can read meaning. So HEAVY goals dispatch `qa-executor` in comparator
+  mode before `finish`: each F item's assertion is held against its captured
+  evidence, and a `不匹配` verdict sends you back for a real re-capture (or an
+  honest plan amendment). Proving a slightly different theorem than the one
+  stated is still not proving it.
 
 ## The continuation budget
 
@@ -361,9 +374,10 @@ findings come from the repository, not from the main agent's assumptions.
 | `session-start.js` | SessionStart | Re-injects goal-loop state so a new session picks up where the last stopped. |
 | `trigger.js` | UserPromptSubmit | Stratified trigger matching; injects the zw bootstrap on invocation. |
 | `comment-checker.js` | PostToolUse (Edit/Write) | Advisory detection of `TODO`/`FIXME`/`XXX`/`HACK` markers and debug residue (`console.log`, `console.debug`, `debugger`) in new content. Capped at 5 hits, 300 characters, inject-only — and only active in workspaces with an open goal loop. |
-| `stop.js` | Stop | Requests continuation (max 2/session) with the remaining-steps context while a loop is open. |
+| `stop.js` | Stop | Requests continuation (max 2/session) with the remaining-steps context while a loop is open; consumes a registered handoff marker once and releases without spending the budget. |
+| `tripwire.js` | PostToolUseFailure (`^mcp__`) | Warns once when the same MCP tool fails twice inside a 10-minute window (successes don't reset the streak — the TTL does). Steers toward switching tools or closing cleanly via `lzy loop handoff`; inject-only, isInterrupt-exempt, only active with an open goal. |
 
-All four commands route through `plugin/hooks/run-hook.sh`: the engine spawns
+All five commands route through `plugin/hooks/run-hook.sh`: the engine spawns
 hooks with *its own* environment, and a GUI-launched ZCode may have no `node`
 on PATH — the launcher falls back to nvm (highest version) and Homebrew
 locations, logs to `/tmp/lzy-hook-launcher.log`, and exits 0 (fail-open) if
@@ -467,6 +481,7 @@ LazyZCode has **no configuration file**. Everything is derived:
 | --- | --- |
 | `.lazyzcode/loop/goal.json` | Current goal: steps, statuses, evidence bindings |
 | `.lazyzcode/loop/sessions/<sessionId>.json` | Per-session Stop-hook counters |
+| `.lazyzcode/loop/salvage/<slug>.md` | Salvageable-artifact stubs written when a loop is reset/abandoned (uncommitted changes, footnoted commits, asset pointers); `lzy loop status` surfaces them in both the no-goal and goal-present views |
 | `.lazyzcode/plans/<slug>.md` | Plan documents |
 | `.lazyzcode/evidence/` | Archived evidence material |
 | engine plugin cache | Deployed payload (managed by `lzy install`/`sync`) |

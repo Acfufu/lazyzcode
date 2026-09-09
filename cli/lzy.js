@@ -16,6 +16,7 @@ import {
   exportReport,
   finishLoop,
   formatStatus,
+  handoffGoal,
   readGoal,
   registerGoal,
   resetLoop,
@@ -211,20 +212,39 @@ async function cmdLoop(args) {
       return;
     }
     case "abandon": {
-      const goal = abandonLoop(cwd);
+      const goal = abandonLoop(cwd, git);
       console.log(`⚠ 目标已放弃：${goal.slug}（证据与计划保留在 .lazyzcode/）`);
+      if (goal.salvage) {
+        console.log(`  可回收工件已盘点：${goal.salvage.path}（未提交 ${goal.salvage.dirty} · 尾注提交 ${goal.salvage.commits}）`);
+      }
       return;
     }
     case "reset": {
-      const goal = resetLoop(cwd);
+      const goal = resetLoop(cwd, git);
       console.log(`✔ 已清除目标状态：${goal.slug}`);
+      if (goal.salvage) {
+        console.log(`  可回收工件已盘点：${goal.salvage.path}（未提交 ${goal.salvage.dirty} · 尾注提交 ${goal.salvage.commits}）`);
+      }
+      return;
+    }
+    case "handoff": {
+      const snap = typeof f.snapshot === "string" ? f.snapshot : _[1];
+      if (!snap) {
+        throw new LoopError(
+          "用法：lzy loop handoff --snapshot <快照文件>（先把交接状态写入快照，再登记交接）",
+        );
+      }
+      const marker = handoffGoal(cwd, snap, git.treeHash());
+      console.log("✔ 交接已登记：下一次 Stop 钩子将消费标记并放行（目标保持 executing，状态在盘）");
+      console.log(`  快照：${marker.snapshot}`);
+      console.log("  下一步：结束本会话；用户开新上下文后以「zw 继续」续跑");
       return;
     }
     case "status":
       console.log(formatStatus(cwd, git));
       return;
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/verify/finish/export/abandon/reset）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/verify/finish/export/abandon/reset/handoff）`);
   }
 }
 

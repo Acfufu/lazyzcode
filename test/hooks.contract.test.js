@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,6 +114,96 @@ test("stop：空/坏 stdin、缺 sessionId、无目标目录一律 {} 放手（f
     assert.equal(hook("stop.js", { sessionId: "x", cwd: empty }).out, "{}"); // 无目标不劫持
   } finally {
     cleanup(d, empty);
+  }
+});
+
+test("stop：全收口未 finish——首次提醒占预算，预算尽后 {} 放手（缺口补，评审 E6）", () => {
+  const d = scratch();
+  try {
+    goalAt(d, "executing", [{ id: "N1", kind: "N", status: "done" }]);
+    counterAt(d, "s", 0);
+    const o1 = JSON.parse(hook("stop.js", { sessionId: "s", cwd: d }).out);
+    assert.equal(o1.continue, true);
+    assert.match(o1.additionalContext, /loop finish/);
+    counterAt(d, "s", 2); // 预算已尽
+    const o2 = hook("stop.js", { sessionId: "s", cwd: d }).out;
+    assert.equal(o2, "{}"); // 放手，引擎照常结束
+  } finally {
+    cleanup(d);
+  }
+});
+
+function handoffMarkerAt(dir, body = JSON.stringify({ snapshot: "/tmp/snap.md" })) {
+  writeFileSync(join(dir, ".lazyzcode", "loop", "handoff.json"), body);
+}
+
+test("stop：交接放行——消费即放行不耗预算、清振数、一次性（ADR-0009）", () => {
+  const d = scratch();
+  try {
+    goalAt(d); // pending>0 分支
+    counterAt(d, "s", 0);
+    handoffMarkerAt(d);
+    const o1 = JSON.parse(hook("stop.js", { sessionId: "s", cwd: d }).out);
+    assert.equal(o1.continue, false); // 放行，不请求续跑
+    assert.match(o1.additionalContext, /交接标记已消费/);
+    assert.equal(existsSync(join(d, ".lazyzcode", "loop", "handoff.json")), false); // 已消费
+    const st = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), "utf8"));
+    assert.equal(st.continues, 0); // 不耗预算：保持 0（只增不发生在放行路径）
+    assert.equal(st.stallCount, 0);
+    assert.equal(st.stuck, false);
+    assert.equal(st.lastDoneCount, null); // 重入防误振（评审 E2）
+    // 一次性：标记已清，第二次 Stop 回到正常拉回纪律
+    const o2 = JSON.parse(hook("stop.js", { sessionId: "s", cwd: d }).out);
+    assert.equal(o2.continue, true);
+    assert.match(o2.additionalContext, /1\/2/);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("stop：交接放行覆盖全收口分支（消费块在 pending 分叉前，评审钉死落点）", () => {
+  const d = scratch();
+  try {
+    goalAt(d, "executing", [{ id: "N1", kind: "N", status: "done" }]);
+    counterAt(d, "s", 0);
+    handoffMarkerAt(d);
+    const o = JSON.parse(hook("stop.js", { sessionId: "s", cwd: d }).out);
+    assert.equal(o.continue, false);
+    assert.match(o.additionalContext, /交接标记已消费/); // 不是 finish 提醒
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("stop：坏 JSON 交接标记当垃圾清走，本轮照常拉回", () => {
+  const d = scratch();
+  try {
+    goalAt(d);
+    counterAt(d, "s", 0);
+    handoffMarkerAt(d, "{{{bad");
+    const o = JSON.parse(hook("stop.js", { sessionId: "s", cwd: d }).out);
+    assert.equal(o.continue, true);
+    assert.equal(existsSync(join(d, ".lazyzcode", "loop", "handoff.json")), false); // 垃圾已清
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("stop：旁路会话不消费交接标记（认领闸门先于消费块，ADR-0004×0009 组合）", () => {
+  const d = scratch();
+  try {
+    goalAt(d);
+    mkdirSync(join(d, ".lazyzcode", "loop", "sessions"), { recursive: true });
+    writeFileSync(
+      join(d, ".lazyzcode", "loop", "sessions", "claimed.json"),
+      JSON.stringify({ claimedAt: "2026-09-10T00:00:00.000Z" }),
+    );
+    handoffMarkerAt(d);
+    const o = hook("stop.js", { sessionId: "bystander", cwd: d }); // 未认领会话
+    assert.equal(o.out, "{}"); // 放手
+    assert.equal(existsSync(join(d, ".lazyzcode", "loop", "handoff.json")), true); // 标记未被旁路消费
+  } finally {
+    cleanup(d);
   }
 });
 

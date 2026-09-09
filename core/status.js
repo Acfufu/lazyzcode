@@ -5,7 +5,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createEngineCli, findInstalledPlugin } from "./engine.js";
-import { readGoal } from "./loop.js";
+import { createGit } from "./git.js";
+import { handoffPath, readGoal } from "./loop.js";
+import { findRegistryEntry, readRepoManifest, sha256File } from "./installer.js";
 import {
   findEngine,
   installPathFor,
@@ -13,7 +15,6 @@ import {
   repoPluginDir,
   userCliConfigPath,
 } from "./paths.js";
-import { findRegistryEntry, readRepoManifest } from "./installer.js";
 
 // 载荷相对路径清单（跳过点残留，对齐 deployFiles 的 isDotResidue 语义；.zcode-plugin 保留）。
 function payloadFiles(root) {
@@ -85,24 +86,49 @@ export async function collectStatus() {
     push("install", "ok", `${id} @ ${entry.installPath}`);
   }
 
-  // 缓存载荷核验升格为逐文件对比（评审 R3-12：只查 manifest 存在时，hooks/skills 缺失也叫完整）。
+  // 缓存载荷核验：逐文件 sha256 内容比对。路径集合比对对「文件在而内容过期」结构性失明
+  // （2026-09-09 事故：认领制后缓存未重装，status 照报一致）；现算不记 manifest——
+  // sync 时落 hash 记录与缓存同源，对仓库前进同样漏报。读失败按不一致计（fail-open）。
   const cacheRoot = installPathFor(manifest);
   if (!existsSync(join(cacheRoot, ".zcode-plugin", "plugin.json"))) {
     push("files", "fail", "缓存缺 manifest（运行 lzy sync）");
   } else {
-    const repoFiles = payloadFiles(repoPluginDir());
-    const cacheFiles = new Set(payloadFiles(cacheRoot));
-    const missing = repoFiles.filter((f) => !cacheFiles.has(f));
+    const repoDir = repoPluginDir();
+    const repoFiles = payloadFiles(repoDir);
+    const cacheList = payloadFiles(cacheRoot);
+    const cacheSet = new Set(cacheList);
+    const missing = repoFiles.filter((f) => !cacheSet.has(f));
+    const extra = cacheList.filter((f) => !repoFiles.includes(f)); // 缓存多余=手改/残留（R3-2 同类）
+    const mismatched = [];
+    for (const f of repoFiles) {
+      if (!cacheSet.has(f)) continue; // 缺失已单独计数
+      try {
+        if (sha256File(join(repoDir, f)) !== sha256File(join(cacheRoot, f))) mismatched.push(f);
+      } catch {
+        mismatched.push(f); // 任一侧不可读：按不一致降级，单文件权限不炸整个 status
+      }
+    }
+    const dirtyHint =
+      repoFiles.length > 0 && createGit(process.cwd()).dirty()
+        ? "；仓库有未提交改动，先提交再 sync（sync 原样复制工作树）"
+        : "";
     if (repoFiles.length === 0) {
       push("files", "warn", "仓库载荷为空，无从核验");
     } else if (missing.length > 0) {
       push(
         "files",
         "warn",
-        `缓存缺 ${missing.length} 个文件（如 ${missing.slice(0, 3).join(" ")}；运行 lzy sync）`,
+        `缓存缺 ${missing.length} 个文件（如 ${missing.slice(0, 3).join(" ")}；运行 lzy sync${dirtyHint}）`,
+      );
+    } else if (mismatched.length + extra.length > 0) {
+      const samples = [...mismatched, ...extra].slice(0, 3).join(" ");
+      push(
+        "files",
+        "warn",
+        `缓存载荷与仓库不一致（内容差异 ${mismatched.length}、缓存多余 ${extra.length}，如 ${samples}；运行 lzy sync${dirtyHint}）`,
       );
     } else {
-      push("files", "ok", `缓存载荷完整（${cacheFiles.size} 文件与仓库一致）`);
+      push("files", "ok", `缓存载荷与仓库逐文件 sha256 一致（${repoFiles.length} 文件）`);
     }
   }
 
@@ -155,6 +181,11 @@ export async function collectStatus() {
       goal.status === "done" ? "ok" : "warn",
       `${goal.slug} · ${goal.status} · ${done}/${goal.steps.length} 步`,
     );
+    // 交接标记读面（ADR-0009）：在场=下个 Stop 将消费并放行。warn 仅为可见性（不翻退出码）。
+    try {
+      const marker = JSON.parse(readFileSync(handoffPath(process.cwd()), "utf8"));
+      push("handoff", "warn", `交接标记在场（快照 ${marker.snapshot ?? "?"}）——下个 Stop 将放行`);
+    } catch {} // 无标记=常态，静默
   }
 
   // 可选资产：codegraph 代码索引。缺席=skip（不翻转退出码），可用性分 MCP 配置与 CLI 两路。

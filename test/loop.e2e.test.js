@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -163,6 +163,32 @@ test("恢复式报错（ADR-0006）：status 读面报实际检查路径 + 恢�
     assert.ok(r.out.includes(join(d, ".lazyzcode", "loop")));
     assert.match(r.out, /恢复/);
     assert.match(r.out, /宿主工作区|工作区根/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("handoff（ADR-0009）：三拒（缺参/不存在/过期）+ 登记可见 + reset 清扫", () => {
+  const d = repo();
+  try {
+    assert.equal(lzy(["loop", "register", "ho", "--title", "t"], d).code, 0);
+    const p = setup(d, THREE_STEPS);
+    assert.equal(lzy(["loop", "plan", p], d).code, 0);
+    assert.equal(lzy(["loop", "start"], d).code, 0); // handoff 仅 executing 态有语义
+    assert.match(lzy(["loop", "handoff"], d).out, /用法/); // 缺 --snapshot
+    assert.match(lzy(["loop", "handoff", "--snapshot", "nope.md"], d).out, /不存在/);
+    const stale = join(d, "stale.md");
+    writeFileSync(stale, "old snapshot");
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    utimesSync(stale, old, old); // mtime 回拨 25h：化石快照
+    assert.match(lzy(["loop", "handoff", "--snapshot", "stale.md"], d).out, /过期/);
+    const snap = join(d, "snap.md");
+    writeFileSync(snap, "handoff state");
+    assert.match(lzy(["loop", "handoff", "--snapshot", "snap.md"], d).out, /交接已登记/);
+    assert.equal(existsSync(join(d, ".lazyzcode", "loop", "handoff.json")), true);
+    assert.match(lzy(["loop", "status"], d).out, /交接标记在场/);
+    assert.equal(lzy(["loop", "reset"], d).code, 0); // cleanupLoopResidue 收编
+    assert.equal(existsSync(join(d, ".lazyzcode", "loop", "handoff.json")), false);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

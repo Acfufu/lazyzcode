@@ -4,6 +4,10 @@
 // 状态按 sessionId 隔离、按 cwd 限定生效——没有 .lazyzcode/loop/goal.json 的目录一律 {} 放手。
 // 认领制（ADR-0004）：目录内存在认领会话时只拉认领会话（空集=现状目录级行为，单调收紧）；
 // 进度振数：拉回后步骤零推进两振写 stuck 提前弃拉（不消耗预算），有推进自愈。
+// 交接放行（ADR-0009）：`lzy loop handoff` 落目录级匿名标记，Stop 在此一次性原子消费
+// （unlink 恰一赢家）；放行显式 continue:false 不入 3 池（红线 #2 形态同 stuck 分支）。
+import { readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import {
   MAX_STOP_CONTINUES,
   emit,
@@ -17,6 +21,7 @@ import {
   readStdinJson,
   sanitizeSessionId,
   withSessionLock,
+  writeSessionCounter,
   writeSessionState,
 } from "./hook-lib.js";
 
@@ -37,6 +42,42 @@ try {
   const claims = listClaims(cwd);
   if (claims.length > 0 && !claims.includes(sanitizeSessionId(sessionId))) {
     failOpen();
+  }
+
+  // 交接放行（ADR-0009）：消费块置于认领闸门后、pending 分叉前（评审钉死落点）——
+  // pending 与全收口两分支共享同一交接出口。unlink 是原子动作：并发多会话同停时
+  // 恰一赢家 rm 成功、输家 ENOENT 落回拉回纪律（故 rm 不带 force——ENOENT 必须抛出）。
+  const handoffPath = join(cwd, ".lazyzcode", "loop", "handoff.json");
+  let handoff = null;
+  try {
+    handoff = JSON.parse(readFileSync(handoffPath, "utf8"));
+  } catch {
+    handoff = null;
+    try {
+      rmSync(handoffPath); // 坏 JSON：当垃圾清走，本轮视同无标记（无标记时 ENOENT 同样静默忽略）
+    } catch {}
+  }
+  if (handoff) {
+    try {
+      rmSync(handoffPath); // 原子消费：恰一赢家，输家 ENOENT 落回拉回
+    } catch {
+      handoff = null;
+    }
+  }
+  if (handoff) {
+    // 放行同时清本会话振数与 stuck（评审 E2：重入防误振；stuck 会话由此获得体面出口）
+    withSessionLock(cwd, sessionId, () => {
+      writeSessionState(cwd, sessionId, { stallCount: 0, stuck: false, lastDoneCount: null });
+    });
+    const snap = typeof handoff.snapshot === "string" ? handoff.snapshot : "";
+    emit({
+      continue: false,
+      additionalContext:
+        `[lzy] 交接标记已消费，本轮放行（目标 ${goal.slug} 保持 executing，状态在盘）。` +
+        (snap ? `交接快照：${snap}。` : "") +
+        `用户开新上下文后以「zw 继续」续跑。`,
+    });
+    process.exit(0);
   }
 
   const steps = Array.isArray(goal.steps) ? goal.steps : [];
@@ -67,7 +108,8 @@ try {
       const used = state.continues;
       if (used >= MAX_STOP_CONTINUES) {
         // 预算用尽：不请求续跑（引擎会照常结束会话），只留一条一次性上下文提示账目与余项。
-        // continue:false 必须显式——省略键的形态引擎侧行为无活体证据，不能赌（评审 R1-1）。
+        // continue:false 显式形态有引擎侧实锤：仅 continue===true 入 3 池（Z:460139-460157）。
+        // 三处放行/弃拉（stuck/预算/交接）统一显式键，不赌省略形态。
         writeSessionState(cwd, sessionId, { stallCount, stuck: false, lastDoneCount: doneCount });
         return {
           continue: false,

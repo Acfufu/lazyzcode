@@ -187,6 +187,7 @@ lzy step done <ID> [--note "…"] [--evidence "…"]
 lzy loop status                         # 进度、下一步、证据新鲜度
 lzy loop verify                         # 证据时效审计（退出码 1 = 过期/未绑定）
 lzy loop finish                         # 终验门
+lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次
 lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 ```
 
@@ -197,6 +198,9 @@ lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 - F 项的 `lzy step done` 不带 `--evidence` 会被拒。带新证据重跑即重绑定
   （标记 ↻ 重取证）。
 - `lzy loop verify` 是终验门的只审计变体（证据过期/未绑定/无目标时退出码 1）。
+- `lzy loop handoff --snapshot <文件>` 登记干净交接：下个 Stop 一次性消费标记并
+  放行，不消耗续跑预算（目标保持 executing，状态在盘）。快照须已存在且 24h 内
+  有改动——没有真实快照的交接不受理；`lzy loop reset`/`abandon` 会清扫残留标记。
 - `lzy loop abandon` 放弃但留档；`lzy loop reset` 清状态（含会话计数与孤儿
   临时文件），下一个循环才能开。
 
@@ -242,6 +246,10 @@ lzy loop abandon | lzy loop reset       # 放弃 / 清状态
   随时重导出。
 - `lazyzcode:qa-executor` 代理为此而生：派它去跑取证，并原样报告它实际观察到
   的东西——命令与原始输出。它的天职是对抗证据造假。
+- **证据对照（comparator）**。存在性与新鲜度是机器门；证据是否真的**证明了**
+  断言所言，没有 CLI 读得懂语义——所以 HEAVY 目标 finish 前派 `qa-executor`
+  做对照：逐 F 项把断言对着已取证据判，`不匹配`就回去真重取证（或诚实修计划）。
+  证了一个差一点的定理，仍然不等于证了那一个。
 
 ## 续跑预算
 
@@ -298,9 +306,10 @@ ZCode 原生读取 `AGENTS.md`，地图免费搭进每一个未来会话——�
 | `session-start.js` | SessionStart | 重注入目标循环状态，新会话接续上一个。 |
 | `trigger.js` | UserPromptSubmit | 分层触发匹配；命中发起则注入 zw 引导。 |
 | `comment-checker.js` | PostToolUse（Edit/Write） | 对新内容中的 `TODO`/`FIXME`/`XXX`/`HACK` 标记与调试残留（`console.log`、`console.debug`、`debugger`）做提示。每次至多 5 处、300 字符、只提示不阻断——且只在有开放目标循环的工作区生效。 |
-| `stop.js` | Stop | 循环开着时带剩余步骤上下文请求续跑（每会话至多 2 次）。 |
+| `stop.js` | Stop | 循环开着时带剩余步骤上下文请求续跑（每会话至多 2 次）。 |；一次性消费交接标记并放行（不耗预算）。 |
+| `tripwire.js` | PostToolUseFailure（`^mcp__`） | 同一 MCP 工具在 10 分钟窗内连续失败 2 次时提示一次（成功不重置连击，TTL 才重臂）——引向换工具或 `lzy loop handoff` 干净收尾；只提示不阻断，用户手动取消不计，仅在有开放目标时生效。 |
 
-四条命令都经 `plugin/hooks/run-hook.sh` 启动：引擎用*自己的*环境拉起钩子，而
+五条命令都经 `plugin/hooks/run-hook.sh` 启动：引擎用*自己的*环境拉起钩子，而
 GUI 直启的 ZCode 可能 PATH 里没有 `node`——启动器兜底 nvm（取最高版本）与
 Homebrew 位置，落空则记 `/tmp/lzy-hook-launcher.log` 并以 0 退出（fail-open）。
 `lzy doctor` 的 `hook-node` 检查报告解析结果。
@@ -391,6 +400,7 @@ LazyZCode **没有配置文件**。一切皆推导：
 | --- | --- |
 | `.lazyzcode/loop/goal.json` | 当前目标：步骤、状态、证据绑定 |
 | `.lazyzcode/loop/sessions/<sessionId>.json` | 每会话 Stop 钩子计数 |
+| `.lazyzcode/loop/salvage/<slug>.md` | 可回收工件存根（循环 reset/abandon 时盘点：未提交改动、带尾注提交、资产指针）；`lzy loop status` 在无 goal 与有 goal 两种视图下都会显示 |
 | `.lazyzcode/plans/<slug>.md` | 计划文档 |
 | `.lazyzcode/evidence/` | 归档的取证材料 |
 | 引擎插件缓存 | 已部署载荷（`lzy install`/`sync` 管理） |

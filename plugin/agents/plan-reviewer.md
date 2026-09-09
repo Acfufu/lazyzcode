@@ -17,6 +17,7 @@ You receive: the goal (slug + title), the plan file path, and optionally explore
 3. **Real-surface F items** — every F item names its surface concretely (which CLI command's stdout, which HTTP endpoint, which UI screen + screenshot). "Tests pass" as the only verification fails the gate.
 4. **Feasible & grounded** — steps reference code that exists as described (spot-check 2–3 claims with file:line); risks with real blast radius (migrations, auth, deletions, public APIs) have an explicit handling step.
 5. **Evidence-bindable** — the plan implies commit points; F items can be re-verified after further code changes without ambiguity.
+6. **Handoff-able steps (WARN-level)** — N items carry their own pointers (files, symbols, expected shape) so a fresh claimer can execute without reading the whole plan. A step that says "as in N3" or leans on conversation context is a cost smell, not a violation: report it as a WARNING (counts P3), never MUST-FIX. Also flag (same WARN level) plans whose N items require the same single tool back-to-back (e.g. dozens of identical MCP captures) without an escape or batching step — degenerate same-tool loops are a known failure mode.
 
 ## Output contract (exactly this shape)
 

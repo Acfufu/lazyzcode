@@ -72,6 +72,10 @@ Rules:
   execution.
 - Every F item names its surface in the title (e.g. "F1 · CLI stdout shows
   parsed record matches fixture").
+- **Handoff-able steps**: each N item carries its own pointers (files, symbols,
+  expected shape) so a fresh claimer can execute it without reading the whole
+  plan — sessions die and goals get adopted mid-flight; write every step for
+  the engineer who was not in the room.
 - **Known unknowns (HEAVY mandatory, LIGHT advisory)**: after the checklist, add a
   `## Known unknowns` section listing 1–3 assumptions the plan silently rests on,
   each with its falsification path (what signal proves it wrong, how to check).
@@ -145,6 +149,13 @@ Passes only when every step is done AND every F item's evidence tree-hash equals
 the current code. This is the only valid "done". 不做完不停 — if finish rejects,
 keep working, never declare victory.
 
+**Evidence comparison (comparator, HEAVY mandatory).** Existence and freshness are the CLI's
+gates; relevance is not checked by any CLI — so before `finish`, dispatch `qa-executor` in
+comparator mode over every F item's assertion–evidence pair. A `不匹配` verdict means the
+evidence does not demonstrate the claim: re-capture on the right surface, or if the F item
+itself was wrong, amend the plan honestly — then re-run. LIGHT goals: do the comparison
+yourself as a self-check (weaker — you authored the evidence; know its blind spot).
+
 **Commit ledger (ADR-0005).** Every commit made inside a goal carries a trailer-style
 pointer `Goal: <slug>#<step>` (e.g. `Goal: ledger-discipline#N3`) — humans and agents alike;
 historical commits are never rewritten to add it. `lzy doctor`'s `ledger` line patrols
@@ -188,6 +199,17 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
   do not summarize, do not ask questions — work.
 - Budget exhausted with steps remaining? State plainly which steps remain and
   stop cleanly; the next session's SessionStart hook re-injects the loop state.
+- **Tool fire-loop escape (misfire attractor):** if the same tool fires 3+ times
+  in a row with failures/timeouts, or with queries whose results are unrelated
+  to the step (wrong index, sibling-repo symbols) — stop calling it, even if
+  you already declared it "disabled" (self-commands do not survive long
+  context). Switch tools or, when the context is already degraded: write a
+  handoff snapshot (remaining path, exact next actions) into the plan file, run
+  `lzy loop handoff --snapshot <that file>`, then end the turn and ask the user
+  to open a fresh context with `zw 继续`. Never pad with placeholder queries to
+  "harmlessly" keep calling — that is how a 2-call misfire becomes a 79-call
+  spiral. If the tripwire nudge (`[lzy]` same-tool failure streak) arrives, it
+  means the hook observed this pattern before you did: obey it immediately.
 - `lzy loop status` at any time to re-ground yourself (also after compaction);
   for cross-repo goals, return to the host root before running it.
 

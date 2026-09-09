@@ -159,10 +159,12 @@ function checkLoopState(push, cwd) {
     // 疤痕巡逻（ADR-0006）：loop/ 目录在而 goal.json 全无的纯空壳——旧版写命令 withLock
     // 的 mkdirSync 遗留（fail-fast 落地后不再新产）。reset 对 null-goal 空壳报「无需 reset」
     // 清不掉目录本身，指引手动 rm -r。与上方残留 warn 分流，不重复告警。
+    // salvage/ 存根是有意产物（可回收工件面，status 有读面）——仅剩它的目录不是疤痕。
     let emptyScar = false;
     try {
-      readdirSync(dir); // 能列目录 = 目录在场（内容已由上方 sessions/orphanTmp 排除为空壳形态）
-      emptyScar = true;
+      const entries = readdirSync(dir); // 能列目录 = 目录在场
+      // 目录在场即疤痕（空目录也是残留）；唯一豁免=仅剩 salvage/ 存根（有意产物，status 有读面）
+      emptyScar = entries.length === 0 || entries.some((e) => e !== "salvage");
     } catch {
       emptyScar = false; // 目录缺席 = 真干净
     }

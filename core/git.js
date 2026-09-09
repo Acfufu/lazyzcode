@@ -59,5 +59,39 @@ export function createGit(cwd) {
           return p !== ".lazyzcode" && !p.startsWith(".lazyzcode/");
         });
     },
+    // 可回收工件盘点（C 面）：porcelain 路径清单（口径同 dirty()，排除 .lazyzcode/ 自身账本）。
+    // git 不可用/非 git 仓库时返回 null（调用方降级：存根只留资产指针，不阻断销毁）。
+    porcelainPaths() {
+      const r = spawnSync("git", ["status", "--porcelain"], {
+        cwd,
+        shell: false,
+        timeout: 10_000,
+        encoding: "utf8",
+      });
+      if (r.error || r.status !== 0) return null;
+      return (r.stdout ?? "")
+        .split(/\r?\n/)
+        .filter((line) => line.trim())
+        .map((line) => {
+          const raw = line.slice(3).trim();
+          const renamed = raw.includes(" -> ") ? raw.split(" -> ").pop() : raw;
+          return renamed.replace(/^"(.*)"$/, "$1");
+        })
+        .filter((p) => p !== ".lazyzcode" && !p.startsWith(".lazyzcode/"));
+    },
+    // 按提交账本尾注标记列提交（ADR-0005 读面）：--grep 标记为单 argv 元素（安全形态同上）。
+    // 返回 "<short-hash> <subject>" 数组；git 不可用/非 git 仓库时返回 null。
+    commitSubjects(grepMarker) {
+      const r = spawnSync(
+        "git",
+        ["log", `--grep=${grepMarker}`, "--format=%h %s"],
+        { cwd, shell: false, timeout: 10_000, encoding: "utf8" },
+      );
+      if (r.error || r.status !== 0) return null;
+      return (r.stdout ?? "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+    },
   };
 }

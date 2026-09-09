@@ -3,7 +3,7 @@
 // 状态落工作区 .lazyzcode/loop/goal.json（与宿主 .zcode/ 划清边界，宪法 §4 决策 #6）。
 // 本模块零 spawn（tree hash 经 core/git.js 取），全部同步语义。
 import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 
 export const GOAL_VERSION = 1;
@@ -440,21 +440,64 @@ export function exportReport(cwd, git) {
   return { path: relative(cwd, p) };
 }
 
-export function abandonLoop(cwd) {
+export function abandonLoop(cwd, git) {
   requireGoalPreLock(cwd);
-  return withLock(cwd, () => doAbandonLoop(cwd));
+  return withLock(cwd, () => doAbandonLoop(cwd, git));
 }
 
-function doAbandonLoop(cwd) {
+function doAbandonLoop(cwd, git) {
   const goal = requireActive(cwd);
+  const salvage = writeSalvageStub(cwd, goal, git, "abandon 放弃");
   goal.status = "abandoned";
   goal.finishedAt = new Date().toISOString();
   writeGoal(cwd, goal);
-  return goal;
+  return { ...goal, salvage };
 }
 
-export function resetLoop(cwd) {
-  return withLock(cwd, () => doResetLoop(cwd));
+// ── 交接放行（ADR-0009）──────────────────────────────────────────────────
+// 目录级匿名标记：模型收尾前登记交接，Stop 钩子一次性原子消费后放行（不耗续跑预算）。
+// 匿名性是特性不是缺陷：模型在 Bash 环境拿不到自己的 sessionId（引擎只注入 hook env），
+// 任何要求模型转抄会话身份的设计都在最需要逃逸的时刻制造新的失败面（双审 P1 定案）。
+
+export function handoffPath(cwd) {
+  return join(loopDir(cwd), "handoff.json");
+}
+
+// 快照新鲜度上限：没有真实快照的交接不是交接（防滥用防化石——双审 P2 对冲）。
+export const HANDOFF_SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export function handoffGoal(cwd, snapshot, treeHash) {
+  requireActive(cwd, "executing"); // planning/已完结目标上登记交接没有语义（Stop 不拉）
+  if (typeof snapshot !== "string" || !snapshot.trim()) {
+    throw new LoopError(
+      "用法：lzy loop handoff --snapshot <快照文件>（先把交接状态写入快照，再登记交接）",
+    );
+  }
+  const snapAbs = resolve(cwd, snapshot.trim());
+  let mtimeMs = 0;
+  try {
+    mtimeMs = statSync(snapAbs).mtimeMs;
+  } catch {
+    throw new LoopError(`交接快照不存在：${snapAbs}（先写快照再登记，拒绝空壳交接）`);
+  }
+  if (Date.now() - mtimeMs > HANDOFF_SNAPSHOT_MAX_AGE_MS) {
+    throw new LoopError(`交接快照已过期（mtime 超过 24h）：${snapAbs}（更新快照后重新登记）`);
+  }
+  const marker = {
+    snapshot: snapAbs,
+    treeHash: typeof treeHash === "string" ? treeHash : null,
+    requestedAt: new Date().toISOString(),
+  };
+  const p = handoffPath(cwd);
+  const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(tmp, `${JSON.stringify(marker, null, 2)}\n`);
+  renameSync(tmp, p); // 原子落盘：与 Stop 侧 unlink 消费的互斥由文件系统原子性保证
+  return marker;
+}
+
+export function resetLoop(cwd, git) {
+  return withLock(cwd, () => doResetLoop(cwd, git));
 }
 
 // 孤儿/残留清理（评审 R2-11）：kill -9 落在 tmp 写入与 rename 之间会留孤儿 .tmp；
@@ -477,10 +520,14 @@ function cleanupLoopResidue(cwd) {
       cleaned++;
     }
   } catch {}
+  try {
+    // 交接标记（ADR-0009）随目标清理：残留会让下一个 executing 目标的首个 Stop 被误放行（评审 P2）。
+    rmSync(join(dir, "handoff.json"), { force: true });
+  } catch {}
   return cleaned;
 }
 
-function doResetLoop(cwd) {
+function doResetLoop(cwd, git) {
   const goal = readGoal(cwd);
   const cleaned = cleanupLoopResidue(cwd);
   if (!goal) {
@@ -488,8 +535,59 @@ function doResetLoop(cwd) {
     if (cleaned === 0) throw new LoopError("本目录没有目标，无需 reset");
     return { slug: "（仅残留状态，已清理）" };
   }
+  const salvage = writeSalvageStub(cwd, goal, git, "reset 清除");
   rmSync(goalPath(cwd), { force: true });
-  return goal;
+  return { ...goal, salvage };
+}
+
+// ── 可回收工件（C 面）：终止时盘点残留入存根——接管者跨会话可见，事件打印会随销毁
+// 会话的转录一起死，故落盘是本体、打印只是 convenience。git 不可用降级为仅资产指针。──
+function salvageDir(cwd) {
+  return join(loopDir(cwd), "salvage");
+}
+
+export function listSalvageStubs(cwd) {
+  try {
+    return readdirSync(salvageDir(cwd))
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => f.slice(0, -".md".length));
+  } catch {
+    return [];
+  }
+}
+
+function salvageLine(cwd) {
+  const stubs = listSalvageStubs(cwd);
+  if (stubs.length === 0) return null;
+  return (
+    `  可回收存根 ${stubs.length}：${stubs.join(" ")}` +
+    `（先前实例的工件盘点在 .lazyzcode/loop/salvage/，接管/重立前先读）`
+  );
+}
+
+function writeSalvageStub(cwd, goal, git, reason) {
+  const dirty = git ? git.porcelainPaths() : null;
+  const commits = git ? git.commitSubjects(`Goal: ${goal.slug}#`) : null;
+  const lines = [
+    `# 可回收工件存根 — ${goal.slug}`,
+    "",
+    `目标循环已${reason}（${new Date().toISOString()}）。接管者从这里开始：`,
+    "",
+    "## 未提交改动（.lazyzcode/ 自身不计）",
+    ...((dirty ?? []).length ? dirty.map((p) => `- ${p}`) : ["- 无"]),
+    "",
+    `## 带本目标尾注的提交（Goal: ${goal.slug}#）`,
+    ...((commits ?? []).length ? commits.map((c) => `- ${c}`) : ["- 无"]),
+    "",
+    "## 既有资产指针",
+    `- 计划：.lazyzcode/plans/${goal.slug}.md（reset/abandon 不删除，PASS 评审文本可复用重采纳）`,
+    `- 证据包：.lazyzcode/evidence/${goal.slug}.report.md（finish 归档，reset 不清）`,
+    "",
+  ];
+  mkdirSync(salvageDir(cwd), { recursive: true });
+  const p = join(salvageDir(cwd), `${goal.slug}.md`);
+  writeFileSync(p, lines.join("\n"));
+  return { path: relative(cwd, p), dirty: dirty?.length ?? 0, commits: commits?.length ?? 0 };
 }
 
 // ── 展示 ────────────────────────────────────────────────────────────────────
@@ -522,7 +620,8 @@ export function scanSessionFlags(cwd) {
 
 export function formatStatus(cwd, git) {
   const goal = readGoal(cwd);
-  if (!goal) return noGoalMessage(cwd);
+  const stubLine = salvageLine(cwd); // 无 goal/有 goal 两分支均渲染（C 面；reset 后无 goal 恰是回收主时刻）
+  if (!goal) return stubLine ? `${noGoalMessage(cwd)}\n${stubLine}` : noGoalMessage(cwd);
   const done = goal.steps.filter((s) => s.status === "done");
   const lines = [
     `目标 ${goal.slug} — ${goal.title}`,
@@ -551,7 +650,13 @@ export function formatStatus(cwd, git) {
     if (flags.stuck.length > 0) {
       lines.push(`  ⚠ stuck ${flags.stuck.length}：${flags.stuck.join(" ")}（原地无进展两振停拉，推进步骤即自愈）`);
     }
+    try {
+      // 交接标记读面（ADR-0009）：在场=下个 Stop 将消费并放行（一次性）。
+      const marker = JSON.parse(readFileSync(handoffPath(cwd), "utf8"));
+      lines.push(`  ⚠ 交接标记在场（快照 ${marker.snapshot ?? "?"}）——下个 Stop 将放行`);
+    } catch {} // 无标记=常态，静默
   }
+  if (stubLine) lines.push(stubLine);
   if (git && (goal.status === "executing" || goal.status === "done")) {
     const { current, stale, unbound } = verifyEvidence(cwd, git);
     const fDone = goal.steps.filter((s) => s.kind === "F" && s.status === "done");

@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
 import { readRepoManifest } from "./installer.js";
 import { installPathFor, packageRoot, repoPluginDir, userCliLogDir } from "./paths.js";
-import { collectRateLimitStats, scheduleAdvisory } from "./ratelimit.js";
+import { collectRateLimitStats, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
 import { auditAgentsMd } from "./agentsmd.js";
 import { scanSessionFlags } from "./loop.js";
 import { createGit } from "./git.js";
@@ -309,11 +309,15 @@ async function checkRateLimit(push) {
   }
   if (!stats.available) {
     push("rate-limit", "skip", `无引擎日志可扫（${logDir}）`);
+    push("transport", "skip", "无引擎日志可扫（传输死亡体检不可用）");
     push("schedule", "skip", "无引擎日志——无人值守窗口无从实测，任意时段均可（建议 ≥1h 间隔）");
     return;
   }
   if (stats.rateLimited === 0) {
     push("rate-limit", "ok", `近 ${stats.spanHours ?? stats.files * 24}h 无账号级限流记录`);
+    // 传输族独立于限流族：无 429 不代表无传输死亡，行照出
+    const tr0 = transportAdvisory(stats);
+    push("transport", tr0.level, tr0.text);
     push("schedule", "skip", "无集中段证据——任意时段均可挂自动化，建议 ≥1h 间隔");
     return;
   }
@@ -360,6 +364,9 @@ async function checkRateLimit(push) {
   }
   detail += adviceStr;
   push("rate-limit", "warn", detail);
+  // 传输死亡行（ADR-0008）：与限流同源同扫描不重复读日志，只记账不进任何带数学
+  const tr = transportAdvisory(stats);
+  push("transport", tr.level, tr.text);
   // 错峰窗口（无人值守调度，ADR-0003）：与限流体检同源同扫描，不重复读日志
   const adv = scheduleAdvisory(stats);
   if (adv) {

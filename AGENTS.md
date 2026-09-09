@@ -27,6 +27,7 @@
 - **透明账本纪律已落地（2026-09-09，goal ledger-discipline，ADR-0005/决策 #18）**：提交 `Goal: <slug>#<步号>` 尾注 + doctor `ledger` 巡逻 + 证据 opt-in 入库（docs/evidence/）；全部未推提交已 squash 同线推远程。
 - **宿主工作区纪律已落地（2026-09-09，goal host-workspace-discipline，ADR-0006/决策 #19）**：跨仓目标循环寄宿主仓（严格 cwd 不 walk-up）+ 写命令 fail-fast（withLock 空壳疤痕根治，reset 契约豁免）+ 无 goal 出口恢复式报错（统一文案源：绝对路径+回宿主根指引）+ 认领写面收窄至唤起级（ADR-0004 修正案，/ulw 提及误认领 specimen）+ doctor 疤痕巡逻；多树证据绑定记名债务（升格=跨仓漏判误 finish）。下一步：真发布 + 官方市场卡位（用户按 `docs/release-checklist.md` 择机执行）；运行期反馈迭代。
 - **已知未知显性 + 消融账本已落地（2026-09-10，goal ablation-confidence，ADR-0007/决策 #20）**：HEAVY 计划强制「已知未知」节（1–3 条假设各带证伪途径，「无」须一行扫过说明；LIGHT 建议）+ 影子消融制度化（计划自查→评审门→差集按 P0-P3 记账，预注册判据防降档；天然消融被动补录），协议与账本 `docs/ablation.md`；计划门零代码改动（禁词黑名单不动，「未知」二字永不入表——契约钉三枚）；首验即正名：影子实验评审独有 P1×1+P2×1 → 门挣得成本；65/65 测试绿、文档站锚点双语 21/21。
+- **传输死亡诊断面已落地（2026-09-10，goal doctor-transport-deaths，ADR-0008）**：doctor `transport` 行与限流分族计数（errno 主判据在 statusMessage——实锤 ENETDOWN 事故 reason=unknown，按 reason 白名单必漏触发事故本身；fake-ip 198.18.0.0/15 命中给 TUN 直连提示；绝不进并发带/错峰窗数学）；429 谓词零语义变化（真日志基线 diff 字段级为空作护栏）；69/69 测试绿。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 
@@ -130,16 +131,15 @@ _Avoid_: 并发上限（平台侧数值，本地测不到）
 **回合（turn）**：一次去重后的模型请求；引擎重试产生多条限流事件仍属一回合，doctor 限流标题按回合计。_Avoid_: 请求次数（含重试的原始条数）
 **项目记忆（init-deep）**：init-deep 技能生成的分层 AGENTS.md 地图（根 + 有资格子目录），
 随 git 入库=仓库/团队面；个人教训归内置 memory（zw 收尾）。资格谓词=构建入口/文件数>40/根提及（纯代码可判）；写盘必经草稿先行（ADR-0002）。_Avoid_: 项目知识库、复杂度打分
-
 **无人值守模式（unattended）**：宿主自动化定时唤起、只推进 executing 目标、绝不立新计划的
 运行形态（ADR-0003）。_Avoid_: 全自动模式、自动驾驶
-
 **错峰窗口（off-peak window）**：doctor 从实测限流集中段反推的建议自动化挂载时段（对侧净弧中央 8h）。_Avoid_: 并发上限、空闲时段
 **认领（claim）**：会话对进行中目标循环的接管登记（唤起级触发命中时 UPS 写 `claimedAt` 入会话文件；句中提及不写——ADR-0004 修正案）；Stop 拉回只作用于认领会话，集合语义可多会话并存。**旁路会话（bystander session）**=同目录未认领循环的会话（如纯问答），不受 Stop 拉回、SessionStart 广播照收。_Avoid_: 会话独占、锁定（无 SessionEnd，独占会死锁）、脏会话
 **宿主工作区（host workspace）**：跨仓目标中寄宿 `.lazyzcode/` 状态与循环命令的仓库——会话以它为根，代码可在兄弟仓；严格 cwd 不 walk-up（ADR-0006）。_Avoid_: 元仓库、主仓、状态目录、代码仓
 **提交账本（commit ledger）**：提交尾注 `Goal: <slug>#<步号>`，每条改动可回溯目标循环（ADR-0005）；doctor `ledger` 行巡逻覆盖率。_Avoid_: AI 署名尾注（另议）、提交即日志
 **已知未知（known unknowns）**：HEAVY 计划末尾强制申报的未验证前提节（1–3 条各带证伪途径；「无」须一行说明扫过哪里）——与门禁词互补：前提可申报，决策不可推迟（ADR-0007）。
 _Avoid_: 待定事项、风险管理清单
+**传输死亡（transport death）**：引擎 turn 在网络传输层失败、请求未达服务端（ENETDOWN/ECONNRESET 等 errno 族，主判据在 statusMessage；引擎常误标 retryable=false）；doctor `transport` 行分族计数、绝不进并发带/错峰窗数学（ADR-0008）。_Avoid_: 断网（过泛）、网络繁忙（服务端杀流另一族）、网络错误（与 429 混淆）
 
 ## 9. 维护规则
 

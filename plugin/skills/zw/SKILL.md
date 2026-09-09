@@ -211,6 +211,12 @@ Stop pool from Continuation — two different pools, never confuse them.
   replan. Close the session cleanly — `.lazyzcode/` lost nothing — and tell
   the user to resume with `zw 继续` (or `lzy loop step`) after a few minutes,
   when the quota window has room again.
+- **A turn died without reaching the server at all** (transport death:
+  `connect ENETDOWN` / `ECONNRESET`-family errors — local network or proxy
+  tunnel flap; the engine often mislabels these `retryable=false`)? Same
+  contract: close cleanly, lose nothing, resume after the link recovers.
+  `lzy doctor`'s `transport` line tallies this family separately — never
+  treat it as quota pressure.
 - **Risk trumps quota.** HEAVY costs more calls (review gate, evidence
   capture, Stop pulls); when quota is tight, genuinely contained work may
   start LIGHT — but anything risky or vague is HEAVY regardless of quota.

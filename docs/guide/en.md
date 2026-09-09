@@ -391,6 +391,11 @@ Behavioral rules the zw skill carries:
   lowers a HEAVY risk bar.
 - After a fatal 429 (a turn judged dead after the engine's retries): stop
   cleanly, wait a few minutes, then `zw continue` — the loop state survives.
+- **Transport deaths are a different family**: the request never left your
+  machine (`ENETDOWN` and friends; the engine often mislabels them as
+  non-retryable). Same recovery contract — close cleanly and nothing in
+  `.lazyzcode/` is lost; `lzy doctor`'s `transport` line keeps a separate
+  tally (never mixed into the quota math).
 
 **Unattended (host automation)**: scheduling and the continue-only protocol
 live in [Unattended](#unattended); the off-peak window comes from `lzy
@@ -451,6 +456,7 @@ do.
 | `platform` | Platform notice (macOS-only detection) |
 | `agents-md` | Layered AGENTS.md coverage audit (skip when no root file; `lzy agents-md` for details) |
 | `rate-limit` | GLM plan 429 pressure from the last 2 days of engine logs |
+| `transport` | Transport deaths (request-never-reached-server failures, e.g. ENETDOWN): counted as a separate family, never fed into the concurrency math |
 | `schedule` | Off-peak advisory: suggested automation window derived from the measured concentration (skip without evidence) |
 
 ## State & configuration

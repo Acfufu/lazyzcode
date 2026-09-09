@@ -1,6 +1,7 @@
-// 限流体检契约测试：core/ratelimit.js 统计口径 + doctor rate-limit 行的真实 stdout 面。
-// fixture 全部落 scratch HOME，绝不触碰真实 ~/.zcode；端到端只断言 rate-limit 行内容，
-// 绝不断言退出码（scratch HOME 下 doctor 必因 install fail 整体 exit 1，双审 B-5）。
+// 限流体检契约测试：core/ratelimit.js 统计口径（限流族+传输死亡族）+ doctor rate-limit/
+// transport 行的真实 stdout 面。fixture 全落 scratch HOME，绝不触碰真实 ~/.zcode；
+// 端到端只断言行内容，绝不断言退出码（scratch HOME 下 doctor 必因 install fail 整体
+// exit 1，双审 B-5）。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -8,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectRateLimitStats } from "../core/ratelimit.js";
+import { collectRateLimitStats, transportAdvisory } from "../core/ratelimit.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const LOG_DIR = ["2026-09-06", "2026-09-07"]; // 两个扫描日的文件名（.jsonl 前缀）
@@ -351,6 +352,207 @@ test("端到端（TZ=UTC）：集中段本地小时渲染确定 + 满配行 ≤3
     assert.match(line, /撞线集中在本地 08:00–11:00（占 10 成）/);
     const detail = line.replace(/^\s*\S\s+rate-limit\s+/, "");
     assert.ok([...detail].length <= 300, `detail 应 ≤300 字符，实际 ${[...detail].length}：${detail}`);
+  } finally {
+    cleanup(d);
+  }
+});
+
+// ── 传输死亡族（ADR-0008）：errno 主判据 + 排除面 + 双口径 + doctor transport 行 ──
+
+// 真实事故行形态（2026-09-08 ENETDOWN 实锤， sessid 等长打码；errno 与 fake-ip
+// 198.18.0.0/15 保留段地址原样保留）。关键事实：reason="unknown"——按 reason
+// 白名单会漏掉本事故，errno 主判据必须从 statusMessage 提取。
+const enetdownLine = (ts, sid, turnId = "turn_872f1972-eb68-4531-bae3-2be17532cbee") =>
+  JSON.stringify({
+    timestamp: ts,
+    level: "warn",
+    event: "model.request.failed",
+    module: "adapters.model",
+    message: "Model request attempt failed",
+    sessionId: sid,
+    turnId,
+    status: "failed",
+    context: {
+      attempt: 4,
+      baseURL: "https://open.bigmodel.cn/api/anthropic",
+      maxAttempts: 11,
+      maxRetries: 10,
+      modelId: "GLM-5.3-Flash",
+      providerId: "builtin:bigmodel-coding-plan",
+      providerKind: "anthropic",
+      querySource: "main_turn",
+      transport: "sse",
+      reason: "unknown",
+      retryable: false,
+      statusMessage: "Cannot connect to API: connect ENETDOWN 198.18.0.197:443",
+    },
+  });
+
+// 通用失败事件构造器（传输族辅判据与排除面共用；turnId 可选供双口径用例）
+const failedLine = (ts, sid, ctx, turnId) =>
+  JSON.stringify({
+    timestamp: ts,
+    sessionId: sid,
+    ...(turnId ? { turnId } : {}),
+    event: "model.request.failed",
+    context: ctx,
+  });
+const networkErrorLine = (ts, sid, turnId) =>
+  failedLine(
+    ts,
+    sid,
+    {
+      reason: "network_error",
+      attempt: 1,
+      maxAttempts: 11,
+      statusMessage:
+        "Cannot connect to API: Client network socket disconnected before secure TLS connection was established",
+    },
+    turnId,
+  );
+const connectTimeoutLine = (ts, sid, turnId) =>
+  failedLine(
+    ts,
+    sid,
+    {
+      reason: "timeout",
+      attempt: 1,
+      maxAttempts: 11,
+      statusMessage:
+        "Cannot connect to API: Connect Timeout Error (attempted address: zcode.z.ai:443, timeout: 10000ms)",
+    },
+    turnId,
+  );
+
+const transportLine = (stdout) =>
+  (stdout ?? "").split("\n").find((l) => /^\s*\S\s+transport\s/.test(l));
+
+test("传输族 matcher：errno 主判据（reason=unknown 形态）+ 两辅判据 + 排除面不串计", async () => {
+  const d = scratch();
+  try {
+    writeLog(d, LOG_DIR[0], [
+      enetdownLine("2026-09-06T10:00:00.000Z", "sess_xxxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"),
+      networkErrorLine("2026-09-06T10:01:00.000Z", "s2"),
+      connectTimeoutLine("2026-09-06T10:02:00.000Z", "s3"),
+      rateLimited("2026-09-06T10:03:00.000Z", "s4", { attempt: 1 }), // 限流族：不进传输
+      failedLine("2026-09-06T10:04:00.000Z", "s5", { reason: "cancelled", statusMessage: "Model request was cancelled." }),
+      failedLine("2026-09-06T10:05:00.000Z", "s6", { reason: "server_error", statusMessage: "Provider returned a server error." }),
+      failedLine("2026-09-06T10:06:00.000Z", "s7", { reason: "invalid_request" }),
+      failedLine("2026-09-06T10:07:00.000Z", "s8", {}), // 无 reason/statusMessage 残行：fail-soft 忽略
+      "NOT JSON {{{", // 坏行：fail-soft
+    ]);
+    const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"));
+    assert.equal(s.transport.events, 3);
+    assert.deepEqual(s.transport.byCode, { ENETDOWN: 1, network_error: 1, connect_timeout: 1 });
+    assert.equal(s.transport.fakeIp, true, "fake-ip 保留段地址应命中");
+    assert.equal(s.transport.firstAt, "2026-09-06T10:00:00.000Z");
+    assert.equal(s.transport.lastAt, "2026-09-06T10:02:00.000Z");
+    assert.equal(s.transport.samples.length, 3);
+    assert.ok(s.transport.samples[0].includes("connect ENETDOWN 198.18.0.197:443"));
+    // 两族不串计：429 只进限流计数
+    assert.equal(s.rateLimited, 1);
+    // 口径：仅 ENETDOWN 带 turnId（1/3 = 33% < 90%）→ first-attempt；attempt===1 或缺失计 2
+    assert.equal(s.transport.caliber, "first-attempt");
+    assert.equal(s.transport.turns, 2);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("传输族双口径：turnId 复合键去重（同款覆盖率 90% 线）", async () => {
+  const d = scratch();
+  try {
+    writeLog(d, LOG_DIR[0], [
+      // t1 三次重试（同回合，跨三子类型）+ t2 一次 → 覆盖率 100% → turn 口径 2 回合 / 4 事件
+      networkErrorLine("2026-09-06T10:00:00.000Z", "s1", "turn_t1"),
+      enetdownLine("2026-09-06T10:00:10.000Z", "s1", "turn_t1"),
+      connectTimeoutLine("2026-09-06T10:00:20.000Z", "s1", "turn_t1"),
+      enetdownLine("2026-09-06T10:01:00.000Z", "s2", "turn_t2"),
+    ]);
+    const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"));
+    assert.equal(s.transport.events, 4);
+    assert.equal(s.transport.caliber, "turn");
+    assert.equal(s.transport.turns, 2);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("transportAdvisory 矩阵：skip / ok / warn（含 byCode+lastAt）/ fake-ip 提示", () => {
+  const skip = transportAdvisory({ available: false });
+  assert.equal(skip.level, "skip");
+  const ok = transportAdvisory({ available: true, files: 2, transport: { events: 0, turns: 0, byCode: {}, lastAt: null, fakeIp: false, caliber: "turn" } });
+  assert.equal(ok.level, "ok");
+  assert.match(ok.text, /0 起传输死亡/);
+  const warn = transportAdvisory({
+    available: true,
+    files: 2,
+    transport: { events: 3, turns: 2, byCode: { ENETDOWN: 1, network_error: 2 }, lastAt: "2026-09-09T00:37:59.559Z", fakeIp: false, caliber: "turn" },
+  });
+  assert.equal(warn.level, "warn");
+  assert.match(warn.text, /2 回合 \/ 3 次传输死亡/);
+  assert.match(warn.text, /network_error×2 ENETDOWN×1/);
+  assert.match(warn.text, /turn 口径/);
+  assert.doesNotMatch(warn.text, /fake-ip/);
+  const fake = transportAdvisory({
+    available: true,
+    files: 2,
+    transport: { events: 1, turns: 1, byCode: { ENETDOWN: 1 }, lastAt: null, fakeIp: true, caliber: "turn" },
+  });
+  assert.equal(fake.level, "warn");
+  assert.match(fake.text, /198\.18\.0\.0\/15 fake-ip/);
+  assert.match(fake.text, /直连规则/);
+});
+
+test("端到端：doctor transport 行 warn（ENETDOWN+fake-ip 提示）；纯 started 日志落 ok 行", () => {
+  const d = scratch();
+  try {
+    writeLog(d, LOG_DIR[0], [
+      started("2026-09-06T09:59:00.000Z", "s0"),
+      enetdownLine("2026-09-06T10:00:00.000Z", "sess_xxxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"),
+    ]);
+    const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+      encoding: "utf8",
+      timeout: 60_000,
+      env: { ...process.env, HOME: d },
+    });
+    const line = transportLine(r.stdout);
+    assert.ok(line, `stdout 应含 transport 行：\n${r.stdout}\n${r.stderr}`);
+    assert.match(line, /1 回合 \/ 1 次传输死亡/);
+    assert.match(line, /ENETDOWN×1/);
+    assert.match(line, /fake-ip/);
+    assert.doesNotMatch(line, /undefined|NaN|Infinity/);
+
+    // 无任何失败事件：transport 照出 ok 行（传输族独立于限流族）
+    const d2 = scratch();
+    try {
+      writeLog(d2, LOG_DIR[1], [started("2026-09-07T02:00:00.000Z", "c1")]);
+      const r2 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+        encoding: "utf8",
+        timeout: 60_000,
+        env: { ...process.env, HOME: d2 },
+      });
+      const line2 = transportLine(r2.stdout);
+      assert.ok(line2, "stdout 应含 transport ok 行");
+      assert.match(line2, /0 起传输死亡/);
+    } finally {
+      cleanup(d2);
+    }
+
+    // 空 HOME：skip 行（与 rate-limit skip 同现）
+    const empty = scratch();
+    try {
+      const r3 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+        encoding: "utf8",
+        timeout: 60_000,
+        env: { ...process.env, HOME: empty },
+      });
+      const line3 = transportLine(r3.stdout);
+      assert.ok(line3, "stdout 应含 transport skip 行");
+      assert.match(line3, /无引擎日志/);
+    } finally {
+      cleanup(empty);
+    }
   } finally {
     cleanup(d);
   }

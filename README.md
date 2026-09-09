@@ -118,7 +118,9 @@ worker, including `hooks.json` registry validation), node version floor,
 sessions), the `lzy` PATH shim, `.lazyzcode/` state hygiene, a platform notice,
 GLM plan rate-limit pressure (last 2 days of engine logs, read-only:
 deduplicated 429 turns, fatal turns, longest sustained run, and an empirical
-concurrency band — warn-only, never flips the exit code), a project-memory
+concurrency band — warn-only, never flips the exit code), transport-death
+turns counted as a separate family (`transport`: request-never-reached-server
+failures such as ENETDOWN, never fed into the concurrency math), a project-memory
 adoption audit (`agents-md`, warn-only), a claim patrol for the open goal loop
 (`claims`: who claimed it, stuck markers, zero-claim orphan notice — warn-only),
 commit-ledger coverage (`ledger`: goal-era commits missing the `Goal:` trailer — warn-only),

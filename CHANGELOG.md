@@ -7,6 +7,13 @@ versioning is SemVer.
 
 ### Added
 
+- **Transport-death diagnostics (ADR-0008)**: `lzy doctor` gains a
+  `transport` line counting turns that died before reaching the server
+  (ENETDOWN and the errno family, matched primarily from `statusMessage` —
+  the engine logs such incidents with `reason: unknown`), with per-code
+  breakdown and a fake-ip (198.18.0.0/15 → local proxy TUN) hint. The family
+  is kept strictly separate from 429 accounting and never feeds the
+  concurrency band or off-peak math. Warn-only, never flips the exit code.
 - **Host workspace discipline (ADR-0006)**: cross-repo goal loops anchor at the
   host repo — strict-cwd resolution (no walk-up), write commands fail fast
   before they can leave empty `.lazyzcode/loop/` scar directories (reset keeps

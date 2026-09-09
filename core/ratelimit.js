@@ -11,7 +11,11 @@
 // - dirtyDist/游程/集中段均为脏桶派生：直方图只基于 dirtyKnown（无 started 的脏桶排除），
 //   游程连续性用 UTC 毫秒差（跨文件/跨午夜不断链），集中段按本地小时 3 小时环形窗
 //   （份额 ≥60% 且窗内去重命中 ≥10 且窗内 started ≥100 三门槛全过才输出）；
-// - 坏行/半行（引擎活体写入中）按可解析前缀静默跳过（fail-soft）。
+// - 坏行/半行（引擎活体写入中）按可解析前缀静默跳过（fail-soft）；
+// - 传输死亡族（ADR-0008）与限流分族计数：429 分支保持原子串谓词零语义变化，
+//   传输族另挂 "event":"model.request.failed" 预过滤（errno 主判据在 statusMessage，
+//   实测 ENETDOWN 事故 reason=unknown，按 reason 白名单会漏掉触发事故本身），
+//   只进 doctor transport 行，绝不进并发带/错峰窗数学（测量纯度）。
 import { createReadStream } from "node:fs";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -22,6 +26,12 @@ const TURN_COVERAGE_MIN = 0.9;
 const CONC_SHARE_MIN = 0.6;
 const CONC_TURNS_MIN = 10;
 const CONC_STARTED_MIN = 100;
+// 传输死亡 errno 家族（字面量清单，实测形态见 test/ratelimit.contract.test.js fixture）
+const ERRNO_RE =
+  /\b(ENETDOWN|ECONNRESET|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH|ENOTFOUND|EAI_AGAIN|ECONNABORTED|EPIPE)\b/;
+// RFC 2544 保留段（Clash/mihomo fake-ip 默认段）：命中=本地代理 TUN 隧道疑似的提示依据
+const FAKEIP_RE = /\b198\.(?:18|19)\.\d+\.\d+\b/;
+const SAMPLE_MAX = 5;
 
 function listRecentLogs(logDir, maxFiles) {
   let names;
@@ -68,6 +78,16 @@ export async function collectRateLimitStats(logDir, { maxFiles = 2 } = {}) {
     dirtyDist: [], // [{active, buckets}] 仅 dirtyKnown，内部数据不上人读行
     longestRunMin: 0, // 最长连续脏游程（分钟，UTC 毫秒差判定）
     concentration: null, // {startHour, endHour, sharePct, turns} 本地小时 3h 环形窗
+    transport: {
+      events: 0, // 原始传输死亡事件数（含重试）
+      turns: 0, // 去重回合数（口径同限流族：coverage ≥0.9 用复合键，否则 first-attempt）
+      caliber: "turn",
+      byCode: {}, // 子类型 → 事件数（errno / network_error / connect_timeout）
+      firstAt: null,
+      lastAt: null,
+      samples: [], // ≤SAMPLE_MAX 条 statusMessage 摘录（doctor 行证据）
+      fakeIp: false, // 任一样本地址 ∈ 198.18.0.0/15（本地代理 TUN 疑似）
+    },
   };
 
   const active = new Map(); // 桶键 → Set(sessionId)（started 事件）
@@ -75,6 +95,9 @@ export async function collectRateLimitStats(logDir, { maxFiles = 2 } = {}) {
   const startedByHour = new Array(24).fill(0); // 本地小时 → started 事件数
   const turnSeen = new Map(); // 复合键 → 最早事件 ts（ISO 字符串，字典序即时序）
   const attemptHour = new Array(24).fill(0); // first-attempt 口径的本地小时分布
+  const tSeen = new Map(); // 传输族复合键 → 最早事件 ts（口径机制与限流族同款）
+  let tKeyed = 0; // 传输族带完整复合键的事件数
+  let tFirstAttempt = 0; // 传输族 first-attempt 口径计数（attempt 缺失按 1 计）
   let turnKeyed = 0;
   let minTs = null;
   let maxTs = null;
@@ -103,48 +126,89 @@ export async function collectRateLimitStats(logDir, { maxFiles = 2 } = {}) {
         if (d) noteTs(d.timestamp);
         continue;
       }
-      if (!line.includes('"reason":"rate_limited"')) continue;
+      // 双族双预过滤：429 保持原子串谓词（零语义变化，基线 diff 护栏）；传输族挂 failed 事件。
+      // 任一命中才 parse，一遍扫描两族不串计（429 分支后显式 continue 跳过传输族）。
+      const isRateLimited = line.includes('"reason":"rate_limited"');
+      const isFailed = line.includes('"event":"model.request.failed"');
+      if (!isRateLimited && !isFailed) continue;
       const d = tryParse(line);
       if (!d) continue; // 坏行/半行：fail-soft，不计入也不报错
-      stats.rateLimited += 1;
-      const ctx = d.context ?? {};
-      if (typeof ctx.providerId === "string") {
-        stats.providers[ctx.providerId] = (stats.providers[ctx.providerId] ?? 0) + 1;
+      if (isRateLimited) {
+        stats.rateLimited += 1;
+        const ctx = d.context ?? {};
+        if (typeof ctx.providerId === "string") {
+          stats.providers[ctx.providerId] = (stats.providers[ctx.providerId] ?? 0) + 1;
+        }
+        if (typeof d.sessionId === "string") {
+          stats.sessions[d.sessionId] = (stats.sessions[d.sessionId] ?? 0) + 1;
+        }
+        if (
+          typeof ctx.attempt === "number" &&
+          typeof ctx.maxAttempts === "number" &&
+          ctx.attempt >= ctx.maxAttempts
+        ) {
+          stats.fatal += 1;
+        }
+        if (typeof d.timestamp === "string" && (!stats.lastAt || d.timestamp > stats.lastAt)) {
+          stats.lastAt = d.timestamp;
+        }
+        noteTs(d.timestamp);
+        const b = bucketOf(d.timestamp);
+        if (b) dirty.add(b);
+        // 回合口径素材：复合键（缺一不可）与首撞（attempt 缺失按 1 计，宁可计入不漏报）
+        if (typeof d.sessionId === "string" && typeof d.turnId === "string" && d.turnId !== "") {
+          turnKeyed += 1;
+          const key = `${d.sessionId}\u0000${d.turnId}`;
+          const prev = turnSeen.get(key);
+          if (!prev || d.timestamp < prev) turnSeen.set(key, d.timestamp);
+        }
+        const attempt = typeof ctx.attempt === "number" ? ctx.attempt : 1;
+        if (attempt === 1) {
+          const h = localHourOf(d.timestamp);
+          if (h !== null) attemptHour[h] += 1;
+        }
+        continue; // 限流族已收口；rate_limited 不是传输死亡，绝不串计
       }
-      if (typeof d.sessionId === "string") {
-        stats.sessions[d.sessionId] = (stats.sessions[d.sessionId] ?? 0) + 1;
+      // ── 传输死亡族（ADR-0008）：请求未达服务端类故障，errno 主判据 ──
+      const tctx = d.context ?? {};
+      const sm = typeof tctx.statusMessage === "string" ? tctx.statusMessage : "";
+      let subtype = null;
+      const errno = sm.match(ERRNO_RE);
+      if (errno) {
+        subtype = errno[1]; // 主判据：statusMessage 携带 errno（实测 ENETDOWN 事故 reason=unknown）
+      } else if (tctx.reason === "network_error") {
+        subtype = "network_error"; // undici 泛化形态（无 errno 可提）
+      } else if (tctx.reason === "timeout" && /connect timeout/i.test(sm)) {
+        subtype = "connect_timeout"; // 仅收连接阶段超时，不误收服务端慢
       }
-      if (
-        typeof ctx.attempt === "number" &&
-        typeof ctx.maxAttempts === "number" &&
-        ctx.attempt >= ctx.maxAttempts
-      ) {
-        stats.fatal += 1;
+      if (!subtype) continue; // cancelled/server_error/invalid_request/无 context 残行：忽略
+      const t = stats.transport;
+      t.events += 1;
+      t.byCode[subtype] = (t.byCode[subtype] ?? 0) + 1;
+      if (typeof d.timestamp === "string") {
+        if (!t.firstAt || d.timestamp < t.firstAt) t.firstAt = d.timestamp;
+        if (!t.lastAt || d.timestamp > t.lastAt) t.lastAt = d.timestamp;
       }
-      if (typeof d.timestamp === "string" && (!stats.lastAt || d.timestamp > stats.lastAt)) {
-        stats.lastAt = d.timestamp;
-      }
-      noteTs(d.timestamp);
-      const b = bucketOf(d.timestamp);
-      if (b) dirty.add(b);
-      // 回合口径素材：复合键（缺一不可）与首撞（attempt 缺失按 1 计，宁可计入不漏报）
+      if (sm && t.samples.length < SAMPLE_MAX) t.samples.push(`${subtype}: ${sm.slice(0, 120)}`);
+      if (!t.fakeIp && FAKEIP_RE.test(sm)) t.fakeIp = true;
       if (typeof d.sessionId === "string" && typeof d.turnId === "string" && d.turnId !== "") {
-        turnKeyed += 1;
+        tKeyed += 1;
         const key = `${d.sessionId}\u0000${d.turnId}`;
-        const prev = turnSeen.get(key);
-        if (!prev || d.timestamp < prev) turnSeen.set(key, d.timestamp);
+        const prev = tSeen.get(key);
+        if (!prev || d.timestamp < prev) tSeen.set(key, d.timestamp);
       }
-      const attempt = typeof ctx.attempt === "number" ? ctx.attempt : 1;
-      if (attempt === 1) {
-        const h = localHourOf(d.timestamp);
-        if (h !== null) attemptHour[h] += 1;
-      }
+      const tAttempt = typeof tctx.attempt === "number" ? tctx.attempt : 1;
+      if (tAttempt === 1) tFirstAttempt += 1;
     }
   }
 
   const coverage = stats.rateLimited > 0 ? turnKeyed / stats.rateLimited : 0;
   stats.caliber = coverage >= TURN_COVERAGE_MIN ? "turn" : "first-attempt";
   stats.turns = stats.caliber === "turn" ? turnSeen.size : attemptHour.reduce((a, n) => a + n, 0);
+  // 传输族回合口径：机制与限流族同款（覆盖率达标用复合键去重，否则首撞计数）
+  const tCoverage = stats.transport.events > 0 ? tKeyed / stats.transport.events : 0;
+  stats.transport.caliber = tCoverage >= TURN_COVERAGE_MIN ? "turn" : "first-attempt";
+  stats.transport.turns = stats.transport.caliber === "turn" ? tSeen.size : tFirstAttempt;
   if (typeof minTs === "string" && typeof maxTs === "string") {
     stats.spanHours = Math.max(
       1,
@@ -248,6 +312,30 @@ export function bandAdvisory(stats, now = new Date()) {
     };
   }
   return { cap: 1, reason: "经验带不连贯（归因漂移下是常态）——保守串行" };
+}
+
+// ── 传输死亡建议（ADR-0008）：把传输族统计翻译成 doctor transport 行文案 ──────
+// warn-only：诊断自身不翻退出码；不提供任何带数学输入（测量纯度，与限流分家的全部理由）。
+// 纯函数：stats 是 collectRateLimitStats 的产物。
+export function transportAdvisory(stats) {
+  if (!stats?.available) {
+    return { level: "skip", text: "无引擎日志可扫（传输死亡体检不可用）" };
+  }
+  const t = stats.transport ?? { events: 0, turns: 0, byCode: {}, lastAt: null, fakeIp: false };
+  if (t.events === 0) {
+    return { level: "ok", text: `近 ${stats.files} 日窗口 0 起传输死亡（请求未达服务端类故障）` };
+  }
+  const codes = Object.entries(t.byCode)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${k}×${v}`)
+    .join(" ");
+  const last = t.lastAt ? `${t.lastAt.slice(0, 16).replace("T", " ")}Z` : "";
+  let text = `${t.turns} 回合 / ${t.events} 次传输死亡（${codes}，${t.caliber} 口径），最近 ${last}`;
+  if (t.fakeIp) {
+    text +=
+      "；样本地址含 198.18.0.0/15 fake-ip——本地代理 TUN 隧道疑似，可给引擎域名加直连规则绕开隧道";
+  }
+  return { level: "warn", text };
 }
 
 // ── 错峰窗口建议（无人值守调度，ADR-0003）：从实测集中段反推自动化挂载时段 ──

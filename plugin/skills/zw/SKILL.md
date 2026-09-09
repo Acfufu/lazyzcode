@@ -72,6 +72,13 @@ Rules:
   execution.
 - Every F item names its surface in the title (e.g. "F1 · CLI stdout shows
   parsed record matches fixture").
+- **Known unknowns (HEAVY mandatory, LIGHT advisory)**: after the checklist, add a
+  `## Known unknowns` section listing 1–3 assumptions the plan silently rests on,
+  each with its falsification path (what signal proves it wrong, how to check).
+  Writing "none" requires a one-line note of where you looked. This section states
+  **unverified premises**, not postponed decisions — and it must not contain the
+  gate's forbidden tokens (see the Decision-complete rule above), or the plan is
+  rejected like any other line. Protocol and ledger: `docs/ablation.md`.
 
 **Review gate** — the plan does not go live on your word alone:
 

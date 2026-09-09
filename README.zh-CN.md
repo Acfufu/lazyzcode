@@ -60,9 +60,9 @@ zw 帮我实现 <你的目标>
 ```
 
 `zw` 触发词注入完整编排协议：模型注册目标 → 写决策完备计划（HEAVY 目标强制过
-plan-reviewer 评审门）→ 逐步执行 → 对每个终验项在真实表面取证（绑定
-`git rev-parse HEAD^{tree}`）→ `lzy loop finish` 通过才算完成。中途停手会被
-Stop 钩子拉回（每会话至多 2 次续跑）。
+plan-reviewer 评审门，并显性申报已知未知、每条带证伪途径）→ 逐步执行 → 对每个
+终验项在真实表面取证（绑定 `git rev-parse HEAD^{tree}`）→ `lzy loop finish`
+通过才算完成。中途停手会被 Stop 钩子拉回（每会话至多 2 次续跑）。
 
 ### 验证装好了
 

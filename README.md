@@ -64,7 +64,8 @@ zw implement <your goal>
 
 The `zw` trigger injects the full orchestration protocol: the model registers
 the goal → writes a decision-complete plan (HEAVY goals must pass the
-plan-reviewer gate) → executes step by step → captures real-surface evidence
+plan-reviewer gate and declare their known unknowns, each with a falsification
+path) → executes step by step → captures real-surface evidence
 for every final-verification item (bound to `git rev-parse HEAD^{tree}`) →
 `lzy loop finish` must pass before anything counts as done. Stop early, and the
 Stop hook pulls the agent back (at most 2 continuations per session).

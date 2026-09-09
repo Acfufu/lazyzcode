@@ -6,7 +6,7 @@
 
 做 ZCode 版的 [lazycodex](https://github.com/code-yeongyu/lazycodex)（OmO 引擎的 Codex 发行版，MIT）。形态：**ZCode 插件 + 轻量 CLI（`lzy`）**——插件承载 skills/hooks/agents（纪律层），CLI 承载目标循环状态机与安装器。完整背景与论证见 `docs/reports/index.html`。
 
-## 2. 当前状态与下一步（2026-09-09）
+## 2. 当前状态与下一步（2026-09-10）
 
 - **P0 首日三 spike 全部完成**（2026-09-06，结果与证据：`docs/spikes/p0-day1.md`；探针均已按约删除）：Spike 1 Edit 免 hashline（新红线「old_string 原样精确缩进」）；Spike 2 安装型插件 `.zcode/.claude/.codex` 免改名装载成立（cursor cache 拒）+「安装+启用」两步；Spike 3 Stop 非空注入续跑 + ≤3 硬顶 + 同池扣减（设计约束「状态按 sessionId 隔离」）。
 - P0 骨架已落地（2026-09-06）：`plugin/ + core/ + cli/`，`lzy install/sync/status/uninstall` 端到端实测，本机已自举安装（`lazyzcode:zw` 技能可装载）；ADR-0001 已拍板：启用走引擎官方 `plugins enable`，**lzy 对 config.json 零写入**。`core/engine.js`（lzy→引擎调用层）已落位（2026-09-06）：此前被 Mimosa 守卫内容级拦截（凡 spawn/exec 即 deny、安全形态亦拦、无 UI 放行入口），**经授权跑深度安全扫描取得封印（0 findings）后写入放行**——「扫描封印」是解拦正道；实现为安全形态（路径解析归 paths 模块、执行归 engine 模块，每调用点字面量子命令数组 + `shell:false`），install/uninstall/status 全生命周期实弹验证（官方 enable/uninstall 路径均通），引擎环节全自动、不再走指引式回退。
@@ -26,6 +26,7 @@
 - **会话级拉回粒度已落地（2026-09-08，goal claim-scoped-pull，ADR-0004/决策 #17）**：认领制全链——UPS 触发词（executing 闸门）写 claimedAt、Stop 认领闸门（空集=现状单调收紧）、进度振数（零推进两振 stuck 弃拉不耗预算，上限仍 2 红线不破）、读面（status 认领/stuck 行 + doctor `claims` 检查 + SessionStart CTA）；55/55 测试绿、F1 八场景活体证据。
 - **透明账本纪律已落地（2026-09-09，goal ledger-discipline，ADR-0005/决策 #18）**：提交 `Goal: <slug>#<步号>` 尾注 + doctor `ledger` 巡逻 + 证据 opt-in 入库（docs/evidence/）；全部未推提交已 squash 同线推远程。
 - **宿主工作区纪律已落地（2026-09-09，goal host-workspace-discipline，ADR-0006/决策 #19）**：跨仓目标循环寄宿主仓（严格 cwd 不 walk-up）+ 写命令 fail-fast（withLock 空壳疤痕根治，reset 契约豁免）+ 无 goal 出口恢复式报错（统一文案源：绝对路径+回宿主根指引）+ 认领写面收窄至唤起级（ADR-0004 修正案，/ulw 提及误认领 specimen）+ doctor 疤痕巡逻；多树证据绑定记名债务（升格=跨仓漏判误 finish）。下一步：真发布 + 官方市场卡位（用户按 `docs/release-checklist.md` 择机执行）；运行期反馈迭代。
+- **已知未知显性 + 消融账本已落地（2026-09-10，goal ablation-confidence，ADR-0007/决策 #20）**：HEAVY 计划强制「已知未知」节（1–3 条假设各带证伪途径，「无」须一行扫过说明；LIGHT 建议）+ 影子消融制度化（计划自查→评审门→差集按 P0-P3 记账，预注册判据防降档；天然消融被动补录），协议与账本 `docs/ablation.md`；计划门零代码改动（禁词黑名单不动，「未知」二字永不入表——契约钉三枚）；首验即正名：影子实验评审独有 P1×1+P2×1 → 门挣得成本；65/65 测试绿、文档站锚点双语 21/21。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 
@@ -60,6 +61,7 @@
 | 17 | 拉回资格归属 | **认领制**：goal 目录级共享 + 会话认领集（触发词写 claimedAt）；多认领集合语义（无 SessionEnd，独占会死锁）；无认领=现状行为单调收紧；进度感知振数（无进展两振写 stuck，拉回上限仍 2 红线不破）；`lzy loop claim` 写面与跨项目清单记备选（ADR-0004，2026-09-08；写面 09-09 收窄至唤起级，见 #19） |
 | 18 | 透明账本 | **提交尾注 `Goal: <slug>#<步号>`**（人和 AI 遵守，历史不补）+ doctor `ledger` 行巡逻覆盖率（warn-only）；证据 opt-in 入库（计划声明+人点头→docs/evidence/）；AI 署名不加（ADR-0005，2026-09-09） |
 | 19 | 宿主工作区 | **跨仓目标循环寄宿主仓**：`.lazyzcode/` 与 `lzy` 只在宿主根，严格 cwd 不 walk-up；写命令 fail-fast（防空壳疤痕，reset 豁免）+ 无 goal 出口恢复式报错；证据时效门只见宿主树（多树绑定记债，升格=跨仓漏判误 finish）；ADR-0006（2026-09-09） |
+| 20 | 已知未知与消融 | **HEAVY 计划强制「已知未知」节**（未验证前提≠推迟决策，1–3 条各带证伪途径，「无」须一行说明）+ 影子消融记账（评审差集按 P0-P3；预注册判据：连续 5 HEAVY 目标独有 P1/P2≈0 → 只许「维持现状或真消融终审」绝不降档）；门禁词黑名单不动（ADR-0007，2026-09-09） |
 
 ## 5. 设计宪法与红线
 
@@ -85,7 +87,7 @@ docs/
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
-  adr/000{1..6}-*.md          ← enable 走引擎 CLI+config 零写入 / init-deep 角色分配 / 无人值守宿主自动化 / 拉回走认领制 / 透明账本尾注 / 宿主工作区就地语义
+  adr/000{1..7}-*.md          ← enable 走引擎 CLI+config 零写入 / init-deep 角色分配 / 无人值守宿主自动化 / 拉回走认领制 / 透明账本尾注 / 宿主工作区就地语义 / 已知未知申报+消融账本
   reviews/ release-checklist.md  ← 评审报告/处置记录（2026-09-06/07/08）+ 发布清单（13 步含 Pages）
   diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
 plugin/ core/ cli/           ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）
@@ -126,7 +128,6 @@ _Avoid_: 单用 ulw 指代本项目触发词
 _Avoid_: 并发上限（平台侧数值，本地测不到）
 
 **回合（turn）**：一次去重后的模型请求；引擎重试产生多条限流事件仍属一回合，doctor 限流标题按回合计。_Avoid_: 请求次数（含重试的原始条数）
-
 **项目记忆（init-deep）**：init-deep 技能生成的分层 AGENTS.md 地图（根 + 有资格子目录），
 随 git 入库=仓库/团队面；个人教训归内置 memory（zw 收尾）。资格谓词=构建入口/文件数>40/根提及（纯代码可判）；写盘必经草稿先行（ADR-0002）。_Avoid_: 项目知识库、复杂度打分
 
@@ -134,12 +135,11 @@ _Avoid_: 并发上限（平台侧数值，本地测不到）
 运行形态（ADR-0003）。_Avoid_: 全自动模式、自动驾驶
 
 **错峰窗口（off-peak window）**：doctor 从实测限流集中段反推的建议自动化挂载时段（对侧净弧中央 8h）。_Avoid_: 并发上限、空闲时段
-
 **认领（claim）**：会话对进行中目标循环的接管登记（唤起级触发命中时 UPS 写 `claimedAt` 入会话文件；句中提及不写——ADR-0004 修正案）；Stop 拉回只作用于认领会话，集合语义可多会话并存。**旁路会话（bystander session）**=同目录未认领循环的会话（如纯问答），不受 Stop 拉回、SessionStart 广播照收。_Avoid_: 会话独占、锁定（无 SessionEnd，独占会死锁）、脏会话
-
 **宿主工作区（host workspace）**：跨仓目标中寄宿 `.lazyzcode/` 状态与循环命令的仓库——会话以它为根，代码可在兄弟仓；严格 cwd 不 walk-up（ADR-0006）。_Avoid_: 元仓库、主仓、状态目录、代码仓
-
 **提交账本（commit ledger）**：提交尾注 `Goal: <slug>#<步号>`，每条改动可回溯目标循环（ADR-0005）；doctor `ledger` 行巡逻覆盖率。_Avoid_: AI 署名尾注（另议）、提交即日志
+**已知未知（known unknowns）**：HEAVY 计划末尾强制申报的未验证前提节（1–3 条各带证伪途径；「无」须一行说明扫过哪里）——与门禁词互补：前提可申报，决策不可推迟（ADR-0007）。
+_Avoid_: 待定事项、风险管理清单
 
 ## 9. 维护规则
 

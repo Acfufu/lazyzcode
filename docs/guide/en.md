@@ -265,6 +265,20 @@ Plans are markdown checklists with two item kinds:
   whether every F item names a capturable surface. `REVISE` refuses adoption —
   `--force` cannot bypass it; only a new review can.
 
+## Known unknowns
+
+Decision-complete means *no undecided choices* — not *no unverified premises*.
+A HEAVY plan therefore ends with an explicit **known-unknowns** section: 1–3
+assumptions the plan silently rests on, each with a **falsification path**
+(the signal that would prove it wrong, and how to check). Writing "none" is
+allowed, but must say in one line where you looked.
+
+The section complements the plan gate rather than softening it: it states
+unverified premises, not postponed decisions — and the gate still scans every
+line of it, so an actual TBD inside the section is rejected like anywhere
+else. The plan-reviewer audits it against hidden risks: is every entry
+falsifiable, and is a "none" credible?
+
 ## Evidence discipline
 
 - Evidence comes from a **real surface**: a CLI's stdout, an HTTP response, a

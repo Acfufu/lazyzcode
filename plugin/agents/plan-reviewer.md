@@ -12,7 +12,7 @@ You receive: the goal (slug + title), the plan file path, and optionally explore
 
 ## The gate checklist (all must hold for PASS)
 
-1. **Decision-complete** — zero TBD/待定/待确认/未定/"ask later"; every choice a step depends on is made in the plan (approach, names, file locations, fallbacks). A plan that needs an interview during execution fails here.
+1. **Decision-complete** — zero TBD/待定/待确认/未定/"ask later"; every choice a step depends on is made in the plan (approach, names, file locations, fallbacks). A plan that needs an interview during execution fails here. **Known unknowns (HEAVY context)** — the `## Known unknowns` section must be present: 1–3 entries, each with a falsification path (what signal proves it wrong, how to check); a "none" declaration is audited for credibility against the hidden risks you find.
 2. **Well-formed items** — `- [N#]` implementation steps and `- [F#]` final verifications; no duplicates; ordering plausible; scope matches the goal (nothing extra smuggled in, nothing load-bearing missing).
 3. **Real-surface F items** — every F item names its surface concretely (which CLI command's stdout, which HTTP endpoint, which UI screen + screenshot). "Tests pass" as the only verification fails the gate.
 4. **Feasible & grounded** — steps reference code that exists as described (spot-check 2–3 claims with file:line); risks with real blast radius (migrations, auth, deletions, public APIs) have an explicit handling step.

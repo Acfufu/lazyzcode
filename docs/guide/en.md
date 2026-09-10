@@ -352,8 +352,11 @@ skipped, not nagged). HEAVY planning consults the map when one exists.
 Unattended mode is the same goal loop on a schedule. The engine's built-in
 automation wakes a fresh session with `zw continue (unattended: …)`; the wake
 cadence is off-peak by design — `lzy doctor`'s `schedule` line derives an
-8-hour window opposite your measured rate-limit concentration hours, when the
-log data supports one.
+8-hour window opposite your measured rate-limit concentration hours, then
+cross-checks it against known platform pricing peaks (GLM / DeepSeek, a
+static UTC+8 table maintained by hand) and always states the pricing-safe
+nightly window. The table can go stale — treat the line as measured
+rate-limit data plus declared pricing, not a guarantee.
 
 The guardrail is structural, not a promise: an unattended session **continues
 the open goal only** — it never registers a new goal and never writes or
@@ -422,9 +425,9 @@ Behavioral rules the zw skill carries:
   tally (never mixed into the quota math).
 
 **Unattended (host automation)**: scheduling and the continue-only protocol
-live in [Unattended](#unattended); the off-peak window comes from `lzy
-doctor`'s `schedule` line — derived from your own measured concentration
-hours, not a guess.
+live in [Unattended](#unattended); the window comes from `lzy
+doctor`'s `schedule` line — your own measured concentration hours cross-checked
+against declared pricing peaks, not a guess.
 
 ## CLI reference
 
@@ -482,7 +485,7 @@ do.
 | `agents-md` | Layered AGENTS.md coverage audit (skip when no root file; `lzy agents-md` for details) |
 | `rate-limit` | GLM plan 429 pressure from the last 2 days of engine logs |
 | `transport` | Transport deaths (request-never-reached-server failures, e.g. ENETDOWN): counted as a separate family, never fed into the concurrency math |
-| `schedule` | Off-peak advisory: suggested automation window derived from the measured concentration (skip without evidence) |
+| `schedule` | Off-peak advisory: automation window from the measured concentration, cross-checked against declared pricing peaks with a safe-window note; hand-maintained UTC+8 pricing table (skip without evidence) |
 
 ## State & configuration
 

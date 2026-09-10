@@ -254,7 +254,9 @@ A host-side automation (the engine's scheduler — cron-style, persistent, per
 workspace) can wake a fresh session on a schedule to drive an open goal loop.
 The wake prompt is plain text; say **`zw 继续`** so the stratified trigger
 fires and this skill's bootstrap loads. `lzy doctor`'s `schedule` line
-suggests the off-peak window measured from your own 429 data.
+suggests the off-peak window measured from your own 429 data, cross-checked
+against declared pricing peaks (a hand-maintained table) with a safe-window
+note.
 
 Protocol for a wake-up session (this IS a red-line contract, not a suggestion):
 

@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scheduleAdvisory } from "../core/ratelimit.js";
+import { scheduleAdvisory, utc8HourDay } from "../core/ratelimit.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
@@ -27,6 +27,30 @@ test("scheduleAdvisory：集中段对侧 8h 窗口；跨午夜集中段；无集
   // 无集中段证据：null（doctor 走 skip，不捏窗口）
   assert.equal(scheduleAdvisory({}), null);
   assert.equal(scheduleAdvisory(null), null);
+});
+
+test("scheduleAdvisory 计价维度：重叠段/安全窗/UTC+8 换算（固定 now，与执行日无关）", () => {
+  // UTC 2026-09-09T23:30Z = UTC+8 周三 07:30 → 下一完整窗（集中 0–3 → 窗 09–17）整段落在周三
+  const wed = new Date("2026-09-09T23:30:00.000Z");
+  const a = scheduleAdvisory({ concentration: { startHour: 0, endHour: 3, sharePct: 70, turns: 50 } }, wed);
+  assert.deepEqual(a.overlaps, ["09:00–12:00", "14:00–17:00"]); // DeepSeek 9–12 + 双高峰 14–17
+  assert.match(a.text, /⚠ 窗内 09:00–12:00、14:00–17:00 落平台高峰计价/);
+  assert.match(a.text, /计价安全窗：每日 23:00–09:00/);
+  assert.match(a.text, /UTC\+8，人工维护/);
+  // 窗 19–03（集中 10–12）：整点集与高峰表不相交 → 无重叠，只有安全窗句
+  const b = scheduleAdvisory({ concentration: { startHour: 10, endHour: 13, sharePct: 80, turns: 40 } }, wed);
+  assert.deepEqual(b.overlaps, []);
+  assert.doesNotMatch(b.text, /高峰计价/);
+  assert.match(b.text, /计价安全窗：每日 23:00–09:00/);
+  // 周末（UTC 2026-09-12T01:30Z = UTC+8 周六 09:30）：days=[1..5] 全不命中 → 无重叠
+  const sat = scheduleAdvisory({ concentration: { startHour: 0, endHour: 3, sharePct: 70, turns: 50 } }, new Date("2026-09-12T01:30:00.000Z"));
+  assert.deepEqual(sat.overlaps, []);
+  // UTC+8 换算跨日：UTC 周五 16:30 = UTC+8 周六 00:30；UTC 周日 23:00 = UTC+8 周一 07:00
+  assert.deepEqual(utc8HourDay(new Date("2026-09-11T16:30:00.000Z")), { hour: 0, day: 6 });
+  assert.deepEqual(utc8HourDay(new Date("2026-09-13T23:00:00.000Z")), { hour: 7, day: 1 });
+  // 跨午夜窗（集中 22–1 → 窗 07–15）固定周三 now：9–11 与 14 点命中
+  const c = scheduleAdvisory({ concentration: { startHour: 22, endHour: 1, sharePct: 80, turns: 30 } }, wed);
+  assert.deepEqual(c.overlaps, ["09:00–12:00", "14:00–15:00"]);
 });
 
 // ── doctor 真实 stdout 面 ───────────────────────────────────────────────────
@@ -80,6 +104,11 @@ test("doctor schedule：集中段 fixture → warn 建议窗口行（与 rate-li
     const sched = line(out, "schedule");
     assert.ok(sched, "doctor 输出应含 schedule 行");
     assert.match(sched, /建议自动化窗口：本地 19:00–03:00/); // 集中段 10–13 → 净弧中央 8h
+    // 计价维度（窗 19–03 与高峰表整数小时集不相交，任何执行日都确定）：
+    // 安全窗句必在场；高峰重叠告警必缺席
+    assert.match(sched, /计价安全窗：每日 23:00–09:00/);
+    assert.match(sched, /UTC\+8，人工维护/);
+    assert.doesNotMatch(sched, /高峰计价/);
     assert.match(sched, /≥1h 间隔/);
     assert.ok(line(out, "rate-limit"), "rate-limit 行仍应在");
   } finally {

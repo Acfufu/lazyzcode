@@ -91,7 +91,9 @@ behind it:
 2. **Keep going while you're away.** Mount a wake-up in the engine's own
    automation with `zw continue (unattended: …)`. Unattended sessions continue
    the open goal only — never start a new one — and `lzy doctor`'s `schedule`
-   line suggests an off-peak window from your measured rate-limit hours.
+   line suggests an off-peak window from your measured rate-limit hours,
+   cross-checked against a declared table of platform pricing peaks
+   (UTC+8, hand-maintained).
 
 The scaffolding thesis has external proof: Anthropic reported its model
 formalized Fermat's Last Theorem in Lean in 11 days on the Prove2Me scaffold,
@@ -136,8 +138,9 @@ adoption audit (`agents-md`, warn-only), a claim patrol for the open goal loop
 commit-ledger coverage (`ledger`: goal-era commits missing the `Goal:` trailer — warn-only),
 and a suggested off-peak window for
 unattended runs (`schedule`, derived from the same measured concentration
-data — skipped, never guessed, when the data is silent). Fully local, zero
-telemetry, no new configuration surface.
+data and cross-checked against declared platform pricing peaks — skipped,
+never guessed, when the data is silent). Fully local, zero telemetry, no new
+configuration surface.
 
 ## Use the built-in workflows
 
@@ -219,7 +222,8 @@ The engine's built-in automation can wake a fresh session on a schedule with
 registers a new goal and never adopts a plan — the decision-complete gate
 stays human. It is bounded by the continuation budget, fatal-429 handling,
 serial subagents, and ≥1-hour spacing, and `lzy doctor`'s `schedule` line
-derives an off-peak window from your measured rate-limit concentration hours.
+derives an off-peak window from your measured rate-limit concentration hours,
+cross-checked against the declared pricing-peak table.
 
 ### Troubleshooting quick list
 
@@ -257,7 +261,7 @@ machinery; LazyZCode is the workflow that makes them finish what they start.
 | 🔬 **Evidence discipline** | F-item evidence bound to a git tree hash; stale evidence cannot pass `finish` |
 | 📦 **Evidence bundle** | `--evidence-file` attachments (hash-bound copies) and `lzy loop export` — finish auto-archives a `<slug>.report.md` |
 | 🗂️ **Project memory** | `init-deep` drafts layered `AGENTS.md` maps; human-approved writes, `lzy agents-md` audits gaps |
-| 🌙 **Unattended** | Scheduled wake-ups continue the open goal only, never start new ones; off-peak window from `lzy doctor schedule` |
+| 🌙 **Unattended** | Scheduled wake-ups continue the open goal only, never start new ones; off-peak window from `lzy doctor schedule` (measured rate-limit ∩ pricing-peak cross-check) |
 | 🪝 **Bounded continuation** | Stop hook pulls the agent back, max 2 per session, budget shared fairly with background notifications |
 | ⌨️ **Trigger words** | `zw` / `lazyzcode:zw` / `ulw` / `ultrawork`, stratified matching, mention ≠ invocation |
 | 🕵️ **Read-only agents** | explorer / plan-reviewer / qa-executor, auto-discovered by the engine |
@@ -287,7 +291,7 @@ machine). Zero npm dependencies, Node ≥ 20, pure ESM.
 
 ```
 lazyzcode/
-├── plugin/   → the lazyzcode plugin: skills/zw + skills/init-deep, hooks/ (4, via run-hook.sh), agents/ (3)
+├── plugin/   → the lazyzcode plugin: skills/zw + skills/init-deep, hooks/ (5, via run-hook.sh), agents/ (3)
 ├── core/     → shared logic: loop, installer, doctor, ratelimit, agentsmd, engine, git, paths, status
 ├── cli/      → the lzy entry (cli/lzy.js) + syntax-check worker
 ├── test/     → contract tests (node:test, zero deps) + GitHub Actions (node 20/22/24)

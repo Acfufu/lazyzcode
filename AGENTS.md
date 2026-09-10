@@ -30,7 +30,10 @@
 - **传输死亡诊断面已落地（2026-09-10，goal doctor-transport-deaths，ADR-0008）**：doctor `transport` 行与限流分族计数（errno 主判据在 statusMessage——实锤 ENETDOWN 事故 reason=unknown，按 reason 白名单必漏触发事故本身；fake-ip 198.18.0.0/15 命中给 TUN 直连提示；绝不进并发带/错峰窗数学）；429 谓词零语义变化（真日志基线 diff 字段级为空作护栏）；69/69 测试绿。
 - **会话失控护栏已落地（2026-09-10，goal incident-guardrails，ADR-0009/决策 #22）**：Stop 交接放行（`lzy loop handoff` 目录级匿名标记+unlink 原子消费+放行不耗预算，消费清振数防重入误振）+ PostToolUseFailure 空转绊线（`^mcp__` TTL 连击 warn 一次，hooks:4→5）+ status files 逐文件 sha256 内容比对（路径集合比对对「文件在而内容过期」失明——09-09 事故实锤）+ zw SKILL.md 工具空转逃逸契约；源起 sess_95421d3d 空转事故，探针活体实证 Failure 注入通道；86/86 测试绿；顺手修 writeSessionCounter 潜伏 bug（全收口 finish 提醒自 0.0.2 必炸走 failOpen）。
 - **证据对照与工件回收已落地（2026-09-10，goal comparator-salvage，费马启示三件包）**：HEAVY finish 前派 qa-executor 证据对照（断言×证据逐对判匹配/不匹配，协议级阻断，CLI/doctor 零代码）+ 步骤自含指引与评审 WARN 检查点 + reset/abandon 盘点可回收工件入存根（status 双分支读面）+ 依赖图并行认领记债（决策 #21，ADR-0004 修正案二）；74/74 测试绿、锚点双语 21/21。
+- **无人值守真实挂载（2026-09-10）**：宿主自动化 automation-a8aba356 挂 lazyzcode 工作区（cron `0 23,0-8 * * *` 十整点），时刻表依据计价地图而非纯限流反推——GLM 高峰周一至五 14–18 + 夜间 23–09 Flash 不限量 ∩ DeepSeek 高峰 9–12/14–18；人肉冒烟四环验证通过（唤起消息逐字/触发词装载/读盘/干净退出）。ADR-0003 的「用户配宿主自动化」自此发生。
+- **doctor schedule 计价感知已落地（2026-09-10，goal doctor-schedule-pricing，ADR-0003 修正案）**：scheduleAdvisory 升级「限流错峰 ∩ 计价感知」——PEAK_WINDOWS/SAFE_WINDOW 写死本地（UTC+8、人工维护、活动期免责），候选窗逐小时对照输出重叠段+安全窗，now 注入沿 bandAdvisory 先例；首验即活体演示修正价值（旧 09–17 建议全落高峰零提示）；评审门 REVISE 抓 e2e 周几漂移（重叠句真值收归固定 now 纯函数测试）；94/94 中 92 绿（2 失败=既有环境 flake：引擎探测子进程写日志污染空 HOME e2e，stash 实证记债）。
 - **放行可观测与跨仓清单已落地（2026-09-10，goal handoff-meter-crossrepo-list）**：交接放行匿名计数（`.lazyzcode/loop/metrics.json` registered/consumed，目录级匿名无会话身份、无锁近似 ≥ 语义、跨 reset 永续、status/doctor 双面读）+ `lzy loop list [--root]` 跨仓目标清单（只读旁视、每仓独立容错、executing 前置）+ 疤痕巡逻豁免清单全枚举（salvage/metrics.json/空 sessions——F3 取证显形既有缺口）；狗粮依据=7/12 会话拉回预算打满而消费痕迹为零；93/93 测试绿。
+- **README 叙事面计价措辞收口已落地（2026-09-10，goal narrative-pricing-alignment）**：README 双语八处 schedule 表述跟齐「限流实测 ∩ 计价高峰对照」口径（镜像 guide 已发文案；评审门抓出 doctor 段 zh 第 8 处漏点，F1 断言组对位补齐）+ 叙事 checklist 六类计数位点回归（顺手修双语 README 架构树「hooks 4 个」残留→5）；纯文档零代码；公开/publish/push 留用户。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 
@@ -120,7 +123,7 @@ artifacts/                   ← 本地产物（已 gitignore，不入库）
 随 git 入库=仓库/团队面；个人教训归内置 memory（zw 收尾）。资格谓词=构建入口/文件数>40/根提及（纯代码可判）；写盘必经草稿先行（ADR-0002）。_Avoid_: 项目知识库、复杂度打分
 **无人值守模式（unattended）**：宿主自动化定时唤起、只推进 executing 目标、绝不立新计划的
 运行形态（ADR-0003）。_Avoid_: 全自动模式、自动驾驶
-**错峰窗口（off-peak window）**：doctor 从实测限流集中段反推的建议自动化挂载时段（对侧净弧中央 8h）。_Avoid_: 并发上限、空闲时段
+**错峰窗口（off-peak window）**：doctor 建议的自动化挂载时段——实测限流集中段对侧净弧中央 8h 与计价高峰表（写死本地、UTC+8、人工维护）相交核对，附计价安全窗。_Avoid_: 并发上限、空闲时段
 **认领（claim）**：会话对进行中目标循环的接管登记（唤起级触发命中时 UPS 写 `claimedAt` 入会话文件；句中提及不写——ADR-0004 修正案）；Stop 拉回只作用于认领会话，集合语义可多会话并存。**旁路会话（bystander session）**=同目录未认领循环的会话（如纯问答），不受 Stop 拉回、SessionStart 广播照收。_Avoid_: 会话独占、锁定（无 SessionEnd，独占会死锁）、脏会话
 **交接快照（handoff snapshot）**：模型主动收尾时写入计划文件的精确续跑状态（剩余路径+下一步动作），经 `lzy loop handoff` 登记为目录级匿名标记后，Stop 钩子消费即放行（一次性、不耗预算，ADR-0009）——交接是把执行权交还用户，非半途而废。_Avoid_: 认领（注册表侧登记）、Handoff-able steps（计划步自含性）、放弃（无放行，直接弃目标）
 **宿主工作区（host workspace）**：跨仓目标中寄宿 `.lazyzcode/` 状态与循环命令的仓库——会话以它为根，代码可在兄弟仓；严格 cwd 不 walk-up（ADR-0006）。_Avoid_: 元仓库、主仓、状态目录、代码仓

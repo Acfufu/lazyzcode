@@ -81,7 +81,8 @@ lzy doctor           # 深度本地诊断，全程离线
    缺口；`lzy doctor` 的 `agents-md` 行巡逻采纳情况（warn-only）。
 2. **接着走你不在场的时间。** 在引擎自带自动化里挂一个唤起，prompt 写
    `zw 继续（无人值守：…）`。无人值守会话只继续已开目标——绝不自立新目标——
-   `lzy doctor` 的 `schedule` 行从你的实测限流时段反推错峰窗口。
+   `lzy doctor` 的 `schedule` 行从你的实测限流时段反推错峰窗口，再对照平台计价
+   高峰表（UTC+8、人工维护）标注重叠并给出计价安全窗。
 
 脚手架的力量有外部佐证：Anthropic 报告其模型在 Prove2Me 脚手架上用 11 天
 形式化了费马大定理，而 3 个消费级订阅 3 天即证 Vinogradov 三素数定理——
@@ -119,8 +120,9 @@ GUI 直启场景）、`lzy` PATH shim、`.lazyzcode/` 状态卫生、平台提�
 请求未达服务端类故障如 ENETDOWN，绝不进并发带数学）、项目记忆采纳审计
 （`agents-md`，warn-only）、进行中目标的认领巡逻（`claims`：谁认领了它、
 stuck 停拉标记、零认领孤儿提示——warn-only），
-提交账本覆盖率（`ledger`：goal 起点后缺 `Goal:` 尾注的提交——warn-only），以及无人值守的错峰窗口建议（`schedule`，与
-限流同一份实测数据反推——数据沉默时 skip，绝不拍脑袋）。全程本地、零遥测、
+提交账本覆盖率（`ledger`：goal 起点后缺 `Goal:` 尾注的提交——warn-only），以及
+无人值守的错峰窗口建议（`schedule`，实测集中段反推并对照声明式计价高峰表核对
+重叠——数据沉默时 skip，绝不拍脑袋）。全程本地、零遥测、
 零新增配置面。
 
 ## 使用内置工作流
@@ -189,7 +191,7 @@ SessionStart 重注入循环现状，新会话接着上次干。
 引擎自带自动化可以定时唤起新会话，prompt 写 `zw 继续（无人值守：…）`。唤起
 协议是只继续：绝不注册新目标、绝不采纳计划——决策完备门永远留给人。约束来自
 续跑预算、429 判死、串行子代理、≥1 小时间隔；`lzy doctor` 的 `schedule` 行从
-实测限流集中时段反推错峰窗口。
+实测限流集中时段反推错峰窗口，并对照声明式计价高峰表核对重叠。
 
 ### 排障速查
 
@@ -223,7 +225,7 @@ skills/hooks/agents 机器，LazyZCode 是让它们把活干完的那层工作�
 | 🔬 **证据纪律** | F 项证据绑 git tree hash；过期证据过不了 `finish` |
 | 📦 **证据包** | `--evidence-file` 附件（哈希绑定的副本）与 `lzy loop export`——`finish` 自动归档 `<slug>.report.md` |
 | 🗂️ **项目记忆** | `init-deep` 草拟分层 `AGENTS.md` 地图；人点头才写盘，`lzy agents-md` 审计缺口 |
-| 🌙 **无人值守** | 定时唤起只继续已开目标、绝不立新目标；错峰窗口来自 `lzy doctor schedule` |
+| 🌙 **无人值守** | 定时唤起只继续已开目标、绝不立新目标；错峰窗口来自 `lzy doctor schedule`（限流实测 ∩ 计价高峰对照） |
 | 🪝 **有界续跑** | Stop 钩子把代理拉回来，每会话至多 2 次，与后台通知公平分享预算 |
 | ⌨️ **触发词** | `zw` / `lazyzcode:zw` / `ulw` / `ultrawork`，分层匹配，提及 ≠ 发起 |
 | 🕵️ **只读代理** | explorer / plan-reviewer / qa-executor，引擎自动发现 |
@@ -250,7 +252,7 @@ Node ≥ 20、纯 ESM。
 
 ```
 lazyzcode/
-├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（4 个，经 run-hook.sh）、agents/（3 只）
+├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（5 个，经 run-hook.sh）、agents/（3 只）
 ├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、agentsmd、engine、git、paths、status
 ├── cli/      → lzy 入口（cli/lzy.js）+ 语法检查 worker
 ├── test/     → 契约测试（node:test 零依赖）+ GitHub Actions（node 20/22/24）

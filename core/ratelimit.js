@@ -338,19 +338,83 @@ export function transportAdvisory(stats) {
   return { level: "warn", text };
 }
 
-// ── 错峰窗口建议（无人值守调度，ADR-0003）：从实测集中段反推自动化挂载时段 ──
+// ── 错峰窗口建议（无人值守调度，ADR-0003 + 2026-09-10 计价维度修正案）────────
 // 集中段 [start, start+3) 本地小时 → 净弧 21h；建议窗口 = 净弧中央的 8 小时：
-// start = (集中段终点 + 6) % 24（(21/2 向下取整 10) − 4）。纯函数，now 可注入测试。
-// 无集中段证据 → null（doctor 走 skip，不凭空捏窗口）。
-export function scheduleAdvisory(stats) {
+// start = (集中段终点 + 6) % 24（(21/2 向下取整 10) − 4）。无集中段证据 → null
+//（doctor 走 skip，不凭空捏窗口）。
+// 计价维度（静态表，人工维护）：限流窗逐本地小时对照已知平台高峰计价表（UTC+8），
+// 输出重叠段与计价安全窗。表是「人工维护的已知事实」，不是测量——表过期只会让
+// 建议失准（免责已在文案声明），不会误操作。纯函数；now 注入以便测试。
+// UTC+8 换算走纯 UTC 路径（getUTCHours+8），与运行机器本地时区无关。
+
+// 平台高峰计价表（小时为 UTC+8 墙钟；days 为 UTC+8 周几 1=周一…5=周五；半开 [start,end)）
+// 维护时对照官方文档逐条更新并保留源：GLM https://docs.bigmodel.cn/cn/coding-plan/overview
+//   （高峰周一至五 14–18；另有夜间活动每日 23–09：GLM-5.3-Flash 不限量/其他翻倍——活动期条款，记入 SAFE_WINDOW）
+// DeepSeek https://api-docs.deepseek.com/zh-cn/quick_start/pricing/（高峰周一至五 9–12 与 14–18）
+const PEAK_WINDOWS = [
+  { label: "GLM", days: [1, 2, 3, 4, 5], start: 14, end: 18 },
+  { label: "DeepSeek", days: [1, 2, 3, 4, 5], start: 9, end: 12 },
+  { label: "DeepSeek", days: [1, 2, 3, 4, 5], start: 14, end: 18 },
+];
+// 计价安全窗（每日，无周几维度）：GLM 夜间活动时段 ∩ 两家共同非高峰
+const SAFE_WINDOW_TEXT =
+  "计价安全窗：每日 23:00–09:00（GLM 夜间活动：Flash 不限量/其他翻倍，活动期条款以官方文档为准）";
+
+// 纯 UTC 换算：now 对应的 UTC+8 小时与周几（day: 0=周日…6=周六）。与本地时区无关。
+export function utc8HourDay(now) {
+  const d = new Date(now.getTime() + 8 * 3_600_000);
+  return { hour: d.getUTCHours(), day: d.getUTCDay() };
+}
+
+// 候选窗（本地小时，半开）对照高峰表：以「now 起下一个进入窗的整点」为锚，沿窗枚举
+// 全部小时；每步从同一时刻导出本地小时（直方图时间轴）与 UTC+8 小时/周几（计价表时间轴），
+// 周几取真实未来日期——固定 now 即可确定性测试，跨午夜/周几翻转自然覆盖。
+function overlapSegments(start, end, now) {
+  const inWin = (h) => (start < end ? h >= start && h < end : h >= start || h < end);
+  const hour0 = Math.floor(now.getTime() / 3_600_000) * 3_600_000;
+  let first = hour0;
+  for (let i = 0; i < 48; i++) {
+    first = hour0 + i * 3_600_000; // hour0 恒 ≤ now，首个窗内整点必在 24h 内出现
+    if (inWin(new Date(first).getHours())) break;
+  }
+  const total = (end - start + 24) % 24 || 24;
+  const segs = [];
+  let segStart = null;
+  let prev = null;
+  for (let i = 0; i < total; i++) {
+    const t = new Date(first + i * 3_600_000);
+    const localHour = t.getHours();
+    const { hour, day } = utc8HourDay(t);
+    const hit = PEAK_WINDOWS.some(
+      (w) =>
+        w.days.includes(day) &&
+        (w.start < w.end ? hour >= w.start && hour < w.end : hour >= w.start || hour < w.end),
+    );
+    if (hit) {
+      if (segStart === null) segStart = localHour;
+    } else if (segStart !== null) {
+      segs.push([segStart, localHour]);
+      segStart = null;
+    }
+    prev = localHour;
+  }
+  if (segStart !== null) segs.push([segStart, (prev + 1) % 24]); // 窗尾仍在高峰：终点=窗尾下一小时
+  const p2 = (n) => String(n).padStart(2, "0");
+  return segs.map(([a, b]) => `${p2(a)}:00–${p2(b)}:00`);
+}
+
+export function scheduleAdvisory(stats, now = new Date()) {
   const c = stats?.concentration;
   if (!c) return null;
   const start = (c.endHour + 6) % 24;
   const end = (start + 8) % 24;
   const p2 = (n) => String(n).padStart(2, "0");
-  return {
-    startHour: start,
-    endHour: end,
-    text: `建议自动化窗口：本地 ${p2(start)}:00–${p2(end)}:00（避开实测集中段 ${p2(c.startHour)}:00–${p2(c.endHour)}:00，占 ${Math.max(1, Math.round(c.sharePct / 10))} 成）`,
-  };
+  const overlaps = overlapSegments(start, end, now);
+  let text =
+    `建议自动化窗口：本地 ${p2(start)}:00–${p2(end)}:00（避开实测集中段 ${p2(c.startHour)}:00–${p2(c.endHour)}:00，占 ${Math.max(1, Math.round(c.sharePct / 10))} 成）`;
+  if (overlaps.length > 0) {
+    text += `；⚠ 窗内 ${overlaps.join("、")} 落平台高峰计价（1×），错开更省`;
+  }
+  text += `；${SAFE_WINDOW_TEXT}（时段表 UTC+8，人工维护）`;
+  return { startHour: start, endHour: end, overlaps, text };
 }

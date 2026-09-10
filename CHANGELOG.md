@@ -6,6 +6,16 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- **Pricing-aware `schedule` advisory (ADR-0003 amendment)**: `lzy doctor`'s
+  schedule line now cross-checks the rate-limit-derived window against a
+  hand-maintained UTC+8 table of platform pricing peaks (GLM Mon–Fri 14–18;
+  DeepSeek Mon–Fri 9–12 & 14–18), flags overlapping hours, and always states
+  the pricing-safe nightly window (23:00–09:00, GLM nightly promo — an
+  activity-period clause, disclaimed in the output). `scheduleAdvisory` gains
+  an injectable `now` (bandAdvisory precedent); the UTC+8 conversion is pure-UTC
+  and independent of the running machine's timezone. The previously suggested
+  09:00–17:00 window fell almost entirely inside peak pricing — the most
+  expensive advice possible.
 
 - **Handoff release counters**: every `lzy loop handoff` registration and
   every Stop-hook consumption now increments anonymous counters in
@@ -26,6 +36,12 @@ versioning is SemVer.
 
 ### Changed
 
+- README (both languages) now describes the `schedule` advisory as
+  pricing-aware everywhere, matching the guide: the off-peak window is derived
+  from measured rate-limit concentration hours and cross-checked against the
+  declared platform pricing-peak table (UTC+8, hand-maintained), not from
+  rate-limit data alone. Also fixes a stale hooks count (4 → 5) in both
+  README architecture trees.
 - Doctor's empty-shell scar patrol now exempts `metrics.json` (like
   `salvage/`) — the counters are an intentional long-lived artifact. The
   handoff read line in `lzy status` moved outside the goal branch so a

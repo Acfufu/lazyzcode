@@ -116,6 +116,7 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | Goal loop | `lzy loop register <slug> --title "…"` → `lzy loop plan <plan.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | The state machine: register → plan gate → execute → evidence → finish gate |
 | Evidence bundle | `lzy loop export` | Re-export the evidence bundle (`<slug>.report.md`); also auto-archived at `finish` |
 | Handoff | `lzy loop handoff --snapshot <file>` | Register a clean handoff — the next Stop releases once, without spending the continue budget |
+| Cross-repo list | `lzy loop list [--root <dir>]` | Read-only sweep of sibling repos' goal loops (status, progress, claims, staleness, salvage stubs); anonymous release counters survive reset |
 | `agents-md` | `lzy agents-md` | Project-memory audit: qualifying directories and coverage gaps |
 | `uninstall` | `lzy uninstall` | Removes the deployed cache and the registry entry |
 
@@ -141,7 +142,7 @@ telemetry, no new configuration surface.
 ## Use the built-in workflows
 
 LazyZCode should be judged by what it actually installs: one plugin — two
-skills (`zw`, `init-deep`), four hooks, three read-only agents — and the
+skills (`zw`, `init-deep`), five hooks, three read-only agents — and the
 `lzy` CLI.
 
 ### 1. Trigger words inject the protocol

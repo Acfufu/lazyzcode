@@ -161,7 +161,7 @@ substitute for the named F-item surface.
 
 ## Hook lifecycle
 
-Four hooks ride the engine's session timeline. All of them spawn through
+Five hooks ride the engine's session timeline. All of them spawn through
 `plugin/hooks/run-hook.sh`, which resolves `node` from PATH, then nvm, then
 Homebrew, so a Dock-launched ZCode (whose hook environment has no node) still
 works; the fallback path is reported by `lzy doctor`'s `hook-node` check.
@@ -170,28 +170,32 @@ works; the fallback path is reported by `lzy doctor`'s `hook-node` check.
 <svg viewBox="0 0 840 190" xmlns="http://www.w3.org/2000/svg" font-size="13">
   <path d="M40 78 H800" stroke="var(--line-strong)" stroke-width="1.4"/>
   <g fill="var(--accent)">
-    <circle cx="130" cy="78" r="7"/>
-    <circle cx="330" cy="78" r="7"/>
-    <circle cx="530" cy="78" r="7"/>
-    <circle cx="730" cy="78" r="7"/>
+    <circle cx="100" cy="78" r="7"/>
+    <circle cx="270" cy="78" r="7"/>
+    <circle cx="440" cy="78" r="7"/>
+    <circle cx="610" cy="78" r="7"/>
+    <circle cx="780" cy="78" r="7"/>
   </g>
   <g fill="var(--text)" text-anchor="middle" font-weight="600" font-size="12.5" class="mono">
-    <text x="130" y="52">SessionStart</text>
-    <text x="330" y="52">UserPromptSubmit</text>
-    <text x="530" y="52">PostToolUse</text>
-    <text x="730" y="52">Stop</text>
+    <text x="100" y="52">SessionStart</text>
+    <text x="270" y="52">UserPromptSubmit</text>
+    <text x="440" y="52">PostToolUse</text>
+    <text x="610" y="52">PostToolUseFailure</text>
+    <text x="780" y="52">Stop</text>
   </g>
   <g fill="var(--muted)" text-anchor="middle" font-size="11.5">
-    <text x="130" y="106">re-inject loop state</text>
-    <text x="130" y="123">into fresh sessions</text>
-    <text x="330" y="106">trigger match →</text>
-    <text x="330" y="123">inject zw bootstrap</text>
-    <text x="530" y="106">comment-checker nudge</text>
-    <text x="530" y="123">(Edit / Write)</text>
-    <text x="730" y="106">request continuation</text>
-    <text x="730" y="123">≤2 per session · fail-open</text>
+    <text x="100" y="106">re-inject loop state</text>
+    <text x="100" y="123">into fresh sessions</text>
+    <text x="270" y="106">trigger match →</text>
+    <text x="270" y="123">inject zw bootstrap</text>
+    <text x="440" y="106">comment-checker nudge</text>
+    <text x="440" y="123">(Edit / Write)</text>
+    <text x="610" y="106">tripwire: same-tool</text>
+    <text x="610" y="123">fail streak → warn once</text>
+    <text x="780" y="106">request continuation</text>
+    <text x="780" y="123">≤2 · handoff release</text>
   </g>
-  <text x="420" y="165" fill="var(--faint)" text-anchor="middle" font-size="11.5">session-start.js · trigger.js · comment-checker.js · stop.js — all spawned via run-hook.sh</text>
+  <text x="420" y="165" fill="var(--faint)" text-anchor="middle" font-size="11.5">session-start.js · trigger.js · comment-checker.js · tripwire.js · stop.js — all spawned via run-hook.sh</text>
 </svg>
 <figcaption>The engine exposes 7 hook events and a shared pool of 3
 stop-continuations that background notifications also draw from; LazyZCode
@@ -217,7 +221,7 @@ purpose:
 
 **Hook output contract:** only the Stop hook can continue a session, and only
 with `{continue:true, additionalContexts:[non-empty]}` (the engine's own
-contract); the other three hooks emit `{additionalContext}` — inject-only.
+contract); the other four hooks emit `{additionalContext}` — inject-only.
 Anything else, including a crash, fails open and never traps the session.
 
 **Configuration surface:** one environment variable. `LZY_ZCODE_ENGINE`

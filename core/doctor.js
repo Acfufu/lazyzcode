@@ -163,8 +163,11 @@ function checkLoopState(push, cwd) {
     let emptyScar = false;
     try {
       const entries = readdirSync(dir); // 能列目录 = 目录在场
-      // 目录在场即疤痕（空目录也是残留）；唯一豁免=仅剩 salvage/ 存根（有意产物，status 有读面）
-      emptyScar = entries.length === 0 || entries.some((e) => e !== "salvage");
+      // 目录在场即疤痕（空目录也是残留）；豁免=有意产物/正常残留：salvage/ 存根、
+      // metrics.json 放行计数（跨 reset 永续）、空 sessions/（reset 清内容留目录；
+      // 非空场景已在上方残留分支分流，走到此处必为空）
+      const EXEMPT = new Set(["salvage", "metrics.json", "sessions"]);
+      emptyScar = entries.length === 0 || entries.some((e) => !EXEMPT.has(e));
     } catch {
       emptyScar = false; // 目录缺席 = 真干净
     }

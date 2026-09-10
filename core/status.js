@@ -6,7 +6,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createEngineCli, findInstalledPlugin } from "./engine.js";
 import { createGit } from "./git.js";
-import { handoffPath, readGoal } from "./loop.js";
+import { handoffPath, readGoal, readMetrics } from "./loop.js";
 import { findRegistryEntry, readRepoManifest, sha256File } from "./installer.js";
 import {
   findEngine,
@@ -181,11 +181,21 @@ export async function collectStatus() {
       goal.status === "done" ? "ok" : "warn",
       `${goal.slug} · ${goal.status} · ${done}/${goal.steps.length} 步`,
     );
-    // 交接标记读面（ADR-0009）：在场=下个 Stop 将消费并放行。warn 仅为可见性（不翻退出码）。
-    try {
-      const marker = JSON.parse(readFileSync(handoffPath(process.cwd()), "utf8"));
-      push("handoff", "warn", `交接标记在场（快照 ${marker.snapshot ?? "?"}）——下个 Stop 将放行`);
-    } catch {} // 无标记=常态，静默
+  }
+  // 交接读面（ADR-0009）置于 goal 分支之外：标记残留与放行计数恰在无 goal 时最该可见
+  // （跨 reset 永续的计数，回收主时刻=回看使用率时刻）。标记在场=warn 仅为可见性（不翻退出码）；
+  // 计数差值非损失（reset 清理/坏标记丢弃/化石标记都只登记不消费）。
+  try {
+    const marker = JSON.parse(readFileSync(handoffPath(process.cwd()), "utf8"));
+    push("handoff", "warn", `交接标记在场（快照 ${marker.snapshot ?? "?"}）——下个 Stop 将放行`);
+  } catch {} // 无标记=常态，静默
+  const metrics = readMetrics(process.cwd());
+  if (metrics) {
+    push(
+      "handoff-usage",
+      "ok",
+      `登记 ${metrics.registered ?? 0} · 消费 ${metrics.consumed ?? 0}（差值=reset 清理/坏标记，非损失）`,
+    );
   }
 
   // 可选资产：codegraph 代码索引。缺席=skip（不翻转退出码），可用性分 MCP 配置与 CLI 两路。

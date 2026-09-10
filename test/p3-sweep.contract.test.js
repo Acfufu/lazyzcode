@@ -148,6 +148,42 @@ test("doctor 疤痕巡逻（ADR-0006）：空壳 loop 目录→warn 指手动 rm
   }
 });
 
+test("doctor 疤痕巡逻豁免 metrics.json（放行计数跨 reset 永续，非疤痕）", () => {
+  const runDoctor = (d, h) =>
+    spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+      cwd: d,
+      encoding: "utf8",
+      timeout: 120_000,
+      env: { ...process.env, HOME: h },
+    });
+  const lineOf = (out, name) => out.split(/\r?\n/).find((l) => l.includes(name));
+  const d1 = scratch();
+  const h1 = scratch();
+  try {
+    const loop = join(d1, ".lazyzcode", "loop");
+    mkdirSync(loop, { recursive: true });
+    // 仅剩 metrics.json（reset 后的常态：计数永续、goal 已清）→ 不算疤痕
+    writeFileSync(join(loop, "metrics.json"), JSON.stringify({ registered: 3, consumed: 1 }));
+    const r = runDoctor(d1, h1);
+    const state = lineOf(`${r.stdout ?? ""}${r.stderr ?? ""}`, "state");
+    assert.ok(state, "doctor 输出应含 state 行");
+    assert.doesNotMatch(state, /疤痕/);
+    // 连同 salvage/ 一起在（既有豁免不受影响）→ 仍不算疤痕
+    mkdirSync(join(loop, "salvage"), { recursive: true });
+    writeFileSync(join(loop, "salvage", "x.md"), "# stub");
+    const r2 = runDoctor(d1, h1);
+    assert.doesNotMatch(lineOf(`${r2.stdout ?? ""}${r2.stderr ?? ""}`, "state") ?? "", /疤痕/);
+    // 计数文件在场 → handoff-usage 读面行同步可见（status 面，doctor 继承）
+    assert.match(`${r2.stdout ?? ""}${r2.stderr ?? ""}`, /handoff-usage/);
+    // 空 sessions/（reset 清内容留目录的正常残留）→ 仍不算疤痕；非空已由残留分支分流
+    mkdirSync(join(loop, "sessions"), { recursive: true });
+    const r3 = runDoctor(d1, h1);
+    assert.doesNotMatch(lineOf(`${r3.stdout ?? ""}${r3.stderr ?? ""}`, "state") ?? "", /疤痕/);
+  } finally {
+    cleanup(d1, h1);
+  }
+});
+
 test("注册表字节幂等：重复 upsert 不重写、updatedAt 不漂移（R3-7）", () => {
   const d = scratch();
   try {

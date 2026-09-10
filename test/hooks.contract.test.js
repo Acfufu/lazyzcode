@@ -207,6 +207,73 @@ test("stop：旁路会话不消费交接标记（认领闸门先于消费块，A
   }
 });
 
+function metricsAt(dir, body) {
+  writeFileSync(join(dir, ".lazyzcode", "loop", "metrics.json"), body);
+}
+
+function metricsOf(dir) {
+  return JSON.parse(readFileSync(join(dir, ".lazyzcode", "loop", "metrics.json"), "utf8"));
+}
+
+test("stop：放行计数（可观测面）——释放路径 consumed +1、连续消费累加、registered 不归 Stop 管", () => {
+  const d = scratch();
+  try {
+    goalAt(d);
+    counterAt(d, "s", 0);
+    handoffMarkerAt(d);
+    assert.equal(hook("stop.js", { sessionId: "s", cwd: d }).code, 0); // 放行
+    const m1 = metricsOf(d);
+    assert.equal(m1.consumed, 1); // 无档从 0 建
+    assert.equal(m1.registered, undefined); // Stop 侧只动 consumed（registered 归 CLI 登记路径）
+    handoffMarkerAt(d);
+    assert.equal(hook("stop.js", { sessionId: "s", cwd: d }).code, 0); // 第二次放行
+    assert.equal(metricsOf(d).consumed, 2); // 连续消费累加
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("stop：放行计数读-合-写——预置档整档保留只增 consumed", () => {
+  const d = scratch();
+  try {
+    goalAt(d);
+    counterAt(d, "s", 0);
+    metricsAt(d, JSON.stringify({ registered: 9, consumed: 5 }));
+    handoffMarkerAt(d);
+    hook("stop.js", { sessionId: "s", cwd: d });
+    const m = metricsOf(d);
+    assert.equal(m.consumed, 6);
+    assert.equal(m.registered, 9); // 他方字段原样保留
+    assert.equal(typeof m.updatedAt, "string");
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("stop：放行计数不加在非消费路径——坏 JSON 标记与旁路会话都不建档", () => {
+  const d1 = scratch();
+  const d2 = scratch();
+  try {
+    goalAt(d1);
+    counterAt(d1, "s", 0);
+    handoffMarkerAt(d1, "{{{bad"); // 坏标记：垃圾清走、视同无标记
+    hook("stop.js", { sessionId: "s", cwd: d1 });
+    assert.equal(existsSync(join(d1, ".lazyzcode", "loop", "metrics.json")), false); // 不计数
+
+    goalAt(d2);
+    mkdirSync(join(d2, ".lazyzcode", "loop", "sessions"), { recursive: true });
+    writeFileSync(
+      join(d2, ".lazyzcode", "loop", "sessions", "claimed.json"),
+      JSON.stringify({ claimedAt: "2026-09-10T00:00:00.000Z" }),
+    );
+    handoffMarkerAt(d2);
+    hook("stop.js", { sessionId: "bystander", cwd: d2 }); // 旁路放手
+    assert.equal(existsSync(join(d2, ".lazyzcode", "loop", "metrics.json")), false); // 不计数
+  } finally {
+    cleanup(d1, d2);
+  }
+});
+
 test("session-start：在跑目标注入下一步，坏 stdin 静默", () => {
   const d = scratch();
   try {

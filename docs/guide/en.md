@@ -82,9 +82,10 @@ LazyZCode installs four things:
 1. **One plugin** (`lazyzcode:zw`) whose skill text carries the full
    orchestration protocol — triage, tier selection, planning, execution, and
    evidence rules.
-2. **Four hooks** wired to the engine's lifecycle: SessionStart (re-inject
+2. **Five hooks** wired to the engine's lifecycle: SessionStart (re-inject
    loop state), UserPromptSubmit (trigger words), PostToolUse (comment
-   advisory), Stop (bounded continuation).
+   advisory), PostToolUseFailure (same-tool failure tripwire), Stop
+   (bounded continuation).
 3. **Three read-only agents**: `lazyzcode:explorer`,
    `lazyzcode:plan-reviewer`, `lazyzcode:qa-executor`.
 4. **One CLI** (`lzy`) implementing the goal loop as a state machine that
@@ -221,6 +222,7 @@ lzy loop verify                         # evidence freshness audit (exit 1 = sta
 lzy loop finish                         # the final gate; auto-archives the evidence bundle
 lzy loop export                         # re-export the evidence bundle
 lzy loop handoff --snapshot <file>      # register a clean handoff; next Stop releases once
+lzy loop list [--root <dir>]            # read-only sweep of sibling repos' goal loops
 lzy loop abandon | lzy loop reset       # give up / clear state
 ```
 
@@ -245,7 +247,15 @@ lzy loop abandon | lzy loop reset       # give up / clear state
   Stop consumes the marker once and releases the session without spending the
   continue budget (the goal stays `executing`; state lives on disk). The
   snapshot must exist and have been modified within 24h — no real snapshot,
-  no handoff. `lzy loop reset`/`abandon` sweeps a leftover marker.
+  no handoff. `lzy loop reset`/`abandon` sweeps a leftover marker. Each
+  registration and consumption increments anonymous counters in
+  `.lazyzcode/loop/metrics.json` (`registered`/`consumed`, no session
+  identity); they survive reset and surface in `lzy status`/`lzy loop status`.
+- `lzy loop list` is a read-only diagnostic: it scans one level of sibling
+  directories (default anchor: the parent of the current directory, itself
+  included; `--root` overrides) and prints each repo's goal slug, status,
+  step progress, claims, staleness and salvage stubs. One unreadable repo
+  never breaks the sweep — it prints a `版本不符` row instead.
 - `lzy loop abandon` gives up while keeping the record; `lzy loop reset`
   clears state (including session counters and orphan temp files) so the next
   loop can start.
@@ -436,6 +446,7 @@ lzy loop verify                 evidence freshness audit (exit 1 = stale/unbound
 lzy step done <ID> [--note <t>] [--evidence <t>] [--evidence-file <f>]…
 lzy loop finish                 final gate: all done + all evidence fresh; archives evidence bundle
 lzy loop export                 re-export the evidence bundle (<slug>.report.md)
+lzy loop list [--root <dir>]    cross-repo goal-loop sweep (read-only)
 lzy loop abandon                give up, keep the record
 lzy loop reset                  clear loop state (incl. session counters, orphan tmp)
 lzy agents-md                   layered AGENTS.md audit (exit 1 = gaps/overcaps)

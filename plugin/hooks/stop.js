@@ -12,6 +12,7 @@ import {
   MAX_STOP_CONTINUES,
   emit,
   failOpen,
+  incMetrics,
   inputCwd,
   inputSessionId,
   listClaims,
@@ -77,6 +78,9 @@ try {
         (snap ? `交接快照：${snap}。` : "") +
         `用户开新上下文后以「zw 继续」续跑。`,
     });
+    // 放行计数（可观测面）：必须在 emit 之后、exit 之前，且 incMetrics 契约永不抛——
+    // emit 后任何外溢异常都会漏进外层 catch→failOpen 二次 emit 污染 stdout（双发危险）。
+    incMetrics(cwd, "consumed");
     process.exit(0);
   }
 

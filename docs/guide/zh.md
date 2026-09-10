@@ -74,8 +74,9 @@ LazyZCode 装四样东西：
 
 1. **一个插件**（`lazyzcode:zw`），技能文本承载完整编排协议——triage、tier
    选择、计划、执行、证据规则。
-2. **四个钩子**，接在引擎生命周期上：SessionStart（重注入循环状态）、
-   UserPromptSubmit（触发词）、PostToolUse（注释轻提示）、Stop（有界续跑）。
+2. **五个钩子**，接在引擎生命周期上：SessionStart（重注入循环状态）、
+   UserPromptSubmit（触发词）、PostToolUse（注释轻提示）、PostToolUseFailure
+   （同工具失败绊线）、Stop（有界续跑）。
 3. **三只只读代理**：`lazyzcode:explorer`、`lazyzcode:plan-reviewer`、
    `lazyzcode:qa-executor`。
 4. **一个 CLI**（`lzy`），把目标循环实现为可跨会话存续的状态机：注册 → 计划门
@@ -188,6 +189,7 @@ lzy loop status                         # 进度、下一步、证据新鲜度
 lzy loop verify                         # 证据时效审计（退出码 1 = 过期/未绑定）
 lzy loop finish                         # 终验门
 lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次
+lzy loop list [--root <目录>]           # 只读扫同级仓的目标循环
 lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 ```
 
@@ -201,6 +203,12 @@ lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 - `lzy loop handoff --snapshot <文件>` 登记干净交接：下个 Stop 一次性消费标记并
   放行，不消耗续跑预算（目标保持 executing，状态在盘）。快照须已存在且 24h 内
   有改动——没有真实快照的交接不受理；`lzy loop reset`/`abandon` 会清扫残留标记。
+  每次登记与消费会在 `.lazyzcode/loop/metrics.json` 累加匿名计数
+  （`registered`/`consumed`，无会话身份）；计数跨 reset 永续，
+  在 `lzy status`/`lzy loop status` 可见。
+- `lzy loop list` 是只读诊断：扫一级同级目录（默认锚=当前目录的父目录，含自身；
+  `--root` 可覆盖），打印各仓的目标 slug、状态、步骤进度、认领、新鲜度与存根。
+  单个仓状态文件读不出不炸全局——该行显示「版本不符」。
 - `lzy loop abandon` 放弃但留档；`lzy loop reset` 清状态（含会话计数与孤儿
   临时文件），下一个循环才能开。
 
@@ -356,6 +364,7 @@ lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑
 lzy step done <ID> [--note <注记>] [--evidence <证据>] [--evidence-file <文件>]…
 lzy loop finish                 终验门：全部 done + 全部证据新鲜；自动归档证据包
 lzy loop export                 重导出证据包（<slug>.report.md）
+lzy loop list [--root <目录>]   跨仓目标循环清单（只读）
 lzy loop abandon                放弃，留档
 lzy loop reset                  清循环状态（含会话计数、孤儿临时文件）
 lzy agents-md                   AGENTS.md 分层审计（退出码 1 = 缺口/超限）

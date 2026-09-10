@@ -463,6 +463,38 @@ export function handoffPath(cwd) {
   return join(loopDir(cwd), "handoff.json");
 }
 
+// ── 放行计数（可观测面）：registered=CLI 登记数、consumed=Stop 侧消费数。
+// 目录级匿名（只有计数无会话身份，ADR-0009）；跨 reset 永续（价值在长期观测，
+// cleanupLoopResidue 与疤痕巡逻均豁免它）。无锁读-合-写近似计数（≥ 语义）：多写方
+// 同窗可丢增量，观测面可接受。契约：本节函数永不抛——计数失败绝不阻断登记/放行主路径。
+export function metricsPath(cwd) {
+  return join(loopDir(cwd), "metrics.json");
+}
+
+export function readMetrics(cwd) {
+  try {
+    const m = JSON.parse(readFileSync(metricsPath(cwd), "utf8"));
+    if (m && typeof m === "object" && !Array.isArray(m)) return m;
+  } catch {}
+  return null;
+}
+
+export function incMetrics(cwd, field) {
+  try {
+    const m = readMetrics(cwd) ?? {};
+    m[field] = (typeof m[field] === "number" && Number.isInteger(m[field]) ? m[field] : 0) + 1;
+    m.updatedAt = new Date().toISOString();
+    const p = metricsPath(cwd);
+    mkdirSync(dirname(p), { recursive: true });
+    const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
+    writeFileSync(tmp, `${JSON.stringify(m, null, 2)}\n`, { mode: 0o600 });
+    renameSync(tmp, p);
+    return m;
+  } catch {
+    return null;
+  }
+}
+
 // 快照新鲜度上限：没有真实快照的交接不是交接（防滥用防化石——双审 P2 对冲）。
 export const HANDOFF_SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -493,6 +525,7 @@ export function handoffGoal(cwd, snapshot, treeHash) {
   mkdirSync(dirname(p), { recursive: true });
   writeFileSync(tmp, `${JSON.stringify(marker, null, 2)}\n`);
   renameSync(tmp, p); // 原子落盘：与 Stop 侧 unlink 消费的互斥由文件系统原子性保证
+  incMetrics(cwd, "registered"); // 永不抛（契约见上）——登记不因计数失败而失败
   return marker;
 }
 
@@ -621,7 +654,14 @@ export function scanSessionFlags(cwd) {
 export function formatStatus(cwd, git) {
   const goal = readGoal(cwd);
   const stubLine = salvageLine(cwd); // 无 goal/有 goal 两分支均渲染（C 面；reset 后无 goal 恰是回收主时刻）
-  if (!goal) return stubLine ? `${noGoalMessage(cwd)}\n${stubLine}` : noGoalMessage(cwd);
+  if (!goal) {
+    let out = stubLine ? `${noGoalMessage(cwd)}\n${stubLine}` : noGoalMessage(cwd);
+    const m = readMetrics(cwd); // 放行计数跨 reset 永续——无 goal 恰是回看使用率的主时刻
+    if (m) {
+      out += `\n  放行计数：登记 ${m.registered ?? 0} · 消费 ${m.consumed ?? 0}（差值=reset 清理/坏标记，非损失）`;
+    }
+    return out;
+  }
   const done = goal.steps.filter((s) => s.status === "done");
   const lines = [
     `目标 ${goal.slug} — ${goal.title}`,
@@ -657,6 +697,12 @@ export function formatStatus(cwd, git) {
     } catch {} // 无标记=常态，静默
   }
   if (stubLine) lines.push(stubLine);
+  const metrics = readMetrics(cwd); // 放行计数（可观测面，跨 reset 永续）
+  if (metrics) {
+    lines.push(
+      `  放行计数：登记 ${metrics.registered ?? 0} · 消费 ${metrics.consumed ?? 0}（差值=reset 清理/坏标记，非损失）`,
+    );
+  }
   if (git && (goal.status === "executing" || goal.status === "done")) {
     const { current, stale, unbound } = verifyEvidence(cwd, git);
     const fDone = goal.steps.filter((s) => s.kind === "F" && s.status === "done");
@@ -667,5 +713,97 @@ export function formatStatus(cwd, git) {
         (stale.length + unbound.length > 0 ? "（lzy loop finish 会被拦）" : ""),
     );
   }
+  return lines.join("\n");
+}
+
+// ── 跨仓目标清单（只读诊断）：扫锚目录一级子目录（默认 dirname(cwd)，含 cwd 自身）
+// 各仓的循环状态。读面永不抛（对齐 loop status 姿态）；每仓独立 try/catch——一个版本
+// 不符/损坏的仓不炸全局清单。ADR-0006 严格就地语义约束的是写面（goal 解析不 walk-up），
+// 本命令是只读旁视，不触碰当前目标解析。
+const REPO_STATUS_RANK = { executing: 0, planning: 1, done: 2 };
+
+export function listRepos(cwd, rootOverride) {
+  const anchor = rootOverride ? resolve(rootOverride) : dirname(cwd);
+  let entries;
+  try {
+    entries = readdirSync(anchor, { withFileTypes: true });
+  } catch {
+    return { anchor, repos: [] }; // 锚不可读/不存在 = 空集
+  }
+  const repos = [];
+  for (const ent of entries) {
+    if (!ent.isDirectory() || ent.name.startsWith(".")) continue;
+    const repo = join(anchor, ent.name);
+    const row = { repo: ent.name, path: repo, slug: null, status: null, error: null };
+    try {
+      const goal = readGoal(repo);
+      if (!goal) continue; // 无循环状态=空仓，不进清单（防大目录全量噪音）
+      row.slug = goal.slug;
+      row.status = goal.status;
+      const steps = Array.isArray(goal.steps) ? goal.steps : [];
+      row.stepsDone = steps.filter((s) => s?.status === "done").length;
+      row.stepsTotal = steps.length;
+      const flags = scanSessionFlags(repo);
+      row.claims = flags.claims.length;
+      row.stuck = flags.stuck.length;
+      row.salvage = listSalvageStubs(repo).length;
+      try {
+        row.ageMs = Math.max(0, Date.now() - statSync(goalPath(repo)).mtimeMs);
+      } catch {
+        row.ageMs = null;
+      }
+    } catch (err) {
+      row.error = err instanceof LoopError ? "版本不符" : "读取失败"; // 单仓损坏不炸全局
+    }
+    repos.push(row);
+  }
+  repos.sort((a, b) => {
+    const ra = REPO_STATUS_RANK[a.status] ?? 3;
+    const rb = REPO_STATUS_RANK[b.status] ?? 3;
+    if (ra !== rb) return ra - rb;
+    return (b.ageMs ?? 0) - (a.ageMs ?? 0); // 同组内最近活跃在前
+  });
+  return { anchor, repos };
+}
+
+function humanAge(ms) {
+  if (ms === null || ms === undefined) return "未知";
+  if (ms < 60_000) return "刚刚";
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)} 分前`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)} 小时前`;
+  return `${Math.floor(ms / 86_400_000)} 天前`;
+}
+
+export function formatRepoList(cwd, rootOverride) {
+  const { anchor, repos } = listRepos(cwd, rootOverride);
+  const head =
+    `跨仓目标清单（锚 ${anchor}，扫一级子目录；只读诊断）`;
+  if (repos.length === 0) {
+    return `${head}\n  （锚下没有仓持有 .lazyzcode/loop/goal.json）`;
+  }
+  const lines = [head];
+  const nameW = Math.max(...repos.map((r) => r.repo.length), 4);
+  const statusW = Math.max(...repos.map((r) => (r.status ?? "？").length), 7);
+  for (const r of repos) {
+    if (r.error) {
+      lines.push(`  ${r.repo.padEnd(nameW)}  ${r.error}（goal.json 无法解析，lzy loop reset 可清除）`);
+      continue;
+    }
+    const flags = [r.claims > 0 ? `认领 ${r.claims}` : null, r.stuck > 0 ? `stuck ${r.stuck}` : null]
+      .filter(Boolean)
+      .join("·");
+    const extras = [
+      (r.stepsTotal > 0 ? `${r.stepsDone}/${r.stepsTotal}` : "-").padStart(5),
+      humanAge(r.ageMs),
+      flags || "—",
+      r.salvage > 0 ? `存根 ${r.salvage}` : "",
+    ]
+      .filter(Boolean)
+      .join("  ");
+    lines.push(
+      `  ${r.repo.padEnd(nameW)}  ${(r.status ?? "").padEnd(statusW)}  ${extras}  ${r.slug}`,
+    );
+  }
+  lines.push("  认领/stuck=会话旗标数 · 存根=可回收工件存根 · 相对时间=goal.json 最后写入距今");
   return lines.join("\n");
 }

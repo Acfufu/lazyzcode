@@ -105,6 +105,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | 目标循环 | `lzy loop register <slug> --title "…"` → `lzy loop plan <计划.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | 状态机：注册 → 计划门 → 执行 → 证据 → 终验门 |
 | 证据包 | `lzy loop export` | 重导出证据包（`<slug>.report.md`）；`finish` 时亦自动归档 |
 | 交接 | `lzy loop handoff --snapshot <文件>` | 登记干净交接——下个 Stop 放行一次，不消耗续跑预算 |
+| 跨仓清单 | `lzy loop list [--root <目录>]` | 只读扫同级仓的目标循环（状态/进度/认领/新鲜度/存根）；匿名放行计数跨 reset 永续 |
 | `agents-md` | `lzy agents-md` | 项目记忆审计：够格目录与覆盖缺口 |
 | `uninstall` | `lzy uninstall` | 删除已部署缓存与注册表条目 |
 
@@ -125,7 +126,7 @@ stuck 停拉标记、零认领孤儿提示——warn-only），
 ## 使用内置工作流
 
 LazyZCode 该按它实际装了什么来评价：一个插件——两个技能（`zw`、`init-deep`）、
-四个钩子、三只只读代理——和一个 `lzy` CLI。
+五个钩子、三只只读代理——和一个 `lzy` CLI。
 
 ### 1. 触发词注入编排协议
 

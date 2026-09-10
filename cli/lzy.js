@@ -15,6 +15,7 @@ import {
   completeStep,
   exportReport,
   finishLoop,
+  formatRepoList,
   formatStatus,
   handoffGoal,
   readGoal,
@@ -33,7 +34,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -243,8 +244,12 @@ async function cmdLoop(args) {
     case "status":
       console.log(formatStatus(cwd, git));
       return;
+    case "list":
+      // 只读跨仓诊断（never-throw 读面）：扫锚目录一级子目录的循环状态。
+      console.log(formatRepoList(cwd, typeof f.root === "string" ? f.root : null));
+      return;
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/verify/finish/export/abandon/reset/handoff）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/list/verify/finish/export/abandon/reset/handoff）`);
   }
 }
 
@@ -316,6 +321,8 @@ function printHelp() {
   lzy loop plan <计划文件> [--force]        计划门：采纳 N/F 清单（默认拒绝待定项）
   lzy loop start                            开跑（planning → executing，打印实测并发纪律行）
   lzy loop status                           查看进度与下一步
+  lzy loop list [--root <目录>]             跨仓清单（只读）：扫锚目录一级子目录各仓的循环
+                                            状态（默认锚=当前目录的同级，含自身）
   lzy step done <ID> [--note …] [--evidence …] [--evidence-file <文件>]…
                                             收口一步（F 项必须带真实表面证据；附件复制入
                                             .lazyzcode/evidence/ 并绑 sha256，≤4 个/项）

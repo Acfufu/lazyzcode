@@ -5,6 +5,32 @@ versioning is SemVer.
 
 ## [Unreleased]
 
+### Added
+
+- **Handoff release counters**: every `lzy loop handoff` registration and
+  every Stop-hook consumption now increments anonymous counters in
+  `.lazyzcode/loop/metrics.json` (`registered`/`consumed` — counts only, no
+  session identity, ADR-0009 anonymity intact). Counter writes are lock-free
+  best-effort and can never block registration or release; counts survive
+  `lzy loop reset` and surface in `lzy status` (`handoff-usage` check,
+  inherited by `lzy doctor`) and `lzy loop status`. A registered-over-
+  consumed skew is normal (reset sweeps and discarded garbage markers
+  register without consuming).
+- **`lzy loop list [--root <dir>]`**: read-only cross-repo sweep of goal
+  loops. Scans one level of sibling directories (default anchor: the parent
+  of the current directory, itself included) and prints per-repo slug,
+  status, step progress, claim/stuck flags, goal-file staleness and salvage
+  stubs — `executing` sorts first, then planning/done by recency. One
+  unreadable repo prints a `版本不符` row instead of failing the sweep;
+  an anchor with no goals prints a note and exits 0.
+
+### Changed
+
+- Doctor's empty-shell scar patrol now exempts `metrics.json` (like
+  `salvage/`) — the counters are an intentional long-lived artifact. The
+  handoff read line in `lzy status` moved outside the goal branch so a
+  leftover marker is visible even when no goal exists.
+
 ## [0.0.3] - 2026-09-10
 
 ### Added

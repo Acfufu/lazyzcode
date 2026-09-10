@@ -30,6 +30,7 @@
 - **传输死亡诊断面已落地（2026-09-10，goal doctor-transport-deaths，ADR-0008）**：doctor `transport` 行与限流分族计数（errno 主判据在 statusMessage——实锤 ENETDOWN 事故 reason=unknown，按 reason 白名单必漏触发事故本身；fake-ip 198.18.0.0/15 命中给 TUN 直连提示；绝不进并发带/错峰窗数学）；429 谓词零语义变化（真日志基线 diff 字段级为空作护栏）；69/69 测试绿。
 - **会话失控护栏已落地（2026-09-10，goal incident-guardrails，ADR-0009/决策 #22）**：Stop 交接放行（`lzy loop handoff` 目录级匿名标记+unlink 原子消费+放行不耗预算，消费清振数防重入误振）+ PostToolUseFailure 空转绊线（`^mcp__` TTL 连击 warn 一次，hooks:4→5）+ status files 逐文件 sha256 内容比对（路径集合比对对「文件在而内容过期」失明——09-09 事故实锤）+ zw SKILL.md 工具空转逃逸契约；源起 sess_95421d3d 空转事故，探针活体实证 Failure 注入通道；86/86 测试绿；顺手修 writeSessionCounter 潜伏 bug（全收口 finish 提醒自 0.0.2 必炸走 failOpen）。
 - **证据对照与工件回收已落地（2026-09-10，goal comparator-salvage，费马启示三件包）**：HEAVY finish 前派 qa-executor 证据对照（断言×证据逐对判匹配/不匹配，协议级阻断，CLI/doctor 零代码）+ 步骤自含指引与评审 WARN 检查点 + reset/abandon 盘点可回收工件入存根（status 双分支读面）+ 依赖图并行认领记债（决策 #21，ADR-0004 修正案二）；74/74 测试绿、锚点双语 21/21。
+- **放行可观测与跨仓清单已落地（2026-09-10，goal handoff-meter-crossrepo-list）**：交接放行匿名计数（`.lazyzcode/loop/metrics.json` registered/consumed，目录级匿名无会话身份、无锁近似 ≥ 语义、跨 reset 永续、status/doctor 双面读）+ `lzy loop list [--root]` 跨仓目标清单（只读旁视、每仓独立容错、executing 前置）+ 疤痕巡逻豁免清单全枚举（salvage/metrics.json/空 sessions——F3 取证显形既有缺口）；狗粮依据=7/12 会话拉回预算打满而消费痕迹为零；93/93 测试绿。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 

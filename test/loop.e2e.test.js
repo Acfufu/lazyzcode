@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,5 +191,126 @@ test("handoff（ADR-0009）：三拒（缺参/不存在/过期）+ 登记可见 
     assert.equal(existsSync(join(d, ".lazyzcode", "loop", "handoff.json")), false);
   } finally {
     rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("放行计数（可观测面）：登记 +1、reset 后永续、status 双面读、两侧 incMetrics 形状一致", () => {
+  const d = repo();
+  try {
+    assert.equal(lzy(["loop", "register", "ho", "--title", "t"], d).code, 0);
+    const p = setup(d, THREE_STEPS);
+    assert.equal(lzy(["loop", "plan", p], d).code, 0);
+    assert.equal(lzy(["loop", "start"], d).code, 0);
+    const snap = join(d, "snap.md");
+    writeFileSync(snap, "handoff state");
+    assert.equal(lzy(["loop", "handoff", "--snapshot", "snap.md"], d).code, 0);
+    const mp = join(d, ".lazyzcode", "loop", "metrics.json");
+    const m1 = JSON.parse(readFileSync(mp, "utf8"));
+    assert.equal(m1.registered, 1); // CLI 登记路径计数
+    assert.equal(m1.consumed, undefined); // 消费归 Stop 侧
+    assert.match(lzy(["loop", "status"], d).out, /放行计数：登记 1/);
+    // 跨 reset 永续（设计拍板 #1）：计数不是目标状态，reset 不清
+    assert.equal(lzy(["loop", "reset"], d).code, 0);
+    assert.equal(JSON.parse(readFileSync(mp, "utf8")).registered, 1);
+    // 无 goal 分支读面：reset 后恰是回看使用率的主时刻
+    assert.match(lzy(["loop", "status"], d).out, /放行计数：登记 1 · 消费 0/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("两侧 incMetrics 形状一致（hook-lib 自包含复制防漂移）", async () => {
+  const { incMetrics: coreInc } = await import("../core/loop.js");
+  const { incMetrics: hookInc } = await import("../plugin/hooks/hook-lib.js");
+  const strip = (m) => {
+    const { updatedAt, ...rest } = m ?? {};
+    return rest;
+  };
+  const d1 = repo({ git: false });
+  const d2 = repo({ git: false });
+  try {
+    const a = strip(coreInc(d1, "consumed"));
+    const b = strip(hookInc(d2, "consumed"));
+    assert.deepEqual(a, b); // 同输入各自 inc 后 JSON 结构深等
+    assert.deepEqual(a, { consumed: 1 });
+  } finally {
+    rmSync(d1, { recursive: true, force: true });
+    rmSync(d2, { recursive: true, force: true });
+  }
+});
+
+function goalJsonAt(dir, slug, status, steps) {
+  const loop = join(dir, ".lazyzcode", "loop");
+  mkdirSync(loop, { recursive: true });
+  writeFileSync(
+    join(loop, "goal.json"),
+    JSON.stringify({ version: 1, slug, title: slug, status, steps, startedAt: "2026-09-10T00:00:00.000Z" }),
+  );
+}
+
+test("loop list 跨仓清单：executing 前置、认领/存根列、版本不符容忍、--root、空锚 never-throw", () => {
+  const anchor = mkdtempSync(join(tmpdir(), "lzy-list-"));
+  const execRepo = join(anchor, "alpha-exec");
+  const doneRepo = join(anchor, "beta-done");
+  const badRepo = join(anchor, "gamma-badver");
+  mkdirSync(execRepo, { recursive: true });
+  mkdirSync(doneRepo, { recursive: true });
+  mkdirSync(badRepo, { recursive: true });
+  mkdirSync(join(badRepo, ".lazyzcode", "loop"), { recursive: true });
+  try {
+    goalJsonAt(execRepo, "x-loop", "executing", [
+      { id: "N1", kind: "N", status: "done" },
+      { id: "N2", kind: "N", status: "pending" },
+    ]);
+    mkdirSync(join(execRepo, ".lazyzcode", "loop", "sessions"), { recursive: true });
+    writeFileSync(
+      join(execRepo, ".lazyzcode", "loop", "sessions", "s1.json"),
+      JSON.stringify({ claimedAt: "2026-09-10T00:00:00.000Z" }),
+    );
+    goalJsonAt(doneRepo, "y-loop", "done", [{ id: "F1", kind: "F", status: "done" }]);
+    mkdirSync(join(doneRepo, ".lazyzcode", "loop", "salvage"), { recursive: true });
+    writeFileSync(join(doneRepo, ".lazyzcode", "loop", "salvage", "z.md"), "# stub");
+    writeFileSync(join(badRepo, ".lazyzcode", "loop", "goal.json"), JSON.stringify({ version: 99 }));
+
+    // 场景 a：--root 显式锚；executing 排 done 前；认领/存根/版本不符逐列可见
+    const probe = mkdtempSync(join(tmpdir(), "lzy-listcwd-")); // cwd 在锚外，逼 --root 生效
+    try {
+      const r = lzy(["loop", "list", "--root", anchor], probe);
+      assert.equal(r.code, 0);
+      const execLine = r.out.indexOf("alpha-exec");
+      const doneLine = r.out.indexOf("beta-done");
+      assert.ok(execLine > -1 && doneLine > -1, "两仓都应列席");
+      assert.ok(execLine < doneLine, "executing 应排在 done 前");
+      assert.match(r.out, /x-loop/);
+      assert.match(r.out, /认领 1/);
+      assert.match(r.out, /存根 1/);
+      assert.match(r.out, /版本不符/); // gamma-badver 行容忍不炸全局
+      assert.match(r.out, /1\/2/); // 步骤进度
+
+      // 场景 b：默认锚=dirname(cwd)——从锚下一级仓内跑，同表可见（含 cwd 自身语义）
+      const r2 = lzy(["loop", "list"], execRepo);
+      assert.equal(r2.code, 0);
+      assert.match(r2.out, /alpha-exec/);
+      assert.match(r2.out, /beta-done/);
+    } finally {
+      rmSync(probe, { recursive: true, force: true });
+    }
+
+    // 场景 c：--root 不存在 → 说明行 exit 0（never-throw）
+    const r3 = lzy(["loop", "list", "--root", join(anchor, "no-such-dir")], doneRepo);
+    assert.equal(r3.code, 0);
+    assert.match(r3.out, /没有仓持有/);
+
+    // 场景 d：空锚（无 goal.json）→ 说明行 exit 0
+    const emptyAnchor = mkdtempSync(join(tmpdir(), "lzy-listempty-"));
+    try {
+      const r4 = lzy(["loop", "list", "--root", emptyAnchor], execRepo);
+      assert.equal(r4.code, 0);
+      assert.match(r4.out, /没有仓持有/);
+    } finally {
+      rmSync(emptyAnchor, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(anchor, { recursive: true, force: true });
   }
 });

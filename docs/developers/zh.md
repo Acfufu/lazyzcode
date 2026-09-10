@@ -153,7 +153,7 @@ finish</code> 拒绝之；<code>lzy step done</code> 在重取证时重新绑定
 
 ## 钩子生命周期
 
-四个钩子骑在引擎的会话时间线上。它们全部经 `plugin/hooks/run-hook.sh`
+五个钩子骑在引擎的会话时间线上。它们全部经 `plugin/hooks/run-hook.sh`
 拉起：启动器按 PATH → nvm → Homebrew 的顺序解析 `node`，从 Dock 直启的
 ZCode（钩子环境没有 node）也能正常工作；解析结果由 `lzy doctor` 的
 `hook-node` 检查报告。
@@ -162,28 +162,32 @@ ZCode（钩子环境没有 node）也能正常工作；解析结果由 `lzy doct
 <svg viewBox="0 0 840 190" xmlns="http://www.w3.org/2000/svg" font-size="13">
   <path d="M40 78 H800" stroke="var(--line-strong)" stroke-width="1.4"/>
   <g fill="var(--accent)">
-    <circle cx="130" cy="78" r="7"/>
-    <circle cx="330" cy="78" r="7"/>
-    <circle cx="530" cy="78" r="7"/>
-    <circle cx="730" cy="78" r="7"/>
+    <circle cx="100" cy="78" r="7"/>
+    <circle cx="270" cy="78" r="7"/>
+    <circle cx="440" cy="78" r="7"/>
+    <circle cx="610" cy="78" r="7"/>
+    <circle cx="780" cy="78" r="7"/>
   </g>
   <g fill="var(--text)" text-anchor="middle" font-weight="600" font-size="12.5" class="mono">
-    <text x="130" y="52">SessionStart</text>
-    <text x="330" y="52">UserPromptSubmit</text>
-    <text x="530" y="52">PostToolUse</text>
-    <text x="730" y="52">Stop</text>
+    <text x="100" y="52">SessionStart</text>
+    <text x="270" y="52">UserPromptSubmit</text>
+    <text x="440" y="52">PostToolUse</text>
+    <text x="610" y="52">PostToolUseFailure</text>
+    <text x="780" y="52">Stop</text>
   </g>
   <g fill="var(--muted)" text-anchor="middle" font-size="11.5">
-    <text x="130" y="106">向新会话重注入</text>
-    <text x="130" y="123">循环状态</text>
-    <text x="330" y="106">触发词匹配 →</text>
-    <text x="330" y="123">注入 zw 引导</text>
-    <text x="530" y="106">comment-checker 轻提示</text>
-    <text x="530" y="123">（Edit / Write）</text>
-    <text x="730" y="106">请求续跑</text>
-    <text x="730" y="123">每会话 ≤2 次 · fail-open</text>
+    <text x="100" y="106">向新会话重注入</text>
+    <text x="100" y="123">循环状态</text>
+    <text x="270" y="106">触发词匹配 →</text>
+    <text x="270" y="123">注入 zw 引导</text>
+    <text x="440" y="106">comment-checker 轻提示</text>
+    <text x="440" y="123">（Edit / Write）</text>
+    <text x="610" y="106">同工具失败连击</text>
+    <text x="610" y="123">绊线告警一次</text>
+    <text x="780" y="106">请求续跑</text>
+    <text x="780" y="123">≤2 次 · 交接放行</text>
   </g>
-  <text x="420" y="165" fill="var(--faint)" text-anchor="middle" font-size="11.5">session-start.js · trigger.js · comment-checker.js · stop.js — 全部经 run-hook.sh 拉起</text>
+  <text x="420" y="165" fill="var(--faint)" text-anchor="middle" font-size="11.5">session-start.js · trigger.js · comment-checker.js · tripwire.js · stop.js — 全部经 run-hook.sh 拉起</text>
 </svg>
 <figcaption>引擎暴露 7 个钩子事件和共享池 3 次 stop-continuation（后台通知
 同池扣减）；LazyZCode 每会话至多花 2 次，任何异常一律放行。</figcaption>
@@ -206,7 +210,7 @@ qa-executor（原样报告实际观察，绝不推断）。新角色的输出契
 | `/(^|[^a-z0-9_-])(ulw|ultrawork)([^a-z0-9_-]|$)/i` | 任意位置，词边界 |
 
 **钩子输出契约：** 只有 Stop 钩子能续跑会话，且仅限
-`{continue:true, additionalContexts:[非空]}`（引擎自身契约）；其余三钩子只发
+`{continue:true, additionalContexts:[非空]}`（引擎自身契约）；其余四钩子只发
 `{additionalContext}`——纯注入。其余任何情况，包括崩溃，一律 fail-open，
 绝不困住会话。
 

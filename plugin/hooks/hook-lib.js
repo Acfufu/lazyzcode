@@ -10,7 +10,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 // Stop 续跑预算：引擎硬顶 3 次/会话，且与 ZCode 后台任务通知共享同一池（宪法红线 2）。
 // lzy 最多用 2 次，给后台通知预留 1 次。
@@ -223,4 +223,30 @@ export function emit(obj) {
 export function failOpen() {
   emit({});
   process.exit(0);
+}
+
+// ── 放行计数（可观测面）：consumed=Stop 侧实际放行次数。目录级匿名（只有计数，
+// 无会话身份，ADR-0009）；跨 reset 永续。无锁读-合-写近似计数（≥ 语义）：多会话
+// 同窗 Stop 可丢增量，观测面可接受。契约：永不抛——计数失败绝不影响放行主路径。
+// 与 core/loop.js 的 incMetrics 同形（hook-lib 部署后脱离 core/ 自包含，readGoal 先例）。
+export function incMetrics(cwd, field) {
+  try {
+    const p = join(cwd, ".lazyzcode", "loop", "metrics.json");
+    let m = {};
+    try {
+      const raw = JSON.parse(readFileSync(p, "utf8"));
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) m = raw;
+    } catch {
+      // 无文件/损坏 = 从零起计
+    }
+    m[field] = (typeof m[field] === "number" && Number.isInteger(m[field]) ? m[field] : 0) + 1;
+    m.updatedAt = new Date().toISOString();
+    mkdirSync(dirname(p), { recursive: true });
+    const tmp = `${p}.${process.pid}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify(m, null, 2)}\n`, { mode: 0o600 });
+    renameSync(tmp, p);
+    return m;
+  } catch {
+    return null;
+  }
 }

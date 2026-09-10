@@ -314,3 +314,53 @@ test("loop list 跨仓清单：executing 前置、认领/存根列、版本不�
     rmSync(anchor, { recursive: true, force: true });
   }
 });
+
+test("register 写面入锁（R6A-1）：持锁即 5s 超时拦截，非锁外旁路", () => {
+  const d = repo();
+  try {
+    // 活锁形态：.lock 在场且无 owner.json = 刚加的锁（withLock 判 ageMs=0 继续等满 deadline）
+    mkdirSync(join(d, ".lazyzcode", "loop", ".lock"), { recursive: true });
+    const r = lzy(["loop", "register", "lk", "--title", "t"], d);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /持锁/); // 修复前 register 无视持锁直接成功写 goal.json
+    assert.equal(existsSync(join(d, ".lazyzcode", "loop", "goal.json")), false);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("handoff 写面入锁（R6A-3）：过锁外预检后持锁即 5s 超时拦截", () => {
+  const d = repo();
+  try {
+    // 前置：executing 态 + 真实新鲜快照，先过锁外两道预检才会阻塞在锁上
+    assert.equal(lzy(["loop", "register", "hk", "--title", "t"], d).code, 0);
+    const p = setup(d, THREE_STEPS);
+    assert.equal(lzy(["loop", "plan", p], d).code, 0);
+    assert.equal(lzy(["loop", "start"], d).code, 0);
+    const snap = join(d, "snap.md");
+    writeFileSync(snap, "handoff state");
+    mkdirSync(join(d, ".lazyzcode", "loop", ".lock"), { recursive: true });
+    const r = lzy(["loop", "handoff", "--snapshot", "snap.md"], d);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /持锁/); // 修复前：锁外交写留下孤儿标记
+    assert.equal(existsSync(join(d, ".lazyzcode", "loop", "handoff.json")), false);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("status 损坏 goal.json 降级（R6A-2）：单项 warn 不炸全套检查", () => {
+  const d = repo();
+  try {
+    mkdirSync(join(d, ".lazyzcode", "loop"), { recursive: true });
+    writeFileSync(join(d, ".lazyzcode", "loop", "goal.json"), JSON.stringify({ version: 99 }));
+    const r = lzy(["status"], d);
+    assert.equal(r.code, 0); // warn-only 不翻退出码（criticalFail 语义，对齐 doctor fail-soft）；修复前=单行 LoopError 炸掉全部且 exit 1
+    assert.match(r.out, /goal 状态不可读/);
+    assert.match(r.out, /版本不兼容/); // 原始成因信息保留
+    assert.match(r.out, /install/); // 其余检查行仍在场（全套未丢）
+    assert.match(r.out, /files/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

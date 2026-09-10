@@ -47,6 +47,23 @@ versioning is SemVer.
   handoff read line in `lzy status` moved outside the goal branch so a
   leftover marker is visible even when no goal exists.
 
+### Fixed
+
+- `lzy status` no longer dies outright when the on-disk `goal.json` carries an
+  incompatible version: the loop check degrades to a `warn` line (mirroring
+  the doctor-side fail-soft fallback) and every other check still prints.
+- Concurrency races closed (R6 dual review): `lzy loop register` now performs
+  its duplicate check and write under the cross-process lock — two concurrent
+  registers could silently overwrite each other — and `lzy loop handoff`
+  writes its marker under the lock, so it can no longer interleave with
+  `lzy loop reset`'s marker sweep and leave an orphan that falsely releases
+  the next goal's first Stop hook.
+- The doctor `schedule` pricing-overlap enumeration now walks the window arc
+  with wraparound: when the anchor lands in the window's tail hours (e.g.
+  weekday 02:00–03:00 local for a 19:00–03:00 window), the old linear walk
+  overflowed past the window end — misreporting out-of-window hours as
+  in-window peak pricing while missing the window's remaining hours.
+
 ## [0.0.3] - 2026-09-10
 
 ### Added

@@ -366,25 +366,35 @@ export function utc8HourDay(now) {
   return { hour: d.getUTCHours(), day: d.getUTCDay() };
 }
 
-// 候选窗（本地小时，半开）对照高峰表：以「now 起下一个进入窗的整点」为锚，沿窗枚举
-// 全部小时；每步从同一时刻导出本地小时（直方图时间轴）与 UTC+8 小时/周几（计价表时间轴），
-// 周几取真实未来日期——固定 now 即可确定性测试，跨午夜/周几翻转自然覆盖。
+// 候选窗（本地小时，半开）对照高峰表：以「now 起下一个进入窗的整点」为锚，沿窗弧
+// 回卷枚举恰好 total 个窗内小时——R6F-1：锚落窗尾时线性连走会溢出窗外，把窗外小时
+// 误报「窗内落高峰」且漏检窗内剩余小时；越窗尾即回卷窗头恰好覆盖窗弧全集。每步从
+// 同一时刻导出本地小时（直方图时间轴）与 UTC+8 小时/周几（计价表时间轴），周几取
+// 真实未来日期——固定 now 即可确定性测试，跨午夜/周几翻转自然覆盖。
 function overlapSegments(start, end, now) {
   const inWin = (h) => (start < end ? h >= start && h < end : h >= start || h < end);
-  const hour0 = Math.floor(now.getTime() / 3_600_000) * 3_600_000;
-  let first = hour0;
-  for (let i = 0; i < 48; i++) {
-    first = hour0 + i * 3_600_000; // hour0 恒 ≤ now，首个窗内整点必在 24h 内出现
-    if (inWin(new Date(first).getHours())) break;
-  }
+  const nextWindowHour = (fromMs) => {
+    const hour0 = Math.floor(fromMs / 3_600_000) * 3_600_000;
+    for (let i = 0; i < 48; i++) {
+      const t = hour0 + i * 3_600_000; // hour0 恒 ≤ fromMs，首个窗内整点必在 24h 内出现
+      if (inWin(new Date(t).getHours())) return t;
+    }
+    return hour0; // 不可达：窗非空，24h 内必有整点入口
+  };
   const total = (end - start + 24) % 24 || 24;
   const segs = [];
   let segStart = null;
   let prev = null;
+  let prevMs = null;
+  let t = nextWindowHour(now.getTime());
   for (let i = 0; i < total; i++) {
-    const t = new Date(first + i * 3_600_000);
-    const localHour = t.getHours();
-    const { hour, day } = utc8HourDay(t);
+    if (prevMs !== null && t !== prevMs + 3_600_000 && segStart !== null) {
+      segs.push([segStart, (prev + 1) % 24]); // 窗尾→窗头回卷点强制断段：防两个窗日的高峰段伪合并
+      segStart = null;
+    }
+    const d = new Date(t);
+    const localHour = d.getHours();
+    const { hour, day } = utc8HourDay(d);
     const hit = PEAK_WINDOWS.some(
       (w) =>
         w.days.includes(day) &&
@@ -397,8 +407,10 @@ function overlapSegments(start, end, now) {
       segStart = null;
     }
     prev = localHour;
+    prevMs = t;
+    t = inWin(new Date(t + 3_600_000).getHours()) ? t + 3_600_000 : nextWindowHour(t + 3_600_000);
   }
-  if (segStart !== null) segs.push([segStart, (prev + 1) % 24]); // 窗尾仍在高峰：终点=窗尾下一小时
+  if (segStart !== null) segs.push([segStart, (prev + 1) % 24]); // 弧尾仍在高峰：终点=窗尾下一小时
   const p2 = (n) => String(n).padStart(2, "0");
   return segs.map(([a, b]) => `${p2(a)}:00–${p2(b)}:00`);
 }

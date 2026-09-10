@@ -53,6 +53,18 @@ test("scheduleAdvisory 计价维度：重叠段/安全窗/UTC+8 换算（固定 
   assert.deepEqual(c.overlaps, ["09:00–12:00", "14:00–15:00"]);
 });
 
+test("scheduleAdvisory 计价枚举沿窗弧回卷（R6F-1）：锚落窗尾不溢出窗外（固定 now 四对照）", () => {
+  const win = { concentration: { startHour: 10, endHour: 13, sharePct: 80, turns: 40 } }; // 窗 19:00–03:00
+  // UTC 2026-09-10T18:15Z = UTC+8 周五 02:15：锚 02:00 落窗尾——修复前线性溢出伪报 ["09:00–10:00"]
+  assert.deepEqual(scheduleAdvisory(win, new Date("2026-09-10T18:15:00.000Z")).overlaps, []);
+  // UTC 2026-09-11T18:15Z = UTC+8 周六 02:15：同一钟点换周末计价表 → 同样空集
+  assert.deepEqual(scheduleAdvisory(win, new Date("2026-09-11T18:15:00.000Z")).overlaps, []);
+  // UTC 2026-09-10T17:15Z = UTC+8 周五 01:15：锚 01:00，修复前线性溢出仅达 08:00 → 原本即空
+  assert.deepEqual(scheduleAdvisory(win, new Date("2026-09-10T17:15:00.000Z")).overlaps, []);
+  // UTC 2026-09-11T10:15Z = UTC+8 周五 18:15：锚=窗头 19:00，整窗枚举不触发回卷 → 空集
+  assert.deepEqual(scheduleAdvisory(win, new Date("2026-09-11T10:15:00.000Z")).overlaps, []);
+});
+
 // ── doctor 真实 stdout 面 ───────────────────────────────────────────────────
 const pad = (n) => String(n).padStart(2, "0");
 const line = (stdout, name) => (stdout ?? "").split("\n").find((l) => new RegExp(`^\\s*\\S\\s+${name}\\s`).test(l));
@@ -104,8 +116,8 @@ test("doctor schedule：集中段 fixture → warn 建议窗口行（与 rate-li
     const sched = line(out, "schedule");
     assert.ok(sched, "doctor 输出应含 schedule 行");
     assert.match(sched, /建议自动化窗口：本地 19:00–03:00/); // 集中段 10–13 → 净弧中央 8h
-    // 计价维度（窗 19–03 与高峰表整数小时集不相交，任何执行日都确定）：
-    // 安全窗句必在场；高峰重叠告警必缺席
+    // 计价维度（窗 19–03 与高峰表整数小时集不相交，任何执行日都确定；且 R6F-1 修复后
+    // 枚举沿窗弧回卷不溢出窗外，锚落窗尾波段同样不再伪报）：安全窗句必在场；高峰重叠告警必缺席
     assert.match(sched, /计价安全窗：每日 23:00–09:00/);
     assert.match(sched, /UTC\+8，人工维护/);
     assert.doesNotMatch(sched, /高峰计价/);

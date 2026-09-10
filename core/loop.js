@@ -137,31 +137,35 @@ export function registerGoal(cwd, slug, title) {
     throw new LoopError(`slug 不合法：${slug}（仅字母数字与连字符，≤64 字符）`);
   }
   if (!title?.trim()) throw new LoopError("目标标题不能为空（--title）");
-  const existing = readGoal(cwd);
-  if (existing && ACTIVE_STATES.has(existing.status)) {
-    throw new LoopError(
-      `已有进行中的目标 ${existing.slug}（${existing.status}）；先 finish/abandon，或 lzy loop reset`,
-    );
-  }
-  if (existing) {
-    throw new LoopError(
-      `已存在目标状态 ${existing.slug}（${existing.status}，含证据档案）；lzy loop reset 清除后再注册`,
-    );
-  }
-  const goal = {
-    version: GOAL_VERSION,
-    slug,
-    title: title.trim(),
-    status: "planning",
-    planPath: null,
-    createdAt: new Date().toISOString(),
-    startedAt: null,
-    finishedAt: null,
-    baseTreeHash: null,
-    steps: [],
-  };
-  writeGoal(cwd, goal);
-  return goal;
+  // 查重+写入同一临界区（评审 R6A-1）：并发 register 双方 readGoal 均 null 时
+  // 各自 writeGoal 原子覆盖，先注册的目标无痕丢失——唯一漏网的 goal.json 变更操作补齐入锁。
+  return withLock(cwd, () => {
+    const existing = readGoal(cwd);
+    if (existing && ACTIVE_STATES.has(existing.status)) {
+      throw new LoopError(
+        `已有进行中的目标 ${existing.slug}（${existing.status}）；先 finish/abandon，或 lzy loop reset`,
+      );
+    }
+    if (existing) {
+      throw new LoopError(
+        `已存在目标状态 ${existing.slug}（${existing.status}，含证据档案）；lzy loop reset 清除后再注册`,
+      );
+    }
+    const goal = {
+      version: GOAL_VERSION,
+      slug,
+      title: title.trim(),
+      status: "planning",
+      planPath: null,
+      createdAt: new Date().toISOString(),
+      startedAt: null,
+      finishedAt: null,
+      baseTreeHash: null,
+      steps: [],
+    };
+    writeGoal(cwd, goal);
+    return goal;
+  });
 }
 
 // ── 2. 计划门：解析 N/F 清单，决策完备（无待定）才放行 ────────────────────
@@ -515,18 +519,24 @@ export function handoffGoal(cwd, snapshot, treeHash) {
   if (Date.now() - mtimeMs > HANDOFF_SNAPSHOT_MAX_AGE_MS) {
     throw new LoopError(`交接快照已过期（mtime 超过 24h）：${snapAbs}（更新快照后重新登记）`);
   }
-  const marker = {
-    snapshot: snapAbs,
-    treeHash: typeof treeHash === "string" ? treeHash : null,
-    requestedAt: new Date().toISOString(),
-  };
-  const p = handoffPath(cwd);
-  const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(tmp, `${JSON.stringify(marker, null, 2)}\n`);
-  renameSync(tmp, p); // 原子落盘：与 Stop 侧 unlink 消费的互斥由文件系统原子性保证
-  incMetrics(cwd, "registered"); // 永不抛（契约见上）——登记不因计数失败而失败
-  return marker;
+  // 写入入锁（评审 R6A-3）：锁外交写与 resetLoop 锁内 cleanupLoopResidue 的 rm handoff.json
+  // 交错会留孤儿标记——下一目标首个 Stop 被误放行。锁内重查 executing 保证「goal 在场」
+  // 与「标记落盘」同一临界区（对 Stop 侧 unlink 消费的原子性不受影响）。
+  return withLock(cwd, () => {
+    requireActive(cwd, "executing");
+    const marker = {
+      snapshot: snapAbs,
+      treeHash: typeof treeHash === "string" ? treeHash : null,
+      requestedAt: new Date().toISOString(),
+    };
+    const p = handoffPath(cwd);
+    const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(tmp, `${JSON.stringify(marker, null, 2)}\n`);
+    renameSync(tmp, p); // 原子落盘：与 Stop 侧 unlink 消费的互斥由文件系统原子性保证
+    incMetrics(cwd, "registered"); // 永不抛（契约见上）——登记不因计数失败而失败
+    return marker;
+  });
 }
 
 export function resetLoop(cwd, git) {

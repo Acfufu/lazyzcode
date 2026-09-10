@@ -30,10 +30,12 @@
 - **传输死亡诊断面已落地（2026-09-10，goal doctor-transport-deaths，ADR-0008）**：doctor `transport` 行与限流分族计数（errno 主判据在 statusMessage——实锤 ENETDOWN 事故 reason=unknown，按 reason 白名单必漏触发事故本身；fake-ip 198.18.0.0/15 命中给 TUN 直连提示；绝不进并发带/错峰窗数学）；429 谓词零语义变化（真日志基线 diff 字段级为空作护栏）；69/69 测试绿。
 - **会话失控护栏已落地（2026-09-10，goal incident-guardrails，ADR-0009/决策 #22）**：Stop 交接放行（`lzy loop handoff` 目录级匿名标记+unlink 原子消费+放行不耗预算，消费清振数防重入误振）+ PostToolUseFailure 空转绊线（`^mcp__` TTL 连击 warn 一次，hooks:4→5）+ status files 逐文件 sha256 内容比对（路径集合比对对「文件在而内容过期」失明——09-09 事故实锤）+ zw SKILL.md 工具空转逃逸契约；源起 sess_95421d3d 空转事故，探针活体实证 Failure 注入通道；86/86 测试绿；顺手修 writeSessionCounter 潜伏 bug（全收口 finish 提醒自 0.0.2 必炸走 failOpen）。
 - **证据对照与工件回收已落地（2026-09-10，goal comparator-salvage，费马启示三件包）**：HEAVY finish 前派 qa-executor 证据对照（断言×证据逐对判匹配/不匹配，协议级阻断，CLI/doctor 零代码）+ 步骤自含指引与评审 WARN 检查点 + reset/abandon 盘点可回收工件入存根（status 双分支读面）+ 依赖图并行认领记债（决策 #21，ADR-0004 修正案二）；74/74 测试绿、锚点双语 21/21。
-- **无人值守真实挂载（2026-09-10）**：宿主自动化 automation-a8aba356 挂 lazyzcode 工作区（cron `0 23,0-8 * * *` 十整点），时刻表依据计价地图而非纯限流反推——GLM 高峰周一至五 14–18 + 夜间 23–09 Flash 不限量 ∩ DeepSeek 高峰 9–12/14–18；人肉冒烟四环验证通过（唤起消息逐字/触发词装载/读盘/干净退出）。ADR-0003 的「用户配宿主自动化」自此发生。
+- **无人值守真实挂载（2026-09-10）**：宿主自动化 automation-a8aba356 挂 lazyzcode 工作区（cron `0 23,0-8 * * *` 十整点），时刻表依据计价地图而非纯限流反推——GLM 高峰周一至五 14–18 + 夜间 23–09 Flash 不限量 ∩ DeepSeek 高峰 9–12/14–18；人肉冒烟四环验证通过（唤起消息逐字/触发词装载/读盘/干净退出）。ADR-0003 的「用户配宿主自动化」自此发生。**09-11 整夜三目标连发实证收官**（8 次整点唤起链式推进：narrative-pricing-alignment reset 00:31 → dual-review-r6 finish+reset 04:56 → r6-fix-round 注册起全链 N1–N6+comparator finish 06:27，尾注全合规、证据包自动归档、done 占槽空转唤起干净退出）；同日用户拍板暂停挂载（自动化已删、槽位已 export+reset，复挂待限流扫描体积预算修复目标落地，唤起协议见 zw SKILL.md Unattended 段）。
 - **doctor schedule 计价感知已落地（2026-09-10，goal doctor-schedule-pricing，ADR-0003 修正案）**：scheduleAdvisory 升级「限流错峰 ∩ 计价感知」——PEAK_WINDOWS/SAFE_WINDOW 写死本地（UTC+8、人工维护、活动期免责），候选窗逐小时对照输出重叠段+安全窗，now 注入沿 bandAdvisory 先例；首验即活体演示修正价值（旧 09–17 建议全落高峰零提示）；评审门 REVISE 抓 e2e 周几漂移（重叠句真值收归固定 now 纯函数测试）；94/94 中 92 绿（2 失败=既有环境 flake：引擎探测子进程写日志污染空 HOME e2e，stash 实证记债）。
 - **放行可观测与跨仓清单已落地（2026-09-10，goal handoff-meter-crossrepo-list）**：交接放行匿名计数（`.lazyzcode/loop/metrics.json` registered/consumed，目录级匿名无会话身份、无锁近似 ≥ 语义、跨 reset 永续、status/doctor 双面读）+ `lzy loop list [--root]` 跨仓目标清单（只读旁视、每仓独立容错、executing 前置）+ 疤痕巡逻豁免清单全枚举（salvage/metrics.json/空 sessions——F3 取证显形既有缺口）；狗粮依据=7/12 会话拉回预算打满而消费痕迹为零；93/93 测试绿。
 - **README 叙事面计价措辞收口已落地（2026-09-10，goal narrative-pricing-alignment）**：README 双语八处 schedule 表述跟齐「限流实测 ∩ 计价高峰对照」口径（镜像 guide 已发文案；评审门抓出 doctor 段 zh 第 8 处漏点，F1 断言组对位补齐）+ 叙事 checklist 六类计数位点回归（顺手修双语 README 架构树「hooks 4 个」残留→5）；纯文档零代码；公开/publish/push 留用户。
+- **第六轮高精度双审核已落地（2026-09-11，goal dual-review-r6）**：A/B 双审沿 09-06 家法，按限流纪律降并行为串行单发+探针收窄（偏差如实记入报告方法论节）；**14 发现 0P0/1P1/5P2/8P3（含 F1 终验实跑翻出的元发现），14/14 主代理亲核**——P1=README 双语安装主路径 `npm view lazyzcode` 404 无未发布提示（随发布自消解）、P2=registerGoal 唯一无锁 goal.json 变更（R2-5 漏网）/裸 status 遇损坏 goal.json 丢全部诊断/handoff 锁外交写×reset 锁内清理孤儿标记竞态/决策#7 description_i18n 从未落地/R6F-1 overlapSegments 窗尾锚线性枚举溢出窗外误报「窗内落高峰计价」（工作日 02–03 时波段，固定 now 四对照实锤，恰是无人值守活跃时段）；红线九靶全过（引擎源码实证 continue:false 不入 3 池，债务⑥升源码级消解）；六类计数位点零漂移、历史处置 16 抽查零虚记、cache 载荷字节级一致、债③实证为确定性测试隔离缺陷非随机 flake；报告 `docs/reviews/2026-09-11-r6-dual-review.md`，修复另立目标；94 中 91 绿（=2 既有 flake+R6F-1 波段失败，皆已入账）。
+- **R6 修复轮 P2 五条已收口（2026-09-11，goal r6-fix-round）**：registerGoal 查重+写入入锁（并发双 null 互覆盖竞态闭环）/status 遇损坏 goal.json 单项降级 warn（对齐 doctor fail-soft，warn 不翻码=criticalFail 既有语义）/handoffGoal 写入入锁（×reset 孤儿标记竞态闭环，锁外预检防疤痕保持）/决策 #7 订正「manifest 单语 description，双语由 docs 站承载」（P1 README 未发布提示拍板不加、随发布自消解）/overlapSegments 沿窗弧回卷枚举（窗尾锚溢出伪报+漏检同根治，回卷点断段防跨日伪合并，固定 now 四对照钉）；各配持锁/损坏/回卷回归钉。新发现记账（修复另立目标）：`loop start`/doctor 限流扫描近两日引擎日志无体积预算（实测 263MB 扫 18-50s），无人值守活跃段 e2e 全链确定性超 60s spawn 预算（债③家族新形态，干净树 stash 实证非本轮回归）。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 
@@ -56,7 +58,7 @@
 | 4 | 产品形态 | **插件 + 轻量 CLI**（Stop≤3 等硬约束推出，见 §3） |
 | 5 | 命名 | 项目 **LazyZCode**；npm 包 `lazyzcode`；CLI 命令 `lzy`；触发词 **`zw` 主词 + `ulw`/`ultrawork` 兼容别名** |
 | 6 | 状态目录 | **`.lazyzcode/`**（plans/drafts/loop/evidence；与宿主 `.zcode/` 划清边界） |
-| 7 | 技能文本语言 | **英文 SKILL.md + 中文文档**；manifest `description_i18n` 折中 |
+| 7 | 技能文本语言 | **英文 SKILL.md + 中文文档**；manifest 单语 description，双语由 docs 站承载（R6B-2 订正 2026-09-11：原 `description_i18n` 折中从未落地） |
 | 8 | P3 范围 | **只整合现有资产**：codegraph 接线、comment-checker（PostToolUse 轻钩子）、内置 browser-use 取证面、原生 scheduler 记入备选；规则注入钩子已砍 |
 | 9 | 遥测 | **完全无遥测**；诊断由 `lzy doctor` 本地输出承担 |
 | 10 | 验证排期 | 三 spike 已完成（2026-09-06）：Edit / 四风格装载 / Stop 注入与 ≤3 硬顶均实证，详见 `docs/spikes/p0-day1.md` |

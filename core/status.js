@@ -171,16 +171,22 @@ export async function collectStatus() {
     push("enabled", "skip", "无法判定（引擎调用层不可用）");
   }
 
-  const goal = readGoal(process.cwd());
-  if (!goal || goal.status === "abandoned") {
-    push("loop", "skip", "本目录无进行中的目标循环（lzy loop register 开始）");
-  } else {
-    const done = goal.steps.filter((s) => s.status === "done").length;
-    push(
-      "loop",
-      goal.status === "done" ? "ok" : "warn",
-      `${goal.slug} · ${goal.status} · ${done}/${goal.steps.length} 步`,
-    );
+  // 损坏分诊降级（评审 R6A-2）：readGoal 对 version≠1 快败抛 LoopError，裸奔会炸掉
+  // 整套 status（已完成检查全部丢弃）——对齐 doctor 侧 fail-soft 兜底，单项降级不连坐。
+  try {
+    const goal = readGoal(process.cwd());
+    if (!goal || goal.status === "abandoned") {
+      push("loop", "skip", "本目录无进行中的目标循环（lzy loop register 开始）");
+    } else {
+      const done = goal.steps.filter((s) => s.status === "done").length;
+      push(
+        "loop",
+        goal.status === "done" ? "ok" : "warn",
+        `${goal.slug} · ${goal.status} · ${done}/${goal.steps.length} 步`,
+      );
+    }
+  } catch (err) {
+    push("loop", "warn", `goal 状态不可读：${err.message}`);
   }
   // 交接读面（ADR-0009）置于 goal 分支之外：标记残留与放行计数恰在无 goal 时最该可见
   // （跨 reset 永续的计数，回收主时刻=回看使用率时刻）。标记在场=warn 仅为可见性（不翻退出码）；

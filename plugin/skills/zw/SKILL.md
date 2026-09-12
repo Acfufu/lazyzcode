@@ -111,6 +111,11 @@ lzy step done N1 --note "<what was done, one line>"
 
 - **Edit discipline**: Edit tool `old_string` must carry the file's exact original
   indentation — lenient fallback silently rewrites indentation style.
+- **Attempt notes (换路注记)**: redoing a step with a different approach — failed
+  path abandoned — must leave a one-line note under that plan entry:
+  `- [!] attempt <n>: dropped <approach A> because <reason>; switching to <B>`.
+  The plan file is the attempt history; a fresh claimer must not re-walk a
+  falsified path.
 - **Commit before evidence**: evidence binds to `git rev-parse HEAD^{tree}`;
   uncommitted changes are invisible to the hash. Commit your step, then verify.
 

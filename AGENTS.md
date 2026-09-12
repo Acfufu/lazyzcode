@@ -38,6 +38,7 @@
 - **R6 修复轮 P2 五条已收口（2026-09-11，goal r6-fix-round）**：registerGoal 查重+写入入锁（并发双 null 互覆盖竞态闭环）/status 遇损坏 goal.json 单项降级 warn（对齐 doctor fail-soft，warn 不翻码=criticalFail 既有语义）/handoffGoal 写入入锁（×reset 孤儿标记竞态闭环，锁外预检防疤痕保持）/决策 #7 订正「manifest 单语 description，双语由 docs 站承载」（P1 README 未发布提示拍板不加、随发布自消解）/overlapSegments 沿窗弧回卷枚举（窗尾锚溢出伪报+漏检同根治，回卷点断段防跨日伪合并，固定 now 四对照钉）；各配持锁/损坏/回卷回归钉。新发现记账（修复另立目标）：`loop start`/doctor 限流扫描近两日引擎日志无体积预算（实测 263MB 扫 18-50s），无人值守活跃段 e2e 全链确定性超 60s spawn 预算（债③家族新形态，干净树 stash 实证非本轮回归）。
 - **限流扫描体积预算 + 测试隔离收口已落地（2026-09-13，goal ratelimit-scan-budget）**：`collectRateLimitStats` 加 64MB/文件尾部读 + 10s 时间盒（truncation 字段如实标注，doctor rate-limit 行与 loop start 并发纪律行透出，样本可信度声明在 300 字符预算内优先于集中段/游程；小 fixture 输出零语义变化护栏钉）+ 债③根治（doctor 的引擎探测子进程 mid-run 向 scratch log 写当天日志——活体实证——测试 spawn 统一 `LZY_ZCODE_ENGINE` 抑制，3 轮 19/19 零翻）+ 三 e2e helper 隔离 HOME（e2e 不再随宿主日志量波动；R6A-2 改对照式断言消除「本机已安装」隐性依赖）；ADR-0010（unbound wake）+ plan-v2 成本评审报告 + ablation #5 随 N1 入库。
 - **plan-v2 开工批次已落地（2026-09-13，goal plan-v2-phase2）**：Phase 2 六项（finish 埋点+证据 rebind 痕迹 / `lzy loop cost` 积分报表[常设系数+促销 overlay，hostdb 唯一 spawn 豁免] / 水位警戒线[定标 1600+env 覆盖] / orphan-wake doctor 检查 / handoff 加固[2h+7 字段 lint+认领 48h TTL] / 无人值守哨兵旗标+wake_noop）+ Phase 1 提示词层（C no-op 判据/续命三面订正/7 字段快照模板与脏树继承/Unattended 卫生两条/D 复审契约）；开工四题拍板（水位常数+env、cost 常设+overlay、veto 基线落地即起算、0.0.3 不发布直接 0.0.4）补录 plan-v2 报告 §3。
+- **pisper 吸收批次已落地（2026-09-13，goal pisper-absorption）**：注入确定性不变量（五钩子双跑契约钉，prompt cache 前缀敏感）+ 绊线指路（search_tools 窄激活）+ 换路注记（attempt note 入 §8）+ `lzy loop history` 谱系读面（证据包 ∪ 存根 ∪ git 尾注三源并集只读）+ 回执配方与竞品观察信号两文档（pisper 报告吸收，Turn 分支/三端/自扩展/版本列车/P2P 五项定案不做）。
 
 ## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
 
@@ -73,7 +74,7 @@
 | 18 | 透明账本 | **提交尾注 `Goal: <slug>#<步号>`**（人和 AI 遵守，历史不补）+ doctor `ledger` 行巡逻覆盖率（warn-only）；证据 opt-in 入库（计划声明+人点头→docs/evidence/）；AI 署名不加（ADR-0005，2026-09-09） |
 | 19 | 宿主工作区 | **跨仓目标循环寄宿主仓**：`.lazyzcode/` 与 `lzy` 只在宿主根，严格 cwd 不 walk-up；写命令 fail-fast（防空壳疤痕，reset 豁免）+ 无 goal 出口恢复式报错；证据时效门只见宿主树（多树绑定记债，升格=跨仓漏判误 finish）；ADR-0006（2026-09-09） |
 | 20 | 已知未知与消融 | **HEAVY 计划强制「已知未知」节**（未验证前提≠推迟决策，1–3 条各带证伪途径，「无」须一行说明）+ 影子消融记账（评审差集按 P0-P3；预注册判据：连续 5 HEAVY 目标独有 P1/P2≈0 → 只许「维持现状或真消融终审」绝不降档）；门禁词黑名单不动（ADR-0007，2026-09-09） |
-| 21 | 依赖图并行认领 | **记债不实现**：计划依赖边+无阻塞步认领（同目标多工人，worktree 覆盖不了的形态）；升格触发器=并行带实测≥2/同目标撞槽再发/多模型分发现实化，前置件=角色指模型走宿主目录（§3.5 不推翻）+doctor 按 provider 分桶测带（ADR-0004 修正案二，2026-09-10） |
+| 21 | 依赖图并行认领 | **记债不实现**：计划依赖边+无阻塞步认领（同目标多工人，worktree 覆盖不了的形态）；升格触发器=并行带实测≥2/同目标撞槽再发/多模型分发现实化，前置件=角色指模型走宿主目录（§3.5 不推翻）+doctor 按 provider 分桶测带；需求侧证据：pisper premise=并行会话编排、vibe-kanban 28.1k★/happy 23.8k★（2026-09-13 实取，docs/research-competitor-watch.md）（ADR-0004 修正案二，2026-09-10） |
 | 22 | 交接放行 | **目录级匿名标记+原子消费**：模型收尾前 `lzy loop handoff --snapshot <file>` 落 `loop/handoff.json`，Stop 一次性 unlink 消费（恰一赢家）后显式 `continue:false` 放行——不入 3 池不耗预算；消费清本会话振数/stuck；匿名=模型在 Bash 拿不到自己 sessionId，拒绝一切转抄身份设计；滥用对冲=快照必填（存在+mtime≤24h）；多认领撞窗记已知边界（ADR-0009，2026-09-10） |
 
 ## 5. 设计宪法与红线
@@ -117,6 +118,7 @@ artifacts/                   ← 本地产物（已 gitignore，不入库）
 **证据（evidence）**：绑定 tree hash 的真实表面取证（HTTP 返回/截图/CLI stdout）。_Avoid_: 测试结果（测试全绿≠证据）
 **tree hash**：`git rev-parse "HEAD^{tree}"` 的内容快照哈希；代码一变，旧证据作废。_Avoid_: commit hash（不同物）
 **实现项 / 终验项（N 项 / F 项）**：计划行语法的两类条目；F 项强制真实表面证据。_Avoid_: 普通 todo
+**换路注记（attempt note）**：步骤重做（换方案/返工）时在计划文件对应条目下追加的一行弃用账——第几次尝试、为何弃用、改走何路；计划文件即尝试历史，接手会话不重蹈已证伪路径。_Avoid_: 重试日志、返工备注（无格式无归属）
 **tier（轻重分级）**：LIGHT 默认精简 / HEAVY 全套纪律；只升不降。_Avoid_: 模式切换
 **决策完备（decision-complete）**：计划无任何「待定」，执行者无需再问即可开工。_Avoid_: 草稿
 **触发词（trigger）**：`zw` 主词；`ulw` / `ultrawork` 为兼容别名。_Avoid_: 单用 ulw 指代本项目触发词

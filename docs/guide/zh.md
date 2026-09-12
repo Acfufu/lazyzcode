@@ -191,6 +191,7 @@ lzy loop finish                         # 终验门
 lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次
 lzy loop cost                           # 积分成本报表（常设系数+促销 overlay，只读）
 lzy loop list [--root <目录>]           # 只读扫同级仓的目标循环
+lzy loop history                        # 目标谱系（证据包∪存根∪尾注，只读）
 lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 ```
 
@@ -298,6 +299,9 @@ UTC+8 静态表、人工维护）标注重叠并给出计价安全窗。计价�
 新目标、绝不写或采纳计划，因为决策完备门需要人。没有可继续的目标就干净退出；
 唤起本身受续跑预算、429 判死、串行子代理、≥1 小时间隔约束。
 
+夜间战报不必等开电脑：把结果推到**你自己的** IM 机器人 webhook（零服务端，
+`lzy` 不内置任何通知通道），配方见[无人值守回执](../unattended-notify.md)。
+
 ## 纪律角色
 
 三只只读角色随插件 `agents/` 目录分发，引擎自动发现。用 Agent 工具以角色作
@@ -370,6 +374,7 @@ lzy loop finish                 终验门：全部 done + 全部证据新鲜；�
 lzy loop export                 重导出证据包（<slug>.report.md）
 lzy loop cost                   积分成本报表（常设系数+促销 overlay，只读）
 lzy loop list [--root <目录>]   跨仓目标循环清单（只读）
+lzy loop history                目标谱系（证据包∪存根∪尾注，只读）
 lzy loop abandon                放弃，留档
 lzy loop reset                  清循环状态（含会话计数、孤儿临时文件）
 lzy agents-md                   AGENTS.md 分层审计（退出码 1 = 缺口/超限）

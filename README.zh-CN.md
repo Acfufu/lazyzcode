@@ -107,6 +107,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | 证据包 | `lzy loop export` | 重导出证据包（`<slug>.report.md`）；`finish` 时亦自动归档 |
 | 交接 | `lzy loop handoff --snapshot <文件>` | 登记干净交接——下个 Stop 放行一次，不消耗续跑预算 |
 | 跨仓清单 | `lzy loop list [--root <目录>]` | 只读扫同级仓的目标循环（状态/进度/认领/新鲜度/存根）；匿名放行计数跨 reset 永续 |
+| 目标谱系 | `lzy loop history` | 只读并集证据包 ∪ salvage 存根 ∪ git 尾注——每个历史目标的状态、提交数与最近活动 |
 | 积分报表 | `lzy loop cost` | 引擎本地计费账本折积分（常设系数+带日期促销 overlay；目标归因简化 OR+人工复核行；只读） |
 | `agents-md` | `lzy agents-md` | 项目记忆审计：够格目录与覆盖缺口 |
 | `uninstall` | `lzy uninstall` | 删除已部署缓存与注册表条目 |

@@ -379,7 +379,9 @@ export function transportAdvisory(stats) {
 
 // 平台高峰计价表（小时为 UTC+8 墙钟；days 为 UTC+8 周几 1=周一…5=周五；半开 [start,end)）
 // 维护时对照官方文档逐条更新并保留源：GLM https://docs.bigmodel.cn/cn/coding-plan/overview
-//   （高峰周一至五 14–18；另有夜间活动每日 23–09：GLM-5.3-Flash 不限量/其他翻倍——活动期条款，记入 SAFE_WINDOW）
+//   （高峰周一至五 14–18；另有「夜间畅用活动」2026-09-03 至 09-20 每日 23–09：ZCode 内
+//    GLM-5.3-Flash 额度消耗 0、Flash 经其他 Agent ×2、GLM-5.3 按标准规则——源
+//    docs.bigmodel.cn/cn/coding-plan/notice/event-glm-5.3-flash，记入 SAFE_WINDOW）
 // DeepSeek https://api-docs.deepseek.com/zh-cn/quick_start/pricing/（高峰周一至五 9–12 与 14–18）
 const PEAK_WINDOWS = [
   { label: "GLM", days: [1, 2, 3, 4, 5], start: 14, end: 18 },
@@ -388,7 +390,7 @@ const PEAK_WINDOWS = [
 ];
 // 计价安全窗（每日，无周几维度）：GLM 夜间活动时段 ∩ 两家共同非高峰
 const SAFE_WINDOW_TEXT =
-  "计价安全窗：每日 23:00–09:00（GLM 夜间活动：Flash 不限量/其他翻倍，活动期条款以官方文档为准）";
+  "计价安全窗：每日 23:00–09:00（GLM 夜间畅用活动至 09-20：ZCode 内 Flash 额度消耗 0，活动期条款以官方文档为准）";
 
 // 纯 UTC 换算：now 对应的 UTC+8 小时与周几（day: 0=周日…6=周六）。与本地时区无关。
 export function utc8HourDay(now) {

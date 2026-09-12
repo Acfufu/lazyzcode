@@ -93,5 +93,32 @@ export function createGit(cwd) {
         .map((line) => line.trim())
         .filter(Boolean);
     },
+    // 全期尾注按 slug 聚合（pisper-absorption#N4 谱系读面）：全 history 扫描，
+    // 区别于 goalLedger 的 --since 有界。尾注须正文独立行（ADR-0005 铁律），
+    // /^Goal: <slug>#/m 提取；返回 Map：slug → { commits, lastAt(committer ISO 或 null) }。
+    // git 不可用/非 git 仓库时返回 null（调用方按「无 git 面」降级）。
+    trailersBySlug() {
+      const r = spawnSync("git", ["log", "--format=%x1e%cI%x1f%B"], {
+        cwd,
+        shell: false,
+        timeout: 10_000,
+        encoding: "utf8",
+      });
+      if (r.error || r.status !== 0) return null;
+      const bySlug = new Map();
+      const entries = (r.stdout ?? "").split("\x1e").filter((chunk) => chunk.trim());
+      for (const entry of entries) {
+        const nl = entry.indexOf("\x1f");
+        const date = entry.slice(0, nl).trim();
+        const body = entry.slice(nl + 1);
+        const m = body.match(/^Goal: (\S+?)#\S*$/m);
+        if (!m) continue;
+        const prev = bySlug.get(m[1]) ?? { commits: 0, lastAt: null };
+        prev.commits += 1;
+        if (date && (!prev.lastAt || date > prev.lastAt)) prev.lastAt = date;
+        bySlug.set(m[1], prev);
+      }
+      return bySlug;
+    },
   };
 }

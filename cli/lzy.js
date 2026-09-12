@@ -15,6 +15,7 @@ import {
   completeStep,
   exportReport,
   finishLoop,
+  formatHistory,
   formatRepoList,
   formatStatus,
   handoffGoal,
@@ -258,12 +259,16 @@ async function cmdLoop(args) {
       // 只读跨仓诊断（never-throw 读面）：扫锚目录一级子目录的循环状态。
       console.log(formatRepoList(cwd, typeof f.root === "string" ? f.root : null));
       return;
+    case "history":
+      // 目标谱系读面（pisper-absorption#N4，只读）：证据包 ∪ salvage 存根 ∪ git 尾注三源并集。
+      console.log(formatHistory(cwd, git));
+      return;
     case "cost":
       // 积分成本报表（plan-v2 Phase 2-2，只读）：账本缺席/sqlite3 缺席均降级输出不翻码。
       console.log(formatCost(cwd, readGoal(cwd)));
       return;
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/list/cost/verify/finish/export/abandon/reset/handoff）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/list/history/cost/verify/finish/export/abandon/reset/handoff）`);
   }
 }
 
@@ -337,6 +342,8 @@ function printHelp() {
   lzy loop status                           查看进度与下一步
   lzy loop list [--root <目录>]             跨仓清单（只读）：扫锚目录一级子目录各仓的循环
                                             状态（默认锚=当前目录的同级，含自身）
+  lzy loop history                         目标谱系（只读）：证据包 ∪ salvage 存根 ∪ git
+                                            尾注三源并集，按最近活动排序
   lzy loop cost                             积分成本报表（只读计费账本折算：常设系数+促销
                                             overlay 自动回落；目标归因为简化 OR+人工复核口径）
   lzy step done <ID> [--note …] [--evidence …] [--evidence-file <文件>]…

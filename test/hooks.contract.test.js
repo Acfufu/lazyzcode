@@ -438,6 +438,7 @@ test("wake_noop 遥测（plan-v2 Phase 2-6）：零推进收场计数、有推�
     hook("stop.js", { sessionId: "w", cwd: d1 });
     hook("stop.js", { sessionId: "w", cwd: d1 });
     hook("stop.js", { sessionId: "w", cwd: d1 });
+    hook("stop.js", { sessionId: "w", cwd: d1 }); // stuck 后重复 stop：单次护栏不再累加
     assert.equal(metricsOf(d1).wake_noop, 1);
     // 有推进到预算耗尽：不算（会话全程基线比较，非末段振数）
     goalAt(d2, "executing", steps2);
@@ -470,5 +471,72 @@ test("wake_noop 遥测（plan-v2 Phase 2-6）：零推进收场计数、有推�
     assert.equal(metricOr(d3, "consumed"), 1);
   } finally {
     cleanup(d1, d2, d3);
+  }
+});
+
+test("确定性钉：五钩子同状态双跑 stdout 逐字节一致（hook-lib 注入不变量）", () => {
+  // 同一会话状态 → 同一字节输出（hook-lib.js 头注释不变量，GLM prompt cache 前缀比对敏感）。
+  // 有状态钩子（trigger 认领写/tripwire warn-once/stop 计数）每轮重建同构状态目录——
+  // 否则测到的是合法状态演进而非不确定性；五例都断言产出非空注入（防 {}=={} 空过）。
+  const now = Date.now();
+  const cases = [
+    {
+      name: "session-start.js",
+      seed: (d) => goalAt(d, "executing"),
+      drive: (d) => hook("session-start.js", { cwd: d }),
+    },
+    {
+      name: "trigger.js",
+      seed: (d) => {
+        goalAt(d, "executing");
+        counterAt(d, "s", 0);
+      },
+      drive: (d) => hook("trigger.js", { prompt: "zw 继续推进当前步骤", cwd: d, session_id: "s" }),
+    },
+    {
+      name: "comment-checker.js",
+      seed: (d) => goalAt(d, "executing"),
+      drive: (d) =>
+        hook("comment-checker.js", { cwd: d, tool_name: "Write", tool_input: { content: "// TODO 待办\nconst a=1;" } }),
+    },
+    {
+      name: "tripwire.js",
+      seed: (d) => {
+        goalAt(d, "executing");
+        mkdirSync(join(d, ".lazyzcode", "loop", "sessions"), { recursive: true });
+        writeFileSync(
+          join(d, ".lazyzcode", "loop", "sessions", "s.json"),
+          JSON.stringify({ toolFail: { tool: "mcp__codegraph__codegraph_explore", count: 1, warned: false, lastAt: now } }),
+        );
+      },
+      drive: (d) =>
+        hook("tripwire.js", {
+          session_id: "s",
+          cwd: d,
+          tool_name: "mcp__codegraph__codegraph_explore",
+          error: "Tool execution timed out after 30000ms",
+          is_interrupt: false,
+        }),
+    },
+    {
+      name: "stop.js",
+      seed: (d) => {
+        goalAt(d, "executing");
+        counterAt(d, "s", 0);
+      },
+      drive: (d) => hook("stop.js", { sessionId: "s", cwd: d }),
+    },
+  ];
+  for (const { name, seed, drive } of cases) {
+    const dirs = [scratch(), scratch()];
+    try {
+      for (const d of dirs) seed(d);
+      const o1 = drive(dirs[0]).out;
+      const o2 = drive(dirs[1]).out;
+      assert.ok(o1.length > 2 && o1 !== "{}", `${name} 双跑首趟应产出非空注入（防空过）`);
+      assert.equal(o1, o2, `${name} 双跑输出不一致——注入文本必须确定性（hook-lib.js 头注释不变量）`);
+    } finally {
+      cleanup(...dirs);
+    }
   }
 });

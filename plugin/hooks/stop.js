@@ -163,8 +163,15 @@ try {
       const stallCount =
         state.lastDoneCount === null || progressed ? 0 : state.stallCount + 1;
       if (stallCount >= 2) {
-        writeSessionState(cwd, sessionId, { stallCount, stuck: true });
-        if (state.unattended && doneCount === state.firstPullDone) {
+        // 账面按会话计一次（wakeNoopCounted 护栏）：stuck 后的重复 stop 不再累加
+        const countNoop =
+          state.unattended && doneCount === state.firstPullDone && !state.wakeNoopCounted;
+        writeSessionState(cwd, sessionId, {
+          stallCount,
+          stuck: true,
+          ...(countNoop ? { wakeNoopCounted: true } : {}),
+        });
+        if (countNoop) {
           incMetrics(cwd, "wake_noop"); // 无人值守会话零推进收场的账面（plan-v2 Phase 2-6）
         }
         return {
@@ -179,8 +186,15 @@ try {
         // 预算用尽：不请求续跑（引擎会照常结束会话），只留一条一次性上下文提示账目与余项。
         // continue:false 显式形态有引擎侧实锤：仅 continue===true 入 3 池（Z:460139-460157）。
         // 三处放行/弃拉（stuck/预算/交接）统一显式键，不赌省略形态。
-        writeSessionState(cwd, sessionId, { stallCount, stuck: false, lastDoneCount: doneCount });
-        if (state.unattended && doneCount === state.firstPullDone) {
+        const countNoop =
+          state.unattended && doneCount === state.firstPullDone && !state.wakeNoopCounted;
+        writeSessionState(cwd, sessionId, {
+          stallCount,
+          stuck: false,
+          lastDoneCount: doneCount,
+          ...(countNoop ? { wakeNoopCounted: true } : {}),
+        });
+        if (countNoop) {
           incMetrics(cwd, "wake_noop"); // 会话全程零推进到预算耗尽=空转 wake；有过推进不算
         }
         return {

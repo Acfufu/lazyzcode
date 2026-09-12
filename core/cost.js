@@ -25,19 +25,20 @@ export const PEAK_MULTIPLIER = 1.0;
 export const OFF_PEAK_MULTIPLIER = 0.5;
 
 // ── 促销 overlay（带日期区间的活动条款；退役/过期自然失效回落常设）。
-// 条目 = { label, fromMs, untilMs(不含), hours:[start,end) 可跨午夜(UTC+8), multipliers:{model|"*":×} }
-// overlay 生效窗内【取代】常设时段乘数——「退役后夜间只剩非高峰五折」的「只剩」措辞佐证
-// 活动期夜间不走五折，活动条款是独立计价而非折扣叠加。
-// 首条=GLM 夜间活动（源同上 + ratelimit.js SAFE_WINDOW 维护注释）：每日 23:00–09:00 UTC+8，
-// GLM-5.3-Flash 不限量（0 积分）、其他模型翻倍（×2）。退役边界按 2026-09-20 零点落表——
-// 精确时刻以官方页对账为准（known unknowns #1，业主核对后可修此行）。
+// 条目 = { label, fromMs, untilMs(不含), hours:[start,end) 可跨午夜(UTC+8), multipliers:{model:×} }
+// overlay 生效窗内【取代】常设时段乘数；map 无该模型键 → 回落常设（条款未提的模型不乱折）。
+// 首条=「夜间畅用活动」（官方公告：docs.bigmodel.cn/cn/coding-plan/notice/event-glm-5.3-flash，
+// 2026-09-13 业主提供原文核对）：2026-09-03 至 09-20 每日 23:00–次日 09:00（北京时间，含周末）——
+// ZCode 内 GLM-5.3-Flash 额度消耗 0；Flash 经其他 Agent 全部 ×2（本账本全为 ZCode 会话，不设键；
+// 若他源 Flash 行入库再补 provider 维度）；GLM-5.3 按套餐标准规则（=常设，不设键自然回落）。
+// 日期读法=夜间归属其开始日：fromMs 取首夜 09-03 23:00、untilMs 取末夜结束 09-21 09:00（不含）。
 export const OVERLAYS = [
   {
-    label: "GLM 夜间活动（Flash 不限量 / 其他翻倍）",
-    fromMs: Date.parse("2026-07-30T00:00:00+08:00"),
-    untilMs: Date.parse("2026-09-20T00:00:00+08:00"),
+    label: "GLM 夜间畅用活动 09-03～09-20（ZCode 内 Flash 额度消耗 0）",
+    fromMs: Date.parse("2026-09-03T23:00:00+08:00"),
+    untilMs: Date.parse("2026-09-21T09:00:00+08:00"),
     hours: [23, 9],
-    multipliers: { "GLM-5.3-Flash": 0, "*": 2 },
+    multipliers: { "GLM-5.3-Flash": 0 },
   },
 ];
 

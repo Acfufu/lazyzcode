@@ -29,28 +29,30 @@ test("常设时段乘数：GLM 高峰 ×1.0 / 非高峰五折 ×0.5（UTC+8 纯�
   assert.equal(standingMultiplier(Date.parse("2026-09-13T15:00:00+08:00")), 0.5); // 周末同时刻非高峰
 });
 
-test("促销 overlay：夜窗取代常设（Flash 0 / 其他 ×2）、窗外与退役后回落 null", () => {
+test("促销 overlay（官方公告核对版）：夜窗 ZCode 内 Flash 0、未设键模型回落常设、窗外与退役后 null", () => {
   const night = Date.parse("2026-09-12T23:30:00+08:00"); // 活动期夜间（跨午夜窗）
   assert.equal(overlayMultiplier("GLM-5.3-Flash", night), 0);
-  assert.equal(overlayMultiplier("GLM-5.3", night), 2);
-  assert.equal(overlayMultiplier("minimax-m2.7", night), 2); // "*" 兜底
-  assert.equal(overlayMultiplier("GLM-5.3", Date.parse("2026-09-13T08:59:00+08:00")), 2); // 窗尾 09 前一刻仍在窗
-  assert.equal(overlayMultiplier("GLM-5.3", Date.parse("2026-09-12T15:00:00+08:00")), null); // 白昼窗外
-  assert.equal(overlayMultiplier("GLM-5.3", Date.parse("2026-09-21T01:00:00+08:00")), null); // 9/20 退役后夜窗
+  assert.equal(overlayMultiplier("GLM-5.3", night), null); // 公告：GLM-5.3 按标准规则——不设键回落常设
+  assert.equal(overlayMultiplier("minimax-m2.7", night), null); // 条款未提的模型不乱折
+  assert.equal(overlayMultiplier("GLM-5.3-Flash", Date.parse("2026-09-13T08:59:00+08:00")), 0); // 窗尾 09 前一刻仍在窗
+  assert.equal(overlayMultiplier("GLM-5.3-Flash", Date.parse("2026-09-02T23:30:00+08:00")), null); // 首夜（9/3 夜）之前
+  assert.equal(overlayMultiplier("GLM-5.3-Flash", Date.parse("2026-09-12T15:00:00+08:00")), null); // 白昼窗外
+  assert.equal(overlayMultiplier("GLM-5.3-Flash", Date.parse("2026-09-21T08:59:00+08:00")), 0); // 末夜（9/20 夜）尾段仍有效
+  assert.equal(overlayMultiplier("GLM-5.3-Flash", Date.parse("2026-09-21T23:30:00+08:00")), null); // 9/21 夜：活动已过
 });
 
 test("computePoints：系数×乘数、夜窗取代、未计价模型如实缺表计 0", () => {
   const nightH = H("2026-09-12T23:00:00+08:00");
   const dayH = H("2026-09-13T15:00:00+08:00");
   const r = computePoints([
-    row({ sid: "a", model: "GLM-5.3-Flash", h: nightH, it: 1_000_000 }), // 2.3×0=0（不限量）
-    row({ sid: "a", model: "GLM-5.3", h: nightH, it: 1_000_000 }), // 6.9×2=13.8（翻倍）
+    row({ sid: "a", model: "GLM-5.3-Flash", h: nightH, it: 1_000_000 }), // ZCode 内 2.3×0=0
+    row({ sid: "a", model: "GLM-5.3", h: nightH, it: 1_000_000 }), // 标准规则=夜间非高峰 6.9×0.5=3.45
     row({ sid: "a", model: "GLM-5.3-Flash", h: dayH, it: 1_000_000 }), // 2.3×0.5=1.15（常设非高峰）
     row({ sid: "a", model: "minimax-m2.7", h: dayH, it: 1_000_000 }), // 未计价→0+提示集
   ]);
   assert.ok(r.unpricedModels.has("minimax-m2.7"));
-  assert.equal(Math.round(r.points * 100) / 100, 14.95);
-  assert.equal(Math.round(r.bySession.get("a") * 100) / 100, 14.95);
+  assert.equal(Math.round(r.points * 100) / 100, 4.6);
+  assert.equal(Math.round(r.bySession.get("a") * 100) / 100, 4.6);
 });
 
 test("OR 归因：时间窗 ∩（目录=本仓 ∪ 认领会话）；claimedSessionIds 只认带 claimedAt 的会话文件", () => {

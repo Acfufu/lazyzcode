@@ -119,6 +119,7 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | Evidence bundle | `lzy loop export` | Re-export the evidence bundle (`<slug>.report.md`); also auto-archived at `finish` |
 | Handoff | `lzy loop handoff --snapshot <file>` | Register a clean handoff — the next Stop releases once, without spending the continue budget |
 | Cross-repo list | `lzy loop list [--root <dir>]` | Read-only sweep of sibling repos' goal loops (status, progress, claims, staleness, salvage stubs); anonymous release counters survive reset |
+| Goal lineage | `lzy loop history` | Read-only union of evidence bundles, salvage stubs, and git ledger trailers — every past goal with status, commit count, and latest activity |
 | Cost report | `lzy loop cost` | Points report from the engine's local billing ledger (standing coefficients + dated promo overlay; simplified-OR goal attribution with a human-review note; read-only) |
 | `agents-md` | `lzy agents-md` | Project-memory audit: qualifying directories and coverage gaps |
 | `uninstall` | `lzy uninstall` | Removes the deployed cache and the registry entry |

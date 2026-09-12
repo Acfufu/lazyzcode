@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // PostToolUseFailure 空转绊线（ADR-0009 同批，incident-guardrails#N5）：同一 MCP 工具
-// 在 TTL 窗口内连续失败时经 additionalContext 轻提示一次——换工具，或上下文已退化时
-// 走交接收尾（lzy loop handoff）。事故背景：sess_95421d3d 同工具空转 79 连调 47 分钟。
+// 在 TTL 窗口内连续失败时经 additionalContext 轻提示一次——指路窄查询精确激活
+// （search_tools，pisper-absorption#N2），或上下文已退化时走交接收尾（lzy loop handoff）。
+// 事故背景：sess_95421d3d 同工具空转 79 连调 47 分钟。
 // 纪律：goal.json 不在场即 {} 静默（对齐 comment-checker）；is_interrupt（用户手动取消）
 // 不计数；「连续」=TTL 失败连击——成功事件不经过本钩子（PostToolUse 与 Failure 互斥，
 // 引擎实锤 Z:427504/427557），计数只被 TTL 归零，绝不能被穿插的成功重置（事故中 44 次
@@ -59,7 +60,8 @@ try {
 
   const short = toolName.replace(/^mcp__/, "").replace(/^codegraph__/, "codegraph/");
   let message =
-    `[lzy] 绊线：${short} 连续失败 ${WARN_AT} 次（10 分钟窗）。换工具或改查询方式；` +
+    `[lzy] 绊线：${short} 连续失败 ${WARN_AT} 次（10 分钟窗）。` +
+    `优先 search_tools 窄查询精确激活所需工具，勿 activate_domain 整域激活；` +
     `若上下文已退化：写交接快照并 lzy loop handoff --snapshot <file> 收尾，` +
     `请用户开新上下文「zw 继续」（提示在新上下文才吸收得了）。同窗不重复提示。`;
   if (message.length > MAX_DETAIL) message = `${message.slice(0, MAX_DETAIL)}…`;

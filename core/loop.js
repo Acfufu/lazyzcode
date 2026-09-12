@@ -888,3 +888,108 @@ export function formatRepoList(cwd, rootOverride) {
   lines.push("  认领/stuck=会话旗标数 · 存根=可回收工件存根 · 相对时间=goal.json 最后写入距今");
   return lines.join("\n");
 }
+
+// ── 目标谱系读面（pisper-absorption#N4，只读）：证据包 ∪ salvage 存根 ∪ git 尾注三源并集。
+// 本模块保持零 spawn：git 面由调用方传入 createGit(cwd) 的 trailersBySlug()（null=无 git 面降级）。
+// 解析容错：报告无「状态」行/存根节缺失都降级为在场计数，绝不 throw（never-throw 读面同 formatRepoList）。
+
+function evidenceReports(cwd) {
+  const dir = join(cwd, ".lazyzcode", "evidence");
+  let files = [];
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith(".report.md"));
+  } catch {
+    return [];
+  }
+  const reports = [];
+  for (const f of files) {
+    const slug = f.replace(/\.report\.md$/, "");
+    try {
+      const head = readFileSync(join(dir, f), "utf8").slice(0, 2000);
+      const m = head.match(/- 状态 (\S+) · 创建 ([^·]+?) · 完成 ([^\n]+?)(?:\n|$)/);
+      reports.push({ slug, status: m?.[1] ?? null, finishedAt: m?.[3]?.trim() ?? null });
+    } catch {
+      reports.push({ slug, status: null, finishedAt: null });
+    }
+  }
+  return reports;
+}
+
+function salvageStubs(cwd) {
+  const dir = join(loopDir(cwd), "salvage");
+  let files = [];
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith(".md"));
+  } catch {
+    return [];
+  }
+  const stubs = [];
+  for (const f of files) {
+    const row = { slug: f.replace(/\.md$/, ""), resetAt: null, dirty: 0, commits: 0 };
+    try {
+      const text = readFileSync(join(dir, f), "utf8");
+      row.slug = text.match(/^# 可回收工件存根 — (\S+)/m)?.[1] ?? row.slug;
+      row.resetAt = text.match(/清除（([0-9T:.\-Z]+)）/)?.[1] ?? null;
+      let cur = null;
+      for (const line of text.split(/\r?\n/)) {
+        if (line.startsWith("## ")) {
+          cur = /未提交改动/.test(line) ? "dirty" : /尾注的提交/.test(line) ? "commits" : null;
+        } else if (cur && line.startsWith("- ")) {
+          row[cur] += 1;
+        }
+      }
+    } catch {}
+    stubs.push(row);
+  }
+  return stubs;
+}
+
+export function formatHistory(cwd, git) {
+  const rows = new Map();
+  const touch = (slug) => {
+    if (!rows.has(slug))
+      rows.set(slug, { slug, status: null, finishedAt: null, commits: 0, lastCommitAt: null, report: false, salvage: null });
+    return rows.get(slug);
+  };
+  for (const r of evidenceReports(cwd)) {
+    const row = touch(r.slug);
+    row.report = true;
+    row.status = r.status;
+    row.finishedAt = r.finishedAt;
+  }
+  for (const s of salvageStubs(cwd)) {
+    const row = touch(s.slug);
+    row.salvage = s;
+    if (!row.status) row.status = "已回收";
+  }
+  const trailers = typeof git?.trailersBySlug === "function" ? git.trailersBySlug() : null;
+  if (trailers) {
+    for (const [slug, t] of trailers) {
+      const row = touch(slug);
+      row.commits = t.commits;
+      row.lastCommitAt = t.lastAt;
+      if (!row.status) row.status = "仅尾注";
+    }
+  }
+  const head = `目标谱系（本仓证据包 ∪ salvage 存根 ∪ git 尾注；只读）`;
+  const list = [...rows.values()];
+  if (list.length === 0) {
+    return `${head}\n  （没有历史目标：本仓尚无证据包/salvage 存根/带 Goal: 尾注的提交）`;
+  }
+  const lastAt = (r) => [r.finishedAt, r.salvage?.resetAt, r.lastCommitAt].filter(Boolean).sort().pop() ?? "";
+  list.sort((a, b) => (lastAt(b) || "").localeCompare(lastAt(a) || ""));
+  const slugW = Math.max(...list.map((r) => r.slug.length), 4);
+  const statusW = Math.max(...list.map((r) => (r.status ?? "？").length), 4);
+  const lines = [head];
+  for (const r of list) {
+    const extras = [
+      (r.commits > 0 ? `${r.commits} 提交` : "—").padStart(7),
+      r.report ? "证据包✓" : "——",
+      r.salvage ? `存根✓${r.salvage.dirty > 0 ? `(未提交 ${r.salvage.dirty})` : ""}` : "——",
+      (lastAt(r) || "未知").slice(0, 10),
+    ].join("  ");
+    lines.push(`  ${r.slug.padEnd(slugW)}  ${(r.status ?? "？").padEnd(statusW)}  ${extras}`);
+  }
+  lines.push("  状态取证据包报告；仅存根=已回收；仅尾注=账本有提交但本仓无归档。日期=最近活动（完成/清除/末次尾注提交）");
+  return lines.join("\n");
+}

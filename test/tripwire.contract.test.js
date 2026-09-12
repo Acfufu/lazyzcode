@@ -58,6 +58,8 @@ test("绊线：同工具两连败告警一次（warned 置位），三败不重�
     assert.equal(run(failureInput(d, "s")).out, "{}"); // 首败只计数
     const o2 = JSON.parse(run(failureInput(d, "s")).out); // 二败达阈值
     assert.match(o2.additionalContext, /连续失败 2 次/);
+    assert.match(o2.additionalContext, /search_tools/); // 指路窄查询激活（pisper-absorption#N2）
+    assert.match(o2.additionalContext, /activate_domain/);
     assert.match(o2.additionalContext, /lzy loop handoff/);
     assert.ok(o2.additionalContext.length <= 300);
     const st = stateAt(d, "s");

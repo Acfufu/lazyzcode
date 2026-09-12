@@ -224,6 +224,7 @@ lzy loop export                         # re-export the evidence bundle
 lzy loop handoff --snapshot <file>      # register a clean handoff; next Stop releases once
 lzy loop cost                           # points report (standing coefficients + promo overlay, read-only)
 lzy loop list [--root <dir>]            # read-only sweep of sibling repos' goal loops
+lzy loop history                        # goal lineage (evidence ∪ stubs ∪ trailers, read-only)
 lzy loop abandon | lzy loop reset       # give up / clear state
 ```
 
@@ -367,6 +368,10 @@ adopts a plan, because the decision-complete gate needs a human. With nothing
 to continue it exits cleanly, and the wake-up itself is bounded by the
 continuation budget, fatal-429 handling, serial subagents, and ≥1-hour
 spacing between runs.
+
+No need to wait for your laptop for the overnight digest: push the results to
+**your own** IM bot webhook (zero servers — `lzy` ships no notification
+channel of its own). Recipe: [unattended notify](../unattended-notify.md).
 
 ## Discipline agents
 

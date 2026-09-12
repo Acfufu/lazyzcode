@@ -14,7 +14,8 @@ versioning is SemVer.
   the engine's local billing ledger (`~/.zcode/cli/db/db.sqlite`, read-only)
   into a points report — per-model standing coefficients (source-URL
   annotated, hand-maintained), a dated promo-overlay layer (the GLM nightly
-  activity auto-expires 2026-09-20 and falls back to the standing off-peak
+  event 2026-09-03 → 09-20, nightly 23:00–09:00, Flash-via-ZCode free per the
+  official notice, auto-expires and falls back to the standing off-peak
   rule), goal attribution via simplified OR (session directory ∪ claimed
   sessions) with an explicit human-review note, and unpriced models reported
   as honestly missing. The only new spawn lives in `core/hostdb.js` (literal
@@ -60,6 +61,29 @@ versioning is SemVer.
   automations in-session; disable the wake after finish/abandon — the CLI
   prints a reminder line on both). plan-reviewer's dispatch contract now
   requires re-review dispatches to carry the prior MUST-FIX text verbatim.
+- **Goal lineage (`lzy loop history`, pisper-absorption)**: a read-only union
+  of evidence bundles, salvage stubs, and git ledger trailers — one line per
+  past goal (status from the archived report, trailer commit count, stub and
+  bundle flags, latest activity date), sorted by recency; missing sources
+  degrade per-source and an empty workspace gets a friendly empty state.
+  `core/git.js` gains the all-time `trailersBySlug()` reader (the existing
+  `goalLedger` is `--since`-bounded); the loop module stays spawn-free.
+- **Injection determinism invariant**: hook `additionalContext` templates must
+  be deterministic — same session state, byte-identical output; no timestamps,
+  random values, or unstable iteration order inside injected text (GLM prompt
+  cache compares byte-wise on the prefix, template jitter silently voids the
+  discount that `lzy loop cost` accounts for). Pinned by a five-hook
+  double-run contract test with per-run reseeded state.
+- **Tripwire guidance + attempt notes**: the idle-tripwire warning now names
+  the concrete correct action (prefer `search_tools` narrow activation, not
+  `activate_domain` wholesale), and zw's Execute section requires an attempt
+  note (`- [!] attempt <n>: …`) in the plan file whenever a step is redone
+  with a different approach — the plan file is the attempt history.
+- **Unattended notify & competitor-watch docs**: `docs/unattended-notify.md`
+  (push the overnight digest to your own IM bot webhook — Feishu / WeCom /
+  Telegram curl recipes, zero servers) and `docs/research-competitor-watch.md`
+  (deadline-bound observation signals for competitor rescans, W1–W3, plus the
+  demand-side evidence note for decision #21).
 
 - **Pricing-aware `schedule` advisory (ADR-0003 amendment)**: `lzy doctor`'s
   schedule line now cross-checks the rate-limit-derived window against a

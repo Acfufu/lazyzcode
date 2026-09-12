@@ -16,8 +16,7 @@
 //   传输族另挂 "event":"model.request.failed" 预过滤（errno 主判据在 statusMessage，
 //   实测 ENETDOWN 事故 reason=unknown，按 reason 白名单会漏掉触发事故本身），
 //   只进 doctor transport 行，绝不进并发带/错峰窗数学（测量纯度）。
-import { createReadStream } from "node:fs";
-import { readdirSync } from "node:fs";
+import { createReadStream, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -32,6 +31,12 @@ const ERRNO_RE =
 // RFC 2544 保留段（Clash/mihomo fake-ip 默认段）：命中=本地代理 TUN 隧道疑似的提示依据
 const FAKEIP_RE = /\b198\.(?:18|19)\.\d+\.\d+\b/;
 const SAMPLE_MAX = 5;
+// 扫描体积预算(goal ratelimit-scan-budget):无人值守重试风暴期单日日志可膨胀至数百 MB,
+// 全量逐行扫描实测 18–52s,吃掉 loop start/doctor 全部时延;测试 e2e 的 spawnSync 预算也被
+// 撞死。两预算给扫描加确定性上界:超限只读文件尾部、超时提前中止,truncation 字段如实标注
+// 样本不全(warn-only 经验测量语义允许截断;具名常量人工维护,沿 PEAK_WINDOWS 先例)。
+const SCAN_MAX_BYTES_PER_FILE = 64 * 1024 * 1024;
+const SCAN_TIME_BUDGET_MS = 10_000;
 
 function listRecentLogs(logDir, maxFiles) {
   let names;
@@ -60,13 +65,17 @@ const localHourOf = (ts) => {
   return Number.isNaN(d.getTime()) ? null : d.getHours();
 };
 
-export async function collectRateLimitStats(logDir, { maxFiles = 2 } = {}) {
+export async function collectRateLimitStats(
+  logDir,
+  { maxFiles = 2, maxBytesPerFile = SCAN_MAX_BYTES_PER_FILE, timeBudgetMs = SCAN_TIME_BUDGET_MS } = {},
+) {
   const files = listRecentLogs(logDir, maxFiles);
   if (files.length === 0) return { available: false };
 
   const stats = {
     available: true,
     files: files.length,
+    truncation: { truncatedFiles: 0, bytesSkipped: 0, timeExceeded: false }, // 体积预算命中记录;全零=全量样本
     rateLimited: 0, // 原始限流事件数（含重试）
     providers: {},
     sessions: {},
@@ -107,12 +116,32 @@ export async function collectRateLimitStats(logDir, { maxFiles = 2 } = {}) {
     if (!maxTs || ts > maxTs) maxTs = ts;
   };
 
+  let timeUp = false;
+  const scanStart = Date.now();
   for (const file of files) {
+    if (timeUp) break;
+    // 字节预算:超限只读尾部(最新事件在尾部);截断起点可能落行中,首残行走既有 fail-soft 路径
+    let start = 0;
+    try {
+      const size = statSync(file).size;
+      if (size > maxBytesPerFile) {
+        start = size - maxBytesPerFile;
+        stats.truncation.truncatedFiles += 1;
+        stats.truncation.bytesSkipped += start;
+      }
+    } catch {
+      // stat 失败(文件竞态消失):照旧全量读,后续 open 失败由空流自然落空
+    }
     const rl = createInterface({
-      input: createReadStream(file, { encoding: "utf8" }),
+      input: createReadStream(file, { encoding: "utf8", start }),
       crlfDelay: Infinity,
     });
     for await (const line of rl) {
+      if (Date.now() - scanStart > timeBudgetMs) {
+        stats.truncation.timeExceeded = true;
+        timeUp = true;
+        break;
+      }
       if (line.includes('"event":"model.request.started"')) {
         const d = tryParse(line);
         const b = d ? bucketOf(d.timestamp) : null;
@@ -200,6 +229,7 @@ export async function collectRateLimitStats(logDir, { maxFiles = 2 } = {}) {
       const tAttempt = typeof tctx.attempt === "number" ? tctx.attempt : 1;
       if (tAttempt === 1) tFirstAttempt += 1;
     }
+    if (timeUp) rl.input.destroy(); // 超时中止:底层文件流未读尽,显式销毁
   }
 
   const coverage = stats.rateLimited > 0 ? turnKeyed / stats.rateLimited : 0;

@@ -9,6 +9,9 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
+// HOME 隔离(goal ratelimit-scan-budget):spawn 的 lzy 不读真实 ~/.zcode/cli/log——
+// loop start 的限流扫描不再随宿主日志量波动,e2e 结果确定化(沿 tier1-* 先例)。
+const ISOLATED_HOME = mkdtempSync(join(tmpdir(), "lzy-e2e-home-"));
 
 function repo({ git = true } = {}) {
   const d = mkdtempSync(join(tmpdir(), "lzy-e2e-"));
@@ -25,7 +28,7 @@ function repo({ git = true } = {}) {
 }
 
 function lzy(args, cwd, opts = {}) {
-  const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", timeout: 60_000, ...opts });
+  const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", timeout: 60_000, ...opts, env: { ...process.env, HOME: ISOLATED_HOME } });
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
@@ -352,10 +355,13 @@ test("handoff 写面入锁（R6A-3）：过锁外预检后持锁即 5s 超时拦
 test("status 损坏 goal.json 降级（R6A-2）：单项 warn 不炸全套检查", () => {
   const d = repo();
   try {
+    // 对照式取退出码基线（HOME 隔离后 install/files/enabled 在空缓存下本就 fail 翻码，
+    // code===0 的绝对断言会隐含依赖「本机已安装」；R6A-2 的验收点是损坏本身不额外翻码）
+    const base = lzy(["status"], d);
     mkdirSync(join(d, ".lazyzcode", "loop"), { recursive: true });
     writeFileSync(join(d, ".lazyzcode", "loop", "goal.json"), JSON.stringify({ version: 99 }));
     const r = lzy(["status"], d);
-    assert.equal(r.code, 0); // warn-only 不翻退出码（criticalFail 语义，对齐 doctor fail-soft）；修复前=单行 LoopError 炸掉全部且 exit 1
+    assert.equal(r.code, base.code); // warn-only 不翻退出码（criticalFail 语义，对齐 doctor fail-soft）；修复前=单行 LoopError 炸掉全部且 exit 1
     assert.match(r.out, /goal 状态不可读/);
     assert.match(r.out, /版本不兼容/); // 原始成因信息保留
     assert.match(r.out, /install/); // 其余检查行仍在场（全套未丢）

@@ -25,8 +25,10 @@ function repo() {
   return d;
 }
 
+const ISOLATED_HOME = mkdtempSync(join(tmpdir(), "lzy-pg-home-")); // HOME 隔离(goal ratelimit-scan-budget):不读真实引擎日志
+
 function lzy(args, cwd) {
-  const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", timeout: 60_000 });
+  const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", timeout: 60_000, env: { ...process.env, HOME: ISOLATED_HOME } });
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 

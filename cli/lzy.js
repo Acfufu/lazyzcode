@@ -181,6 +181,13 @@ async function cmdLoop(args) {
         if (stats.available) {
           const adv = bandAdvisory(stats, new Date());
           console.log(`  并发纪律：子代理并行上限 ${adv.cap} —— ${adv.reason}`);
+          const t = stats.truncation;
+          if (t && (t.truncatedFiles > 0 || t.timeExceeded)) {
+            const mb = Math.round(t.bytesSkipped / 1048576);
+            console.log(
+              `  ⚠ 限流样本截断（带估算基于不全样本：略头部 ${mb}MB${t.timeExceeded ? " + 扫描超时" : ""}）`,
+            );
+          }
         }
       } catch {}
       return;

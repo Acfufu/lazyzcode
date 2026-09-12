@@ -49,6 +49,29 @@ versioning is SemVer.
 
 ### Fixed
 
+- Rate-limit log scans are now budget-bounded (goal `ratelimit-scan-budget`):
+  `collectRateLimitStats` caps each engine log file at 64 MB read from the
+  tail and stops entirely after 10 s, recording a `truncation` field instead
+  of silently scanning a 260 MB+ retry-storm backlog measured at 18–52 s and
+  starved `lzy loop start` / `lzy doctor`. The doctor `rate-limit` line and
+  the `lzy loop start` concurrency advisory disclose the truncation (sample-
+  credibility note takes priority over concentration/run-length detail within
+  the 300-char budget). Fixtures below the cap produce byte-identical stats
+  (guarded by contract pins; truncation path pinned via param injection and
+  sparse fixtures).
+- Engine-probe log pollution eliminated in tests (debt ③): `lzy doctor` under
+  a scratch `HOME` used to spawn the engine probe subprocess, which wrote a
+  real `zcode-<today>.jsonl` into the scratch log dir mid-run — before the
+  rate-limit scan read it — flipping "empty HOME → skip" assertions. Test
+  spawns now set `LZY_ZCODE_ENGINE` to a nonexistent path (candidate list is
+  wholly replaced, no spawn), verified live: with suppression the scratch log
+  dir is never created; 3 consecutive full-file runs stay green.
+- E2E spawn helpers (`loop.e2e`, `plan-gate`, `p3-sweep`) now run with an
+  isolated `HOME`, so test outcomes no longer depend on the host machine's
+  real engine-log volume (the R6-era "cliff" where a ~200 MB log baseline
+  passed at dusk and failed by midnight). The R6A-2 status-degradation case
+  was reworked to a paired-baseline exit-code assertion, removing its hidden
+  "installed on this machine" dependency.
 - `lzy status` no longer dies outright when the on-disk `goal.json` carries an
   incompatible version: the loop check degrades to a `warn` line (mirroring
   the doctor-side fail-soft fallback) and every other check still prints.

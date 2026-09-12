@@ -303,6 +303,14 @@ function fmtRunMin(min) {
   return m === 0 ? `${h} 小时` : `${h} 小时 ${m} 分`;
 }
 
+// 截断标注(goal ratelimit-scan-budget):样本不全时如实声明——warn-only 经验测量的读者
+// 须知道结论基于尾部样本。truncatedFiles/bytesSkipped>0=文件尾部截断,timeExceeded=超时中止。
+const truncNoteOf = (t) => {
+  if (!t || (t.truncatedFiles === 0 && t.bytesSkipped === 0 && !t.timeExceeded)) return null;
+  const mb = Math.round(t.bytesSkipped / 1048576);
+  return `样本截断${mb > 0 ? `:略头部 ${mb}MB` : ""}${t.timeExceeded ? (mb > 0 ? "+扫描超时" : ":扫描超时") : ""}`;
+};
+
 async function checkRateLimit(push) {
   const logDir = userCliLogDir();
   let stats;
@@ -319,7 +327,8 @@ async function checkRateLimit(push) {
     return;
   }
   if (stats.rateLimited === 0) {
-    push("rate-limit", "ok", `近 ${stats.spanHours ?? stats.files * 24}h 无账号级限流记录`);
+    const note0 = truncNoteOf(stats.truncation);
+    push("rate-limit", "ok", `近 ${stats.spanHours ?? stats.files * 24}h 无账号级限流记录${note0 ? `（${note0}）` : ""}`);
     // 传输族独立于限流族：无 429 不代表无传输死亡，行照出
     const tr0 = transportAdvisory(stats);
     push("transport", tr0.level, tr0.text);
@@ -360,10 +369,13 @@ async function checkRateLimit(push) {
     mid = `；日志缺并发活跃记录，无法估计并发边界`;
     advice = `建议目标循环一次一个、活跃主会话宜少、判死后等数分钟再 zw 继续`;
   }
-  // 渲染优先级：标题 → 阈值句 → 集中段 → 游程 → 建议行；超 300 字符先砍集中段再砍游程，建议行永不砍
+  // 渲染优先级：标题 → 阈值句 → 截断标注 → 集中段 → 游程 → 建议行；超 300 字符先砍集中段
+  // 再砍游程，建议行永不砍；截断标注列 extra 首位——样本可信度声明优先于细节证据。
   const adviceStr = `；${advice}`;
   const budget = 300 - [...adviceStr].length;
   let detail = head + mid;
+  const truncNote = truncNoteOf(stats.truncation);
+  if (truncNote) extra.unshift(truncNote);
   for (const piece of extra) {
     if ([...`${detail}；${piece}`].length <= budget) detail += `；${piece}`;
   }

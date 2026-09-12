@@ -17,11 +17,14 @@ const cleanup = (...dirs) => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 };
 
+const ISOLATED_HOME = mkdtempSync(join(tmpdir(), "lzy-p3-home-")); // HOME 隔离(goal ratelimit-scan-budget):不读真实引擎日志
+
 function lzy(args, cwd) {
   return spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), ...args], {
     cwd,
     encoding: "utf8",
     timeout: 30_000,
+    env: { ...process.env, HOME: ISOLATED_HOME },
   });
 }
 

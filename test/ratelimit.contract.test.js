@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, openSync, ftruncateSync, closeSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,12 @@ import { collectRateLimitStats, transportAdvisory } from "../core/ratelimit.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const LOG_DIR = ["2026-09-06", "2026-09-07"]; // 两个扫描日的文件名（.jsonl 前缀）
+// 探测抑制(goal ratelimit-scan-budget):doctor 的 collectStatus 会 spawn 引擎子进程
+// (env 继承 HOME=scratch),后者把 zcode-<当天>.jsonl 写进 scratch log——mid-run 污染,
+// 对「空 HOME 落 skip」等断言免疫于事后清理。LZY_ZCODE_ENGINE 设为不存在路径即整体
+// 替换引擎候选(paths.js engineCandidates),findEngine→null,探测不 spawn。被测面
+// (rlLine/transportLine)不读引擎行,抑制无害。
+const SUPPRESS_ENGINE = "/nonexistent-lzy-suppressed-engine";
 
 const scratch = () => mkdtempSync(join(tmpdir(), "lzy-rl-"));
 const cleanup = (...dirs) => {
@@ -127,7 +133,7 @@ test("端到端（HOME 覆盖）：doctor stdout 出现 rate-limit warn 行；�
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d },
+      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     const line = rlLine(r.stdout);
     assert.ok(line, `stdout 应含 rate-limit 行：\n${r.stdout}\n${r.stderr}`);
@@ -142,7 +148,7 @@ test("端到端（HOME 覆盖）：doctor stdout 出现 rate-limit warn 行；�
       const r2 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
         encoding: "utf8",
         timeout: 60_000,
-        env: { ...process.env, HOME: empty },
+        env: { ...process.env, HOME: empty, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
       });
       const line2 = rlLine(r2.stdout);
       assert.ok(line2, "stdout 应含 rate-limit skip 行");
@@ -301,7 +307,7 @@ test("端到端：全桶皆脏（无净活跃对照）+ 125 分钟连撞 → 措
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d },
+      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     const line = rlLine(r.stdout);
     assert.ok(line, `stdout 应含 rate-limit 行：\n${r.stdout}\n${r.stderr}`);
@@ -322,7 +328,7 @@ test("端到端：band=null（只有失败事件零 started）→ 第三分支�
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d },
+      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     const line = rlLine(r.stdout);
     assert.ok(line, `stdout 应含 rate-limit 行：\n${r.stdout}\n${r.stderr}`);
@@ -514,7 +520,7 @@ test("端到端：doctor transport 行 warn（ENETDOWN+fake-ip 提示）；纯 s
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d },
+      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     const line = transportLine(r.stdout);
     assert.ok(line, `stdout 应含 transport 行：\n${r.stdout}\n${r.stderr}`);
@@ -530,7 +536,7 @@ test("端到端：doctor transport 行 warn（ENETDOWN+fake-ip 提示）；纯 s
       const r2 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
         encoding: "utf8",
         timeout: 60_000,
-        env: { ...process.env, HOME: d2 },
+        env: { ...process.env, HOME: d2, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
       });
       const line2 = transportLine(r2.stdout);
       assert.ok(line2, "stdout 应含 transport ok 行");
@@ -545,7 +551,7 @@ test("端到端：doctor transport 行 warn（ENETDOWN+fake-ip 提示）；纯 s
       const r3 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
         encoding: "utf8",
         timeout: 60_000,
-        env: { ...process.env, HOME: empty },
+        env: { ...process.env, HOME: empty, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
       });
       const line3 = transportLine(r3.stdout);
       assert.ok(line3, "stdout 应含 transport skip 行");
@@ -553,6 +559,94 @@ test("端到端：doctor transport 行 warn（ENETDOWN+fake-ip 提示）；纯 s
     } finally {
       cleanup(empty);
     }
+  } finally {
+    cleanup(d);
+  }
+});
+
+// ── 体积预算(goal ratelimit-scan-budget):截断路径 / 默认全零护栏 / doctor 行标注 ──
+
+test("体积预算:参数注入 1KB 上限 → 头部事件截断,truncation 如实记录", async () => {
+  const d = scratch();
+  try {
+    const lines = [
+      started("2026-09-06T10:00:00.000Z", "head"),
+      rateLimited("2026-09-06T10:00:30.000Z", "head", { turnId: "th" }), // 头部 429:应被截掉
+      ...Array.from({ length: 40 }, (_, i) =>
+        started(`2026-09-06T11:${String(i % 60).padStart(2, "0")}:00.000Z`, `pad${i}`)
+      ),
+      started("2026-09-06T12:00:00.000Z", "tail"),
+      rateLimited("2026-09-06T12:00:30.000Z", "tail", { turnId: "tt" }), // 尾部 429:应计入
+    ];
+    writeLog(d, LOG_DIR[0], lines);
+    writeLog(d, LOG_DIR[1], [started("2026-09-07T09:00:00.000Z", "d2s")]);
+    const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"), { maxBytesPerFile: 1024 });
+    assert.equal(s.available, true);
+    assert.ok(s.truncation.truncatedFiles >= 1, `truncatedFiles 应 ≥1:${JSON.stringify(s.truncation)}`);
+    assert.ok(s.truncation.bytesSkipped > 0);
+    assert.equal(s.truncation.timeExceeded, false);
+    assert.equal(s.rateLimited, 1); // 头部 429 被截,只计尾部
+    assert.equal(s.sessions.head, undefined); // 头部会话事件不入统计
+    assert.equal(s.sessions.tail, 1);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("体积预算:timeBudgetMs 注入 -1 → 首行即中止,timeExceeded 确定为真且不抛错", async () => {
+  const d = scratch();
+  try {
+    writeLog(d, LOG_DIR[0], [started("2026-09-06T10:00:00.000Z", "s0")]);
+    const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"), { timeBudgetMs: -1 });
+    assert.equal(s.available, true);
+    assert.equal(s.truncation.timeExceeded, true);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("体积预算:默认参数小 fixture 不触发,truncation 全零(护栏钉)", async () => {
+  const d = scratch();
+  try {
+    writeLog(d, LOG_DIR[0], [
+      started("2026-09-06T10:00:00.000Z", "s0"),
+      rateLimited("2026-09-06T10:01:00.000Z", "s0"),
+    ]);
+    const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"));
+    assert.deepEqual(s.truncation, { truncatedFiles: 0, bytesSkipped: 0, timeExceeded: false });
+    // 既有字段零语义变化(对照 N2 基线快照结论的同型断言)
+    assert.equal(s.rateLimited, 1);
+    assert.equal(s.files, 1);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("doctor rate-limit 行截断标注(sparse fixture 真实超限)且行长 ≤300", () => {
+  const d = scratch();
+  try {
+    const dir = join(d, ".zcode", "cli", "log");
+    mkdirSync(dir, { recursive: true });
+    const p = join(dir, `zcode-${LOG_DIR[1]}.jsonl`);
+    const fd = openSync(p, "w");
+    ftruncateSync(fd, 65 * 1024 * 1024); // 稀疏空洞:瞬时造出真实超限文件
+    closeSync(fd);
+    appendFileSync(
+      p,
+      [
+        started("2026-09-07T09:00:00.000Z", "sx"),
+        rateLimited("2026-09-07T09:01:00.000Z", "sx", { attempt: 1, maxAttempts: 11, turnId: "tz" }),
+      ].join("\n") + "\n",
+    );
+    const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+      encoding: "utf8",
+      timeout: 60_000,
+      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+    });
+    const line = rlLine(r.stdout);
+    assert.ok(line, `stdout 应含 rate-limit 行:\n${r.stdout}\n${r.stderr}`);
+    assert.match(line, /样本截断/);
+    assert.ok([...line].length <= 300, `含标注行仍 ≤300 字符,实得 ${[...line].length}`);
   } finally {
     cleanup(d);
   }

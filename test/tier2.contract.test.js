@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, openSync, ftruncateSync, closeSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -220,5 +220,41 @@ test("loop start 打印实测并发纪律行；无日志时缺省不打印（fai
   } finally {
     rmSync(d2, { recursive: true, force: true });
     rmSync(emptyHome, { recursive: true, force: true });
+  }
+});
+
+test("loop start:限流样本截断时输出 ⚠ 标注行(sparse fixture 真实超限)", () => {
+  const home = freshHome();
+  const d = repo();
+  try {
+    const logDir = join(home, ".zcode", "cli", "log");
+    mkdirSync(logDir, { recursive: true });
+    const p = join(logDir, `zcode-${new Date().toISOString().slice(0, 10)}.jsonl`);
+    const fd = openSync(p, "w");
+    ftruncateSync(fd, 65 * 1024 * 1024); // 稀疏空洞:真实超限(CLI 面走默认参数,无注入点)
+    closeSync(fd);
+    const ts = new Date(Date.now() - 5 * 60_000).toISOString();
+    appendFileSync(
+      p,
+      [
+        JSON.stringify({ timestamp: ts, sessionId: "s1", event: "model.request.started" }),
+        JSON.stringify({
+          timestamp: ts,
+          sessionId: "s1",
+          event: "model.request.failed",
+          turnId: "t1",
+          context: { reason: "rate_limited", attempt: 1, maxAttempts: 11 },
+        }),
+      ].join("\n") + "\n",
+    );
+    const lzy = mkLzy(home);
+    setupGoal(lzy, d, "adv3");
+    const r = lzy(["loop", "start"], d);
+    assert.equal(r.code, 0);
+    assert.match(r.out, /并发纪律/);
+    assert.match(r.out, /限流样本截断/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
 });

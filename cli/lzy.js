@@ -27,6 +27,7 @@ import {
 import { findEngine, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
 import { auditAgentsMd, formatAgentsMd } from "../core/agentsmd.js";
+import { formatCost } from "../core/cost.js";
 
 const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 
@@ -212,6 +213,7 @@ async function cmdLoop(args) {
         console.log(`  ⚠ 证据包导出失败：${e.message}`);
       }
       console.log("  收尾：把本目标 2–3 条可复用教训写进宿主项目 memory，下个会话自动可用。");
+      console.log("  提醒：若本工作区挂过 wake automation（无人值守唤起），到 App 自动化管理停用（空槽唤起=纯空转）。");
       return;
     }
     case "export": {
@@ -225,6 +227,7 @@ async function cmdLoop(args) {
       if (goal.salvage) {
         console.log(`  可回收工件已盘点：${goal.salvage.path}（未提交 ${goal.salvage.dirty} · 尾注提交 ${goal.salvage.commits}）`);
       }
+      console.log("  提醒：若本工作区挂过 wake automation（无人值守唤起），到 App 自动化管理停用（空槽唤起=纯空转）。");
       return;
     }
     case "reset": {
@@ -255,8 +258,12 @@ async function cmdLoop(args) {
       // 只读跨仓诊断（never-throw 读面）：扫锚目录一级子目录的循环状态。
       console.log(formatRepoList(cwd, typeof f.root === "string" ? f.root : null));
       return;
+    case "cost":
+      // 积分成本报表（plan-v2 Phase 2-2，只读）：账本缺席/sqlite3 缺席均降级输出不翻码。
+      console.log(formatCost(cwd, readGoal(cwd)));
+      return;
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/list/verify/finish/export/abandon/reset/handoff）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/list/cost/verify/finish/export/abandon/reset/handoff）`);
   }
 }
 
@@ -330,6 +337,8 @@ function printHelp() {
   lzy loop status                           查看进度与下一步
   lzy loop list [--root <目录>]             跨仓清单（只读）：扫锚目录一级子目录各仓的循环
                                             状态（默认锚=当前目录的同级，含自身）
+  lzy loop cost                             积分成本报表（只读计费账本折算：常设系数+促销
+                                            overlay 自动回落；目标归因为简化 OR+人工复核口径）
   lzy step done <ID> [--note …] [--evidence …] [--evidence-file <文件>]…
                                             收口一步（F 项必须带真实表面证据；附件复制入
                                             .lazyzcode/evidence/ 并绑 sha256，≤4 个/项）

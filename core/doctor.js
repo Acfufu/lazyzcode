@@ -2,13 +2,22 @@
 // 检查之上增加机器自检：node 版本下限、lzy 解析方式、.lazyzcode 状态卫生、平台立场、
 // hook 脚本语法自检（spawn 形态沿 engine.js/git.js 安全形态，见 checkHooks）。
 // 单项异常 fail-soft=warn，诊断自身故障不翻转退出码。
-import { readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { readdirSync, readFileSync, existsSync, realpathSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
 import { readRepoManifest } from "./installer.js";
-import { installPathFor, packageRoot, repoPluginDir, userCliLogDir } from "./paths.js";
+import {
+  billingDbPath,
+  installPathFor,
+  packageRoot,
+  repoPluginDir,
+  tasksIndexPath,
+  userCliLogDir,
+} from "./paths.js";
 import { collectRateLimitStats, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
+import { WATERLINE_POINTS, rollingWaterlinePoints } from "./cost.js";
+import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
 import { scanSessionFlags } from "./loop.js";
 import { createGit } from "./git.js";
@@ -207,17 +216,117 @@ function checkClaims(push, cwd) {
     push("claims", "skip", "非 executing 或无目标，认领不生效");
     return;
   }
-  const { claims, stuck } = scanSessionFlags(cwd);
+  const { claims, stuck, expired } = scanSessionFlags(cwd);
   const stuckNote = stuck.length > 0 ? `；⚠ stuck ${stuck.length} 个（${stuck.join(" ")}），推进步骤即自愈` : "";
+  const expiredNote =
+    expired.length > 0 ? `；过期认领 ${expired.length} 个已按 48h TTL 退役（${expired.join(" ")}）` : "";
   if (claims.length > 0) {
-    push("claims", "ok", `认领 ${claims.length} 个（${claims.join(" ")}）——Stop 拉回仅限认领会话${stuckNote}`);
+    push("claims", "ok", `认领 ${claims.length} 个（${claims.join(" ")}）——Stop 拉回仅限认领会话${stuckNote}${expiredNote}`);
   } else {
     push(
       "claims",
       "warn",
-      "待认领（孤儿）：零认领，Stop 拉回维持目录级现状；任一会话发「zw 继续」即认领接管",
+      "待认领（孤儿）：零认领，Stop 拉回维持目录级现状；任一会话发「zw 继续」即认领接管" +
+        `${stuckNote}${expiredNote}`,
     );
   }
+}
+
+// 水位警戒线诊断（plan-v2 Phase 2-3）：账本/sqlite3/阈值/当前滚动积分的可观测面——
+// 钩子侧 fail-open 静默，这里给出「为什么没警戒」的信号。warn/skip only：水位是经验
+// 警戒线不是故障，绝不翻转退出码（fail-soft 纪律）。
+function checkWaterline(push) {
+  const db = billingDbPath();
+  if (!existsSync(db)) {
+    push("waterline", "skip", `无计费账本（${db}），水位警戒线不可用`);
+    return;
+  }
+  const env = process.env.LZY_WATERLINE_POINTS;
+  const threshold = Number(env) || WATERLINE_POINTS;
+  const pts = rollingWaterlinePoints();
+  if (pts === null) {
+    push("waterline", "warn", "sqlite3 缺席或账本不可读——stop 钩子水位警戒将静默跳过（fail-open）");
+    return;
+  }
+  const envNote = env ? `（env 覆盖自 ${WATERLINE_POINTS}）` : "";
+  const over = pts > threshold;
+  push(
+    "waterline",
+    over ? "warn" : "ok",
+    `近 5h 滚动 ${pts} / 警戒线 ${threshold} 积分${envNote}——` +
+      (over ? "已超线，stop 钩子将注入收尾 nudge（5h 窗内一次）" : "未超线"),
+  );
+}
+
+// orphan-wake 检查（plan-v2 Phase 2-4）：unbound wake automation（App 非会话上下文建，
+// target_task_id 空）挂在本仓而目标不 executing、且近 48h 连续成功空转——空转面警示。
+// 09-13 挂载全清后常态是 skip；复挂（ADR-0010 开关语义：挂载=开、清空=关）后此行变有用。
+// SQL 全字面量，workspace_path/automation_id 过滤在 JS 侧做（污点不入 SQL）。warn/skip
+// only：空转烧的是账号额度不是本仓状态，绝不翻转退出码（fail-soft 纪律）。
+const ORPHAN_NOOP_RUNS = 3;
+// 路径归一：App 存的 workspace_path 与引擎 spawn 的 cwd 可能各带一层符号链接（macOS
+// /var→/private/var 实锤），字面相等会漏判——两侧 realpath 后再比（悬垂路径回落原样）。
+const normPath = (p) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+};
+function checkOrphanWake(push, cwd) {
+  const idx = tasksIndexPath();
+  if (!existsSync(idx)) {
+    push("orphan-wake", "skip", "无宿主自动化索引库，无 orphan 面可言");
+    return;
+  }
+  const wakes = queryHostDb(
+    idx,
+    "SELECT automation_id AS id, workspace_path AS wp FROM automations " +
+      "WHERE enabled=1 AND lifecycle_status='active' AND target_task_id IS NULL",
+  );
+  if (wakes === null) {
+    push("orphan-wake", "warn", "tasks-index 不可读（sqlite3 缺席或库损坏）——orphan 检查降级");
+    return;
+  }
+  const root = normPath(resolve(cwd));
+  const mine = wakes.filter((w) => normPath(w.wp) === root);
+  if (mine.length === 0) {
+    push("orphan-wake", "skip", `无 unbound wake automation 挂在本仓——挂载=开、清空=关（ADR-0010）`);
+    return;
+  }
+  let executing = false;
+  try {
+    executing =
+      JSON.parse(readFileSync(join(cwd, ".lazyzcode", "loop", "goal.json"), "utf8"))?.status ===
+      "executing";
+  } catch {}
+  if (executing) {
+    push("orphan-wake", "ok", `wake 在场 ${mine.length} 颗且目标 executing——正常喂活`);
+    return;
+  }
+  const cutoff = Date.now() - 48 * 3_600_000;
+  const runs =
+    queryHostDb(
+      idx,
+      "SELECT automation_id AS aid, outcome, scheduled_at FROM automation_runs ORDER BY scheduled_at DESC LIMIT 200",
+    ) ?? [];
+  const mineIds = new Set(mine.map((w) => w.id));
+  const recent = runs.filter((r) => mineIds.has(r.aid) && Number(r.scheduled_at) >= cutoff);
+  const streak = recent.slice(0, ORPHAN_NOOP_RUNS);
+  if (streak.length >= ORPHAN_NOOP_RUNS && streak.every((r) => r.outcome === "succeeded")) {
+    push(
+      "orphan-wake",
+      "warn",
+      `orphan 空转面：wake ${mine.length} 颗挂本仓但无 executing 目标，近 48h 连续 ${streak.length} 次成功空转——` +
+        "喂活目标或清空挂载（复挂配方 plan-v2 报告 §6）",
+    );
+    return;
+  }
+  push(
+    "orphan-wake",
+    "ok",
+    `wake 在场 ${mine.length} 颗，目标非 executing，近 48h run ${recent.length} 次（未达连续空转判据）`,
+  );
 }
 
 // 提交账本巡逻（ADR-0005）：goal 起点后的提交缺 `Goal:` 尾注的比例。
@@ -411,6 +520,8 @@ export async function collectDoctor(cwd = process.cwd()) {
     checkLzyPath,
     (p) => checkLoopState(p, cwd),
     (p) => checkClaims(p, cwd),
+    (p) => checkWaterline(p),
+    (p) => checkOrphanWake(p, cwd),
     (p) => checkLedger(p, cwd),
     checkPlatform,
     (p) => checkAgentsMd(p, cwd),

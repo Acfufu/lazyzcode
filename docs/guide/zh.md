@@ -189,6 +189,7 @@ lzy loop status                         # 进度、下一步、证据新鲜度
 lzy loop verify                         # 证据时效审计（退出码 1 = 过期/未绑定）
 lzy loop finish                         # 终验门
 lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次
+lzy loop cost                           # 积分成本报表（常设系数+促销 overlay，只读）
 lzy loop list [--root <目录>]           # 只读扫同级仓的目标循环
 lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 ```
@@ -201,8 +202,9 @@ lzy loop abandon | lzy loop reset       # 放弃 / 清状态
   （标记 ↻ 重取证）。
 - `lzy loop verify` 是终验门的只审计变体（证据过期/未绑定/无目标时退出码 1）。
 - `lzy loop handoff --snapshot <文件>` 登记干净交接：下个 Stop 一次性消费标记并
-  放行，不消耗续跑预算（目标保持 executing，状态在盘）。快照须已存在且 24h 内
-  有改动——没有真实快照的交接不受理；`lzy loop reset`/`abandon` 会清扫残留标记。
+  放行，不消耗续跑预算（目标保持 executing，状态在盘）。快照须已存在且 2h 内
+  有改动，并含 7 个强制节（剩余步骤/下一步动作/目标与进度/脏树清单/tree hash/
+  风险与坑/复归指令；缺节或空节拒收，模板见 zw 技能 Continuation 节）；`lzy loop reset`/`abandon` 会清扫残留标记。
   每次登记与消费会在 `.lazyzcode/loop/metrics.json` 累加匿名计数
   （`registered`/`consumed`，无会话身份）；计数跨 reset 永续，
   在 `lzy status`/`lzy loop status` 可见。
@@ -366,6 +368,7 @@ lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑
 lzy step done <ID> [--note <注记>] [--evidence <证据>] [--evidence-file <文件>]…
 lzy loop finish                 终验门：全部 done + 全部证据新鲜；自动归档证据包
 lzy loop export                 重导出证据包（<slug>.report.md）
+lzy loop cost                   积分成本报表（常设系数+促销 overlay，只读）
 lzy loop list [--root <目录>]   跨仓目标循环清单（只读）
 lzy loop abandon                放弃，留档
 lzy loop reset                  清循环状态（含会话计数、孤儿临时文件）

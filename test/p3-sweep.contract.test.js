@@ -333,3 +333,60 @@ test("run-hook.sh：--print-node 解析；PATH-less 时 fallback 或 fail-open�
     assert.equal(r3.stdout.trim(), "");
   }
 });
+
+const HAS_SQLITE3 = spawnSync("sqlite3", ["--version"], { timeout: 5_000 }).status === 0;
+
+test("orphan-wake doctor 检查（plan-v2 Phase 2-4）：无索引 skip/零 wake skip/空转 warn/喂活 ok", { skip: !HAS_SQLITE3 }, () => {
+  const lineOf = (out, name) => out.split(/\r?\n/).find((l) => l.includes(name));
+  const mkIdx = (home, extraSql) => {
+    const dir = join(home, ".zcode", "v2");
+    mkdirSync(dir, { recursive: true });
+    const schema =
+      "CREATE TABLE automations (automation_id TEXT, workspace_path TEXT, enabled INTEGER, lifecycle_status TEXT, target_task_id TEXT);" +
+      "CREATE TABLE automation_runs (automation_id TEXT, outcome TEXT, scheduled_at INTEGER);";
+    const r = spawnSync("sqlite3", [join(dir, "tasks-index.sqlite"), schema + (extraSql ?? "")], {
+      timeout: 10_000,
+    });
+    assert.equal(r.status, 0);
+  };
+  const runDoctor = (d, h) =>
+    spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+      cwd: d,
+      encoding: "utf8",
+      timeout: 120_000,
+      env: { ...process.env, HOME: h },
+    });
+  const d1 = scratch();
+  const h1 = scratch(); // 无索引库
+  const d2 = scratch();
+  const h2 = scratch();
+  mkIdx(h2, ""); // 库在但零 automation
+  const d3 = scratch();
+  const h3 = scratch();
+  const now = Date.now();
+  mkIdx(
+    h3,
+    `INSERT INTO automations VALUES ('w1','${d3}',1,'active',NULL);` +
+      [0, 1, 2].map((i) => `INSERT INTO automation_runs VALUES ('w1','succeeded',${now - i * 3_600_000});`).join(""),
+  );
+  const d4 = scratch();
+  const h4 = scratch();
+  mkIdx(h4, `INSERT INTO automations VALUES ('w4','${d4}',1,'active',NULL);`);
+  try {
+    mkdirSync(join(d4, ".lazyzcode", "loop"), { recursive: true });
+    writeFileSync(
+      join(d4, ".lazyzcode", "loop", "goal.json"),
+      JSON.stringify({ slug: "t", title: "t", status: "executing", steps: [{ id: "N1", kind: "N", status: "pending" }] }),
+    );
+    const s1 = lineOf(`${runDoctor(d1, h1).stdout ?? ""}`, "orphan-wake");
+    assert.match(s1, /无宿主自动化索引库/);
+    const s2 = lineOf(`${runDoctor(d2, h2).stdout ?? ""}`, "orphan-wake");
+    assert.match(s2, /无 unbound wake/);
+    const s3 = lineOf(`${runDoctor(d3, h3).stdout ?? ""}`, "orphan-wake");
+    assert.match(s3, /orphan 空转面/);
+    const s4 = lineOf(`${runDoctor(d4, h4).stdout ?? ""}`, "orphan-wake");
+    assert.match(s4, /正常喂活/);
+  } finally {
+    cleanup(d1, h1, d2, h2, d3, d4, h3, h4);
+  }
+});

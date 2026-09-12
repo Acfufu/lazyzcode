@@ -40,6 +40,18 @@ export function userCliLogDir() {
   return join(cliRoot(), "log");
 }
 
+// 引擎计费账本（plan-v2 Phase 2-2）——只读扫描面，供 `lzy loop cost` 积分折算用。
+// 缺文件=无账本，读面自行降级（绝不写入）。
+export function billingDbPath() {
+  return join(cliRoot(), "db", "db.sqlite");
+}
+
+// 宿主自动化索引库（plan-v2 Phase 2-4）——注意不在 cliRoot() 下（v2/ 与 cli/ 平级），
+// 独立 join；供 doctor 的 orphan-wake 检查只读 JOIN automations/automation_runs。
+export function tasksIndexPath() {
+  return join(homedir(), ".zcode", "v2", "tasks-index.sqlite");
+}
+
 // hook 脚本枚举：路径解析归本模块（doctor.js 只拿结果列表作 spawn 参数，污点不跨文件）。
 export function hookScriptPaths(rootDir) {
   try {

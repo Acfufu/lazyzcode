@@ -119,6 +119,7 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | Evidence bundle | `lzy loop export` | Re-export the evidence bundle (`<slug>.report.md`); also auto-archived at `finish` |
 | Handoff | `lzy loop handoff --snapshot <file>` | Register a clean handoff — the next Stop releases once, without spending the continue budget |
 | Cross-repo list | `lzy loop list [--root <dir>]` | Read-only sweep of sibling repos' goal loops (status, progress, claims, staleness, salvage stubs); anonymous release counters survive reset |
+| Cost report | `lzy loop cost` | Points report from the engine's local billing ledger (standing coefficients + dated promo overlay; simplified-OR goal attribution with a human-review note; read-only) |
 | `agents-md` | `lzy agents-md` | Project-memory audit: qualifying directories and coverage gaps |
 | `uninstall` | `lzy uninstall` | Removes the deployed cache and the registry entry |
 
@@ -136,6 +137,9 @@ failures such as ENETDOWN, never fed into the concurrency math), a project-memor
 adoption audit (`agents-md`, warn-only), a claim patrol for the open goal loop
 (`claims`: who claimed it, stuck markers, zero-claim orphan notice — warn-only),
 commit-ledger coverage (`ledger`: goal-era commits missing the `Goal:` trailer — warn-only),
+a `waterline` line (rolling 5-hour point burn vs the self-calibrated nudge threshold, plus
+its fail-open reason when sqlite3 is absent) and an `orphan-wake` idle-burn patrol for
+unbound wake automations anchored here (skip when no mounts),
 and a suggested off-peak window for
 unattended runs (`schedule`, derived from the same measured concentration
 data and cross-checked against declared platform pricing peaks — skipped,

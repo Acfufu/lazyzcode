@@ -3,9 +3,64 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
-## [Unreleased]
+## [0.0.4] - unreleased
+
+> 0.0.3 was versioned but never published; per owner decision (2026-09-13) its
+> section is folded into 0.0.4, which is the next release.
 
 ### Added
+
+- **Goal-loop cost observability (plan-v2 Phase 2)**: `lzy loop cost` turns
+  the engine's local billing ledger (`~/.zcode/cli/db/db.sqlite`, read-only)
+  into a points report — per-model standing coefficients (source-URL
+  annotated, hand-maintained), a dated promo-overlay layer (the GLM nightly
+  activity auto-expires 2026-09-20 and falls back to the standing off-peak
+  rule), goal attribution via simplified OR (session directory ∪ claimed
+  sessions) with an explicit human-review note, and unpriced models reported
+  as honestly missing. The only new spawn lives in `core/hostdb.js` (literal
+  `sqlite3 -readonly` argv, `shell:false` — the plan-v2 §4-2 exemption; the
+  loop module itself stays spawn-free).
+- **Finish metrics & evidence rebind traces**: `finish_attempts` and
+  `finish_reject_{pending,stale,unbound}` counters land in `metrics.json`
+  (the veto-rule data plane); re-recording evidence appends the previous
+  capture to an append-only `evidenceHistory` (cap 5) and attachment files
+  gain a take-sequence in their names, ending same-name overwrites.
+- **Waterline nudge**: the Stop hook reads the same ledger's rolling 5-hour
+  point burn; above a self-referential calibrated threshold (1600 — p95 of
+  the trailing 14 days at calibration time, `LZY_WATERLINE_POINTS` overrides)
+  it injects a wrap-up nudge once per window. Fail-open throughout (no
+  ledger, no sqlite3 binary → silent skip); `lzy doctor` gains a `waterline`
+  line exposing exactly that.
+- **Orphan-wake doctor check**: an unbound wake automation (empty target,
+  enabled, active) anchored to this workspace with no executing goal and ≥3
+  consecutive succeeded runs within 48h warns as an idle-burn surface; with
+  no mounts (the norm since the 09-13 full teardown) the line reports skip.
+  Path comparison is realpath-normalized on both sides (macOS
+  /var → /private/var proven live).
+- **Handoff hardening**: snapshot mtime ceiling 24h → 2h; a 7-section
+  snapshot content lint (remaining steps / next action / goal & progress /
+  dirty-tree list / tree hash / risks / resume command — headings are
+  contract literals, template embedded in zw's Continuation section, empty
+  sections rejected); claims gain a 48h TTL (the engine has no SessionEnd —
+  dead sessions' claims retire, pure expiry falls back to directory-level
+  behavior, doctor counts them).
+- **Unattended sentinel**: the trigger hook stamps `unattended`/`wakeAt` onto
+  any session whose prompt contains 无人值守 — outside the executing gate, so
+  idle wakes count too; the Stop hook counts `wake_noop` when such a session
+  ends with zero progress against its first-pull baseline (stuck and budget
+  paths; sessions that progressed and handoff releases don't count). This is
+  the technical ground A'-revival precondition ④ asked for.
+- **Prompt-layer discipline (plan-v2 Phase 1)**: zw's Continuation section
+  defines the no-op criterion (the loop's state set must move: done count,
+  F-item treeHash set, handoff registrations, salvage stubs), corrects the
+  three-continuation-surfaces mental model (engine 3/turn resetting, lzy
+  2/session persistent, scheduler wake unlimited), embeds the 7-field
+  snapshot template, and adds dirty-tree inheritance (reconcile first, no
+  checkout/reset); Unattended gains two hygiene rules (never create wake
+  automations in-session; disable the wake after finish/abandon — the CLI
+  prints a reminder line on both). plan-reviewer's dispatch contract now
+  requires re-review dispatches to carry the prior MUST-FIX text verbatim.
+
 - **Pricing-aware `schedule` advisory (ADR-0003 amendment)**: `lzy doctor`'s
   schedule line now cross-checks the rate-limit-derived window against a
   hand-maintained UTC+8 table of platform pricing peaks (GLM Mon–Fri 14–18;
@@ -33,6 +88,51 @@ versioning is SemVer.
   stubs — `executing` sorts first, then planning/done by recency. One
   unreadable repo prints a `版本不符` row instead of failing the sweep;
   an anchor with no goals prints a note and exits 0.
+
+- **Session-runaway guardrails (incident-guardrails)**: `lzy loop handoff
+  --snapshot <file>` registers a directory-level anonymous marker that the Stop
+  hook consumes atomically (exactly one winner) to release a cleanly-closing
+  session without spending the continue budget — a proper handoff is handing
+  execution back to the user, not quitting half-done. A `PostToolUseFailure`
+  tripwire (`^mcp__` tools only) warns once when the same tool fails twice in
+  a 10-minute window — successes don't reset the streak, only the TTL does —
+  steering toward switching tools or closing via handoff (hooks:4→5). `lzy
+  status`'s payload check now compares file contents (sha256), not just the
+  path set — a stale cache no longer reports "identical" (proven in a real
+  incident). zw's Continuation section gains a tool-fire-loop escape contract;
+  `lzy loop status` surfaces claim/handoff markers. Also fixes a latent bug:
+  the all-steps-done finish reminder crashed on an unimported helper since
+  0.0.2 (caught by the new contract tests).
+- **Evidence comparison & salvageable artifacts (comparator-salvage)**: HEAVY
+  finish protocols now dispatch `qa-executor` in a comparator mode over each F
+  item's assertion–evidence pair — existence and freshness were machine gates,
+  relevance was nobody's; a `不匹配` verdict sends the agent back for a real
+  re-capture (protocol-level block, zero CLI/doctor code). Plans gain
+  handoff-able-step guidance (every N item carries its own pointers; the
+  plan-reviewer audits weak handoff as WARN/P3). When a loop is reset or
+  abandoned, `lzy` inventories salvageable artifacts into
+  `.lazyzcode/loop/salvage/<slug>.md` — uncommitted changes, footnoted
+  commits, asset pointers — and `lzy loop status` surfaces stubs in both the
+  no-goal and goal-present views (the moment after a reset is the primary
+  salvage moment). Dependency-graph parallel claiming is recorded as design
+  debt with explicit promotion triggers (ADR-0004 second amendment).
+- **Transport-death diagnostics (ADR-0008)**: `lzy doctor` gains a
+  `transport` line counting turns that died before reaching the server
+  (ENETDOWN and the errno family, matched primarily from `statusMessage` —
+  the engine logs such incidents with `reason: unknown`), with per-code
+  breakdown and a fake-ip (198.18.0.0/15 → local proxy TUN) hint. The family
+  is kept strictly separate from 429 accounting and never feeds the
+  concurrency band or off-peak math. Warn-only, never flips the exit code.
+- **Host workspace discipline (ADR-0006)**: cross-repo goal loops anchor at the
+  host repo — strict-cwd resolution (no walk-up), write commands fail fast
+  before they can leave empty `.lazyzcode/loop/` scar directories (reset keeps
+  its null-goal cleanup contract), every no-goal error prints the exact path it
+  checked plus a recovery hint, `lzy doctor` patrols empty-loop scars, and
+  claim registration narrows to invocation-grade triggers (leading `zw` /
+  explicit `lazyzcode:zw` / leading `ulw`·`ultrawork`; mid-sentence mentions
+  still get the injection but no claim — ADR-0004 amendment). The `zw` skill
+  gains a "Host workspace (cross-repo goals)" section.
+
 
 ### Changed
 
@@ -86,54 +186,6 @@ versioning is SemVer.
   weekday 02:00–03:00 local for a 19:00–03:00 window), the old linear walk
   overflowed past the window end — misreporting out-of-window hours as
   in-window peak pricing while missing the window's remaining hours.
-
-## [0.0.3] - 2026-09-10
-
-### Added
-
-- **Session-runaway guardrails (incident-guardrails)**: `lzy loop handoff
-  --snapshot <file>` registers a directory-level anonymous marker that the Stop
-  hook consumes atomically (exactly one winner) to release a cleanly-closing
-  session without spending the continue budget — a proper handoff is handing
-  execution back to the user, not quitting half-done. A `PostToolUseFailure`
-  tripwire (`^mcp__` tools only) warns once when the same tool fails twice in
-  a 10-minute window — successes don't reset the streak, only the TTL does —
-  steering toward switching tools or closing via handoff (hooks:4→5). `lzy
-  status`'s payload check now compares file contents (sha256), not just the
-  path set — a stale cache no longer reports "identical" (proven in a real
-  incident). zw's Continuation section gains a tool-fire-loop escape contract;
-  `lzy loop status` surfaces claim/handoff markers. Also fixes a latent bug:
-  the all-steps-done finish reminder crashed on an unimported helper since
-  0.0.2 (caught by the new contract tests).
-- **Evidence comparison & salvageable artifacts (comparator-salvage)**: HEAVY
-  finish protocols now dispatch `qa-executor` in a comparator mode over each F
-  item's assertion–evidence pair — existence and freshness were machine gates,
-  relevance was nobody's; a `不匹配` verdict sends the agent back for a real
-  re-capture (protocol-level block, zero CLI/doctor code). Plans gain
-  handoff-able-step guidance (every N item carries its own pointers; the
-  plan-reviewer audits weak handoff as WARN/P3). When a loop is reset or
-  abandoned, `lzy` inventories salvageable artifacts into
-  `.lazyzcode/loop/salvage/<slug>.md` — uncommitted changes, footnoted
-  commits, asset pointers — and `lzy loop status` surfaces stubs in both the
-  no-goal and goal-present views (the moment after a reset is the primary
-  salvage moment). Dependency-graph parallel claiming is recorded as design
-  debt with explicit promotion triggers (ADR-0004 second amendment).
-- **Transport-death diagnostics (ADR-0008)**: `lzy doctor` gains a
-  `transport` line counting turns that died before reaching the server
-  (ENETDOWN and the errno family, matched primarily from `statusMessage` —
-  the engine logs such incidents with `reason: unknown`), with per-code
-  breakdown and a fake-ip (198.18.0.0/15 → local proxy TUN) hint. The family
-  is kept strictly separate from 429 accounting and never feeds the
-  concurrency band or off-peak math. Warn-only, never flips the exit code.
-- **Host workspace discipline (ADR-0006)**: cross-repo goal loops anchor at the
-  host repo — strict-cwd resolution (no walk-up), write commands fail fast
-  before they can leave empty `.lazyzcode/loop/` scar directories (reset keeps
-  its null-goal cleanup contract), every no-goal error prints the exact path it
-  checked plus a recovery hint, `lzy doctor` patrols empty-loop scars, and
-  claim registration narrows to invocation-grade triggers (leading `zw` /
-  explicit `lazyzcode:zw` / leading `ulw`·`ultrawork`; mid-sentence mentions
-  still get the injection but no claim — ADR-0004 amendment). The `zw` skill
-  gains a "Host workspace (cross-repo goals)" section.
 
 ## [0.0.2] - 2026-09-08
 

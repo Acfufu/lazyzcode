@@ -193,10 +193,22 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
 ## Continuation (how the Stop hook drives you)
 
 - The plugin's Stop hook requests engine continuation while the goal is
-  unfinished — at most **2× per session** (it reserves 1 of the engine's
-  shared 3-continue pool for background notifications).
+  unfinished — at most **2× per session** (a persistent per-session counter;
+  1 of the engine's shared 3-continue pool stays reserved for background
+  notifications). Keep the three continuation surfaces distinct — **engine**:
+  3 continues per turn, counter resets on every new prompt; **lzy Stop hook**:
+  self-limited to 2 per session, persistent, never resets; **scheduler wake**:
+  a fresh session with a fresh budget every time — the only unlimited
+  continuation surface, and never a license to pad.
 - When you feel the `[lzy]` nudge: continue the **current step**. Do not replan,
   do not summarize, do not ask questions — work.
+- **No-op detection (pull-back integrity):** every pull-back must move the
+  loop's state set — {done count, F-item evidence.treeHash set, handoff
+  registrations, salvage stubs}. A `step done` rebinding whose treeHash did
+  not change counts as a no-op; two consecutive handoff registrations with
+  zero state-set movement are likewise violations (a handoff is a graceful
+  hand-back per ADR-0009, not a free bail-out channel). Zero movement means
+  you are padding: stop working the loop and close cleanly.
 - Budget exhausted with steps remaining? State plainly which steps remain and
   stop cleanly; the next session's SessionStart hook re-injects the loop state.
 - **Tool fire-loop escape (misfire attractor):** if the same tool fires 3+ times
@@ -204,12 +216,39 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
   to the step (wrong index, sibling-repo symbols) — stop calling it, even if
   you already declared it "disabled" (self-commands do not survive long
   context). Switch tools or, when the context is already degraded: write a
-  handoff snapshot (remaining path, exact next actions) into the plan file, run
+  handoff snapshot per the 7-field template below, run
   `lzy loop handoff --snapshot <that file>`, then end the turn and ask the user
   to open a fresh context with `zw 继续`. Never pad with placeholder queries to
   "harmlessly" keep calling — that is how a 2-call misfire becomes a 79-call
   spiral. If the tripwire nudge (`[lzy]` same-tool failure streak) arrives, it
   means the hook observed this pattern before you did: obey it immediately.
+- **Handoff snapshot template (lint-enforced).** `lzy loop handoff` rejects a
+  snapshot missing any of the seven sections below — the Chinese headings are
+  contract literals, byte-identical to the CLI's lint list; each section needs
+  at least one non-empty line (a bare heading is an empty handoff):
+
+  ```markdown
+  # 交接快照
+  ## 剩余步骤
+  <pending step IDs + one-line titles>
+  ## 下一步动作
+  <the exact next action, executable without re-reading the whole plan>
+  ## 目标与进度
+  <slug · done/total · the step in progress>
+  ## 脏树清单
+  <verbatim `git status --porcelain` output; write （无） if the tree is clean>
+  ## tree hash
+  <output of git rev-parse "HEAD^{tree}" at handoff time>
+  ## 风险与坑
+  <gotchas a fresh claimer would otherwise rediscover the hard way>
+  ## 复归指令
+  <the exact resume command/prompt — e.g. zw 继续>
+  ```
+
+- **Dirty-tree inheritance:** the snapshot's 脏树清单 binds the receiver. A
+  claiming session reconciles against that list FIRST; `checkout` / `reset`
+  before every entry is accounted for destroys the previous session's
+  uncommitted work — that work belongs to the goal, not to the cleaner.
 - `lzy loop status` at any time to re-ground yourself (also after compaction);
   for cross-repo goals, return to the host root before running it.
 
@@ -274,6 +313,16 @@ Protocol for a wake-up session (this IS a red-line contract, not a suggestion):
    nothing — the next wake-up resumes from `.lazyzcode/`.
 5. **Serial subagents** regardless of the 并发纪律 cap unless the loop is
    executing F-item captures and the cap allows 2.
+6. **Never create wake automations in-session.** The engine auto-binds an
+   automation created inside a session to that very session, and one session
+   can own at most one automation (ADR-0010 probe-proven) — unbound wakes are
+   created only from the App's automation UI (rebuild recipe: plan-v2 report
+   §6).
+7. **Stop the wake automation when the goal ends.** After `lzy loop finish` or
+   `abandon`, disable the wake automation feeding this workspace (App UI);
+   the CLI prints a reminder line. An empty-slot wake is pure idle burn —
+   mounting is ON, clearing is OFF (ADR-0010 semantics), and both directions
+   belong to the user.
 
 Suggested automation prompt (host-side configuration, ≥1h interval):
 

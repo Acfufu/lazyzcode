@@ -29,6 +29,22 @@ try {
   const prompt = typeof input?.prompt === "string" ? input.prompt : "";
   if (!BARE_ZW_RE.test(prompt) && !EXPLICIT_RE.test(prompt) && !ALIAS_RE.test(prompt)) failOpen();
 
+  // 哨兵旗标（plan-v2 Phase 2-6）：wake prompt 含「无人值守」→ 记 unattended 入会话状态。
+  // 写在 executing 闸门之外——无目标/planning 的空转 wake 也要记（wake_noop 遥测与 A'
+  // 复活前置④依赖它）；认领块不动（claimedAt 仍限 executing）。宿主 wake 模板含
+  // 「无人值守：只推进 executing 目标…」，交互会话正常不含该词（误触面=A' 缓刑已知边界）。
+  try {
+    const cwd = inputCwd(input);
+    const sessionId = inputSessionId(input);
+    if (sessionId && prompt.includes("无人值守")) {
+      withSessionLock(cwd, sessionId, () => {
+        writeSessionState(cwd, sessionId, { unattended: true, wakeAt: new Date().toISOString() });
+      });
+    }
+  } catch {
+    // 旗标写失败不影响注入
+  }
+
   // 认领登记（ADR-0004，写面收窄见修正案）：executing 闸门 + 唤起级触发——句首 zw /
   // 显式 lazyzcode:zw / 句首 ulw·ultrawork 才写 claimedAt；句中提及只注入不认领，
   // 防「顺带提一句」的会话在任何仓库白拿认领资格；

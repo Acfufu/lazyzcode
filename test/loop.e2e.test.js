@@ -34,6 +34,25 @@ function lzy(args, cwd, opts = {}) {
 
 const THREE_STEPS = "- [N1] x\n- [N2] y\n- [F1] v\n";
 
+// 交接快照 7 字段模板（与 core/loop.js HANDOFF_SNAPSHOT_SECTIONS 逐字节一致）
+const FULL_SNAP = [
+  "# 交接快照",
+  "## 剩余步骤",
+  "N2、F1",
+  "## 下一步动作",
+  "推进 N2 后取证 F1",
+  "## 目标与进度",
+  "1/3",
+  "## 脏树清单",
+  "（git status --porcelain 原文；干净树写（无））",
+  "## tree hash",
+  "a1b2c3d4",
+  "## 风险与坑",
+  "无",
+  "## 复归指令",
+  "zw 继续",
+].join("\n");
+
 function setup(dir, body) {
   const p = join(dir, "plan.md");
   writeFileSync(p, body);
@@ -137,6 +156,65 @@ test("git-less 目录：证据未绑定与 finish 的分诊文案（R2-4 回归�
     assert.equal(fin.code, 1);
     assert.match(fin.out, /未绑定/);
     assert.match(fin.out, /不是 git 仓库/); // 药方可执行，不再误诊「过期」
+    const m = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "metrics.json"), "utf8"));
+    assert.equal(m.finish_reject_unbound, 1); // 埋点（plan-v2 Phase 2-1）
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("finish 埋点与 rebind 痕迹（plan-v2 Phase 2-1）：三分拒绝计数、代数附件不覆写、历史 append-only", () => {
+  const d = repo();
+  try {
+    assert.equal(lzy(["loop", "register", "m", "--title", "t"], d).code, 0);
+    const p = setup(d, THREE_STEPS);
+    assert.equal(lzy(["loop", "plan", p], d).code, 0);
+    assert.equal(lzy(["loop", "start"], d).code, 0);
+    const mp = join(d, ".lazyzcode", "loop", "metrics.json");
+    // pending 拒绝
+    assert.equal(lzy(["loop", "finish"], d).code, 1);
+    let m = JSON.parse(readFileSync(mp, "utf8"));
+    assert.equal(m.finish_attempts, 1);
+    assert.equal(m.finish_reject_pending, 1);
+    // 收口全部步骤，带第一代附件
+    assert.equal(lzy(["step", "done", "N1", "--note", "n"], d).code, 0);
+    assert.equal(lzy(["step", "done", "N2", "--note", "n"], d).code, 0);
+    writeFileSync(join(d, "cap.txt"), "cap1\n");
+    assert.equal(
+      lzy(["step", "done", "F1", "--evidence", "v1", "--evidence-file", "cap.txt"], d).code,
+      0,
+    );
+    const evd = join(d, ".lazyzcode", "evidence");
+    assert.ok(existsSync(join(evd, "m.F1.1.1.txt")));
+    // stale 拒绝
+    writeFileSync(join(d, "a.txt"), "b\n");
+    spawnSync("git", ["add", "a.txt"], { cwd: d });
+    assert.equal(spawnSync("git", ["commit", "-qm", "c2"], { cwd: d }).status, 0);
+    assert.equal(lzy(["loop", "finish"], d).code, 1);
+    m = JSON.parse(readFileSync(mp, "utf8"));
+    assert.equal(m.finish_reject_stale, 1);
+    // rebind：第二代附件落盘，第一代保留，历史入账
+    writeFileSync(join(d, "cap.txt"), "cap2\n");
+    assert.equal(
+      lzy(["step", "done", "F1", "--evidence", "v2", "--evidence-file", "cap.txt"], d).code,
+      0,
+    );
+    assert.ok(existsSync(join(evd, "m.F1.1.1.txt")), "旧代附件保留");
+    assert.ok(existsSync(join(evd, "m.F1.2.1.txt")), "新代附件不覆写旧代");
+    const goal = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+    const f = goal.steps.find((s) => s.id === "F1");
+    assert.equal(f.evidence.text, "v2");
+    assert.ok(f.evidence.files[0].path.includes("m.F1.2.1.txt"));
+    assert.equal(f.evidenceHistory.length, 1);
+    assert.equal(f.evidenceHistory[0].text, "v1");
+    assert.ok(f.evidenceHistory[0].files[0].path.includes("m.F1.1.1.txt"));
+    // 放行：attempts 累计三分，成功不设独立计数（首过率=1 - rejects/attempts）
+    assert.equal(lzy(["loop", "finish"], d).code, 0);
+    m = JSON.parse(readFileSync(mp, "utf8"));
+    assert.equal(m.finish_attempts, 3);
+    assert.equal(m.finish_reject_pending, 1);
+    assert.equal(m.finish_reject_stale, 1);
+    assert.equal(m.finish_reject_unbound, undefined);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
@@ -181,12 +259,19 @@ test("handoff（ADR-0009）：三拒（缺参/不存在/过期）+ 登记可见 
     assert.match(lzy(["loop", "handoff"], d).out, /用法/); // 缺 --snapshot
     assert.match(lzy(["loop", "handoff", "--snapshot", "nope.md"], d).out, /不存在/);
     const stale = join(d, "stale.md");
-    writeFileSync(stale, "old snapshot");
-    const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
-    utimesSync(stale, old, old); // mtime 回拨 25h：化石快照
+    writeFileSync(stale, FULL_SNAP);
+    const old = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    utimesSync(stale, old, old); // mtime 回拨 3h：超 2h 上限的化石快照（plan-v2 Phase 2-5）
     assert.match(lzy(["loop", "handoff", "--snapshot", "stale.md"], d).out, /过期/);
+    // 内容 lint：缺节与空节都拒（7 字段模板，plan-v2 Phase 2-5）
+    const bad = join(d, "bad.md");
+    writeFileSync(bad, FULL_SNAP.replace("## 风险与坑\n无\n", ""));
+    assert.match(lzy(["loop", "handoff", "--snapshot", "bad.md"], d).out, /缺强制节/);
+    const empty = join(d, "empty.md");
+    writeFileSync(empty, FULL_SNAP.replace("## 下一步动作\n推进 N2 后取证 F1", "## 下一步动作"));
+    assert.match(lzy(["loop", "handoff", "--snapshot", "empty.md"], d).out, /空节/);
     const snap = join(d, "snap.md");
-    writeFileSync(snap, "handoff state");
+    writeFileSync(snap, FULL_SNAP);
     assert.match(lzy(["loop", "handoff", "--snapshot", "snap.md"], d).out, /交接已登记/);
     assert.equal(existsSync(join(d, ".lazyzcode", "loop", "handoff.json")), true);
     assert.match(lzy(["loop", "status"], d).out, /交接标记在场/);
@@ -205,7 +290,7 @@ test("放行计数（可观测面）：登记 +1、reset 后永续、status 双�
     assert.equal(lzy(["loop", "plan", p], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
     const snap = join(d, "snap.md");
-    writeFileSync(snap, "handoff state");
+    writeFileSync(snap, FULL_SNAP);
     assert.equal(lzy(["loop", "handoff", "--snapshot", "snap.md"], d).code, 0);
     const mp = join(d, ".lazyzcode", "loop", "metrics.json");
     const m1 = JSON.parse(readFileSync(mp, "utf8"));
@@ -268,7 +353,8 @@ test("loop list 跨仓清单：executing 前置、认领/存根列、版本不�
     mkdirSync(join(execRepo, ".lazyzcode", "loop", "sessions"), { recursive: true });
     writeFileSync(
       join(execRepo, ".lazyzcode", "loop", "sessions", "s1.json"),
-      JSON.stringify({ claimedAt: "2026-09-10T00:00:00.000Z" }),
+      // 认领 TTL 48h（plan-v2 Phase 2-5）起效后，夹具认领须新鲜才计入认领列
+      JSON.stringify({ claimedAt: new Date().toISOString() }),
     );
     goalJsonAt(doneRepo, "y-loop", "done", [{ id: "F1", kind: "F", status: "done" }]);
     mkdirSync(join(doneRepo, ".lazyzcode", "loop", "salvage"), { recursive: true });
@@ -341,7 +427,7 @@ test("handoff 写面入锁（R6A-3）：过锁外预检后持锁即 5s 超时拦
     assert.equal(lzy(["loop", "plan", p], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
     const snap = join(d, "snap.md");
-    writeFileSync(snap, "handoff state");
+    writeFileSync(snap, FULL_SNAP);
     mkdirSync(join(d, ".lazyzcode", "loop", ".lock"), { recursive: true });
     const r = lzy(["loop", "handoff", "--snapshot", "snap.md"], d);
     assert.equal(r.code, 1);

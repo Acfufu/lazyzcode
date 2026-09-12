@@ -222,6 +222,7 @@ lzy loop verify                         # evidence freshness audit (exit 1 = sta
 lzy loop finish                         # the final gate; auto-archives the evidence bundle
 lzy loop export                         # re-export the evidence bundle
 lzy loop handoff --snapshot <file>      # register a clean handoff; next Stop releases once
+lzy loop cost                           # points report (standing coefficients + promo overlay, read-only)
 lzy loop list [--root <dir>]            # read-only sweep of sibling repos' goal loops
 lzy loop abandon | lzy loop reset       # give up / clear state
 ```
@@ -246,8 +247,10 @@ lzy loop abandon | lzy loop reset       # give up / clear state
 - `lzy loop handoff --snapshot <file>` registers a clean handoff: the next
   Stop consumes the marker once and releases the session without spending the
   continue budget (the goal stays `executing`; state lives on disk). The
-  snapshot must exist and have been modified within 24h — no real snapshot,
-  no handoff. `lzy loop reset`/`abandon` sweeps a leftover marker. Each
+  The snapshot must exist, have been modified within 2h, and contain all seven
+  mandatory sections (remaining steps / next action / goal & progress / dirty-tree
+  list / tree hash / risks / resume command — missing or empty sections are
+  rejected; template in zw's Continuation section). `lzy loop reset`/`abandon` sweeps a leftover marker. Each
   registration and consumption increments anonymous counters in
   `.lazyzcode/loop/metrics.json` (`registered`/`consumed`, no session
   identity); they survive reset and surface in `lzy status`/`lzy loop status`.
@@ -449,6 +452,7 @@ lzy loop verify                 evidence freshness audit (exit 1 = stale/unbound
 lzy step done <ID> [--note <t>] [--evidence <t>] [--evidence-file <f>]…
 lzy loop finish                 final gate: all done + all evidence fresh; archives evidence bundle
 lzy loop export                 re-export the evidence bundle (<slug>.report.md)
+lzy loop cost                   points report (coefficients + promo overlay, read-only)
 lzy loop list [--root <dir>]    cross-repo goal-loop sweep (read-only)
 lzy loop abandon                give up, keep the record
 lzy loop reset                  clear loop state (incl. session counters, orphan tmp)

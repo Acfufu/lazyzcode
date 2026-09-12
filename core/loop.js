@@ -15,6 +15,8 @@ export const EVIDENCE_MAX = 4000;
 // 证据附件上限：单 F 项 ≤4 个文件、单个 ≤20MB（截图/响应转储足够；防手滑塞巨物）
 export const EVIDENCE_FILES_MAX = 4;
 export const EVIDENCE_FILE_MAX_BYTES = 20 * 1024 * 1024;
+// rebind 历史上限：取证历史 append-only 留审计，超出丢最旧（plan-v2 Phase 2-1）
+export const EVIDENCE_HISTORY_MAX = 5;
 
 export class LoopError extends Error {}
 
@@ -277,7 +279,7 @@ export function completeStep(cwd, git, id, opts = {}) {
 
 // 证据附件：把取证产物（截图/响应转储）复制进 .lazyzcode/evidence/ 并绑 sha256——
 // 原件在 /tmp 会被清，副本让证据包自包含（.lazyzcode/ 不计工作区脏，决策 #14）。
-function attachEvidenceFiles(cwd, goal, step, files) {
+function attachEvidenceFiles(cwd, goal, step, files, seq = 1) {
   if (!files || files.length === 0) return undefined;
   if (step.kind !== "F") {
     throw new LoopError(`附件证据仅 F 项支持（${step.id} 是 ${step.kind} 项）；N 项的完成由 note 承载`);
@@ -299,7 +301,8 @@ function attachEvidenceFiles(cwd, goal, step, files) {
       throw new LoopError(`证据文件超上限 ${EVIDENCE_FILE_MAX_BYTES} bytes：${src}（${st.size}）`);
     }
     const ext = (/(\.[a-z0-9]{1,9})$/i.exec(basename(src))?.[1] ?? ".bin").toLowerCase();
-    const dest = join(outDir, `${goal.slug}.${step.id}.${i + 1}${ext}`);
+    // seq=取证代数（step.evidenceSeq）：重取证落新代数文件名，不再同名覆写旧附件（plan-v2 Phase 2-1）
+    const dest = join(outDir, `${goal.slug}.${step.id}.${seq}.${i + 1}${ext}`);
     copyFileSync(src, dest);
     return {
       path: relative(cwd, dest),
@@ -341,7 +344,8 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
   step.status = "done";
   step.doneAt = new Date().toISOString();
   step.note = trimmedNote ?? (rebinding ? step.note : null);
-  const attached = attachEvidenceFiles(cwd, goal, step, files);
+  const previousEvidence = rebinding ? step.evidence : null;
+  const attached = attachEvidenceFiles(cwd, goal, step, files, step.evidenceSeq ?? 1);
   step.evidence =
     step.kind === "F"
       ? {
@@ -351,6 +355,14 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
           ...(attached ? { files: attached } : {}),
         }
       : null;
+  // rebind 痕迹：旧证据整对象入历史（append-only，审计「凭什么改口」）；代数随每次取证
+  // 推进并进附件文件名——同一 F 项反复取证不再互相覆写（plan-v2 Phase 2-1）。
+  if (previousEvidence) {
+    step.evidenceHistory = [...(step.evidenceHistory ?? []), previousEvidence].slice(
+      -EVIDENCE_HISTORY_MAX,
+    );
+  }
+  if (step.kind === "F") step.evidenceSeq = (step.evidenceSeq ?? 1) + 1;
   writeGoal(cwd, goal);
   return { goal, step, rebinding, dirty: git ? git.dirty() : false };
 }
@@ -380,8 +392,12 @@ export function finishLoop(cwd, git) {
 
 function doFinishLoop(cwd, git) {
   const goal = requireActive(cwd, "executing");
+  // 埋点（plan-v2 Phase 2-1）：finish 尝试与三分拒绝计数——veto 判定式①「finish 首过率」
+  // 的数据面；incMetrics 契约永不抛，计数失败不影响拒绝/放行语义。
+  incMetrics(cwd, "finish_attempts");
   const pending = goal.steps.filter((s) => s.status !== "done");
   if (pending.length > 0) {
+    incMetrics(cwd, "finish_reject_pending");
     throw new LoopError(
       `未完成即停 = 半途而废：还剩 ${pending.map((s) => s.id).join(" ")}（用 lzy step done 逐项收口）`,
     );
@@ -389,12 +405,14 @@ function doFinishLoop(cwd, git) {
   const { current, stale, unbound } = verifyEvidence(cwd, git);
   // 过期（代码后变，重取证即可）与未绑定（git 缺失，重取证也无济于事）必须分诊，药方不同（评审 R2-4）。
   if (stale.length > 0) {
+    incMetrics(cwd, "finish_reject_stale");
     throw new LoopError(
       `证据已过期（代码在取证后变更，tree hash 对不上）：${stale.map((s) => s.id).join(" ")}。` +
         `在当前代码上重新取证后重跑 lzy step done <id> --evidence …（current=${current ?? "未知"}）`,
     );
   }
   if (unbound.length > 0) {
+    incMetrics(cwd, "finish_reject_unbound");
     throw new LoopError(
       `证据未绑定 tree hash：${unbound.map((s) => s.id).join(" ")}。` +
         (current
@@ -500,7 +518,37 @@ export function incMetrics(cwd, field) {
 }
 
 // 快照新鲜度上限：没有真实快照的交接不是交接（防滥用防化石——双审 P2 对冲）。
-export const HANDOFF_SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// 2h（plan-v2 Phase 2-5）：交接标记本就期待下个 Stop 即消费，隔夜快照=化石。
+export const HANDOFF_SNAPSHOT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+// 交接快照 7 字段 lint（plan-v2 Phase 2-5）：快照内容必须自含续跑全量。标题列表是契约
+// 字面量——zw SKILL.md Continuation 节的模板与之逐字节一致（改一处须同步另一处）；
+// 脏树清单节承载 git status --porcelain 原文（脏树继承协议，卫生规则④）。
+export const HANDOFF_SNAPSHOT_SECTIONS = [
+  "## 剩余步骤",
+  "## 下一步动作",
+  "## 目标与进度",
+  "## 脏树清单",
+  "## tree hash",
+  "## 风险与坑",
+  "## 复归指令",
+];
+
+// 内容 lint：7 节标题在场且各节至少一行非空正文（裸标题=空壳交接，与缺节同拒）。
+function lintHandoffSnapshot(content) {
+  const missing = [];
+  for (const head of HANDOFF_SNAPSHOT_SECTIONS) {
+    const at = content.indexOf(head);
+    if (at < 0) {
+      missing.push(head);
+      continue;
+    }
+    const rest = content.slice(at + head.length);
+    const next = rest.indexOf("\n## ");
+    if (!((next < 0 ? rest : rest.slice(0, next)).trim())) missing.push(`${head}（空节）`);
+  }
+  return missing;
+}
 
 export function handoffGoal(cwd, snapshot, treeHash) {
   requireActive(cwd, "executing"); // planning/已完结目标上登记交接没有语义（Stop 不拉）
@@ -517,7 +565,20 @@ export function handoffGoal(cwd, snapshot, treeHash) {
     throw new LoopError(`交接快照不存在：${snapAbs}（先写快照再登记，拒绝空壳交接）`);
   }
   if (Date.now() - mtimeMs > HANDOFF_SNAPSHOT_MAX_AGE_MS) {
-    throw new LoopError(`交接快照已过期（mtime 超过 24h）：${snapAbs}（更新快照后重新登记）`);
+    throw new LoopError(`交接快照已过期（mtime 超过 2h）：${snapAbs}（更新快照后重新登记）`);
+  }
+  let content = "";
+  try {
+    content = readFileSync(snapAbs, "utf8");
+  } catch {
+    throw new LoopError(`交接快照不可读：${snapAbs}（存在但读不了，拒绝盲登记）`);
+  }
+  const missing = lintHandoffSnapshot(content);
+  if (missing.length > 0) {
+    throw new LoopError(
+      `交接快照缺强制节：${missing.join("、")}。7 字段模板见 zw SKILL.md Continuation 节` +
+        `（脏树清单节须内嵌 git status --porcelain 原文，干净树写（无））`,
+    );
   }
   // 写入入锁（评审 R6A-3）：锁外交写与 resetLoop 锁内 cleanupLoopResidue 的 rm handoff.json
   // 交错会留孤儿标记——下一目标首个 Stop 被误放行。锁内重查 executing 保证「goal 在场」
@@ -636,14 +697,20 @@ function writeSalvageStub(cwd, goal, git, reason) {
 // ── 展示 ────────────────────────────────────────────────────────────────────
 // 会话旗标扫描（ADR-0004 读面）：认领谓词=文件含 claimedAt（纯振数文件不算认领）；
 // stuck=显式 true（原地无进展两振停拉标记）。目录缺失/文件损坏一律静默跳过。
+// 认领 TTL（plan-v2 Phase 2-5）：引擎无 SessionEnd 事件，死亡会话的认领以 48h 时效退役——
+// 过期不计入认领集（Stop 空集=目录级现状，单调收紧不破），文件原地保留（重认领自然覆写，
+// doctor 过期计数可见）。canonical 常量；plugin/hooks/hook-lib.js 持自包含同形副本。
+export const CLAIM_TTL_MS = 48 * 60 * 60 * 1000;
+
 export function scanSessionFlags(cwd) {
   const claims = [];
   const stuck = [];
+  const expired = []; // 认领 TTL（plan-v2 Phase 2-5）：claimedAt 超 48h 的死亡会话认领
   let names;
   try {
     names = readdirSync(join(loopDir(cwd), "sessions"));
   } catch {
-    return { claims, stuck };
+    return { claims, stuck, expired };
   }
   for (const name of names) {
     if (!name.endsWith(".json")) continue; // 连 .lock-<sid> 目录与 .pid.tmp 一起排除
@@ -651,14 +718,18 @@ export function scanSessionFlags(cwd) {
       const raw = JSON.parse(readFileSync(join(loopDir(cwd), "sessions", name), "utf8"));
       if (raw && typeof raw === "object") {
         const sid = name.slice(0, -".json".length);
-        if (typeof raw.claimedAt === "string" && raw.claimedAt) claims.push(sid);
+        if (typeof raw.claimedAt === "string" && raw.claimedAt) {
+          const at = Date.parse(raw.claimedAt);
+          if (Number.isFinite(at) && Date.now() - at > CLAIM_TTL_MS) expired.push(sid);
+          else claims.push(sid);
+        }
         if (raw.stuck === true) stuck.push(sid);
       }
     } catch {
       // 损坏文件跳过
     }
   }
-  return { claims, stuck };
+  return { claims, stuck, expired };
 }
 
 export function formatStatus(cwd, git) {

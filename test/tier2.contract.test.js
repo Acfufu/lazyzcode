@@ -69,7 +69,7 @@ test("证据附件：--evidence-file 复制入 evidence/ 并绑 sha256；report 
     const want = createHash("sha256").update(PNG_BYTES).digest("hex");
     assert.equal(ev.files[0].sha256, want);
     assert.equal(ev.files[0].bytes, PNG_BYTES.length);
-    assert.match(ev.files[0].path, /^\.lazyzcode[/\\]evidence[/\\]att\.F1\.1\.png$/);
+    assert.match(ev.files[0].path, /^\.lazyzcode[/\\]evidence[/\\]att\.F1\.1\.1\.png$/); // 代数命名
     // 副本自包含：字节数与 sha256 与原件一致
     const copy = readFileSync(join(d, ev.files[0].path));
     assert.equal(copy.length, PNG_BYTES.length);
@@ -92,7 +92,7 @@ test("证据附件：--evidence-file 复制入 evidence/ 并绑 sha256；report 
     const report = readFileSync(reportPath, "utf8");
     assert.match(report, /# 目标循环报告：att/);
     assert.match(report, /评审 PASS/);
-    assert.match(report, /att\.F1\.1\.png/);
+    assert.match(report, /att\.F1\.1\.1\.png/);
     assert.ok(report.includes(want.slice(0, 16)));
     // export 重导出（done 态可再导）
     const re = lzy(["loop", "export"], d);
@@ -127,7 +127,8 @@ test("证据附件边界：文件缺失拒绝、多附件追加落位、超上�
     const goal = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
     assert.deepEqual(
       goal.steps.find((s) => s.id === "F1").evidence.files.map((f) => f.path.split("/").pop()),
-      ["edge.F1.1.png", "edge.F1.2.png"],
+      // 代数命名（plan-v2 Phase 2-1）：同次取证 seq=1，index 1/2
+      ["edge.F1.1.1.png", "edge.F1.1.2.png"],
     );
     // >4 个附件拒绝
     const many = ["p1", "p2", "p3", "p4", "p5"].map((n) => {

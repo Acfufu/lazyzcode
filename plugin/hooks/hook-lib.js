@@ -126,7 +126,11 @@ export function writeSessionCounter(cwd, sessionId, continues) {
 }
 
 // 认领集（ADR-0004）：认领谓词=会话文件含 claimedAt 字段——文件存在≠认领，
-// 纯振数文件（stop 侧给未认领会话记 stall 用）不算认领。
+// 纯振数文件（stop 侧给未认领会话记 stall 用）不算认领。认领 TTL（plan-v2 Phase 2-5）：
+// claimedAt 超 48h=死亡会话认领，不计入——canonical=core/loop.js CLAIM_TTL_MS，
+// 本副本随 hook 部署自包含（incMetrics 同款双份纪律）。
+export const CLAIM_TTL_MS = 48 * 60 * 60 * 1000;
+
 export function listClaims(cwd) {
   const dir = join(cwd, ".lazyzcode", "loop", "sessions");
   let names;
@@ -141,6 +145,8 @@ export function listClaims(cwd) {
     try {
       const raw = JSON.parse(readFileSync(join(dir, name), "utf8"));
       if (raw && typeof raw === "object" && typeof raw.claimedAt === "string" && raw.claimedAt) {
+        const at = Date.parse(raw.claimedAt);
+        if (Number.isFinite(at) && Date.now() - at > CLAIM_TTL_MS) continue; // 过期认领不算
         claims.push(name.slice(0, -".json".length));
       }
     } catch {

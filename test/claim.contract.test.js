@@ -32,15 +32,20 @@ function claimAt(dir, sid, extra = {}) {
   mkdirSync(join(dir, ".lazyzcode", "loop", "sessions"), { recursive: true });
   writeFileSync(
     sessFile(dir, sid),
-    JSON.stringify({ continues: 0, claimedAt: "2026-09-08T00:00:00Z", ...extra }),
+    // claimedAt 默认取当下（认领 TTL 48h 起效后，固定历史时间戳会被当死亡认领过滤）
+    JSON.stringify({ continues: 0, claimedAt: new Date().toISOString(), ...extra }),
   );
 }
+
+// HOME 隔离（plan-v2-phase2）：stop 钩子读计费账本（水位警戒线），不隔离会打真账本。
+const ISOLATED_HOME = mkdtempSync(join(tmpdir(), "lzy-claim-home-"));
 
 function hook(name, input, cwd) {
   const r = spawnSync(process.execPath, [join(HOOKS, name)], {
     input: JSON.stringify(input),
     encoding: "utf8",
     timeout: 20_000,
+    env: { ...process.env, HOME: ISOLATED_HOME },
     ...(cwd ? { cwd } : {}),
   });
   return { code: r.status, out: (r.stdout ?? "").trim() };
@@ -232,5 +237,59 @@ test("兼容：旧格式 {continues} 文件经认领与预算写后字段双向�
     assert.equal(typeof st.claimedAt === "string", true); // 预算写后认领仍在
   } finally {
     cleanup(d);
+  }
+});
+
+test("认领 TTL（plan-v2 Phase 2-5）：claimedAt 超 48h 不算认领——纯过期回落现状、混集旁路放手、scanSessionFlags 记过期", async () => {
+  const { scanSessionFlags } = await import("../core/loop.js");
+  const d = scratch();
+  try {
+    goalAt(d);
+    const stale = new Date(Date.now() - 49 * 3_600_000).toISOString();
+    // 纯过期：空集回落目录级现状，过期会话本身照被拉
+    claimAt(d, "sOld", { claimedAt: stale });
+    const o1 = JSON.parse(hook("stop.js", { sessionId: "sOld", cwd: d }).out);
+    assert.equal(o1.continue, true);
+    // 混集：新鲜认领在场——过期会话成旁路放手，新鲜会话照拉
+    claimAt(d, "sNew", { claimedAt: new Date().toISOString() });
+    const o2 = hook("stop.js", { sessionId: "sOld", cwd: d }).out;
+    assert.equal(o2, "{}");
+    const o3 = JSON.parse(hook("stop.js", { sessionId: "sNew", cwd: d }).out);
+    assert.equal(o3.continue, true);
+    // core 侧读面：expired 记名、claims 不计过期
+    const flags = scanSessionFlags(d);
+    assert.deepEqual(flags.claims, ["sNew"]);
+    assert.deepEqual(flags.expired, ["sOld"]);
+  } finally {
+    cleanup(d);
+  }
+});
+
+const WAKE_PROMPT = "zw 继续（无人值守：只推进 executing 目标；无目标或 planning 态则干净退出并说明；不做完不停）";
+
+test("哨兵旗标（plan-v2 Phase 2-6）：无人值守写 unattended（无目标也写）、executing 照写认领、普通 prompt 不写", () => {
+  const d1 = scratch();
+  const d2 = scratch();
+  const d3 = scratch();
+  try {
+    const o1 = JSON.parse(hook("trigger.js", { sessionId: "w1", cwd: d1, prompt: WAKE_PROMPT }).out);
+    assert.ok(o1.additionalContext, "注入照常");
+    const s1 = JSON.parse(readFileSync(sessFile(d1, "w1"), "utf8"));
+    assert.equal(s1.unattended, true);
+    assert.ok(s1.wakeAt);
+    assert.equal(s1.claimedAt, undefined, "无 goal 不写认领");
+
+    goalAt(d2);
+    hook("trigger.js", { sessionId: "w2", cwd: d2, prompt: WAKE_PROMPT });
+    const s2 = JSON.parse(readFileSync(sessFile(d2, "w2"), "utf8"));
+    assert.equal(s2.unattended, true);
+    assert.ok(s2.claimedAt, "executing 时旗标与认领双落");
+
+    goalAt(d3);
+    hook("trigger.js", { sessionId: "w3", cwd: d3, prompt: "zw 修一下登录 bug" });
+    const s3 = JSON.parse(readFileSync(sessFile(d3, "w3"), "utf8"));
+    assert.equal(s3.unattended, undefined, "交互触发词不落哨兵");
+  } finally {
+    cleanup(d1, d2, d3);
   }
 });

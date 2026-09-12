@@ -31,11 +31,16 @@ function counterAt(dir, sid, continues) {
   );
 }
 
-function hook(name, input) {
+// HOME 隔离（plan-v2-phase2）：stop 钩子会读真实 ~/.zcode 计费账本（水位警戒线）——
+// 默认打隔离空 HOME，水位专测再显式传 fixture HOME。
+const ISOLATED_HOME = mkdtempSync(join(tmpdir(), "lzy-hooks-home-"));
+
+function hook(name, input, extraEnv = {}) {
   const r = spawnSync(process.execPath, [join(HOOKS, name)], {
     input: typeof input === "string" ? input : JSON.stringify(input),
     encoding: "utf8",
     timeout: 20_000,
+    env: { ...process.env, HOME: ISOLATED_HOME, ...extraEnv },
   });
   return { code: r.status, out: (r.stdout ?? "").trim() };
 }
@@ -196,7 +201,7 @@ test("stop：旁路会话不消费交接标记（认领闸门先于消费块，A
     mkdirSync(join(d, ".lazyzcode", "loop", "sessions"), { recursive: true });
     writeFileSync(
       join(d, ".lazyzcode", "loop", "sessions", "claimed.json"),
-      JSON.stringify({ claimedAt: "2026-09-10T00:00:00.000Z" }),
+      JSON.stringify({ claimedAt: new Date().toISOString() }),
     );
     handoffMarkerAt(d);
     const o = hook("stop.js", { sessionId: "bystander", cwd: d }); // 未认领会话
@@ -264,7 +269,7 @@ test("stop：放行计数不加在非消费路径——坏 JSON 标记与旁路�
     mkdirSync(join(d2, ".lazyzcode", "loop", "sessions"), { recursive: true });
     writeFileSync(
       join(d2, ".lazyzcode", "loop", "sessions", "claimed.json"),
-      JSON.stringify({ claimedAt: "2026-09-10T00:00:00.000Z" }),
+      JSON.stringify({ claimedAt: new Date().toISOString() }),
     );
     handoffMarkerAt(d2);
     hook("stop.js", { sessionId: "bystander", cwd: d2 }); // 旁路放手
@@ -358,5 +363,112 @@ test("comment-checker：上限 5 处列出、总长 ≤300、调试残留、干�
     assert.equal(clean.out, "{}");
   } finally {
     cleanup(d);
+  }
+});
+
+const HAS_SQLITE3 = spawnSync("sqlite3", ["--version"], { timeout: 5_000 }).status === 0;
+
+test("水位警戒线（plan-v2 Phase 2-3）：超阈值注一次、窗内不重复、env 抬线、无账本静默", { skip: !HAS_SQLITE3 }, () => {
+  const d = scratch();
+  const home = mkdtempSync(join(tmpdir(), "lzy-hooks-wl-home-"));
+  try {
+    // fixture 账本：近 1h Flash 1e9 input ≈ 2300 积分 > 默认线 1600
+    const dbDir = join(home, ".zcode", "cli", "db");
+    mkdirSync(dbDir, { recursive: true });
+    const create = spawnSync(
+      "sqlite3",
+      [
+        join(dbDir, "db.sqlite"),
+        "CREATE TABLE model_usage (session_id TEXT, model_id TEXT, started_at INTEGER, status TEXT, input_tokens INTEGER, cache_read_input_tokens INTEGER, output_tokens INTEGER);" +
+          `INSERT INTO model_usage VALUES ('x','GLM-5.3-Flash',${Date.now()},'completed',1000000000,0,0);`,
+      ],
+      { timeout: 10_000 },
+    );
+    assert.equal(create.status, 0);
+    goalAt(d, "executing", [{ id: "F1", kind: "F", status: "pending" }]);
+    counterAt(d, "s", 0);
+    const wlEnv = { HOME: home };
+    const o1 = JSON.parse(hook("stop.js", { sessionId: "s", cwd: d }, wlEnv).out);
+    assert.equal(o1.continue, true);
+    assert.match(o1.additionalContext, /水位警戒/);
+    const st1 = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), "utf8"));
+    assert.ok(st1.lastWaterlineWarnAt > 0, "warn-once 状态落会话文件");
+    // 同会话窗内二跑不重复
+    const o2 = JSON.parse(hook("stop.js", { sessionId: "s", cwd: d }, wlEnv).out);
+    assert.equal(o2.continue, true);
+    assert.doesNotMatch(o2.additionalContext, /水位警戒/);
+    // env 抬线：另一会话不触警
+    counterAt(d, "s2", 0);
+    const o3 = JSON.parse(
+      hook("stop.js", { sessionId: "s2", cwd: d }, { HOME: home, LZY_WATERLINE_POINTS: "999999" }).out,
+    );
+    assert.equal(o3.continue, true);
+    assert.doesNotMatch(o3.additionalContext, /水位警戒/);
+    // 无账本 HOME（隔离默认）：fail-open 静默，续跑语义不受影响
+    counterAt(d, "s3", 0);
+    const o4 = JSON.parse(hook("stop.js", { sessionId: "s3", cwd: d }).out);
+    assert.equal(o4.continue, true);
+    assert.doesNotMatch(o4.additionalContext, /水位警戒/);
+  } finally {
+    cleanup(d, home);
+  }
+});
+
+test("wake_noop 遥测（plan-v2 Phase 2-6）：零推进收场计数、有推进不算、交接放行不算", () => {
+  // 容错读：无计数=文件根本不存在（undefined 语义即「从未计过」）
+  const metricOr = (dir, key) => {
+    try {
+      return JSON.parse(readFileSync(join(dir, ".lazyzcode", "loop", "metrics.json"), "utf8"))[key];
+    } catch {
+      return undefined;
+    }
+  };
+  const steps2 = [
+    { id: "N1", kind: "N", status: "pending" },
+    { id: "N2", kind: "N", status: "pending" },
+  ];
+  const d1 = scratch();
+  const d2 = scratch();
+  const d3 = scratch();
+  try {
+    // 零推进三连 → stuck 收场计 1
+    goalAt(d1, "executing", steps2);
+    mkdirSync(join(d1, ".lazyzcode", "loop", "sessions"), { recursive: true });
+    writeFileSync(join(d1, ".lazyzcode", "loop", "sessions", "w.json"), JSON.stringify({ continues: 0, unattended: true }));
+    hook("stop.js", { sessionId: "w", cwd: d1 });
+    hook("stop.js", { sessionId: "w", cwd: d1 });
+    hook("stop.js", { sessionId: "w", cwd: d1 });
+    assert.equal(metricsOf(d1).wake_noop, 1);
+    // 有推进到预算耗尽：不算（会话全程基线比较，非末段振数）
+    goalAt(d2, "executing", steps2);
+    mkdirSync(join(d2, ".lazyzcode", "loop", "sessions"), { recursive: true });
+    writeFileSync(join(d2, ".lazyzcode", "loop", "sessions", "w.json"), JSON.stringify({ continues: 0, unattended: true }));
+    hook("stop.js", { sessionId: "w", cwd: d2 });
+    goalAt(d2, "executing", [{ id: "N1", kind: "N", status: "done" }, { id: "N2", kind: "N", status: "pending" }]);
+    hook("stop.js", { sessionId: "w", cwd: d2 });
+    hook("stop.js", { sessionId: "w", cwd: d2 }); // 预算耗尽，但基线 0→1 有推进
+    assert.equal(metricOr(d2, "wake_noop"), undefined);
+    // 非无人值守会话零推进收场：不计数
+    const d4 = scratch();
+    try {
+      goalAt(d4, "executing", steps2);
+      counterAt(d4, "u", 0);
+      hook("stop.js", { sessionId: "u", cwd: d4 });
+      hook("stop.js", { sessionId: "u", cwd: d4 });
+      hook("stop.js", { sessionId: "u", cwd: d4 });
+      assert.equal(metricOr(d4, "wake_noop"), undefined);
+    } finally {
+      cleanup(d4);
+    }
+    // 交接放行路径：不经过计数
+    goalAt(d3, "executing", steps2);
+    mkdirSync(join(d3, ".lazyzcode", "loop", "sessions"), { recursive: true });
+    writeFileSync(join(d3, ".lazyzcode", "loop", "sessions", "w.json"), JSON.stringify({ continues: 0, unattended: true }));
+    handoffMarkerAt(d3);
+    hook("stop.js", { sessionId: "w", cwd: d3 });
+    assert.equal(metricOr(d3, "wake_noop"), undefined);
+    assert.equal(metricOr(d3, "consumed"), 1);
+  } finally {
+    cleanup(d1, d2, d3);
   }
 });

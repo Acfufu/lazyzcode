@@ -10,6 +10,33 @@ versioning is SemVer.
 
 ### Added
 
+- **Idle-run lane semantics in zw SKILL (idle-lane-sync)**: the Continuation
+  section now keeps FOUR continuation surfaces — engine, lzy Stop hook,
+  unbound scheduler wake (fresh session each fire), and the new **idle run**:
+  the host OffPeak idle task resumes the ORIGIN session (`queryId
+  <taskId>:bound:`, turnNumber continues across wakes) with **zero pool
+  exemption** — engine 3/turn and hook 2/session both count, and per-session
+  counters persist with the session. Budget wording follows the offpeak-probe
+  live probe (2026-09-14, with a same-night erratum): same-session binding
+  proven and pull-back exemption absent, but executor-perceived conversation
+  history is unreliable — never rely on in-chat references, keep all handoff
+  state on disk; an idle-run-resumed goal loop follows the Unattended
+  red-line protocol. Rate-limit discipline gains the "idle run = official
+  off-peak lane" bullet, keeping the scheduling/concurrency axis distinct
+  from the provider model pool (repo-wiki caveat).
+
+- **Content-moderation stream-kill family (content-kill-family)**: `lzy doctor` gains a
+  `content` line — provider content-filter mid-stream kills (BigModel `1301`; live
+  incident 2026-09-14: the stream opened HTTP 200 and was killed after ~4.8k chars of
+  model reasoning with zero text emitted) counted as a third failure family alongside
+  429 rate limiting and ADR-0008 transport deaths. The match is pinned to the failed
+  event's `context.statusMessage` field (companion fan-out lines never double-count);
+  `retryable=false` means no retry amplification, so events equal dead requests. The
+  zw SKILL rate-limit section and both guides gain the recovery contract: never retry
+  in place (it reproduces deterministically) — close cleanly and resume in a new
+  session, or rephrase so the model takes a different reasoning path. The family never
+  enters the concurrency-band/off-peak math.
+
 - **Engine baseline re-verified against ZCode 3.12.1 (engine-3121-sync)**: the desktop
   shell updated 3.11.2 → 3.12.1 (build 7207). All eight §3 hard constraints re-verified
   at source level and unchanged (7 hook events; Stop ≤3 with non-empty
@@ -77,8 +104,9 @@ versioning is SemVer.
 - **Prompt-layer discipline (plan-v2 Phase 1)**: zw's Continuation section
   defines the no-op criterion (the loop's state set must move: done count,
   F-item treeHash set, handoff registrations, salvage stubs), corrects the
-  three-continuation-surfaces mental model (engine 3/turn resetting, lzy
-  2/session persistent, scheduler wake unlimited), embeds the 7-field
+  then-three-continuation-surfaces mental model (engine 3/turn resetting, lzy
+  2/session persistent, scheduler wake unlimited; the fourth surface — idle
+  run — arrives with idle-lane-sync above), embeds the 7-field
   snapshot template, and adds dirty-tree inheritance (reconcile first, no
   checkout/reset); Unattended gains two hygiene rules (never create wake
   automations in-session; disable the wake after finish/abandon — the CLI

@@ -11,6 +11,10 @@ jobs:
       matrix:
         node: [20, 22, 24]
     runs-on: ubuntu-latest
+    # scheduleAdvisory 断言「UTC+8 宿主下的本地小时渲染」（core/ratelimit.js 双轴：
+    # 直方图=进程本地 getHours，计价表=UTC+8）——runner 默认 TZ=UTC 会错开 8h 致三只挂。
+    env:
+      TZ: Asia/Shanghai
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

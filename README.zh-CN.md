@@ -119,7 +119,9 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 GUI 直启场景）、`lzy` PATH shim、`.lazyzcode/` 状态卫生、平台提示、GLM
 套餐限流压力（近 2 日引擎日志只读扫描：去重后的 429 回合、判死回合、最长连撞、
 经验并发带——warn-only，不翻退出码）、传输死亡回合独立分族计数（`transport`：
-请求未达服务端类故障如 ENETDOWN，绝不进并发带数学）、项目记忆采纳审计
+请求未达服务端类故障如 ENETDOWN，绝不进并发带数学）、内容审核杀流独立分族计数
+（`content`：provider 内容审核中途杀流如 1301——原地重试必复现，绝不进并发带数学）、
+项目记忆采纳审计
 （`agents-md`，warn-only，含地图落后提示：基点后覆盖域 ≥50 提交即提醒重跑
 init-deep）、进行中目标的认领巡逻（`claims`：谁认领了它、
 stuck 停拉标记、零认领孤儿提示——warn-only），

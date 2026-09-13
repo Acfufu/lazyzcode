@@ -1,7 +1,7 @@
-// 限流体检契约测试：core/ratelimit.js 统计口径（限流族+传输死亡族）+ doctor rate-limit/
-// transport 行的真实 stdout 面。fixture 全落 scratch HOME，绝不触碰真实 ~/.zcode；
-// 端到端只断言行内容，绝不断言退出码（scratch HOME 下 doctor 必因 install fail 整体
-// exit 1，双审 B-5）。
+// 限流体检契约测试：core/ratelimit.js 统计口径（限流族+传输死亡族+内容审核杀流族）+
+// doctor rate-limit/transport/content 行的真实 stdout 面。fixture 全落 scratch HOME，
+// 绝不触碰真实 ~/.zcode；端到端只断言行内容，绝不断言退出码（scratch HOME 下 doctor
+// 必因 install fail 整体 exit 1，双审 B-5）。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, openSync, ftruncateSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectRateLimitStats, transportAdvisory } from "../core/ratelimit.js";
+import { collectRateLimitStats, contentAdvisory, transportAdvisory } from "../core/ratelimit.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const LOG_DIR = ["2026-09-06", "2026-09-07"]; // 两个扫描日的文件名（.jsonl 前缀）
@@ -555,6 +555,181 @@ test("端到端：doctor transport 行 warn（ENETDOWN+fake-ip 提示）；纯 s
       });
       const line3 = transportLine(r3.stdout);
       assert.ok(line3, "stdout 应含 transport skip 行");
+      assert.match(line3, /无引擎日志/);
+    } finally {
+      cleanup(empty);
+    }
+  } finally {
+    cleanup(d);
+  }
+});
+
+// ── 内容审核杀流族：statusMessage 主判据 + 伴生排除 + 纯度 + doctor content 行 ──
+
+// 真实事故行形态（2026-09-14 00:33 1301 活体事故，sessid/reqid 等长打码；HTTP 200 正常
+// 开流、模型已吐 1501 个 reasoning-delta 后被服务端中途杀流）。关键事实：reason="unknown"
+// （引擎误标，与 ENETDOWN 事故同形态）、retryable=false（无重试放大，events=死请求数）、
+// statusMessage 以 "[1301][" 头（BigModel 业务码形态，主判据钉死此单字段）。
+const contentKillLine = (ts, sid) =>
+  JSON.stringify({
+    timestamp: ts,
+    level: "warn",
+    event: "model.request.failed",
+    module: "adapters.model",
+    message: "Model request attempt failed",
+    sessionId: sid,
+    turnId: "turn_f25227bf-2904-4342-b029-0917f0711125",
+    status: "failed",
+    context: {
+      attempt: 1,
+      baseURL: "https://open.bigmodel.cn/api/anthropic",
+      maxAttempts: 11,
+      maxRetries: 10,
+      modelId: "GLM-5.3-Flash",
+      providerId: "account:bigmodel-individual-coding-plan",
+      providerKind: "anthropic",
+      querySource: "main_turn",
+      requestId: "076be0b3-e646-4c53-8499-2115ac7ee803",
+      transport: "sse",
+      chunkCounts: { start: 1, "start-step": 1, "reasoning-start": 1, "reasoning-delta": 1501 },
+      reason: "unknown",
+      reasoningDeltaChars: 4829,
+      retryable: false,
+      statusMessage:
+        "[1301][系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语，感谢您的配合。][202609140032386dec4b5c321847b2]",
+    },
+  });
+
+// 伴生排除形态：同回合伴生失败行把 "[1301]" 藏进 error.cause 链、context 无 statusMessage
+// ——单字段判据必须不计（events 恒=死请求数，不按伴生行翻倍）
+const contentKillEchoLine = (ts, sid) =>
+  failedLine(ts, sid, {
+    reason: "unknown",
+    retryable: false,
+    error: {
+      name: "AiSdkModelAdapterError",
+      message:
+        "[1301][系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语，感谢您的配合。]",
+      cause: { name: "ProviderBusinessError", code: "PROVIDER_BUSINESS_ERROR" },
+    },
+  });
+
+const contentLine = (stdout) =>
+  (stdout ?? "").split("\n").find((l) => /^\s*\S\s+content\s/.test(l));
+
+test("内容杀流族 matcher：statusMessage 主判据 + 伴生/异族不串计 + 带数学纯度钉", async () => {
+  const d = scratch();
+  try {
+    const lines = [
+      started("2026-09-06T09:59:00.000Z", "c1"),
+      started("2026-09-06T09:59:00.000Z", "c2"),
+      // 内容杀流桶：5 会话高活跃——若被误计为脏桶，minDirty 将翻成 5（纯度钉的判别力所在）
+      ...["k1", "k2", "k3", "k4", "k5"].map((sid) => started("2026-09-06T10:00:00.000Z", sid)),
+      contentKillLine("2026-09-06T10:00:30.000Z", "sess_yyyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyy"),
+      contentKillEchoLine("2026-09-06T10:00:31.000Z", "sess_yyyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyy"),
+      // 429 脏桶（活跃 1）+ 传输族各一：三族互不串计
+      started("2026-09-06T10:03:00.000Z", "s4"),
+      rateLimited("2026-09-06T10:03:30.000Z", "s4", { attempt: 1 }),
+      enetdownLine("2026-09-06T10:05:00.000Z", "s5"),
+    ];
+    writeLog(d, LOG_DIR[0], lines);
+    const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"));
+    assert.equal(s.content.events, 1, "伴生行不得计入");
+    assert.deepEqual(s.content.byCode, { "1301": 1 });
+    assert.equal(s.content.lastSessionId, "sess_yyyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyy");
+    assert.equal(s.content.firstAt, "2026-09-06T10:00:30.000Z");
+    assert.equal(s.content.lastAt, "2026-09-06T10:00:30.000Z");
+    assert.equal(s.content.samples.length, 1);
+    assert.ok(s.content.samples[0].startsWith("1301: [1301][系统检测到"));
+    // 三族不串计
+    assert.equal(s.rateLimited, 1);
+    assert.equal(s.transport.events, 1);
+    // 带数学纯度：杀流桶不脏——dirtyDist 只含脏桶（活跃 1 的 429 桶）；若杀流桶（活跃 5）
+    // 被误计为脏，此处必多出 {active:5,…} 档（band 字段对该失败形态不敏感，dirtyDist 才锐利）
+    assert.deepEqual(s.dirtyDist, [{ active: 1, buckets: 1 }]);
+    // 杀流桶（活跃 5）是净桶——maxClean=5 恰证明它未被计入脏桶
+    assert.deepEqual(s.band, { coherent: false, minDirty: 1, maxClean: 5 });
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("contentAdvisory 矩阵：skip / ok / warn（byCode+lastAt+死会话指针+应对句）+ 行长 ≤300", () => {
+  const skip = contentAdvisory({ available: false });
+  assert.equal(skip.level, "skip");
+  const ok = contentAdvisory({
+    available: true,
+    files: 2,
+    content: { events: 0, byCode: {}, lastAt: null, lastSessionId: null },
+  });
+  assert.equal(ok.level, "ok");
+  assert.match(ok.text, /0 起内容审核杀流/);
+  const warn = contentAdvisory({
+    available: true,
+    files: 2,
+    content: {
+      events: 2,
+      byCode: { "1301": 2 },
+      lastAt: "2026-09-13T16:33:18.187Z",
+      lastSessionId: "sess_097a9e6b-4c31-4830-ab5d-78f759541000",
+    },
+  });
+  assert.equal(warn.level, "warn");
+  assert.match(warn.text, /2 次内容审核杀流/);
+  assert.match(warn.text, /1301 族 1301×2/);
+  assert.match(warn.text, /2026-09-13 16:33Z/);
+  assert.match(warn.text, /死会话 sess_097a9e6b-4c31-4…/);
+  assert.match(warn.text, /原地重试必复现/);
+  assert.match(warn.text, /不是配额压力/);
+  assert.ok([...warn.text].length <= 300, `text 应 ≤300 字符，实际 ${[...warn.text].length}`);
+});
+
+test("端到端：doctor content 行 warn 命中零-429 早退分支（纯杀流日志）；纯 started 落 ok；空 HOME 落 skip", () => {
+  const d = scratch();
+  try {
+    // 无任何 429 → doctor 走 rateLimited===0 早退分支：content 行仍必须照出（评审 MF-1 分支②）
+    writeLog(d, LOG_DIR[0], [
+      started("2026-09-06T09:59:00.000Z", "s0"),
+      contentKillLine("2026-09-06T10:00:00.000Z", "sess_yyyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyy"),
+    ]);
+    const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+      encoding: "utf8",
+      timeout: 60_000,
+      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+    });
+    const line = contentLine(r.stdout);
+    assert.ok(line, `stdout 应含 content 行：\n${r.stdout}\n${r.stderr}`);
+    assert.match(line, /1 次内容审核杀流/);
+    assert.match(line, /1301×1/);
+    assert.match(line, /死会话 sess_yyyyyyyyy/);
+    assert.doesNotMatch(line, /undefined|NaN|Infinity/);
+
+    // 纯 started 日志：content ok 行（独立于限流族，零杀流也照出）
+    const d2 = scratch();
+    try {
+      writeLog(d2, LOG_DIR[1], [started("2026-09-07T02:00:00.000Z", "c1")]);
+      const r2 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+        encoding: "utf8",
+        timeout: 60_000,
+        env: { ...process.env, HOME: d2, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      });
+      const line2 = contentLine(r2.stdout);
+      assert.ok(line2, "stdout 应含 content ok 行");
+      assert.match(line2, /0 起内容审核杀流/);
+    } finally {
+      cleanup(d2);
+    }
+
+    // 空 HOME：skip 行（与 rate-limit/transport skip 同现）
+    const empty = scratch();
+    try {
+      const r3 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+        encoding: "utf8",
+        timeout: 60_000,
+        env: { ...process.env, HOME: empty, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      });
+      const line3 = contentLine(r3.stdout);
+      assert.ok(line3, "stdout 应含 content skip 行");
       assert.match(line3, /无引擎日志/);
     } finally {
       cleanup(empty);

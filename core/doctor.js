@@ -15,7 +15,7 @@ import {
   tasksIndexPath,
   userCliLogDir,
 } from "./paths.js";
-import { collectRateLimitStats, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
+import { collectRateLimitStats, contentAdvisory, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
 import { WATERLINE_POINTS, rollingWaterlinePoints } from "./cost.js";
 import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
@@ -455,6 +455,7 @@ async function checkRateLimit(push) {
   if (!stats.available) {
     push("rate-limit", "skip", `无引擎日志可扫（${logDir}）`);
     push("transport", "skip", "无引擎日志可扫（传输死亡体检不可用）");
+    push("content", "skip", "无引擎日志可扫（内容审核杀流体检不可用）");
     push("schedule", "skip", "无引擎日志——无人值守窗口无从实测，任意时段均可（建议 ≥1h 间隔）");
     return;
   }
@@ -464,6 +465,9 @@ async function checkRateLimit(push) {
     // 传输族独立于限流族：无 429 不代表无传输死亡，行照出
     const tr0 = transportAdvisory(stats);
     push("transport", tr0.level, tr0.text);
+    // 内容杀流族同款独立：无 429 不代表无内容审核杀流（干净机+纯内容杀流恰是最常见盲区）
+    const ct0 = contentAdvisory(stats);
+    push("content", ct0.level, ct0.text);
     push("schedule", "skip", "无集中段证据——任意时段均可挂自动化，建议 ≥1h 间隔");
     return;
   }
@@ -516,6 +520,9 @@ async function checkRateLimit(push) {
   // 传输死亡行（ADR-0008）：与限流同源同扫描不重复读日志，只记账不进任何带数学
   const tr = transportAdvisory(stats);
   push("transport", tr.level, tr.text);
+  // 内容审核杀流行：与限流同源同扫描不重复读日志，只记账不进任何带数学
+  const ct = contentAdvisory(stats);
+  push("content", ct.level, ct.text);
   // 错峰窗口（无人值守调度，ADR-0003）：与限流体检同源同扫描，不重复读日志
   const adv = scheduleAdvisory(stats);
   if (adv) {

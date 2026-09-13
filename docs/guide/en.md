@@ -431,6 +431,13 @@ Behavioral rules the zw skill carries:
   non-retryable). Same recovery contract — close cleanly and nothing in
   `.lazyzcode/` is lost; `lzy doctor`'s `transport` line keeps a separate
   tally (never mixed into the quota math).
+- **Content-moderation kills are a third family**: the stream opens fine and
+  the server's content filter kills it mid-generation (`1301` — either the
+  input or the generated text can trip it; the engine often mislabels it as
+  `reason=unknown`). An in-place retry reproduces deterministically — close
+  cleanly and resume in a NEW session, or rephrase so the model takes a
+  different reasoning path; `lzy doctor`'s `content` line keeps a separate
+  tally (never mixed into the quota math).
 - **Repo-wiki generation shares your pool**: the desktop app's repo-wiki
   feature runs as a background lane on the same account model quota — while a
   large repo wiki is generating, avoid stacking dense unattended wake-ups on
@@ -498,6 +505,7 @@ do.
 | `agents-md` | Layered AGENTS.md coverage audit + staleness hint (≥50 covered-dir commits since the map's last commit; skip when no root file; `lzy agents-md` for details) |
 | `rate-limit` | GLM plan 429 pressure from the last 2 days of engine logs |
 | `transport` | Transport deaths (request-never-reached-server failures, e.g. ENETDOWN): counted as a separate family, never fed into the concurrency math |
+| `content` | Content-moderation kills (provider content-filter mid-stream kills, e.g. 1301): counted as a separate family; an in-place retry reproduces, never fed into the concurrency math |
 | `schedule` | Off-peak advisory: automation window from the measured concentration, cross-checked against declared pricing peaks with a safe-window note; hand-maintained UTC+8 pricing table (skip without evidence) |
 
 ## State & configuration

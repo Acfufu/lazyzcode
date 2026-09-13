@@ -16,6 +16,11 @@
 //   传输族另挂 "event":"model.request.failed" 预过滤（errno 主判据在 statusMessage，
 //   实测 ENETDOWN 事故 reason=unknown，按 reason 白名单会漏掉触发事故本身），
 //   只进 doctor transport 行，绝不进并发带/错峰窗数学（测量纯度）。
+// - 内容审核杀流族（2026-09-14 1301 活体事故）三族化：provider 内容审核中途杀流
+//   （HTTP 200 正常开流、生成中途被掐），主判据钉死 context.statusMessage 单字段
+//   （同传输族 errno 先例；伴生事件行被预过滤排除，error.cause 链藏码形态不计——
+//   events 恒=死请求数，retryable=false 无重试放大故不需回合去重），只进 doctor
+//   content 行，绝不进并发带/错峰窗数学（测量纯度）。
 import { createReadStream, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -28,6 +33,9 @@ const CONC_STARTED_MIN = 100;
 // 传输死亡 errno 家族（字面量清单，实测形态见 test/ratelimit.contract.test.js fixture）
 const ERRNO_RE =
   /\b(ENETDOWN|ECONNRESET|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH|ENOTFOUND|EAI_AGAIN|ECONNABORTED|EPIPE)\b/;
+// 内容审核杀流码族（字面量清单，2026-09-14 1301 真实事故为底本；新码现形即扩枚举）：
+// BigModel 业务码以 "[码][文案][reqid]" 形态嵌在 statusMessage 头部
+const CONTENT_KILL_RE = /\[(1301)\]/;
 // RFC 2544 保留段（Clash/mihomo fake-ip 默认段）：命中=本地代理 TUN 隧道疑似的提示依据
 const FAKEIP_RE = /\b198\.(?:18|19)\.\d+\.\d+\b/;
 const SAMPLE_MAX = 5;
@@ -96,6 +104,14 @@ export async function collectRateLimitStats(
       lastAt: null,
       samples: [], // ≤SAMPLE_MAX 条 statusMessage 摘录（doctor 行证据）
       fakeIp: false, // 任一样本地址 ∈ 198.18.0.0/15（本地代理 TUN 疑似）
+    },
+    content: {
+      events: 0, // 内容审核杀流事件数（=死请求数：retryable=false 无重试放大，不需回合去重）
+      byCode: {}, // provider 业务码 → 事件数（1301…；扩展=枚举加码）
+      firstAt: null,
+      lastAt: null,
+      lastSessionId: null, // 诊断指针：最近一次死掉的会话（doctor 行给排查入口）
+      samples: [], // ≤SAMPLE_MAX 条 statusMessage 摘录（doctor 行证据）
     },
   };
 
@@ -201,6 +217,22 @@ export async function collectRateLimitStats(
       // ── 传输死亡族（ADR-0008）：请求未达服务端类故障，errno 主判据 ──
       const tctx = d.context ?? {};
       const sm = typeof tctx.statusMessage === "string" ? tctx.statusMessage : "";
+      // ── 内容审核杀流族：provider 内容审核中途杀流（主判据钉死 statusMessage 单字段）──
+      // statusMessage 判据先于传输族：errno 与业务码形态互斥，先后无碍；命中即 continue，
+      // 绝不入 dirty/band/集中段数学（测量纯度，与限流族同款隔离）。
+      const kill = sm.match(CONTENT_KILL_RE);
+      if (kill) {
+        const c = stats.content;
+        c.events += 1;
+        c.byCode[kill[1]] = (c.byCode[kill[1]] ?? 0) + 1;
+        if (typeof d.timestamp === "string") {
+          if (!c.firstAt || d.timestamp < c.firstAt) c.firstAt = d.timestamp;
+          if (!c.lastAt || d.timestamp > c.lastAt) c.lastAt = d.timestamp;
+        }
+        if (typeof d.sessionId === "string") c.lastSessionId = d.sessionId;
+        if (c.samples.length < SAMPLE_MAX) c.samples.push(`${kill[1]}: ${sm.slice(0, 120)}`);
+        continue; // 内容杀流不是限流也不是传输死亡，绝不串计
+      }
       let subtype = null;
       const errno = sm.match(ERRNO_RE);
       if (errno) {
@@ -365,6 +397,28 @@ export function transportAdvisory(stats) {
     text +=
       "；样本地址含 198.18.0.0/15 fake-ip——本地代理 TUN 隧道疑似，可给引擎域名加直连规则绕开隧道";
   }
+  return { level: "warn", text };
+}
+
+// ── 内容审核杀流建议：把 content 族统计翻译成 doctor content 行文案 ──────────
+// warn-only：诊断自身不翻退出码；不提供任何带数学输入（测量纯度，与限流/传输分家的全部理由）。
+// 纯函数：stats 是 collectRateLimitStats 的产物。
+export function contentAdvisory(stats) {
+  if (!stats?.available) {
+    return { level: "skip", text: "无引擎日志可扫（内容审核杀流体检不可用）" };
+  }
+  const c = stats.content ?? { events: 0, byCode: {}, lastAt: null, lastSessionId: null };
+  if (c.events === 0) {
+    return { level: "ok", text: `近 ${stats.files} 日窗口 0 起内容审核杀流（provider 内容审核中途杀流族）` };
+  }
+  const codes = Object.entries(c.byCode)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${k}×${v}`)
+    .join(" ");
+  const last = c.lastAt ? `${c.lastAt.slice(0, 16).replace("T", " ")}Z` : "";
+  const sid = c.lastSessionId ? `${c.lastSessionId.slice(0, 20)}…` : "";
+  let text = `${c.events} 次内容审核杀流（1301 族 ${codes}，最近 ${last}${sid ? `，死会话 ${sid}` : ""}）`;
+  text += "——原地重试必复现：换新会话/换问法续做，不是配额压力";
   return { level: "warn", text };
 }
 

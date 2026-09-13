@@ -134,7 +134,10 @@ GLM plan rate-limit pressure (last 2 days of engine logs, read-only:
 deduplicated 429 turns, fatal turns, longest sustained run, and an empirical
 concurrency band — warn-only, never flips the exit code), transport-death
 turns counted as a separate family (`transport`: request-never-reached-server
-failures such as ENETDOWN, never fed into the concurrency math), a project-memory
+failures such as ENETDOWN, never fed into the concurrency math), content-moderation
+stream kills counted as a separate family (`content`: provider content-filter
+mid-stream kills such as 1301 — an in-place retry reproduces, never fed into
+the concurrency math), a project-memory
 adoption audit (`agents-md`, warn-only, with a staleness hint: ≥50 covered-dir
 commits since the map's last commit suggests re-running init-deep), a claim
 patrol for the open goal loop

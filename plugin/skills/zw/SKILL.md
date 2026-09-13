@@ -200,11 +200,19 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
 - The plugin's Stop hook requests engine continuation while the goal is
   unfinished — at most **2× per session** (a persistent per-session counter;
   1 of the engine's shared 3-continue pool stays reserved for background
-  notifications). Keep the three continuation surfaces distinct — **engine**:
+  notifications). Keep the four continuation surfaces distinct — **engine**:
   3 continues per turn, counter resets on every new prompt; **lzy Stop hook**:
-  self-limited to 2 per session, persistent, never resets; **scheduler wake**:
-  a fresh session with a fresh budget every time — the only unlimited
-  continuation surface, and never a license to pad.
+  self-limited to 2 per session, persistent, never resets; **unbound scheduler
+  wake** (App-UI automation): a fresh session each fire with fresh budgets —
+  unlimited across fires, never a license to pad; **idle run** (host OffPeak
+  idle task): the engine's first-class off-peak lane, binding the origin
+  session (`queryId <taskId>:bound:`, turnNumber continues across wakes) with
+  **zero pool exemption** — engine 3/turn and hook 2/session both count, and
+  per-session counters persist with the session. Conversation history is
+  unreliable at an idle run's executor perception (probe offpeak-probe
+  2026-09-14: the designated history-only nonce was never quoted) — never rely
+  on in-chat references; all handoff state must live on disk. A goal loop
+  resumed by an idle run follows the Unattended red-line protocol in full.
 - When you feel the `[lzy]` nudge: continue the **current step**. Do not replan,
   do not summarize, do not ask questions — work.
 - **No-op detection (pull-back integrity):** every pull-back must move the
@@ -283,6 +291,13 @@ Stop pool from Continuation — two different pools, never confuse them.
   contract: close cleanly, lose nothing, resume after the link recovers.
   `lzy doctor`'s `transport` line tallies this family separately — never
   treat it as quota pressure.
+- **A turn died mid-stream with `[1301]`** (provider content moderation
+  killed the stream after generation started — input or generated text can
+  trip it; the engine often shows it as `reason=unknown`)? Do NOT retry the
+  same prompt: it reproduces deterministically. Close the session cleanly
+  (`.lazyzcode/` lost nothing) and resume in a NEW session, or rephrase so
+  the model takes a different reasoning path. `lzy doctor`'s `content` line
+  tallies this family separately — not quota pressure.
 - **Risk trumps quota.** HEAVY costs more calls (review gate, evidence
   capture, Stop pulls); when quota is tight, genuinely contained work may
   start LIGHT — but anything risky or vague is HEAVY regardless of quota.
@@ -295,6 +310,12 @@ Stop pool from Continuation — two different pools, never confuse them.
   feature runs as a background lane on the same account model quota — while a
   large repo wiki is generating, avoid stacking dense unattended wake-ups on
   top of it.
+- **Idle run is the official off-peak lane.** Host-granted OffPeak idle tasks
+  run server-side off-peak, and the engine docs self-describe them as not
+  consuming plan quota on the scheduling/concurrency side (start time not
+  guaranteed). The provider **model pool** is a different axis: the repo-wiki
+  sharing caveat above still applies, and a dying idle turn follows the same
+  close-clean contract as any other death.
 
 ## Unattended mode (scheduled wake-ups)
 

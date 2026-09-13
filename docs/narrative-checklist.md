@@ -21,7 +21,7 @@
 - [ ] tagline 与 NOTE 三节拍弧线在场。
 - [ ] 两技能自述（zw / init-deep）与 `plugin/skills/*/SKILL.md` frontmatter `description` 事实一致。
 - [ ] CLI 命令表齐全（快照 12 行）：install / sync / status / doctor / 目标循环 / 证据包 export / 交接 handoff / 跨仓清单 list / 目标谱系 history / 积分报表 cost / agents-md / uninstall——新命令进 `cli/lzy.js` 必须同批进双语表。
-- [ ] 「`lzy doctor` 都查什么」段与实跑输出一致（含 rate-limit / transport / schedule / agents-md / claims / ledger / waterline / orphan-wake / hook-node——核验：跑 `lzy doctor` 逐行对描述）。
+- [ ] 「`lzy doctor` 都查什么」段与实跑输出一致（含 rate-limit / transport / content / schedule / agents-md / claims / ledger / waterline / orphan-wake / hook-node——核验：跑 `lzy doctor` 逐行对描述）。
 - [ ] 「之后的路 / Your next moves」承载记住 + 接着走两拍的入口（快速上手只教循环）。
 - [ ] 架构树与实际一致（skills 2、hooks 5 经 run-hook.sh、agents 3、core 模块清单）。
 - [ ] schedule 措辞口径：「限流实测 ∩ 计价高峰对照」（2026-09-10 起，双语 8 处；不许退回纯限流表述）。
@@ -65,7 +65,7 @@
 
 ## 收尾验证链（必跑）
 
-1. `npm test` —— 快照 120/120（2026-09-13，engine-3121-sync 目标实跑刷新；跑测试前先清走会 被 `node --test` 裸发现误捕的 test-*.js 资源文件）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
+1. `npm test` —— 快照 123/123（2026-09-14，content-kill-family 目标实跑刷新；跑测试前先清走会 被 `node --test` 裸发现误捕的 test-*.js 资源文件）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
 2. `node scripts/docs-preview/build.mjs && node scripts/docs-preview/check-anchors.mjs && node scripts/docs-preview/check-links.mjs` —— 断链 0、锚点双语对齐、页面数稳定。
 3. 动了 `plugin/` 时：`lzy sync` + grep 安装缓存。
 4. 提交带尾注 `Goal: <slug>#<步号>`（ADR-0005）。

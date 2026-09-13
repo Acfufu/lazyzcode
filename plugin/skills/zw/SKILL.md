@@ -291,6 +291,10 @@ Stop pool from Continuation — two different pools, never confuse them.
   reports your account's recent 429 pressure and empirical concurrency band
   (or one-sided evidence when no coherent band exists — degradation is the
   normal path under attribution drift).
+- **Repo-wiki generation shares your pool.** The desktop app's repo-wiki
+  feature runs as a background lane on the same account model quota — while a
+  large repo wiki is generating, avoid stacking dense unattended wake-ups on
+  top of it.
 
 ## Unattended mode (scheduled wake-ups)
 

@@ -135,7 +135,9 @@ deduplicated 429 turns, fatal turns, longest sustained run, and an empirical
 concurrency band — warn-only, never flips the exit code), transport-death
 turns counted as a separate family (`transport`: request-never-reached-server
 failures such as ENETDOWN, never fed into the concurrency math), a project-memory
-adoption audit (`agents-md`, warn-only), a claim patrol for the open goal loop
+adoption audit (`agents-md`, warn-only, with a staleness hint: ≥50 covered-dir
+commits since the map's last commit suggests re-running init-deep), a claim
+patrol for the open goal loop
 (`claims`: who claimed it, stuck markers, zero-claim orphan notice — warn-only),
 commit-ledger coverage (`ledger`: goal-era commits missing the `Goal:` trailer — warn-only),
 a `waterline` line (rolling 5-hour point burn vs the self-calibrated nudge threshold, plus

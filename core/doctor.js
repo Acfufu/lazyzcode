@@ -24,6 +24,17 @@ import { createGit } from "./git.js";
 
 const NODE_MAJOR_FLOOR = 20;
 
+// 项目记忆过期提示阈值（memory-staleness-fingerprint）：地图基点后覆盖域提交数达到该值，
+// doctor agents-md 的 ok 行尾追加「地图落后 N 个提交」提示。写死+人工维护口径（无 env、
+// 零新增配置面）：warn-only 信息性提示，活动仓长期 >50 属预期读感，调整须另行拍板。
+export const STALENESS_HINT_AT = 50;
+
+// 纯帮手（阈值边界可测）：lag 数据沉默（null）或未达阈值 → 空串（ok 行维持原样）。
+export function formatStalenessHint(lag, threshold = STALENESS_HINT_AT) {
+  if (lag === null || !Number.isFinite(lag) || lag < threshold) return "";
+  return ` · 地图落后 ${lag} 个提交（lazyzcode:init-deep 可刷新）`;
+}
+
 function checkHooks(push) {
   let cacheHooksDir = null;
   try {
@@ -373,6 +384,8 @@ function checkPlatform(push) {
 
 // AGENTS.md 分层审计巡逻（tier-1 init-deep，ADR-0002）：纯代码资格谓词 + 覆盖审计，
 // warn-only 不翻退出码。根文件不存在→skip（不催 adoption，init-deep 技能负责提案）。
+// 过期指纹（memory-staleness-fingerprint）：地图基点后覆盖域提交数 ≥ STALENESS_HINT_AT
+// 时 ok 行尾追加「地图落后」提示；lag 数据沉默（非 git/无地图提交史）→ 无后缀，绝不拍脑袋。
 function checkAgentsMd(push, cwd) {
   let a;
   try {
@@ -385,9 +398,19 @@ function checkAgentsMd(push, cwd) {
     push("agents-md", "skip", "根 AGENTS.md 不存在（lazyzcode:init-deep 可生成分层项目记忆）");
     return;
   }
+  const coveredPaths = a.dirs
+    .filter((d) => d.qualifies && (d.hasChild || d.mentioned))
+    .map((d) => d.path);
+  let lag = null;
+  try {
+    lag = createGit(cwd).mapLag(coveredPaths);
+  } catch {
+    lag = null; // fail-soft：指纹自身故障不给诊断行添后缀
+  }
+  const hint = formatStalenessHint(lag);
   if (a.missing.length === 0 && a.over.length === 0) {
     const qualifying = a.dirs.filter((d) => d.qualifies).length;
-    push("agents-md", "ok", `分层覆盖完整（资格 ${qualifying} · 缺 0 · 超限 0；lzy agents-md 详单）`);
+    push("agents-md", "ok", `分层覆盖完整（资格 ${qualifying} · 缺 0 · 超限 0；lzy agents-md 详单）${hint}`);
     return;
   }
   const miss = a.missing.length > 0 ? `缺 ${a.missing.length}（${a.missing.slice(0, 3).join(" ")}${a.missing.length > 3 ? "…" : ""}）` : "缺 0";

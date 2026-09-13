@@ -120,5 +120,29 @@ export function createGit(cwd) {
       }
       return bySlug;
     },
+    // 项目记忆过期指纹（memory-staleness-fingerprint#N1）：地图滞后数 lag = 根 AGENTS.md
+    // 最后一次提交（基点，--full-history 防 TREESAME 合并吞掉侧支改动）之后，覆盖目录集
+    // paths 上的新提交个数。地图再被提交会自然抬高基点 = 重置计数（重跑 init-deep 即清零）。
+    // 唯一构造面：基点 hash 经 /^[0-9a-f]{40,64}$/ 校验后才拼 `<hash>..HEAD` 范围参数
+    // （goalLedger 的 --since= 构造为先例）；paths 逐个作 argv 元素传递，绝不拼命令行。
+    // git 不可用/非 git 仓/无地图提交史/paths 空/解析失败 → null（数据沉默=无提示）。
+    mapLag(paths) {
+      if (!Array.isArray(paths) || paths.length === 0) return null;
+      const base = spawnSync(
+        "git",
+        ["log", "-1", "--full-history", "--format=%H", "--", "AGENTS.md"],
+        { cwd, shell: false, timeout: 10_000, encoding: "utf8" },
+      );
+      const commit = (base.stdout ?? "").trim();
+      if (base.error || base.status !== 0 || !/^[0-9a-f]{40,64}$/.test(commit)) return null;
+      const r = spawnSync(
+        "git",
+        ["rev-list", "--count", `${commit}..HEAD`, "--", ...paths],
+        { cwd, shell: false, timeout: 10_000, encoding: "utf8" },
+      );
+      if (r.error || r.status !== 0) return null;
+      const n = Number.parseInt((r.stdout ?? "").trim(), 10);
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    },
   };
 }

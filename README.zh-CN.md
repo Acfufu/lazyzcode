@@ -120,7 +120,8 @@ GUI 直启场景）、`lzy` PATH shim、`.lazyzcode/` 状态卫生、平台提�
 套餐限流压力（近 2 日引擎日志只读扫描：去重后的 429 回合、判死回合、最长连撞、
 经验并发带——warn-only，不翻退出码）、传输死亡回合独立分族计数（`transport`：
 请求未达服务端类故障如 ENETDOWN，绝不进并发带数学）、项目记忆采纳审计
-（`agents-md`，warn-only）、进行中目标的认领巡逻（`claims`：谁认领了它、
+（`agents-md`，warn-only，含地图落后提示：基点后覆盖域 ≥50 提交即提醒重跑
+init-deep）、进行中目标的认领巡逻（`claims`：谁认领了它、
 stuck 停拉标记、零认领孤儿提示——warn-only），
 提交账本覆盖率（`ledger`：goal 起点后缺 `Goal:` 尾注的提交——warn-only）、水位行（`waterline`：
 近 5h 滚动积分对比自参照警戒线，sqlite3 缺席时如实报降级原因）与本仓 unbound wake 的

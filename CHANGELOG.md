@@ -10,6 +10,29 @@ versioning is SemVer.
 
 ### Added
 
+- **Engine baseline re-verified against ZCode 3.12.1 (engine-3121-sync)**: the desktop
+  shell updated 3.11.2 → 3.12.1 (build 7207). All eight §3 hard constraints re-verified
+  at source level and unchanged (7 hook events; Stop ≤3 with non-empty
+  `additionalContexts`; shared 3-continue pool; AGENTS.md auto-read trio; trust-gate
+  policy codes; cache three-styles two-step enable; hook output schema; exit-2-block).
+  Knowledge corrections recorded: the engine CLI (`Resources/glm/zcode.cjs`) reports its
+  own `--version` (0.16.5) that did not move across both shell generations — the app
+  version is the discriminator; the desktop shell is now Vite-chunked
+  (`out/{host,main,…}`) with the engine CLI outside the asar; the model catalog
+  presents as 2 vendors (zai/bigmodel) × plan tiers with the GLM default unchanged.
+
+- **Project-memory staleness hint (memory-staleness-fingerprint)**: `lzy
+  doctor`'s `agents-md` line now measures map lag — commits touching covered
+  directories since the root `AGENTS.md`'s last commit (resolved with
+  `--full-history`, so merges cannot hide the base). At ≥50 (a written-dead
+  constant, no env) the ok line gains a warn-only suffix suggesting a
+  refresh; git silence (no repo, no committed map, empty coverage) means no
+  suffix, never a guess. Re-running `lazyzcode:init-deep` resets the base by
+  construction. Also documents that the desktop app's repo-wiki generation
+  runs as a background lane on the same account model pool — zw's rate-limit
+  discipline now says not to stack dense unattended wake-ups while a large
+  wiki is generating.
+
 - **Goal-loop cost observability (plan-v2 Phase 2)**: `lzy loop cost` turns
   the engine's local billing ledger (`~/.zcode/cli/db/db.sqlite`, read-only)
   into a points report — per-model standing coefficients (source-URL

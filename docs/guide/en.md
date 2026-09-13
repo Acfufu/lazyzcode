@@ -431,6 +431,10 @@ Behavioral rules the zw skill carries:
   non-retryable). Same recovery contract — close cleanly and nothing in
   `.lazyzcode/` is lost; `lzy doctor`'s `transport` line keeps a separate
   tally (never mixed into the quota math).
+- **Repo-wiki generation shares your pool**: the desktop app's repo-wiki
+  feature runs as a background lane on the same account model quota — while a
+  large repo wiki is generating, avoid stacking dense unattended wake-ups on
+  top of it.
 
 **Unattended (host automation)**: scheduling and the continue-only protocol
 live in [Unattended](#unattended); the window comes from `lzy
@@ -491,7 +495,7 @@ do.
 | `claims` | Claim patrol: who claimed the open goal loop, stuck markers; zero claims = "unclaimed" notice (warn, never flips the exit code) |
 | `ledger` | Commit-ledger patrol: share of goal-era commits missing the `Goal:` trailer (warn, never flips the exit code) |
 | `platform` | Platform notice (macOS-only detection) |
-| `agents-md` | Layered AGENTS.md coverage audit (skip when no root file; `lzy agents-md` for details) |
+| `agents-md` | Layered AGENTS.md coverage audit + staleness hint (≥50 covered-dir commits since the map's last commit; skip when no root file; `lzy agents-md` for details) |
 | `rate-limit` | GLM plan 429 pressure from the last 2 days of engine logs |
 | `transport` | Transport deaths (request-never-reached-server failures, e.g. ENETDOWN): counted as a separate family, never fed into the concurrency math |
 | `schedule` | Off-peak advisory: automation window from the measured concentration, cross-checked against declared pricing peaks with a safe-window note; hand-maintained UTC+8 pricing table (skip without evidence) |

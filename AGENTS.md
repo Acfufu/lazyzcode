@@ -32,21 +32,21 @@
 - **证据对照与工件回收已落地（2026-09-10，goal comparator-salvage，费马启示三件包）**：HEAVY finish 前派 qa-executor 证据对照（断言×证据逐对判匹配/不匹配，协议级阻断，CLI/doctor 零代码）+ 步骤自含指引与评审 WARN 检查点 + reset/abandon 盘点可回收工件入存根（status 双分支读面）+ 依赖图并行认领记债（决策 #21，ADR-0004 修正案二）；74/74 测试绿、锚点双语 21/21。
 - **无人值守真实挂载（2026-09-10）**：宿主自动化 automation-a8aba356 挂 lazyzcode 工作区（cron `0 23,0-8 * * *` 十整点），时刻表依据计价地图而非纯限流反推——GLM 高峰周一至五 14–18 + 夜间 23–09 Flash 不限量 ∩ DeepSeek 高峰 9–12/14–18；人肉冒烟四环验证通过（唤起消息逐字/触发词装载/读盘/干净退出）。ADR-0003 的「用户配宿主自动化」自此发生。**09-11 整夜三目标连发实证收官**（8 次整点唤起链式推进：narrative-pricing-alignment reset 00:31 → dual-review-r6 finish+reset 04:56 → r6-fix-round 注册起全链 N1–N6+comparator finish 06:27，尾注全合规、证据包自动归档、done 占槽空转唤起干净退出）；同日用户拍板暂停挂载（自动化已删、槽位已 export+reset，复挂待限流扫描体积预算修复目标落地，唤起协议见 zw SKILL.md Unattended 段）。**09-13 二次拍板：挂载全清 + 开关语义确立**（unbound 版 10 颗逐小时 automation 重建两夜后全删，canary 同日退役——语义验收本已通过：两夜 13 run/13 互异 session 零失败；拍板理由=槽空空转会话过多 + 「无人值守是用户可自行开关的能力，非常驻默认」——ADR-0003 语义自此澄清：挂载=开、清空=关，开关动作归用户在 App 界面，复挂配方在 plan-v2 报告 §6；canary（zcode 工作区）留用户手动删）。
 - **doctor schedule 计价感知已落地（2026-09-10，goal doctor-schedule-pricing，ADR-0003 修正案）**：scheduleAdvisory 升级「限流错峰 ∩ 计价感知」——PEAK_WINDOWS/SAFE_WINDOW 写死本地（UTC+8、人工维护、活动期免责），候选窗逐小时对照输出重叠段+安全窗，now 注入沿 bandAdvisory 先例；首验即活体演示修正价值（旧 09–17 建议全落高峰零提示）；评审门 REVISE 抓 e2e 周几漂移（重叠句真值收归固定 now 纯函数测试）；94/94 中 92 绿（2 失败=既有环境 flake：引擎探测子进程写日志污染空 HOME e2e，stash 实证记债）。
-- **放行可观测与跨仓清单已落地（2026-09-10，goal handoff-meter-crossrepo-list）**：交接放行匿名计数（`.lazyzcode/loop/metrics.json` registered/consumed，目录级匿名无会话身份、无锁近似 ≥ 语义、跨 reset 永续、status/doctor 双面读）+ `lzy loop list [--root]` 跨仓目标清单（只读旁视、每仓独立容错、executing 前置）+ 疤痕巡逻豁免清单全枚举（salvage/metrics.json/空 sessions——F3 取证显形既有缺口）；狗粮依据=7/12 会话拉回预算打满而消费痕迹为零；93/93 测试绿。
-- **README 叙事面计价措辞收口已落地（2026-09-10，goal narrative-pricing-alignment）**：README 双语八处 schedule 表述跟齐「限流实测 ∩ 计价高峰对照」口径（镜像 guide 已发文案；评审门抓出 doctor 段 zh 第 8 处漏点，F1 断言组对位补齐）+ 叙事 checklist 六类计数位点回归（顺手修双语 README 架构树「hooks 4 个」残留→5）；纯文档零代码；公开/publish/push 留用户。
+- **放行可观测 + README 叙事面收口已落地（2026-09-10，goal handoff-meter-crossrepo-list / narrative-pricing-alignment，两行合并腾位）**：交接放行匿名计数（`loop/metrics.json` registered/consumed，目录级匿名、跨 reset 永续、status/doctor 双面读）+ `lzy loop list [--root]` 跨仓清单（只读旁视、每仓独立容错）+ 疤痕巡逻豁免全枚举；README 双语八处 schedule 措辞跟齐「限流实测 ∩ 计价高峰对照」口径（评审抓出 zh doctor 段第 8 处漏点）+ 六类计数位点回归（顺手修双语架构树 hooks 4→5 残留）+ 叙事 checklist 入库 `docs/narrative-checklist.md`（2026-09-13）；93/93 测试绿；细节在两目标 salvage 存根与证据包。
 - **第六轮高精度双审核已落地（2026-09-11，goal dual-review-r6）**：A/B 双审沿 09-06 家法，按限流纪律降并行为串行单发+探针收窄（偏差如实记入报告方法论节）；**14 发现 0P0/1P1/5P2/8P3（含 F1 终验实跑翻出的元发现），14/14 主代理亲核**——P1=README 双语安装主路径 `npm view lazyzcode` 404 无未发布提示（随发布自消解）、P2=registerGoal 唯一无锁 goal.json 变更（R2-5 漏网）/裸 status 遇损坏 goal.json 丢全部诊断/handoff 锁外交写×reset 锁内清理孤儿标记竞态/决策#7 description_i18n 从未落地/R6F-1 overlapSegments 窗尾锚线性枚举溢出窗外误报「窗内落高峰计价」（工作日 02–03 时波段，固定 now 四对照实锤，恰是无人值守活跃时段）；红线九靶全过（引擎源码实证 continue:false 不入 3 池，债务⑥升源码级消解）；六类计数位点零漂移、历史处置 16 抽查零虚记、cache 载荷字节级一致、债③实证为确定性测试隔离缺陷非随机 flake；报告 `docs/reviews/2026-09-11-r6-dual-review.md`，修复另立目标；94 中 91 绿（=2 既有 flake+R6F-1 波段失败，皆已入账）。
 - **R6 修复轮 P2 五条已收口（2026-09-11，goal r6-fix-round）**：registerGoal 查重+写入入锁（并发双 null 互覆盖竞态闭环）/status 遇损坏 goal.json 单项降级 warn（对齐 doctor fail-soft，warn 不翻码=criticalFail 既有语义）/handoffGoal 写入入锁（×reset 孤儿标记竞态闭环，锁外预检防疤痕保持）/决策 #7 订正「manifest 单语 description，双语由 docs 站承载」（P1 README 未发布提示拍板不加、随发布自消解）/overlapSegments 沿窗弧回卷枚举（窗尾锚溢出伪报+漏检同根治，回卷点断段防跨日伪合并，固定 now 四对照钉）；各配持锁/损坏/回卷回归钉。新发现记账（修复另立目标）：`loop start`/doctor 限流扫描近两日引擎日志无体积预算（实测 263MB 扫 18-50s），无人值守活跃段 e2e 全链确定性超 60s spawn 预算（债③家族新形态，干净树 stash 实证非本轮回归）。
 - **限流扫描体积预算 + 测试隔离收口已落地（2026-09-13，goal ratelimit-scan-budget）**：`collectRateLimitStats` 加 64MB/文件尾部读 + 10s 时间盒（truncation 字段如实标注，doctor rate-limit 行与 loop start 并发纪律行透出，样本可信度声明在 300 字符预算内优先于集中段/游程；小 fixture 输出零语义变化护栏钉）+ 债③根治（doctor 的引擎探测子进程 mid-run 向 scratch log 写当天日志——活体实证——测试 spawn 统一 `LZY_ZCODE_ENGINE` 抑制，3 轮 19/19 零翻）+ 三 e2e helper 隔离 HOME（e2e 不再随宿主日志量波动；R6A-2 改对照式断言消除「本机已安装」隐性依赖）；ADR-0010（unbound wake）+ plan-v2 成本评审报告 + ablation #5 随 N1 入库。
 - **plan-v2 开工批次已落地（2026-09-13，goal plan-v2-phase2）**：Phase 2 六项（finish 埋点+证据 rebind 痕迹 / `lzy loop cost` 积分报表[常设系数+促销 overlay，hostdb 唯一 spawn 豁免] / 水位警戒线[定标 1600+env 覆盖] / orphan-wake doctor 检查 / handoff 加固[2h+7 字段 lint+认领 48h TTL] / 无人值守哨兵旗标+wake_noop）+ Phase 1 提示词层（C no-op 判据/续命三面订正/7 字段快照模板与脏树继承/Unattended 卫生两条/D 复审契约）；开工四题拍板（水位常数+env、cost 常设+overlay、veto 基线落地即起算、0.0.3 不发布直接 0.0.4）补录 plan-v2 报告 §3。
 - **pisper 吸收批次已落地（2026-09-13，goal pisper-absorption）**：注入确定性不变量（五钩子双跑契约钉，prompt cache 前缀敏感）+ 绊线指路（search_tools 窄激活）+ 换路注记（attempt note 入 §8）+ `lzy loop history` 谱系读面（证据包 ∪ 存根 ∪ git 尾注三源并集只读）+ 回执配方与竞品观察信号两文档（pisper 报告吸收，Turn 分支/三端/自扩展/版本列车/P2P 五项定案不做）。
+- **项目记忆过期指纹已落地（2026-09-13，goal memory-staleness-fingerprint，grilling 拍板①）**：借鉴 repo-wiki manifestHash 思路——git.js `mapLag`（基点=AGENTS.md 末次提交[--full-history]，lag=基点后覆盖域提交数；null 五态数据沉默）+ doctor agents-md ok 行 ≥50 追加「地图落后」提示（warn-only、fail-soft、零配置面，重跑 init-deep 即重置）+ zw SKILL/guide 双语限流段补「仓库 Wiki 生成共占账号模型池」半句；拍板②并行认领提前升格（推翻 ADR-0004 修正案二预注册触发器）、③多树绑定债并入其前置件，落地时须同步 §4 与 ADR；120/120 测试绿。
 
-## 3. 硬约束（ZCode v3.11.2 引擎源码实锤，设计前必读）
+## 3. 硬约束（ZCode v3.12.1 实锤复核 2026-09-13；引擎 CLI `--version` 恒 0.16.5 与壳版本分线，设计前必读）
 
 1. 钩子恰为 **7 事件**（SessionStart/UserPromptSubmit/PreToolUse/PermissionRequest/PostToolUse/PostToolUseFailure/Stop）。对比 Codex 原生 12 事件**缺 6 个**：无 SubagentStop/SubagentStart/PreCompact/PostCompact/SessionEnd/Interrupt。
 2. Stop 续跑 **≤3 次**，且必须带**非空** additionalContexts（输出空 JSON 永不续跑）；exit 2 在 Stop 上 = block = 强制续跑（reason 注入为上下文）。
 3. 3 次预算是**共享池**：ZCode 后台任务通知也发 continue:true 抢同一预算——本项目的 Stop 钩子预算要与后台通知互相预留。
 4. ZCode **原生自动读 AGENTS.md**（逐级向上查找 + `~/.zcode/AGENTS.md` 多源合并 + 100KB 截断，以 `# agentsMd` 注入）→ 规则注入钩子不需要做。
-5. 宿主内置**多模型目录**（10 provider，默认 GLM 套餐）→ tier 预算护栏可借模型维度，不自研模型路由。
+5. 宿主内置**多模型目录**（zai/bigmodel 双厂商×计划档，默认 GLM 套餐；3.12.1 复核）→ tier 预算护栏可借模型维度，不自研模型路由。
 6. 工作区钩子**信任门已在引擎灰度**（`workspace_hooks_*` 策略码，文档未提）→ 永不改写用户 config.json（见 §5 红线）。
 7. 事实源优先级：**reversed-zcode 引擎源码 > zcode-guide 官方文档**（文档存在滞后，已实证 4 处）。
 8. **cache 安装型插件默认禁用**：装载需「安装+启用」两步，启用态在 config `plugins.enabledPlugins`（Spike 2 实测）；cache 清单候选仅 `.zcode/.claude/.codex` 三种，`.cursor-plugin` 仅工作区 walk-up 路径接受。
@@ -102,7 +102,7 @@ docs/
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
   adr/000{1..9}-*.md          ← enable 走引擎 CLI+config 零写入 / init-deep 角色分配 / 无人值守宿主自动化 / 拉回走认领制 / 透明账本尾注 / 宿主工作区就地语义 / 已知未知申报+消融账本 / 传输死亡诊断面 / 交接放行
-  reviews/ release-checklist.md  ← 评审报告/处置记录（2026-09-06/07/08）+ 发布清单（13 步含 Pages）
+  reviews/ release-checklist.md  ← 评审报告/处置记录（2026-09-06/07/08）+ 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist（2026-09-13）
   diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
 plugin/ core/ cli/           ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）
 test/  .github/              ← 契约测试三件套（node:test 零依赖）+ CI 骨架

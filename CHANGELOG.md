@@ -3,12 +3,12 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
-## [0.0.5] - unreleased
+## [0.0.5] - 2026-09-14
 
 > 0.0.5 is the internal-hardening release: the parallel-claim minimal chain
 > lands (decision #21 upgraded from debt per owner grilling 2026-09-13/14),
-> plus the cost two-piece and two loose ends. Publishing waits for 0.0.6
-> (owner decision 2026-09-14).
+> plus the cost two-piece and two loose ends. Published as 0.0.5 on
+> 2026-09-14 (owner decision; supersedes the earlier wait-for-0.0.6 plan).
 
 ### Added
 

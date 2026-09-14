@@ -8,6 +8,12 @@ markdown: GFM
 highlighter: rouge
 permalink: pretty
 
+# 历史评审与证据档案不进站点构建：Liquid 会把正文中的 {{{ 误当模板语法炸掉整个构建；
+# 这些是内部 QA 记录，GitHub 仓库页照常渲染，无需站点化。
+exclude:
+  - reviews
+  - evidence
+
 defaults:
   - scope:
       path: "guide/en.md"

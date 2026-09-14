@@ -1,6 +1,6 @@
 {
   "name": "lazyzcode",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "AI coding-workflow discipline layer for ZCode: plan, execute, take evidence, never stop half-done. Plugin + lightweight CLI (lzy).",
   "type": "module",
   "license": "MIT",
@@ -17,7 +17,7 @@
     "lzy": "cli/lzy.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "files": [
     "cli/",
@@ -30,7 +30,7 @@
     "!**/.mimosa/**"
   ],
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/**/*.test.js\"",
     "install:local": "node cli/lzy.js install",
     "uninstall:local": "node cli/lzy.js uninstall",
     "sync": "node cli/lzy.js sync",

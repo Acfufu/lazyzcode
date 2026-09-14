@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -94,6 +94,150 @@ test("钉3：「已知未知」四字自身过门——未知二字永不入禁�
     assert.equal(r.code, 0);
     const s = lzy(["loop", "status"], d);
     assert.match(s.out, /已知未知段落地/); // 项标题带「未知」字样仍完整入库
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ── 依赖边（决策 #21 最小链，goal v005-core#N2）────────────────────────────
+// 旧格式兼容由本文件全部既有用例背书（均无 deps 行、照常过门）。
+
+test("依赖边：deps 声明解析入库（分隔容逗号/空白），无声明=空数组", () => {
+  const d = repo();
+  try {
+    register(d, "deps-ok");
+    const body = [
+      "# 计划",
+      "- [N1] 先行步",
+      "- [N2] 依赖步",
+      "deps: N1",
+      "- [F1] 终验",
+      "deps: N1, N2",
+      "",
+    ].join("\n");
+    const r = lzy(["loop", "plan", planAt(d, body)], d);
+    assert.equal(r.code, 0);
+    const goal = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+    assert.deepEqual(goal.steps.map((s) => s.deps), [[], ["N1"], ["N1", "N2"]]);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("依赖边校验：未知引用拒绝并点名", () => {
+  const d = repo();
+  try {
+    register(d, "deps-miss");
+    const body = ["# 计划", "- [N1] a", "deps: N9"].join("\n");
+    const r = lzy(["loop", "plan", planAt(d, body)], d);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /不存在的条目/);
+    assert.match(r.out, /N9/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("依赖边校验：自指拒绝", () => {
+  const d = repo();
+  try {
+    register(d, "deps-self");
+    const body = ["# 计划", "- [N1] a", "deps: N1"].join("\n");
+    const r = lzy(["loop", "plan", planAt(d, body)], d);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /自指/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("依赖边校验：成环拒绝并报环路径", () => {
+  const d = repo();
+  try {
+    register(d, "deps-cycle");
+    const body = ["# 计划", "- [N1] a", "deps: N2", "- [N2] b", "deps: N1"].join("\n");
+    const r = lzy(["loop", "plan", planAt(d, body)], d);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /成环/);
+    assert.match(r.out, /N1 → N2 → N1|N2 → N1 → N2/); // 环路径完整可见
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ── 依赖边加固钉（R1 双审修复轮，goal v005-core#N8）────────────────────────
+
+test("依赖边：孤儿 deps 行响亮拒绝（隔行/顶部/大小写变体）；行尾 <!--lzy:allow--> 豁免正文提及", () => {
+  const d = repo();
+  try {
+    register(d, "deps-orphan");
+    const mk = (body) => lzy(["loop", "plan", planAt(d, body)], d);
+    let r = mk(["# 计划", "- [N1] a", "", "deps: N2", "- [N2] b"].join("\n")); // 空行断开
+    assert.equal(r.code, 1);
+    assert.match(r.out, /孤儿 deps 行/);
+    r = mk(["# 计划", "deps: N1", "- [N1] a"].join("\n")); // 无条目可依
+    assert.equal(r.code, 1);
+    assert.match(r.out, /孤儿 deps 行/);
+    r = mk(["# 计划", "- [N1] a", "Deps: N2", "- [N2] b"].join("\n")); // 大小写变体
+    assert.equal(r.code, 1);
+    assert.match(r.out, /孤儿 deps 行/);
+    r = mk(["# 计划", "- [N1] a", "- deps: N2", "- [N2] b"].join("\n")); // bullet 前缀变体（R2-B）
+    assert.equal(r.code, 1);
+    assert.match(r.out, /孤儿 deps 行/);
+    r = mk(["# 计划", "- 语法：deps: N1,N2 <!--lzy:allow-->", "- [N1] a"].join("\n")); // 正文提及豁免
+    assert.equal(r.code, 0);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("依赖边：token 非法点名；裸 deps: 与纯空白等价报空；重复 token 去重；全角逗号分隔", () => {
+  const d = repo();
+  try {
+    register(d, "deps-token");
+    const mk = (body) => lzy(["loop", "plan", planAt(d, body)], d);
+    let r = mk(["# 计划", "- [N1] a", "deps: see below"].join("\n"));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /deps 条目非法/);
+    assert.match(r.out, /see/);
+    r = mk(["# 计划", "- [N1] a", "deps:"].join("\n"));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /deps 声明为空/);
+    r = mk(["# 计划", "- [N1] a", "deps:   "].join("\n"));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /deps 声明为空/);
+    r = mk(["# 计划", "- [N1] a", "- [N2] b", "deps: N1，N1"].join("\n"));
+    assert.equal(r.code, 0);
+    const goal = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+    assert.deepEqual(goal.steps.find((s) => s.id === "N2").deps, ["N1"]); // 全角逗号+去重
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("依赖边：20 节环路径封顶展示；6000 深链照常采纳（迭代 DFS 不爆栈，R5-A）", () => {
+  const d = repo();
+  try {
+    register(d, "deps-deep");
+    const lines = ["# 计划"];
+    for (let i = 1; i <= 20; i++) {
+      lines.push(`- [N${i}] s${i}`);
+      lines.push(`deps: N${i === 20 ? 1 : i + 1}`);
+    }
+    let r = lzy(["loop", "plan", planAt(d, lines.join("\n"))], d);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /成环/);
+    assert.match(r.out, /共 \d+ 节/); // 路径封顶，不刷千节巨幅报错
+    const chain = ["# 计划"];
+    for (let i = 1; i <= 6000; i++) {
+      chain.push(`- [N${i}] s${i}`);
+      if (i > 1) chain.push(`deps: N${i - 1}`);
+    }
+    r = lzy(["loop", "plan", planAt(d, chain.join("\n"))], d);
+    assert.equal(r.code, 0); // 递归形态在 ~5k 深度爆栈误拒；迭代 DFS 后合法深链照常过门
+    const goal = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+    assert.equal(goal.steps.length, 6000);
+    assert.deepEqual(goal.steps[5999].deps, ["N5999"]);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

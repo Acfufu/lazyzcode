@@ -24,6 +24,7 @@
 import { createReadStream, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { WATERLINE_POINTS } from "./cost.js";
 
 const LOG_RE = /^zcode-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 const TURN_COVERAGE_MIN = 0.9;
@@ -117,6 +118,16 @@ export async function collectRateLimitStats(
 
   const active = new Map(); // 桶键 → Set(sessionId)（started 事件）
   const dirty = new Set(); // 出现过 429 失败的桶键
+  // provider 分桶素材（决策 #21 前置件，2026-09-14）：completed 行带 providerId（活体
+  // 实证，started 行没有）——完成面逐 provider 记桶，429 面沿用 ctx.providerId 分组。
+  const completedByProvider = new Map(); // providerId → (桶键 → Set(sessionId))
+  const dirtyBucketsByProvider = new Map(); // providerId → Set(桶键)
+  const dirtyProvidersAdd = (pid, b) => {
+    if (!b) return;
+    let s = dirtyBucketsByProvider.get(pid);
+    if (!s) dirtyBucketsByProvider.set(pid, (s = new Set()));
+    s.add(b);
+  };
   const startedByHour = new Array(24).fill(0); // 本地小时 → started 事件数
   const turnSeen = new Map(); // 复合键 → 最早事件 ts（ISO 字符串，字典序即时序）
   const attemptHour = new Array(24).fill(0); // first-attempt 口径的本地小时分布
@@ -128,6 +139,9 @@ export async function collectRateLimitStats(
   let maxTs = null;
   const noteTs = (ts) => {
     if (typeof ts !== "string") return;
+    // 只收可解析时间戳：引擎畸形行（如 9999-99-99T99:99:99Z）不得把 NaN 带进
+    // spanHours/带数学（对抗审查 R5-A：doctor 行渲染「近 NaNh」实锤形态）
+    if (!Number.isFinite(Date.parse(ts))) return;
     if (!minTs || ts < minTs) minTs = ts;
     if (!maxTs || ts > maxTs) maxTs = ts;
   };
@@ -161,7 +175,7 @@ export async function collectRateLimitStats(
       if (line.includes('"event":"model.request.started"')) {
         const d = tryParse(line);
         const b = d ? bucketOf(d.timestamp) : null;
-        if (b && typeof d.sessionId === "string") {
+        if (b && typeof d.sessionId === "string" && d.sessionId) {
           let s = active.get(b);
           if (!s) active.set(b, (s = new Set()));
           s.add(d.sessionId);
@@ -171,20 +185,24 @@ export async function collectRateLimitStats(
         if (d) noteTs(d.timestamp);
         continue;
       }
-      // 双族双预过滤：429 保持原子串谓词（零语义变化，基线 diff 护栏）；传输族挂 failed 事件。
-      // 任一命中才 parse，一遍扫描两族不串计（429 分支后显式 continue 跳过传输族）。
+      // 三族双预过滤+completed 素材行：429 保持原子串谓词（零语义变化，基线 diff 护栏）；
+      // 传输族挂 failed 事件；completed 只作 provider 完成面计数。任一命中才 parse。
       const isRateLimited = line.includes('"reason":"rate_limited"');
       const isFailed = line.includes('"event":"model.request.failed"');
-      if (!isRateLimited && !isFailed) continue;
+      const isCompleted =
+        !isRateLimited && !isFailed && line.includes('"event":"model.request.completed"');
+      if (!isRateLimited && !isFailed && !isCompleted) continue;
       const d = tryParse(line);
       if (!d) continue; // 坏行/半行：fail-soft，不计入也不报错
       if (isRateLimited) {
         stats.rateLimited += 1;
         const ctx = d.context ?? {};
-        if (typeof ctx.providerId === "string") {
+        // 空 providerId 视同缺字段（对抗审查 R5-A：空串会渲染无名行）
+        if (typeof ctx.providerId === "string" && ctx.providerId) {
           stats.providers[ctx.providerId] = (stats.providers[ctx.providerId] ?? 0) + 1;
+          dirtyProvidersAdd(ctx.providerId, bucketOf(d.timestamp));
         }
-        if (typeof d.sessionId === "string") {
+        if (typeof d.sessionId === "string" && d.sessionId) {
           stats.sessions[d.sessionId] = (stats.sessions[d.sessionId] ?? 0) + 1;
         }
         if (
@@ -201,7 +219,7 @@ export async function collectRateLimitStats(
         const b = bucketOf(d.timestamp);
         if (b) dirty.add(b);
         // 回合口径素材：复合键（缺一不可）与首撞（attempt 缺失按 1 计，宁可计入不漏报）
-        if (typeof d.sessionId === "string" && typeof d.turnId === "string" && d.turnId !== "") {
+        if (typeof d.sessionId === "string" && d.sessionId && typeof d.turnId === "string" && d.turnId !== "") {
           turnKeyed += 1;
           const key = `${d.sessionId}\u0000${d.turnId}`;
           const prev = turnSeen.get(key);
@@ -213,6 +231,24 @@ export async function collectRateLimitStats(
           if (h !== null) attemptHour[h] += 1;
         }
         continue; // 限流族已收口；rate_limited 不是传输死亡，绝不串计
+      }
+      // ── completed 分桶素材（决策 #21 前置件）：只作 provider 完成面计数，绝不进
+      // 账号级带/集中段数学（账号带仍只用 started，测量纯度）；缺 providerId/sessionId
+      // 或桶键的样本静默跳过（fail-soft，与坏行同姿态）。
+      if (isCompleted) {
+        const cctx = d.context ?? {};
+        const pid =
+          typeof cctx.providerId === "string" && cctx.providerId ? cctx.providerId : null;
+        const b =
+          typeof d.sessionId === "string" && d.sessionId ? bucketOf(d.timestamp) : null;
+        if (pid && b) {
+          let m = completedByProvider.get(pid);
+          if (!m) completedByProvider.set(pid, (m = new Map()));
+          let s = m.get(b);
+          if (!s) m.set(b, (s = new Set()));
+          s.add(d.sessionId);
+        }
+        continue;
       }
       // ── 传输死亡族（ADR-0008）：请求未达服务端类故障，errno 主判据 ──
       const tctx = d.context ?? {};
@@ -287,14 +323,45 @@ export async function collectRateLimitStats(
   }
   stats.dirtyDist.sort((a, b2) => a.active - b2.active);
 
+// 循环归约取极值：Math.min(...spread) 在十万级桶上抛 RangeError（对抗审查 R5-A 实锤：
+// 31MB 日志远在扫描预算内即可造出 124k 脏桶，fail-soft 吞掉整个限流族读数）
+const minOf = (arr) => arr.reduce((m, v) => (v < m ? v : m), Infinity);
+const maxOf = (arr) => arr.reduce((m, v) => (v > m ? v : m), -Infinity);
+
   if (dirtyKnown.length > 0) {
-    const minDirty = Math.min(...dirtyKnown.map((b) => active.get(b).size));
+    const minDirty = minOf(dirtyKnown.map((b) => active.get(b).size));
     const cleanBuckets = [...active.keys()].filter((b) => !dirty.has(b));
-    const maxClean = cleanBuckets.length > 0 ? Math.max(...cleanBuckets.map((b) => active.get(b).size)) : 0;
+    const maxClean = cleanBuckets.length > 0 ? maxOf(cleanBuckets.map((b) => active.get(b).size)) : 0;
     stats.band =
       dirtyKnown.length >= 3 && cleanBuckets.length >= 3 && minDirty > maxClean
         ? { coherent: true, minDirty, maxClean }
         : { coherent: false, minDirty, maxClean };
+  }
+
+  // provider 分桶带（决策 #21 前置件）：完成侧净面 × 429 脏面，逐 provider 重复账号级
+  // 带机制（dirtyKnown≥3 ∧ cleanBuckets≥3 ∧ minDirty>maxClean 才连贯）。≥2 provider 才
+  // 成表（单 provider=现状字节稳定）；只进 doctor band-by-provider 加行。
+  const providerIds = new Set([...completedByProvider.keys(), ...dirtyBucketsByProvider.keys()]);
+  stats.providersSeen = providerIds.size;
+  if (providerIds.size >= 2) {
+    stats.providerBands = [...providerIds].sort().map((pid) => {
+      const completed = completedByProvider.get(pid) ?? new Map();
+      const dirtyB = dirtyBucketsByProvider.get(pid) ?? new Set();
+      const dirtyKnownP = [...dirtyB].filter((b) => completed.has(b));
+      const minDirtyP =
+        dirtyKnownP.length > 0 ? minOf(dirtyKnownP.map((b) => completed.get(b).size)) : 0;
+      const cleanBucketsP = [...completed.keys()].filter((b) => !dirtyB.has(b));
+      const maxCleanP =
+        cleanBucketsP.length > 0 ? maxOf(cleanBucketsP.map((b) => completed.get(b).size)) : 0;
+      return {
+        provider: pid,
+        minDirty: minDirtyP,
+        maxClean: maxCleanP,
+        dirtyBuckets: dirtyKnownP.length,
+        cleanBuckets: cleanBucketsP.length,
+        coherent: dirtyKnownP.length >= 3 && cleanBucketsP.length >= 3 && minDirtyP > maxCleanP,
+      };
+    });
   }
 
   // 最长连续脏游程：UTC 毫秒差判连续（跨文件/跨午夜不断链）；游程在 UTC 域做，展示层才转本地
@@ -374,6 +441,58 @@ export function bandAdvisory(stats, now = new Date()) {
     };
   }
   return { cap: 1, reason: "经验带不连贯（归因漂移下是常态）——保守串行" };
+}
+
+// ── provider 分桶带建议（决策 #21 前置件，2026-09-14）：doctor band-by-provider 行 ──
+// 完成侧净面 × 429 脏面的逐 provider 经验带；≥2 provider 才出行（单 provider=现状字节
+// 稳定）。只读加行：不翻退出码、不进账号级带/错峰窗数学（测量纯度）。纯函数。
+export function providerBandAdvisory(stats) {
+  const rows = stats?.providerBands;
+  if (!stats?.available || stats.providersSeen < 2 || !Array.isArray(rows) || rows.length === 0) {
+    return null;
+  }
+  // 显示面消毒：providerId 来自本地日志但仍剥控制字符（ANSI 逃逸不进终端，R5-A）
+  const short = (p) =>
+    (p.startsWith("builtin:") ? p.slice("builtin:".length) : p).replace(
+      /[\x00-\x1f\x7f]/g,
+      "·",
+    );
+  // 不连贯分两种如实说（评审 R3-A：真短缺≠归因漂移，混称「样本不足」误导读者）：
+  // 无脏面（dirtyBuckets 0）=样本不足；两侧都有数据但不连贯=归因漂移（账号带同款措辞）。
+  const shown = rows
+    .slice(0, 4)
+    .map((r) => {
+      if (r.coherent) return `${short(r.provider)}：带 ≤${r.maxClean} 净/${r.minDirty} 撞（连贯）`;
+      if (r.dirtyBuckets === 0) return `${short(r.provider)}：无脏面样本（净桶 ${r.cleanBuckets}）`;
+      return `${short(r.provider)}：带不连贯（归因漂移，净桶 ${r.cleanBuckets}/脏桶 ${r.dirtyBuckets}）`;
+    });
+  const more = rows.length > 4 ? `（余 ${rows.length - 4} 带略）` : "";
+  return {
+    level: "ok",
+    text: `按 provider 分桶（完成侧净面×429 脏面）：${shown.join(" · ")}${more}`,
+  };
+}
+
+// ── 成本档位建议（成本两件套②「成功即降档」，2026-09-14；差距 F1 抄 ouroboros/PAL 两件）──
+// 近窗零 429 且滚动水位低于警戒线一半 → 建议下个常规目标试轻量模型档位（失败即回档）；
+// 否则维持档位。纯建议文本：只进 doctor cost 行，绝不进 429 谓词/带/错峰窗数学（测量
+// 纯度）。水位读数缺席（null，账本/sqlite3 缺席）→ 维持并如实注明——无成本证据不怂恿降档。
+// 纯函数：stats 是 collectRateLimitStats 产物，水位/阈值注入以便无账本环境确定性测试。
+export function costAdvisory(stats, waterlinePts, threshold = WATERLINE_POINTS) {
+  if (!stats?.available) return null;
+  const th = Number(threshold) || WATERLINE_POINTS;
+  if (stats.rateLimited === 0) {
+    if (Number.isFinite(waterlinePts) && waterlinePts < th / 2) {
+      return {
+        level: "ok",
+        text: `近窗零限流 · 滚动水位 ${waterlinePts}/${th} 低——下个常规目标可试轻量模型档位（成本），失败即回档`,
+      };
+    }
+    const w = Number.isFinite(waterlinePts) ? `滚动水位 ${waterlinePts}/${th}` : "水位读数缺席";
+    return { level: "ok", text: `近窗零限流 · ${w}——档位维持` };
+  }
+  const unit = stats.caliber === "turn" ? "回合" : "次首撞";
+  return { level: "ok", text: `近窗 ${stats.turns} ${unit}限流——档位维持（轻量档会放大重试与撞线）` };
 }
 
 // ── 传输死亡建议（ADR-0008）：把传输族统计翻译成 doctor transport 行文案 ──────

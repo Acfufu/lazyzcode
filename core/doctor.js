@@ -15,14 +15,14 @@ import {
   tasksIndexPath,
   userCliLogDir,
 } from "./paths.js";
-import { collectRateLimitStats, contentAdvisory, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
+import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvisory, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
 import { WATERLINE_POINTS, rollingWaterlinePoints } from "./cost.js";
 import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
 import { scanSessionFlags } from "./loop.js";
 import { createGit } from "./git.js";
 
-const NODE_MAJOR_FLOOR = 20;
+const NODE_MAJOR_FLOOR = 22;
 
 // 项目记忆过期提示阈值（memory-staleness-fingerprint）：地图基点后覆盖域提交数达到该值，
 // doctor agents-md 的 ok 行尾追加「地图落后 N 个提交」提示。写死+人工维护口径（无 env、
@@ -462,6 +462,14 @@ async function checkRateLimit(push) {
   if (stats.rateLimited === 0) {
     const note0 = truncNoteOf(stats.truncation);
     push("rate-limit", "ok", `近 ${stats.spanHours ?? stats.files * 24}h 无账号级限流记录${note0 ? `（${note0}）` : ""}`);
+    // 成本档位建议行（成本两件套②「成功即降档」）：纯建议，不进任何谓词/数学；
+    // 阈值沿 checkWaterline 同款 env 覆盖口径
+    const cst0 = costAdvisory(
+      stats,
+      rollingWaterlinePoints(),
+      Number(process.env.LZY_WATERLINE_POINTS) || WATERLINE_POINTS,
+    );
+    if (cst0) push("cost", cst0.level, cst0.text);
     // 传输族独立于限流族：无 429 不代表无传输死亡，行照出
     const tr0 = transportAdvisory(stats);
     push("transport", tr0.level, tr0.text);
@@ -523,6 +531,16 @@ async function checkRateLimit(push) {
   // 内容审核杀流行：与限流同源同扫描不重复读日志，只记账不进任何带数学
   const ct = contentAdvisory(stats);
   push("content", ct.level, ct.text);
+  // provider 分桶带行（决策 #21 前置件）：≥2 provider 才出行；同源同扫描零重复读
+  const pb = providerBandAdvisory(stats);
+  if (pb) push("band-by-provider", pb.level, pb.text);
+  // 成本档位建议行（成本两件套②「成功即降档」）：纯建议，不进任何谓词/数学
+  const cst = costAdvisory(
+    stats,
+    rollingWaterlinePoints(),
+    Number(process.env.LZY_WATERLINE_POINTS) || WATERLINE_POINTS,
+  );
+  if (cst) push("cost", cst.level, cst.text);
   // 错峰窗口（无人值守调度，ADR-0003）：与限流体检同源同扫描，不重复读日志
   const adv = scheduleAdvisory(stats);
   if (adv) {

@@ -24,7 +24,7 @@ CLI（目标循环状态机）。
 - **macOS** —— LazyZCode 目前只做 macOS 的引擎布局探测；其他平台明确报
   「未找到」，绝不盲猜。
 - **ZCode 桌面端**，已安装并登录。LazyZCode 跑在 ZCode *里面*，没有单独的登录。
-- **Node.js ≥ 20** —— 任意在维护的 LTS。nvm 或 Homebrew 装的都行：当引擎的钩子
+- **Node.js ≥ 22** —— 任意在维护的 LTS。nvm 或 Homebrew 装的都行：当引擎的钩子
   环境里没有 `node` 时，插件自带的启动器会扫这两个位置（见
   [钩子与生命周期](#钩子与生命周期)）。
 - **git** —— 证据绑定用 `git rev-parse HEAD^{tree}`，干活的项目必须是 git 仓库。
@@ -64,7 +64,7 @@ lzy uninstall
 | --- | --- | --- |
 | 操作系统 | **macOS** | 当下唯一做了引擎布局探测的平台。 |
 | ZCode | 桌面端，已登录 | 钩子与插件都经桌面端引擎装载。 |
-| Node.js | ≥ 20，nvm 或 Homebrew | `lzy doctor` 的 `hook-node` 检查会告诉你钩子实际走哪条解析路径。 |
+| Node.js | ≥ 22，nvm 或 Homebrew | `lzy doctor` 的 `hook-node` 检查会告诉你钩子实际走哪条解析路径。 |
 | 项目 | git 仓库 | 证据绑定要求存在提交；F 项证据在提交**之后**取证。 |
 | 启动方式 | 均可 | 终端启动或 Dock 直启都行；Dock 场景由 `run-hook.sh` 启动器兜底。 |
 
@@ -184,10 +184,12 @@ zw 实现一个带测试的 CSV 导出接口
 lzy loop register <slug> --title "…"    # 进入 planning
 lzy loop plan <文件> [--review "…"] [--force]
 lzy loop start                          # 记录基线 tree hash
-lzy step done <ID> [--note "…"] [--evidence "…"]
+lzy loop claim [<id>] [--release]        # 步级认领（匿名、48h 互斥）；无参列可认领集
+lzy step done <ID> [--note "…"] [--evidence "…"] [--evidence-file <文件>]…
 lzy loop status                         # 进度、下一步、证据新鲜度
 lzy loop verify                         # 证据时效审计（退出码 1 = 过期/未绑定）
 lzy loop finish                         # 终验门
+lzy loop export                         # 重导出证据包
 lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次
 lzy loop cost                           # 积分成本报表（常设系数+促销 overlay，只读）
 lzy loop list [--root <目录>]           # 只读扫同级仓的目标循环
@@ -197,15 +199,20 @@ lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 
 - `lzy loop plan` 解析 N/F 清单并拒绝待定（TBD）项。评审判决用
   `--review "plan-reviewer: PASS …"` 传入；HEAVY 目标没有 PASS 评审拒绝采纳，
-  `REVISE` 判决即使 `--force` 也不越过。
+  `REVISE` 判决即使 `--force` 也不越过。条目行下一行的 `deps: N1,N2` 声明前置
+  依赖——引用必须存在，自指/成环/孤儿 `deps:` 行都会被响亮拒绝（正文要引用
+  语法？行尾加 `<!--lzy:allow-->`）。
 - `lzy loop start` 冻结基线 tree hash；漂移对照它报告。
 - F 项的 `lzy step done` 不带 `--evidence` 会被拒。带新证据重跑即重绑定
   （标记 ↻ 重取证）。
 - `lzy loop verify` 是终验门的只审计变体（证据过期/未绑定/无目标时退出码 1）。
+- `lzy loop claim` 为同目标多工人提供匿名步级认领：48h 互斥、按计划 `deps:` 依赖边
+  做阻塞校验、`lzy step done` 自动释放、`--release` 提前释放、无参列可认领集
+  （`lzy loop status` 标注 `[claimed]`/`[blocked: …]`）。
 - `lzy loop handoff --snapshot <文件>` 登记干净交接：下个 Stop 一次性消费标记并
   放行，不消耗续跑预算（目标保持 executing，状态在盘）。快照须已存在且 2h 内
   有改动，并含 7 个强制节（剩余步骤/下一步动作/目标与进度/脏树清单/tree hash/
-  风险与坑/复归指令；缺节或空节拒收，模板见 zw 技能 Continuation 节）；`lzy loop reset`/`abandon` 会清扫残留标记。
+  风险与坑/复归指令；缺节或空节拒收，模板见 zw 技能 Continuation 节）；`lzy loop reset` 清扫残留标记（abandon 留着不动；重开循环前先 reset）。
   每次登记与消费会在 `.lazyzcode/loop/metrics.json` 累加匿名计数
   （`registered`/`consumed`，无会话身份）；计数跨 reset 永续，
   在 `lzy status`/`lzy loop status` 可见。
@@ -222,12 +229,15 @@ lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 ```markdown
 - [N1] 在 src/api/export.ts 实现导出接口
 - [N2] 实现 CSV 序列化与引号转义规则
+deps: N1
 - [F1] `curl localhost:3000/export` 返回 200 且可按 CSV 解析（qa-executor）
 ```
 
 - **N 项**（实现项）描述工作。
 - **F 项**（终验项）指名一个**真实表面**和将在其上取的证据。没有 F 项的计划
   过不了门。
+- **依赖边（可选）**：条目行下一行的裸小写 `deps:` 列出大小写敏感的 N/F 条目
+  id（自动去重）。未知引用、自指、成环、孤儿 `deps:` 行一律响亮拒绝。
 - 计划必须**决策完备**：无 TBD、无「回头再定」。待定项在采纳时即被拒。
   （若计划确实需要这个字面量，行级 `<!--lzy:allow-->` 标记可豁免。）
 - HEAVY 目标还要经 `--review` 记录一条 **plan-reviewer PASS**。评审者核查决策
@@ -322,7 +332,7 @@ UTC+8 静态表、人工维护）标注重叠并给出计价安全窗。计价�
 | `session-start.js` | SessionStart | 重注入目标循环状态，新会话接续上一个。 |
 | `trigger.js` | UserPromptSubmit | 分层触发匹配；命中发起则注入 zw 引导。 |
 | `comment-checker.js` | PostToolUse（Edit/Write） | 对新内容中的 `TODO`/`FIXME`/`XXX`/`HACK` 标记与调试残留（`console.log`、`console.debug`、`debugger`）做提示。每次至多 5 处、300 字符、只提示不阻断——且只在有开放目标循环的工作区生效。 |
-| `stop.js` | Stop | 循环开着时带剩余步骤上下文请求续跑（每会话至多 2 次）。 |；一次性消费交接标记并放行（不耗预算）。 |
+| `stop.js` | Stop | 循环开着时带剩余步骤上下文请求续跑（每会话至多 2 次）；一次性消费交接标记并放行（不耗预算）。 |
 | `tripwire.js` | PostToolUseFailure（`^mcp__`） | 同一 MCP 工具在 10 分钟窗内连续失败 2 次时提示一次（成功不重置连击，TTL 才重臂）——引向换工具或 `lzy loop handoff` 干净收尾；只提示不阻断，用户手动取消不计，仅在有开放目标时生效。 |
 
 五条命令都经 `plugin/hooks/run-hook.sh` 启动：引擎用*自己的*环境拉起钩子，而
@@ -341,7 +351,8 @@ zw 技能承载的行为规则：
 
 - **一次只跑一个目标循环**；并行主会话宜少。
 - 子代理并行度**靠实测、不靠猜**：`lzy loop start` 用同一份实测数据打印
-  「并发纪律」行——刚撞线或处于实测集中段→串行；连贯干净经验带→≤2。
+  「并发纪律」行——刚撞线或处于实测集中段→串行；连贯干净经验带→≤2；
+  窗内零 429 时→≤2（技能默认，仅限独立取证）。
 - **风险压过配额**：配额压力可以在 triage 时选 LIGHT，但绝不降低 HEAVY 的风险
   门槛。
 - 被 429 判死（引擎重试耗尽判回合死）后：干净收尾，等几分钟，`zw 继续`——
@@ -373,6 +384,7 @@ lzy uninstall                   删缓存 + 注册表条目
 lzy loop register <slug> --title <标题>    建目标（planning）
 lzy loop plan <文件> [--review <判决>] [--force]   采纳 N/F 清单
 lzy loop start                  planning → executing；记录基线 tree hash + 打印实测并发纪律行
+lzy loop claim [<id>] [--release]  步级认领（多工人；阻塞校验；48h 互斥）
 lzy loop status                 进度、下一步、证据新鲜度
 lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑定/无目标）
 lzy step done <ID> [--note <注记>] [--evidence <证据>] [--evidence-file <文件>]…
@@ -405,17 +417,23 @@ lzy version                     打印版本
 | `codegraph` | Codegraph MCP/CLI 在场性（缺席 = `skip`） |
 | `loop` | 本目录目标循环进度（无循环 = `skip`；循环开着为 `warn`） |
 | `hooks` | 钩子语法自检（worker 内 vm 解析）+ `hooks.json` 注册校验 |
-| `node` | Node 版本下限（≥ 20） |
+| `node` | Node 版本下限（≥ 22） |
 | `hook-node` | 钩子启动器从哪条路径解析 node |
 | `lzy-path` | `lzy` 能否在 PATH 上解析 |
 | `state` | `.lazyzcode/` 卫生（孤儿临时文件、goal 状态） |
 | `claims` | 认领巡逻：谁认领了进行中目标、stuck 停拉标记；零认领 = 「待认领」提示（warn，不翻退出码） |
+| `handoff` | 交接标记在场提示（下个 Stop 消费即放行） |
+| `handoff-usage` | 匿名放行计数 registered/consumed（跨 reset 永续） |
 | `ledger` | 提交账本巡逻：goal 起点后提交缺 `Goal:` 尾注的比例（warn，不翻退出码） |
+| `waterline` | 近 5h 滚动积分 vs 自参照警戒线（sqlite3 缺席时如实报降级） |
+| `orphan-wake` | 本仓 unbound wake automation 的空转巡逻（无挂载即 skip） |
 | `platform` | 平台提示（仅 macOS 探测） |
 | `agents-md` | AGENTS.md 分层覆盖审计 + 地图落后提示（基点后覆盖域 ≥50 提交；根缺失 = `skip`；`lzy agents-md` 详单） |
 | `rate-limit` | 近 2 日引擎日志的 GLM 套餐 429 压力 |
 | `transport` | 传输死亡（请求未达服务端类故障，如 ENETDOWN）：独立分族计数，绝不进并发带数学 |
 | `content` | 内容审核杀流（provider 内容审核中途杀流，如 1301）：独立分族计数，原地重试必复现，绝不进并发带数学 |
+| `band-by-provider` | 按 provider 分桶经验带（完成侧净桶×429 脏桶）；窗内有 429 且 ≥2 provider 才出行——自身无 429 的行如实标注「无脏面样本」 |
+| `cost` | 模型档位建议（「成功即降档」）：零限流窗+低滚动水位建议常规目标试轻量档；纯建议文本 |
 | `schedule` | 错峰窗口建议：实测集中段反推 + 计价高峰对照与安全窗提示（UTC+8 静态表人工维护；无集中段证据 = `skip`） |
 
 ## 状态与配置

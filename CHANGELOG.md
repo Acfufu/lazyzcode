@@ -3,10 +3,62 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [0.0.5] - unreleased
+
+> 0.0.5 is the internal-hardening release: the parallel-claim minimal chain
+> lands (decision #21 upgraded from debt per owner grilling 2026-09-13/14),
+> plus the cost two-piece and two loose ends. Publishing waits for 0.0.6
+> (owner decision 2026-09-14).
+
+### Added
+
+- **Parallel-claim minimal chain (decision #21; ADR-0004 amendment 3)**: plan
+  items may declare dependency edges — a `deps: N1,N2` line right after an
+  item; unknown refs, self-loops, and cycles are rejected at the plan gate, as
+  are orphan/malformed `deps:` lines (with a `<!--lzy:allow-->` escape for
+  prose mentions) —
+  and a new `lzy loop claim` provides anonymous per-step claiming for
+  same-goal multi-worker runs: 48h mutex (same TTL as goal-level claims),
+  blocked-step rejection names the undone dependencies, `lzy step done`
+  auto-releases, `--release` frees early, bare `lzy loop claim` lists
+  claimable steps, and `lzy loop status` marks steps `[claimed]` /
+  `[blocked: …]` (next-step annotation included) with usage guards on
+  `--release`. No session identities are recorded
+  (ADR-0009 stance). Old plan files parse unchanged. zw SKILL gains the
+  parallel-dispatch rule: claim first, edit code in your own worktree, run
+  every `lzy` command from the host workspace root (ADR-0006).
+- **doctor `band-by-provider` line (decision #21 precondition)**: the same
+  rate-limit scan now also reads `model.request.completed` events
+  (provider-tagged) and computes a per-provider empirical band —
+  completed-side clean buckets × 429 dirty buckets — emitted only when the
+  window has ≥1 429 and ≥2 providers; a provider with no 429 of its own gets
+  an honest "no dirty-face sample" row. The 429 substring predicate and the
+  account-level started-based band math are byte-untouched (purity pins
+  included); samples missing `providerId`/`sessionId` are skipped fail-soft.
+- **Cost two-piece**: "mechanical $0 checks first" enters the zw SKILL
+  evidence section and qa-executor Method as rule #1 — zero-cost deterministic
+  evidence (CLI stdout, file asserts, grep/diff) before any semantic judgment.
+  doctor gains a `cost` advisory line: a zero-429 window with the rolling
+  waterline below half the threshold suggests trying a lighter model tier for
+  routine goals (fall back on failure); otherwise it advises holding the tier.
+  Advisory text only — it never enters predicate or band math, and the
+  threshold honors `LZY_WATERLINE_POINTS` like the waterline check.
+
+### Changed
+
+- **Node.js floor raised 20 → 22** (engines, CI matrix [22, 24], and the
+  `doctor` node check): Node 20 reached end-of-life in April 2026 and cannot
+  run the new glob-form test command.
+- `npm test` and CI run `node --test "test/**/*.test.js"` — discovery narrowed
+  to `test/`, structurally preventing the bare-cwd phantom-pass class (Node
+  ≥22 interprets `--test` positionals as globs; a literal directory argument
+  is not usable). `pnpm-lock.yaml` moves to `.gitignore` (the file regenerates
+  itself; owner decision Q3 2026-09-14).
+
 ## [0.0.4] - unreleased
 
 > 0.0.3 was versioned but never published; per owner decision (2026-09-13) its
-> section is folded into 0.0.4, which is the next release.
+> section is folded into 0.0.4.
 
 ### Added
 

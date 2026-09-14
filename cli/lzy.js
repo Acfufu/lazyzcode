@@ -12,9 +12,11 @@ import {
   LoopError,
   abandonLoop,
   adoptPlan,
+  claimStep,
   completeStep,
   exportReport,
   finishLoop,
+  formatClaimList,
   formatHistory,
   formatRepoList,
   formatStatus,
@@ -252,6 +254,30 @@ async function cmdLoop(args) {
       console.log("  下一步：结束本会话；用户开新上下文后以「zw 继续」续跑");
       return;
     }
+    case "claim": {
+      // 步级认领（决策 #21 最小链）：带 id=认领/释放，无参=可认领集列表（多工人挑步面）。
+      const id = _[1];
+      if (f.release !== undefined && f.release !== true && f.release !== false) {
+        throw new LoopError(`--release 是裸旗标不吃值（收到 --release=${f.release}）；强制释放用 --release`);
+      }
+      if (!id) {
+        if (f.release === true) {
+          throw new LoopError("用法：lzy loop claim <id> --release（无参形式列出可认领集，不接 --release）");
+        }
+        console.log(formatClaimList(cwd));
+        return;
+      }
+      if (_[2]) throw new LoopError(`多余参数：${_[2]}（用法：lzy loop claim [<id>] [--release]）`);
+      const r = claimStep(cwd, id, { release: f.release === true });
+      if (r.released) {
+        console.log(`✔ 认领已释放：${r.step.id} [${r.step.kind}] ${r.step.title}`);
+      } else {
+        console.log(
+          `✔ 步骤已认领：${r.step.id} [${r.step.kind}] ${r.step.title}（匿名互斥 48h；step done 自动释放；提前释放 lzy loop claim ${r.step.id} --release）`,
+        );
+      }
+      return;
+    }
     case "status":
       console.log(formatStatus(cwd, git));
       return;
@@ -268,7 +294,7 @@ async function cmdLoop(args) {
       console.log(formatCost(cwd, readGoal(cwd)));
       return;
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/status/list/history/cost/verify/finish/export/abandon/reset/handoff）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff）`);
   }
 }
 
@@ -339,6 +365,8 @@ function printHelp() {
   lzy loop register <slug> --title <标题>   注册目标（进入 planning）
   lzy loop plan <计划文件> [--force]        计划门：采纳 N/F 清单（默认拒绝待定项）
   lzy loop start                            开跑（planning → executing，打印实测并发纪律行）
+  lzy loop claim [<id>] [--release]         步级认领（决策 #21）：占步互斥 48h；无参列出可
+                                            认领集（同目标多工人挑步）；done 自动释放
   lzy loop status                           查看进度与下一步
   lzy loop list [--root <目录>]             跨仓清单（只读）：扫锚目录一级子目录各仓的循环
                                             状态（默认锚=当前目录的同级，含自身）

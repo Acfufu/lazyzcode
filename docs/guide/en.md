@@ -26,7 +26,7 @@ One package installs both halves of LazyZCode: the `lazyzcode:zw` plugin
   platforms report "not found" instead of guessing.
 - **ZCode desktop app**, installed and logged in. LazyZCode runs *inside*
   ZCode; there is no separate login.
-- **Node.js ≥ 20** — any maintained LTS. Installed via nvm or Homebrew both
+- **Node.js ≥ 22** — any maintained LTS. Installed via nvm or Homebrew both
   work: the bundled hook launcher scans both locations when the engine's hook
   environment lacks `node` (see [Hooks & lifecycle](#hooks--lifecycle)).
 - **git** — evidence binding uses `git rev-parse HEAD^{tree}`, so the project
@@ -71,7 +71,7 @@ official `plugins uninstall` path.
 | --- | --- | --- |
 | Operating system | **macOS** | The only platform with engine layout detection today. |
 | ZCode app | Desktop, logged in | Hooks and the plugin load through the desktop engine. |
-| Node.js | ≥ 20, via nvm or Homebrew | The `hook-node` doctor check reports exactly which resolution path your hooks will use. |
+| Node.js | ≥ 22, via nvm or Homebrew | The `hook-node` doctor check reports exactly which resolution path your hooks will use. |
 | Project | A git repository | Evidence binding requires commits to exist; F-item evidence is captured **after** a commit. |
 | Launch style | Either | Launching ZCode from the terminal or the Dock both work; the Dock case is handled by the `run-hook.sh` launcher. |
 
@@ -216,6 +216,7 @@ scope abandonment) and the rate-limit rules below.
 lzy loop register <slug> --title "…"    # planning state
 lzy loop plan <file> [--review "…"] [--force]
 lzy loop start                          # records the base tree hash + prints the measured 并发纪律 advisory
+lzy loop claim [<id>] [--release]        # per-step claim (anonymous, 48h mutex); bare lists claimable steps
 lzy step done <ID> [--note "…"] [--evidence "…"] [--evidence-file <file>]…
 lzy loop status                         # progress, next step, evidence freshness
 lzy loop verify                         # evidence freshness audit (exit 1 = stale/unbound)
@@ -231,7 +232,10 @@ lzy loop abandon | lzy loop reset       # give up / clear state
 - `lzy loop plan` parses the N/F checklist and rejects undecided (TBD) items.
   Pass the plan-reviewer verdict with `--review "plan-reviewer: PASS …"`;
   HEAVY goals refuse to adopt a plan without a PASS review, and a `REVISE`
-  verdict is refused even with `--force`.
+  verdict is refused even with `--force`. A `deps: N1,N2` line right after an
+  item declares prerequisites — ids must exist, and self-loops, cycles, or
+  orphan `deps:` lines are rejected (quoting the syntax in prose? end that
+  line with `<!--lzy:allow-->`).
 - `lzy loop start` freezes the base tree hash; drift is reported against it.
   It also prints a 并发纪律 line — a subagent parallelism cap computed from
   your measured 429 data (see [rate-limit discipline](#rate-limit-discipline)).
@@ -245,13 +249,19 @@ lzy loop abandon | lzy loop reset       # give up / clear state
   evidence with attachments); `lzy loop export` re-exports it any time.
 - `lzy loop verify` is the audit-only variant of the finish gate (exit 1 when
   evidence is stale or unbound, or when no goal exists).
+- `lzy loop claim` provides anonymous per-step claiming for same-goal
+  multi-worker runs: 48h mutual exclusion, blocked-step rejection against the
+  plan's `deps:` edges, `lzy step done` auto-releases, `--release` frees
+  early, and the bare form lists claimable steps (`lzy loop status` marks
+  `[claimed]`/`[blocked: …]`).
 - `lzy loop handoff --snapshot <file>` registers a clean handoff: the next
   Stop consumes the marker once and releases the session without spending the
-  continue budget (the goal stays `executing`; state lives on disk). The
+  continue budget (the goal stays `executing`; state lives on disk).
   The snapshot must exist, have been modified within 2h, and contain all seven
   mandatory sections (remaining steps / next action / goal & progress / dirty-tree
   list / tree hash / risks / resume command — missing or empty sections are
-  rejected; template in zw's Continuation section). `lzy loop reset`/`abandon` sweeps a leftover marker. Each
+  rejected; template in zw's Continuation section). `lzy loop reset` sweeps a
+  leftover marker (abandon leaves it; reset before re-registering). Each
   registration and consumption increments anonymous counters in
   `.lazyzcode/loop/metrics.json` (`registered`/`consumed`, no session
   identity); they survive reset and surface in `lzy status`/`lzy loop status`.
@@ -271,12 +281,16 @@ Plans are markdown checklists with two item kinds:
 ```markdown
 - [N1] Implement the export endpoint in src/api/export.ts
 - [N2] Add CSV serialization with quoting rules
+deps: N1
 - [F1] `curl localhost:3000/export` returns 200 and parses as CSV (qa-executor)
 ```
 
 - **N items** (implementation) describe work.
 - **F items** (final verification) name a **real surface** and the evidence
   that will be captured on it. A plan without F items does not pass.
+- **Dependency edges (optional)**: a bare lowercase `deps:` line immediately
+  after an item lists case-sensitive N/F ids (deduplicated). Unknown refs,
+  self-loops, cycles, and orphan `deps:` lines are rejected loudly.
 - The plan must be **decision-complete**: no TBDs, no "decide later". The gate
   rejects undecided items at adoption time. (If your plan legitimately needs
   the literal string, a line-level `<!--lzy:allow-->` marker exempts it.)
@@ -420,8 +434,9 @@ Behavioral rules the zw skill carries:
 - **One goal loop at a time**; parallel main sessions kept few.
 - Subagent parallelism is **measured, not guessed**: `lzy loop start` prints a
   并发纪律 cap from the same data — serial while a hit is recent or the
-  current hour falls in the measured concentration window; ≤2 only on a
-  coherent clean band.
+  current hour falls in the measured concentration window; ≤2 on a coherent
+  clean band, or when the window has no 429s at all (skill default,
+  independent captures only).
 - **Risk trumps quota**: quota pressure may pick LIGHT at triage; it never
   lowers a HEAVY risk bar.
 - After a fatal 429 (a turn judged dead after the engine's retries): stop
@@ -463,6 +478,7 @@ lzy uninstall                   remove cache + registry entry
 lzy loop register <slug> --title <t>    create the goal (planning)
 lzy loop plan <file> [--review <v>] [--force]   adopt the N/F checklist
 lzy loop start                  planning → executing; records base tree hash + 并发纪律 advisory
+lzy loop claim [<id>] [--release]  per-step claim (multi-worker; blocked-step checks; 48h mutex)
 lzy loop status                 progress, next step, evidence freshness
 lzy loop verify                 evidence freshness audit (exit 1 = stale/unbound/no goal)
 lzy step done <ID> [--note <t>] [--evidence <t>] [--evidence-file <f>]…
@@ -470,6 +486,7 @@ lzy loop finish                 final gate: all done + all evidence fresh; archi
 lzy loop export                 re-export the evidence bundle (<slug>.report.md)
 lzy loop cost                   points report (coefficients + promo overlay, read-only)
 lzy loop list [--root <dir>]    cross-repo goal-loop sweep (read-only)
+lzy loop history                goal lineage (evidence ∪ stubs ∪ trailers, read-only)
 lzy loop abandon                give up, keep the record
 lzy loop reset                  clear loop state (incl. session counters, orphan tmp)
 lzy agents-md                   layered AGENTS.md audit (exit 1 = gaps/overcaps)
@@ -495,17 +512,23 @@ do.
 | `codegraph` | Codegraph MCP/CLI availability (absence = `skip`) |
 | `loop` | Goal-loop progress in this directory (skip when none; warns while a loop is open) |
 | `hooks` | Hook syntax self-check (vm-parsed in a worker) + `hooks.json` registry validation |
-| `node` | Node version floor (≥ 20) |
+| `node` | Node version floor (≥ 22) |
 | `hook-node` | Which path the hook launcher resolves node from |
 | `lzy-path` | Whether `lzy` resolves on PATH |
 | `state` | `.lazyzcode/` hygiene (orphan temp files, goal state) |
 | `claims` | Claim patrol: who claimed the open goal loop, stuck markers; zero claims = "unclaimed" notice (warn, never flips the exit code) |
+| `handoff` | Handoff marker present (the next Stop consumes it and releases) |
+| `handoff-usage` | Anonymous release counters, registered/consumed (survive reset) |
 | `ledger` | Commit-ledger patrol: share of goal-era commits missing the `Goal:` trailer (warn, never flips the exit code) |
+| `waterline` | Rolling 5-hour point burn vs the self-calibrated nudge threshold (degraded note when sqlite3 is absent) |
+| `orphan-wake` | Idle-burn patrol for unbound wake automations anchored here (skip when none mounted) |
 | `platform` | Platform notice (macOS-only detection) |
 | `agents-md` | Layered AGENTS.md coverage audit + staleness hint (≥50 covered-dir commits since the map's last commit; skip when no root file; `lzy agents-md` for details) |
 | `rate-limit` | GLM plan 429 pressure from the last 2 days of engine logs |
 | `transport` | Transport deaths (request-never-reached-server failures, e.g. ENETDOWN): counted as a separate family, never fed into the concurrency math |
 | `content` | Content-moderation kills (provider content-filter mid-stream kills, e.g. 1301): counted as a separate family; an in-place retry reproduces, never fed into the concurrency math |
+| `band-by-provider` | Per-provider empirical band (completed-side clean × 429 dirty buckets); emitted only when the window has ≥1 429 and ≥2 providers — providers without 429s of their own are honestly labeled "no dirty-face sample" |
+| `cost` | Model-tier advisory ("success → try lighter tier"): a zero-429 window with a low rolling waterline suggests a lighter tier for routine goals; advisory text only |
 | `schedule` | Off-peak advisory: automation window from the measured concentration, cross-checked against declared pricing peaks with a safe-window note; hand-maintained UTC+8 pricing table (skip without evidence) |
 
 ## State & configuration

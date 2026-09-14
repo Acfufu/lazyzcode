@@ -34,7 +34,7 @@ CLI that owns the loop state, and a state directory your project keeps.
   <g fill="var(--muted)" text-anchor="middle" font-size="11.5">
     <text x="115" y="124">desktop app · zcode.cjs</text>
     <text x="420" y="88">skills/zw · orchestration text</text>
-    <text x="420" y="107">hooks ×4 · via run-hook.sh</text>
+    <text x="420" y="107">hooks ×5 · via run-hook.sh</text>
     <text x="420" y="126">agents ×3 · read-only roles</text>
     <text x="720" y="83">goal-loop state machine</text>
     <text x="720" y="193" class="mono" font-weight="400">goal.json · plans · evidence</text>
@@ -238,7 +238,7 @@ npm run build                 # docs/ -> dist/ (Jekyll emulation)
 npm run check                 # link crawl + anchor integrity, exit 1 on any miss
 ```
 
-CI runs the suite on node 20 / 22 / 24. The docs site builds on GitHub Pages
+CI runs the suite on node 22 / 24. The docs site builds on GitHub Pages
 from `/docs` (Jekyll, GFM); `scripts/docs-preview/build.mjs` mirrors that
 pipeline locally — Pages adds rouge syntax coloring on top, everything else
 matches.

@@ -5,7 +5,7 @@
 ## npm
 
 1. `npm whoami` —— 无账号先 `npm adduser`（包名 `lazyzcode` 已验证空闲）。
-2. `npm test` 全绿（node ≥ 20 本地任一版本）。
+2. `npm test` 全绿（node ≥ 22 本地任一版本）。
 3. `npm publish --dry-run` —— 逐项确认：
    - 文件清单只含 `cli/ core/ plugin/ + README/LICENSE/CHANGELOG/package.json`；
    - 输出中 grep 不到 `.mimosa`、`.lazyzcode`、`docs/`、`acfufu`、`sess_` 任何一处。
@@ -16,7 +16,7 @@
 
 6. 建公开仓库。**若仓库名不是 `lazyzcode` 或换组织，同步改 package.json 的 `repository` / `bugs` / `homepage` 三字段**（`test/package.surface.test.js` 目前不校验 URL 内容，改名靠人）。
 7. `git remote add origin <url> && git push -u origin main`；打标 `git tag v<版本> && git push --tags`。
-8. CI 绿：`.github/workflows/ci.yml`（node 20/22/24 × `node --test`）。
+8. CI 绿：`.github/workflows/ci.yml`（node 22/24 × `node --test "test/**/*.test.js"`）。
 9. About 填描述与 topics（zcode / agent / discipline / cli / goal-loop）。
 
 ## 私有测试路径（2026-09-08 已执行，先测后公开）

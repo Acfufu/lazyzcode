@@ -61,12 +61,22 @@ project map in place.
 ```
 - [N1] <implementation step>
 - [N2] <implementation step>
+deps: N1
 - [F1] <final verification via a real surface — name the surface>
 ```
 
 Rules:
 - **N items** are implementation steps; **F items** are final verifications that
   require real-surface evidence (HTTP response / screenshot / CLI stdout).
+- **Dependency edges (optional)**: a `deps: N1,N2` line immediately after an
+  item declares its prerequisites — the declaration line must be bare
+  lowercase `deps:` (bullet-led or `Deps:` variants are rejected as orphans);
+  ids are N/F + digits, case-sensitive, deduplicated, must exist, and
+  self-loops/cycles are rejected; an orphan `deps:` line (not directly after
+  an item) fails the gate. Quoting the syntax in prose? End that line with
+  `<!--lzy:allow-->` — and never paste plan-syntax examples into an adopted
+  plan file: the item parser is fence-blind, so any line matching the grammar
+  becomes a step.
 - **Decision-complete**: zero TBDs, zero 待定, no "ask user later". If a decision
   is genuinely missing, interview the user BEFORE writing the plan, not during
   execution.
@@ -118,6 +128,17 @@ lzy step done N1 --note "<what was done, one line>"
   falsified path.
 - **Commit before evidence**: evidence binds to `git rev-parse HEAD^{tree}`;
   uncommitted changes are invisible to the hash. Commit your step, then verify.
+- **Parallel dispatch (same-goal multi-worker, minimal claim chain)**: when the
+  measured concurrency cap allows ≥2, workers coordinate per step — claim first
+  with `lzy loop claim <id>` (anonymous, 48h mutual exclusion; bare
+  `lzy loop claim` lists claimable steps; `step done` auto-releases;
+  `--release` frees early), then work only your claimed step. Each worker edits
+  code in its own git worktree, but runs every `lzy` command from the host
+  workspace root (ADR-0006 strict-cwd — worktrees isolate code, not loop
+  state). Claims are anonymous: never `step done` a step another worker still
+  holds a fresh claim on — reconcile the claim listing first (`lzy loop claim`).
+  Serial remains the default; the `lzy loop start` 并发纪律 line wins
+  over any general rule here.
 
 ### 4 · Evidence (F items)
 
@@ -128,6 +149,11 @@ suggested command; it returns verbatim observed output and a MATCH verdict.
 `lzy step done F1 --evidence "<the observable result you actually saw>"`
 
 - **Tests alone never prove done.** Green tests are necessary, not sufficient.
+- **Mechanical $0 checks first (成本两件套)**: exhaust zero-cost mechanical
+  verification before any semantic/model-judged check — CLI stdout, file
+  existence and content assertions, `grep`/`diff`. Never spend a model call on
+  a question a command can answer; semantic judgment comes after, on the
+  residue.
 - Run the real surface: hit the endpoint, take the screenshot, run the CLI and
   read its stdout. For web/HTTP surfaces prefer read-only HTTP via `curl` or the
   Bash-driven `ego-browser` skill (`serverFetch`/`browserFetch`/`captureScreenshot`
@@ -194,6 +220,9 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
 - Take F-item evidence **after the last code-repo commit**; if a sibling repo
   gains commits before `finish`, re-verify and re-record (the freshness gate
   only sees the host tree). Never `register` from a non-host root.
+- Parallel workers on a cross-repo goal: claim steps (`lzy loop claim`) and
+  edit code in your own worktrees, but all `lzy` traffic — claim, step done,
+  status — stays at the host root (see "Parallel dispatch" in §3 · Execute).
 
 ## Continuation (how the Stop hook drives you)
 

@@ -173,17 +173,104 @@ export function registerGoal(cwd, slug, title) {
 // ── 2. 计划门：解析 N/F 清单，决策完备（无待定）才放行 ────────────────────
 const ITEM_RE = /^-\s*\[([NF])(\d+)\]\s*(.+)$/;
 const UNDECIDED_RE = /(TBD|待定|待确认|未定|待讨论)/i;
+// 依赖边声明（决策 #21 最小链，2026-09-14）：紧随条目行的下一行 `deps: N1,N2`；
+// 无声明=现状零变化，旧计划文件逐字节兼容。分隔容逗号/空白/全角逗号；token 必须
+// 是 N/F 条目 id。孤儿 deps 行（不紧随条目/大小写不符/重复声明）在计划门响亮拒绝，
+// 不静默吞——静默丢边=比作者认知更弱的阻塞图（评审 R1-A2/R1-B3/B4/B5）；正文提及
+// deps 语法的行（如教学示例）可按门豁免先例行尾加 <!--lzy:allow-->。
+const DEPS_RE = /^\s*deps:\s*(.*)$/;
+// 孤儿扫描容 bullet 前缀（`- deps: …` 也算声明形态——门姿势「不静默吞」对齐，评审 R2-B）。
+const DEPS_ORPHAN_RE = /^\s*(?:[-*]\s+)?deps\s*:/i;
+const DEP_TOKEN_RE = /^[NF]\d+$/;
 
 function parsePlanItems(body) {
+  const lines = body.split(/\r?\n/);
   const items = [];
-  for (const raw of body.split(/\r?\n/)) {
-    const m = raw.match(ITEM_RE);
+  const consumedDeps = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(ITEM_RE);
     if (!m) continue;
     const id = `${m[1]}${m[2]}`;
     if (items.some((it) => it.id === id)) throw new LoopError(`计划清单 id 重复：${id}`);
-    items.push({ id, kind: m[1], title: m[3].trim() });
+    let deps = [];
+    if (i + 1 < lines.length && DEPS_RE.test(lines[i + 1])) {
+      consumedDeps.add(i + 1);
+      const tokens = lines[i + 1].match(DEPS_RE)[1].split(/[\s,，]+/).filter(Boolean);
+      if (tokens.length === 0) throw new LoopError(`deps 声明为空：${id}（语法：deps: N1,N2）`);
+      for (const t of tokens) {
+        if (!DEP_TOKEN_RE.test(t)) {
+          throw new LoopError(
+            `deps 条目非法：${id} → ${t}（必须是 N/F 条目 id，语法：deps: N1,N2）`,
+          );
+        }
+      }
+      deps = [...new Set(tokens)];
+    }
+    items.push({ id, kind: m[1], title: m[3].trim(), deps });
+  }
+  for (const [i, line] of lines.entries()) {
+    if (consumedDeps.has(i) || line.includes("<!--lzy:allow-->")) continue;
+    if (DEPS_ORPHAN_RE.test(line)) {
+      throw new LoopError(
+        `孤儿 deps 行（必须是其条目行的下一行）：L${i + 1}: ${line.trim().slice(0, 60)}`,
+      );
+    }
   }
   return items;
+}
+
+// 依赖边校验：引用存在、不自指、无环（三色 DFS；显式栈迭代——递归在 ~5000 节深链上
+// 爆调用栈误拒合法计划，对抗审查 R5-A 实测）。环路径封顶展示，防千节环刷出巨幅报错。
+const CYCLE_PATH_CAP = 8;
+
+function capCyclePath(path) {
+  if (path.length <= CYCLE_PATH_CAP) return path.join(" → ");
+  return `${path.slice(0, CYCLE_PATH_CAP).join(" → ")} → …（共 ${path.length} 节）`;
+}
+
+function validateDeps(items) {
+  const byId = new Map(items.map((it) => [it.id, it]));
+  for (const it of items) {
+    for (const dep of it.deps) {
+      if (dep === it.id) throw new LoopError(`依赖边自指：${it.id} 依赖自己`);
+      if (!byId.has(dep)) {
+        throw new LoopError(
+          `依赖边引用不存在的条目：${it.id} → ${dep}（现有：${items.map((x) => x.id).join(" ")}）`,
+        );
+      }
+    }
+  }
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
+  const state = new Map(items.map((it) => [it.id, WHITE]));
+  for (const start of items) {
+    if (state.get(start.id) !== WHITE) continue;
+    const stack = [{ id: start.id, i: 0 }];
+    state.set(start.id, GRAY);
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1];
+      const deps = byId.get(top.id).deps;
+      if (top.i < deps.length) {
+        const dep = deps[top.i];
+        top.i += 1;
+        const st = state.get(dep);
+        if (st === GRAY) {
+          const from = stack.findIndex((f) => f.id === dep);
+          throw new LoopError(
+            `计划依赖成环：${capCyclePath([...stack.slice(from).map((f) => f.id), dep])}`,
+          );
+        }
+        if (st === WHITE) {
+          state.set(dep, GRAY);
+          stack.push({ id: dep, i: 0 });
+        }
+      } else {
+        stack.pop();
+        state.set(top.id, BLACK);
+      }
+    }
+  }
 }
 
 // 评审判决解析：优先认 VERDICT: 记号（plan-reviewer 契约）——命中即采信，忽略评审正文里的普通用词
@@ -235,6 +322,7 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
   if (items.length === 0) {
     throw new LoopError("计划里没有清单项（语法：- [N1] … / - [F1] …，F 项需真实表面证据）");
   }
+  validateDeps(items);
   goal.planPath = relative(cwd, planFile) || planFile;
   const verdict = review ? parseVerdict(review) : null;
   goal.review = review
@@ -245,6 +333,8 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
     kind: it.kind,
     title: it.title,
     status: "pending",
+    deps: it.deps,
+    claim: null,
     doneAt: null,
     note: null,
     evidence: null,
@@ -343,6 +433,7 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
   }
   step.status = "done";
   step.doneAt = new Date().toISOString();
+  delete step.claim; // 步级认领随收口自动释放（决策 #21：done 即自清，不留僵尸标记）
   step.note = trimmedNote ?? (rebinding ? step.note : null);
   const previousEvidence = rebinding ? step.evidence : null;
   const attached = attachEvidenceFiles(cwd, goal, step, files, step.evidenceSeq ?? 1);
@@ -365,6 +456,86 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
   if (step.kind === "F") step.evidenceSeq = (step.evidenceSeq ?? 1) + 1;
   writeGoal(cwd, goal);
   return { goal, step, rebinding, dirty: git ? git.dirty() : false };
+}
+
+// ── 4b. 步级认领（决策 #21 最小链，2026-09-14）：同目标多工人占步互斥 ────────
+// 匿名目录级：不记 sessionId（ADR-0009 同款立场——模型在 Bash 拿不到自己身份，任何
+// 要求转抄身份的设计都在最需要的时刻制造新失败面）。互斥窗口=认领 TTL（CLAIM_TTL_MS
+// 48h，与 goal 级 claimedAt 同常数）；step done 自动清；goal.json 写路径全走 withLock。
+
+// 认领新鲜谓词：claim.at 在 TTL 内才算在场（过期=可再认领，重认领自然覆写）。
+function isClaimFresh(step) {
+  if (!step.claim || typeof step.claim.at !== "string") return false;
+  const at = Date.parse(step.claim.at);
+  return Number.isFinite(at) && Date.now() - at <= CLAIM_TTL_MS;
+}
+
+// 无阻塞谓词：deps 全 done（无 deps=恒无阻塞）。返回未完成依赖 id 列表（空=可认领）。
+// 容忍旧 goal.json 无 deps 字段（additive 字段，hooks 同款容忍读法）。
+function blockedBy(step, goal) {
+  const deps = Array.isArray(step.deps) ? step.deps : [];
+  if (deps.length === 0) return [];
+  const byId = new Map(goal.steps.map((s) => [s.id, s]));
+  return deps.filter((d) => byId.get(d)?.status !== "done");
+}
+
+export function claimStep(cwd, id, { release = false } = {}) {
+  requireGoalPreLock(cwd);
+  return withLock(cwd, () => {
+    const goal = requireActive(cwd, "executing");
+    const step = goal.steps.find((s) => s.id === id);
+    if (!step) {
+      throw new LoopError(
+        `无此步骤：${id}（现有：${goal.steps.map((s) => s.id).join(" ") || "无"}）`,
+      );
+    }
+    if (release) {
+      if (!step.claim) throw new LoopError(`步骤 ${id} 当前无认领标记，无需释放`);
+      delete step.claim;
+      writeGoal(cwd, goal);
+      return { goal, step, released: true };
+    }
+    if (step.status === "done") throw new LoopError(`步骤 ${id} 已完成，无需认领`);
+    if (isClaimFresh(step)) {
+      throw new LoopError(
+        `步骤 ${id} 已被认领（${step.claim.at}，48h 内互斥）；过期后可重新认领，或 --release 释放`,
+      );
+    }
+    const undone = blockedBy(step, goal);
+    if (undone.length > 0) {
+      throw new LoopError(
+        `步骤 ${id} 被阻塞：依赖未完成 ${undone.join(" ")}（先收口依赖步，或认领无阻塞步）`,
+      );
+    }
+    step.claim = { at: new Date().toISOString() };
+    writeGoal(cwd, goal);
+    return { goal, step, released: false };
+  });
+}
+
+// 可认领集：未 done、无在场认领、无阻塞。无参 claim 与 status 读面共用。
+function claimableSteps(goal) {
+  return goal.steps.filter(
+    (s) => s.status !== "done" && !isClaimFresh(s) && blockedBy(s, goal).length === 0,
+  );
+}
+
+// 无参 claim 的读面（CLI 直调；只读但要求 executing——planning 态认领没有语义）。
+export function formatClaimList(cwd) {
+  const goal = readGoal(cwd);
+  if (!goal) throw new LoopError(noGoalMessage(cwd));
+  if (goal.status !== "executing") {
+    throw new LoopError(`目标 ${goal.slug} 当前状态 ${goal.status}，步级认领仅 executing 态有语义`);
+  }
+  const claimable = claimableSteps(goal);
+  if (claimable.length === 0) {
+    return "可认领集为空（全部步骤已收口、已被认领或被依赖阻塞；释放用 lzy loop claim <id> --release）";
+  }
+  return (
+    `可认领 ${claimable.length}：${claimable.map((s) => s.id).join(" ")}` +
+    `\n${claimable.map((s) => `  ${s.id.padEnd(4)} [${s.kind}] ${s.title}`).join("\n")}` +
+    `\n认领：lzy loop claim <id>（匿名互斥 48h；step done 自动释放；提前释放加 --release）`
+  );
 }
 
 // ── 5. 证据时效：F 项证据的 tree hash 是否仍等于当前工作树 ─────────────────
@@ -749,16 +920,34 @@ export function formatStatus(cwd, git) {
     `  状态 ${goal.status} · 步骤 ${done.length}/${goal.steps.length} · 计划 ${goal.planPath ?? "未采纳"}`,
   ];
   const next = nextStep(goal);
-  if (next) lines.push(`  下一步 → ${next.id} [${next.kind}] ${next.title}`);
+  if (next) {
+    // 下一步标注（评审 R1-A4）：指向的 pending 步被认领/阻塞时如实点名，不再裸指。
+    let note = "";
+    if (isClaimFresh(next)) note = "（已认领）";
+    else {
+      const undone = blockedBy(next, goal);
+      if (undone.length > 0) note = `（被阻塞：${undone.join(",")}）`;
+    }
+    lines.push(`  下一步 → ${next.id} [${next.kind}] ${next.title}${note}`);
+  }
   if (goal.steps.length > 0) {
     for (const s of goal.steps) {
       const mark = s.status === "done" ? "✔" : "·";
+      // 步级认领/阻塞读面（决策 #21）：done 不标注（认领已自清）；blocked 只列未完成依赖。
+      let flag = "";
+      if (s.status !== "done") {
+        if (isClaimFresh(s)) flag = " [claimed]";
+        else {
+          const undone = blockedBy(s, goal);
+          if (undone.length > 0) flag = ` [blocked: ${undone.join(",")}]`;
+        }
+      }
       const ev =
         s.kind === "F" && s.evidence
           ? ` 证据@${(s.evidence.treeHash ?? "未绑定").slice(0, 10)}` +
             (s.evidence.files?.length ? ` · 附件 ${s.evidence.files.length}` : "")
           : "";
-      lines.push(`  ${mark} ${s.id.padEnd(4)} [${s.kind}] ${s.title}${ev}`);
+      lines.push(`  ${mark} ${s.id.padEnd(4)} [${s.kind}] ${s.title}${flag}${ev}`);
     }
   }
   if (goal.status === "executing") {
@@ -767,6 +956,12 @@ export function formatStatus(cwd, git) {
       lines.push(`  认领 ${flags.claims.length}：${flags.claims.join(" ")}（仅认领会话会被 Stop 拉回）`);
     } else {
       lines.push("  认领 0（待认领：任一会话发「zw 继续」即接管）");
+    }
+    const claimable = claimableSteps(goal);
+    if (claimable.length > 0) {
+      lines.push(
+        `  可认领 ${claimable.length}：${claimable.map((s) => s.id).join(" ")}（lzy loop claim <id> 占步，多工人互斥 48h）`,
+      );
     }
     if (flags.stuck.length > 0) {
       lines.push(`  ⚠ stuck ${flags.stuck.length}：${flags.stuck.join(" ")}（原地无进展两振停拉，推进步骤即自愈）`);

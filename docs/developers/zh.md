@@ -33,7 +33,7 @@ LazyZCode 是边界分明的三块：引擎加载的插件、独占循环状态�
   <g fill="var(--muted)" text-anchor="middle" font-size="11.5">
     <text x="115" y="124">桌面端 · zcode.cjs</text>
     <text x="420" y="88">skills/zw · 编排文本</text>
-    <text x="420" y="107">hooks ×4 · 经 run-hook.sh</text>
+    <text x="420" y="107">hooks ×5 · 经 run-hook.sh</text>
     <text x="420" y="126">agents ×3 · 只读角色</text>
     <text x="720" y="83">目标循环状态机</text>
     <text x="720" y="193" class="mono" font-weight="400">goal.json · plans · evidence</text>
@@ -227,7 +227,7 @@ npm run build                 # docs/ -> dist/（Jekyll 同构模拟）
 npm run check                 # 爬链 + 锚点完整性，任何 miss 即退出码 1
 ```
 
-CI 在 node 20 / 22 / 24 上跑全套。文档站由 GitHub Pages 从 `/docs` 构建
+CI 在 node 22 / 24 上跑全套。文档站由 GitHub Pages 从 `/docs` 构建
 （Jekyll，GFM）；`scripts/docs-preview/build.mjs` 在本地镜像同一条管线——
 Pages 在其上多一层 rouge 语法高亮，其余一致。
 

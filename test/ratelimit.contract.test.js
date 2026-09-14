@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, openSync, ftruncateSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectRateLimitStats, contentAdvisory, transportAdvisory } from "../core/ratelimit.js";
+import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvisory, transportAdvisory } from "../core/ratelimit.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const LOG_DIR = ["2026-09-06", "2026-09-07"]; // 两个扫描日的文件名（.jsonl 前缀）
@@ -30,6 +30,12 @@ const cleanup = (...dirs) => {
 const rlLine = (stdout) =>
   (stdout ?? "").split("\n").find((l) => /^\s*\S\s+rate-limit\s/.test(l));
 
+const pbLine = (stdout) =>
+  (stdout ?? "").split("\n").find((l) => /^\s*\S\s+band-by-provider\s/.test(l));
+
+const costLine = (stdout) =>
+  (stdout ?? "").split("\n").find((l) => /^\s*\S\s+cost\s/.test(l));
+
 const started = (ts, sid) =>
   JSON.stringify({ timestamp: ts, sessionId: sid, event: "model.request.started" });
 // attempt:null → context 不带 attempt 字段（引擎旧格式/后台请求形态）
@@ -44,6 +50,14 @@ const rateLimited = (ts, sid, { attempt = 1, maxAttempts = 11, providerId = "bui
       ...(attempt === null ? {} : { attempt, maxAttempts }),
       providerId,
     },
+  });
+// completed 事件（provider 分桶完成面素材，决策 #21 前置件）：活体实证带 context.providerId
+const completed = (ts, sid, providerId = "builtin:bigmodel-coding-plan") =>
+  JSON.stringify({
+    timestamp: ts,
+    sessionId: sid,
+    event: "model.request.completed",
+    context: { providerId },
   });
 
 function writeLog(home, date, lines) {
@@ -91,7 +105,7 @@ test("统计口径：计数/会话/判死/lastAt/连贯经验带（跨天文件�
   }
 });
 
-test("band 降级：归因偏移致带不连贯（脏桶活跃低 + 样本不足）时输出单边证据", async () => {
+test("band 降级：归因偏移致带不连贯（脏桶活跃低 + 真短缺）时输出单边证据", async () => {
   const d = scratch();
   try {
     // 净桶活跃 2；失败落在低活跃桶（11:30 仅 z1 一个 started）→ minDirty=1 ≤ maxClean=2
@@ -106,6 +120,188 @@ test("band 降级：归因偏移致带不连贯（脏桶活跃低 + 样本不足
     const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"));
     assert.equal(s.band.coherent, false);
     assert.equal(s.band.minDirty, 1);
+  } finally {
+    cleanup(d);
+  }
+});
+
+// ── provider 分桶带（决策 #21 前置件，goal v005-core#N4）────────────────────
+
+test("provider 分桶：A 带连贯（完成侧净3桶×2会话/脏3桶×4会话）B 无脏面样本；账号带只用 started 不受扰", async () => {
+  const d = scratch();
+  try {
+    const lines = [];
+    // provider A：3 净桶（2 会话）+ 3 脏桶（4 会话，各含一条 429）→ coherent
+    for (const h of ["10:00", "10:05", "10:10"]) {
+      for (const sid of ["a1", "a2"]) lines.push(completed(`2026-09-06T${h}:00.000Z`, sid));
+    }
+    for (const h of ["11:00", "11:05", "11:10"]) {
+      for (const sid of ["b1", "b2", "b3", "b4"]) lines.push(completed(`2026-09-06T${h}:00.000Z`, sid));
+      lines.push(rateLimited(`2026-09-06T${h}:30.000Z`, "b1"));
+    }
+    // provider B：1 净桶 1 会话、无 429 → 无脏面样本；provider C：两侧都有但不连贯 → 归因漂移
+    lines.push(completed("2026-09-06T10:00:00.000Z", "o1", "other-provider"));
+    for (const h of ["12:20", "12:25", "12:30"]) {
+      for (const sid of ["k1", "k2", "k3", "k4"]) lines.push(completed(`2026-09-06T${h}:00.000Z`, sid, "builtin:zzz-plan"));
+    }
+    for (const h of ["13:00", "13:05", "13:10"]) {
+      lines.push(completed(`2026-09-06T${h}:00.000Z`, "k9", "builtin:zzz-plan"));
+      lines.push(rateLimited(`2026-09-06T${h}:45.000Z`, "k9", { providerId: "builtin:zzz-plan" }));
+    }
+    writeLog(d, LOG_DIR[0], lines);
+    const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"));
+    assert.equal(s.providersSeen, 3);
+    assert.equal(s.providerBands.length, 3);
+    const [a, z, b] = s.providerBands; // providerId 字典序：两个 builtin: 在前
+    assert.equal(a.provider, "builtin:bigmodel-coding-plan");
+    assert.deepEqual(
+      { coherent: a.coherent, maxClean: a.maxClean, minDirty: a.minDirty, dirtyBuckets: a.dirtyBuckets, cleanBuckets: a.cleanBuckets },
+      { coherent: true, maxClean: 2, minDirty: 4, dirtyBuckets: 3, cleanBuckets: 3 },
+    );
+    assert.equal(b.provider, "other-provider");
+    assert.equal(b.coherent, false);
+    assert.equal(z.provider, "builtin:zzz-plan");
+    assert.equal(z.coherent, false);
+    assert.equal(z.dirtyBuckets, 3);
+    assert.ok(z.minDirty <= z.maxClean); // 两侧都有数据：不连贯源于归因漂移而非短缺
+    // 账号级带不受 completed 扰动：无 started → band 仍 null（测量纯度钉）
+    assert.equal(s.band, null);
+    // 纯函数读面：三分标签（连贯/归因漂移/无脏面样本，评审 R3-A 拆分）
+    const adv = providerBandAdvisory(s);
+    assert.equal(adv.level, "ok");
+    assert.match(adv.text, /bigmodel-coding-plan：带 ≤2 净\/4 撞（连贯）/);
+    assert.match(adv.text, /zzz-plan：带不连贯（归因漂移，净桶 3\/脏桶 3）/);
+    assert.match(adv.text, /other-provider：无脏面样本（净桶 1）/);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("provider 分桶：单 provider=现状字节稳定（不出行、不成表）；completed 缺 providerId 静默跳过", async () => {
+  const d = scratch();
+  try {
+    const lines = [
+      started("2026-09-06T10:00:00.000Z", "x1"),
+      completed("2026-09-06T10:01:00.000Z", "x1"), // 默认 provider
+      JSON.stringify({ timestamp: "2026-09-06T10:02:00.000Z", sessionId: "x2", event: "model.request.completed", context: {} }), // 缺 providerId
+      rateLimited("2026-09-06T10:00:30.000Z", "y1"), // 与 started 同分钟桶 → dirtyKnown 非空，账号带照常出单边证据
+    ];
+    writeLog(d, LOG_DIR[0], lines);
+    const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"));
+    assert.equal(s.providersSeen, 1);
+    assert.equal(s.providerBands, undefined);
+    assert.equal(providerBandAdvisory(s), null);
+    assert.equal(s.band.coherent, false); // 账号带照常工作（单净桶+单脏桶不足 3）
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("provider 分桶：completed-only 纯净度——账号带仍 null，分桶表照出（incoherent）", async () => {
+  const d = scratch();
+  try {
+    const lines = [
+      completed("2026-09-06T10:00:00.000Z", "p1", "prov-one"),
+      completed("2026-09-06T10:00:00.000Z", "p2", "prov-two"),
+      rateLimited("2026-09-06T11:00:00.000Z", "p1", { providerId: "prov-one" }),
+    ];
+    writeLog(d, LOG_DIR[0], lines);
+    const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"));
+    assert.equal(s.band, null); // 无 started → 账号带不凭空捏
+    assert.equal(s.providersSeen, 2);
+    const one = s.providerBands.find((r) => r.provider === "prov-one");
+    assert.equal(one.coherent, false); // 脏桶 1 < 3
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("端到端：双 provider 出 band-by-provider 行（含短名/连贯/无脏面样本），单 provider 不出行", async () => {
+  const d = scratch();
+  try {
+    const lines = [
+      completed("2026-09-06T10:00:00.000Z", "a1"),
+      completed("2026-09-06T10:00:00.000Z", "a2"),
+      rateLimited("2026-09-06T11:00:00.000Z", "b1"),
+      completed("2026-09-06T11:00:00.000Z", "o1", "other-provider"),
+    ];
+    writeLog(d, LOG_DIR[1], lines);
+    const spawnDoctor = () =>
+      spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+        encoding: "utf8",
+        timeout: 60_000,
+        env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      });
+    const r = spawnDoctor();
+    const line = pbLine(r.stdout);
+    assert.ok(line, `stdout 应含 band-by-provider 行：\n${r.stdout}\n${r.stderr}`);
+    const at = line.indexOf("bigmodel-coding-plan");
+    assert.ok(at > -1 && at < line.indexOf("other-provider"), "行内按 provider 字典序");
+    assert.match(line, /无脏面样本/);
+    // 单 provider：去掉 other-provider 行 → 不出行（字节稳定）
+    writeLog(d, LOG_DIR[1], lines.slice(0, 3));
+    const r2 = spawnDoctor();
+    assert.equal(pbLine(r2.stdout), undefined);
+  } finally {
+    cleanup(d);
+  }
+});
+
+// ── 成本档位建议（成本两件套②「成功即降档」，goal v005-core#N5）──────────────
+
+test("cost 建议行纯函数：零限流+低水位→降档建议；界上/读数缺席→维持；有限流→维持；无数据→null", () => {
+  const zero = { available: true, rateLimited: 0 };
+  const low = costAdvisory(zero, 100, 1600);
+  assert.equal(low.level, "ok");
+  assert.match(low.text, /滚动水位 100\/1600 低——下个常规目标可试轻量模型档位（成本），失败即回档/);
+  assert.match(costAdvisory(zero, 800, 1600).text, /档位维持/); // 恰在阈值一半=界上，不怂恿降档
+  assert.match(costAdvisory(zero, null, 1600).text, /水位读数缺席——档位维持/);
+  const hit = { available: true, rateLimited: 3, turns: 2, caliber: "turn" };
+  assert.match(costAdvisory(hit, null, 1600).text, /近窗 2 回合限流——档位维持（轻量档会放大重试与撞线）/);
+  assert.equal(costAdvisory({ available: false }, 100, 1600), null);
+});
+
+test("对抗健壮性（R5-A）：畸形时间戳不产 NaN spanHours；空 providerId/sessionId 视同缺字段", async () => {
+  const d = scratch();
+  try {
+    const bad = JSON.stringify({ timestamp: "9999-99-99T99:99:99Z", sessionId: "", event: "model.request.failed", context: { reason: "rate_limited", attempt: 1, maxAttempts: 11, providerId: "" } });
+    const comp = JSON.stringify({ timestamp: "2026-09-06T10:00:00.000Z", sessionId: "", event: "model.request.completed", context: { providerId: "" } });
+    writeLog(d, LOG_DIR[0], [bad, comp]);
+    const s = await collectRateLimitStats(join(d, ".zcode", "cli", "log"));
+    assert.equal(s.rateLimited, 1);
+    assert.equal(s.spanHours, undefined); // 无可解析时间戳 → 留空，doctor 回落 files*24，不出「近 NaNh」
+    assert.deepEqual(s.providers, {}); // 空 providerId 不入账
+    assert.equal(s.providersSeen, 0);
+    assert.equal(s.band, null); // 无 started → 不出带（band 初始即 null）
+    assert.equal(Object.keys(s.sessions).length, 0); // 空 sessionId 不计失败会话
+    assert.equal(providerBandAdvisory(s), null);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("端到端：doctor cost 行两分支（scratch HOME 无账本→读数缺席维持；有限流→档位维持）", () => {
+  const d = scratch();
+  try {
+    const spawnDoctor = () =>
+      spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
+        encoding: "utf8",
+        timeout: 60_000,
+        env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      });
+    // 分支一：零限流窗口（仅 started）→ cost 行出且注明读数缺席
+    writeLog(d, LOG_DIR[0], [started("2026-09-06T10:00:00.000Z", "c1")]);
+    const line0 = costLine(spawnDoctor().stdout);
+    assert.ok(line0, "零限流窗口应出 cost 行");
+    assert.match(line0, /水位读数缺席——档位维持/);
+    // 分支二：有限流 → 维持并给理由
+    writeLog(d, LOG_DIR[0], [
+      started("2026-09-06T10:00:00.000Z", "c1"),
+      rateLimited("2026-09-06T10:00:30.000Z", "c1"),
+    ]);
+    const line1 = costLine(spawnDoctor().stdout);
+    assert.ok(line1, "有限流窗口应出 cost 行");
+    assert.match(line1, /档位维持（轻量档会放大重试与撞线）/);
   } finally {
     cleanup(d);
   }

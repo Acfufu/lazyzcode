@@ -9,7 +9,7 @@ jobs:
   test:
     strategy:
       matrix:
-        node: [20, 22, 24]
+        node: [22, 24]
     runs-on: ubuntu-latest
     # scheduleAdvisory 断言「UTC+8 宿主下的本地小时渲染」（core/ratelimit.js 双轴：
     # 直方图=进程本地 getHours，计价表=UTC+8）——runner 默认 TZ=UTC 会错开 8h 致三只挂。
@@ -20,5 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: node --test
+      # 收窄发现面到 test/（幻影 pass 结构性根治，goal v005-core#N6）；Node ≥22 对
+      # --test 位置参数按 glob 解释，目录字面量形态不可用——glob 加引号防 shell 抢先展开
+      - run: node --test "test/**/*.test.js"
       - run: node cli/lzy.js --help

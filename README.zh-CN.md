@@ -40,7 +40,7 @@
 
 ## 🚀 安装（10 分钟）
 
-前置：macOS、ZCode 桌面端（已登录）、Node ≥ 20、git（证据绑定 tree hash，必需）。
+前置：macOS、ZCode 桌面端（已登录）、Node ≥ 22、git（证据绑定 tree hash，必需）。
 
 ```bash
 npm i -g lazyzcode   # 获得 lzy 命令与插件载荷
@@ -104,6 +104,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | `status` | `lzy status` | 快速体检；退出码 0 = 无 fail 级检查（warn/skip 不影响） |
 | `doctor` | `lzy doctor` | 全量诊断——见下 |
 | 目标循环 | `lzy loop register <slug> --title "…"` → `lzy loop plan <计划.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | 状态机：注册 → 计划门 → 执行 → 证据 → 终验门 |
+| 步级认领 | `lzy loop claim [<id>] [--release]` | 同目标多工人的匿名步级认领：48h 互斥、按计划 `deps:` 依赖边做阻塞校验、`step done` 自动释放；无参列可认领集 |
 | 证据包 | `lzy loop export` | 重导出证据包（`<slug>.report.md`）；`finish` 时亦自动归档 |
 | 交接 | `lzy loop handoff --snapshot <文件>` | 登记干净交接——下个 Stop 放行一次，不消耗续跑预算 |
 | 跨仓清单 | `lzy loop list [--root <目录>]` | 只读扫同级仓的目标循环（状态/进度/认领/新鲜度/存根）；匿名放行计数跨 reset 永续 |
@@ -121,7 +122,9 @@ GUI 直启场景）、`lzy` PATH shim、`.lazyzcode/` 状态卫生、平台提�
 经验并发带——warn-only，不翻退出码）、传输死亡回合独立分族计数（`transport`：
 请求未达服务端类故障如 ENETDOWN，绝不进并发带数学）、内容审核杀流独立分族计数
 （`content`：provider 内容审核中途杀流如 1301——原地重试必复现，绝不进并发带数学）、
-项目记忆采纳审计
+按 provider 分桶带行（`band-by-provider`：完成侧净桶×429 脏桶，窗内有 429 且
+≥2 provider 才出行——自身无 429 的行如实标注「无脏面样本」）与模型档位建议行（`cost`：零限流窗+低滚动水位建议常规目标试轻量档——
+纯建议文本，不进谓词数学）、项目记忆采纳审计
 （`agents-md`，warn-only，含地图落后提示：基点后覆盖域 ≥50 提交即提醒重跑
 init-deep）、进行中目标的认领巡逻（`claims`：谁认领了它、
 stuck 停拉标记、零认领孤儿提示——warn-only），
@@ -255,14 +258,14 @@ skills/hooks/agents 机器，LazyZCode 是让它们把活干完的那层工作�
 ## 🏗️ 架构
 
 LazyZCode = 一个插件（纪律层）+ 一个 CLI（循环状态机）。零 npm 依赖、
-Node ≥ 20、纯 ESM。
+Node ≥ 22、纯 ESM。
 
 ```
 lazyzcode/
 ├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（5 个，经 run-hook.sh）、agents/（3 只）
 ├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、agentsmd、engine、git、paths、status
 ├── cli/      → lzy 入口（cli/lzy.js）+ 语法检查 worker
-├── test/     → 契约测试（node:test 零依赖）+ GitHub Actions（node 20/22/24）
+├── test/     → 契约测试（node:test 零依赖）+ GitHub Actions（node 22/24）
 └── docs/     → 调研底稿、ADR、五轮评审、诊断记录
 ```
 

@@ -12,10 +12,14 @@ You receive: the F item (id + title naming its surface) and optionally the sugge
 
 ## Method
 
-1. Run the real surface: execute the CLI command, curl the endpoint (read-only verbs), or inspect the real file state. Prefer the exact surface named in the F item. For web/HTTP surfaces use `curl` (read-only verbs) or the Bash-driven `ego-browser` skill (`ego-browser nodejs` heredoc with `serverFetch`/`browserFetch`/`captureScreenshot`) — both fit your Bash whitelist; built-in browser automation (control-browser) is main-agent-only and out of bounds for you.
-2. Capture observed output verbatim — trim for length, never polish, paraphrase, or "fix" it. Failed runs are valid evidence; report them as observed.
-3. State your match verdict: does the observed behavior satisfy the F item as written? A human-readable expectation compared against raw output.
-4. You may run read-only inspection commands as needed. NEVER edit files, never git-commit, never mutate state beyond what exercising the named surface inherently requires.
+1. **Mechanical $0 checks first (成本两件套)**: exhaust zero-cost deterministic
+   evidence before anything semantic — CLI stdout, file existence/content
+   assertions, `grep`/`diff`. Never spend a model call on a question a command
+   can answer; semantic judgment comes after, on the residue.
+2. Run the real surface: execute the CLI command, curl the endpoint (read-only verbs), or inspect the real file state. Prefer the exact surface named in the F item. For web/HTTP surfaces use `curl` (read-only verbs) or the Bash-driven `ego-browser` skill (`ego-browser nodejs` heredoc with `serverFetch`/`browserFetch`/`captureScreenshot`) — both fit your Bash whitelist; built-in browser automation (control-browser) is main-agent-only and out of bounds for you.
+3. Capture observed output verbatim — trim for length, never polish, paraphrase, or "fix" it. Failed runs are valid evidence; report them as observed.
+4. State your match verdict: does the observed behavior satisfy the F item as written? A human-readable expectation compared against raw output.
+5. You may run read-only inspection commands as needed. NEVER edit files, never git-commit, never mutate state beyond what exercising the named surface inherently requires.
 
 ## Output contract (exactly this shape)
 

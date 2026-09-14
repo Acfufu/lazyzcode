@@ -34,6 +34,9 @@ function lzy(args, cwd, opts = {}) {
 
 const THREE_STEPS = "- [N1] x\n- [N2] y\n- [F1] v\n";
 
+// 依赖边计划（决策 #21 最小链）：deps 行紧随条目行
+const DEPS_PLAN = "- [N1] a\ndeps: N2\n- [N2] b\n- [N3] c\ndeps: N1, N2\n- [F1] v\n";
+
 // 交接快照 7 字段模板（与 core/loop.js HANDOFF_SNAPSHOT_SECTIONS 逐字节一致）
 const FULL_SNAP = [
   "# 交接快照",
@@ -452,6 +455,150 @@ test("status 损坏 goal.json 降级（R6A-2）：单项 warn 不炸全套检查
     assert.match(r.out, /版本不兼容/); // 原始成因信息保留
     assert.match(r.out, /install/); // 其余检查行仍在场（全套未丢）
     assert.match(r.out, /files/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ── 步级认领矩阵（决策 #21 最小链，goal v005-core#N2）──────────────────────
+
+test("步级认领：executing 闸门/阻塞拒/互斥拒/释放/过期重认领/done 自清/status 读面/收尾不破", () => {
+  const d = repo();
+  const goalAt = join(d, ".lazyzcode", "loop", "goal.json");
+  try {
+    assert.equal(lzy(["loop", "register", "cl", "--title", "t"], d).code, 0);
+    // planning 态认领拒（executing 闸门）
+    const early = lzy(["loop", "claim", "N1"], d);
+    assert.equal(early.code, 1);
+    assert.match(early.out, /executing/);
+    const p = setup(d, DEPS_PLAN);
+    assert.equal(lzy(["loop", "plan", p], d).code, 0);
+    assert.equal(lzy(["loop", "start"], d).code, 0);
+    // 未知步骤点名
+    assert.match(lzy(["loop", "claim", "N9"], d).out, /无此步骤/);
+    // 阻塞拒：点名未完成依赖
+    const blocked = lzy(["loop", "claim", "N3"], d);
+    assert.equal(blocked.code, 1);
+    assert.match(blocked.out, /被阻塞/);
+    assert.match(blocked.out, /N1 N2/);
+    const blocked2 = lzy(["loop", "claim", "N1"], d); // N1 deps N2
+    assert.equal(blocked2.code, 1);
+    assert.match(blocked2.out, /被阻塞/);
+    assert.match(blocked2.out, /N2/);
+    // 无阻塞认领过 + 互斥拒
+    assert.match(lzy(["loop", "claim", "N2"], d).out, /步骤已认领：N2/);
+    const again = lzy(["loop", "claim", "N2"], d);
+    assert.equal(again.code, 1);
+    assert.match(again.out, /已被认领/);
+    // status 读面：claimed/blocked/可认领三形态
+    const st = lzy(["loop", "status"], d).out;
+    assert.match(st, /N2\s+\[N\] b \[claimed\]/);
+    assert.match(st, /N1\s+\[N\] a \[blocked: N2\]/);
+    assert.match(st, /N3\s+\[N\] c \[blocked: N1,N2\]/);
+    assert.match(st, /可认领 1：F1/);
+    // 无参 claim = 可认领集列表
+    assert.match(lzy(["loop", "claim"], d).out, /可认领 1：F1/);
+    // 释放后再认领
+    assert.match(lzy(["loop", "claim", "N2", "--release"], d).out, /认领已释放/);
+    assert.equal(lzy(["loop", "claim", "N2"], d).code, 0);
+    // 无认领可释放 = 显式拒
+    assert.match(lzy(["loop", "claim", "N1", "--release"], d).out, /无认领标记/);
+    // TTL 过期（48h）可重认领：夹具时间戳相对当下回拨（plan-v2 教训）
+    const g = JSON.parse(readFileSync(goalAt, "utf8"));
+    g.steps.find((s) => s.id === "N2").claim = {
+      at: new Date(Date.now() - 49 * 60 * 60 * 1000).toISOString(),
+    };
+    writeFileSync(goalAt, JSON.stringify(g));
+    const stale = lzy(["loop", "claim", "N2"], d);
+    assert.equal(stale.code, 0);
+    assert.match(stale.out, /步骤已认领：N2/);
+    // step done 自清认领（不留僵尸标记）
+    assert.equal(lzy(["step", "done", "N2", "--note", "n"], d).code, 0);
+    const g2 = JSON.parse(readFileSync(goalAt, "utf8"));
+    assert.ok(!("claim" in g2.steps.find((s) => s.id === "N2")));
+    // done 步不可认领；依赖完成后原阻塞步可认领
+    assert.match(lzy(["loop", "claim", "N2"], d).out, /已完成/);
+    assert.equal(lzy(["loop", "claim", "N1"], d).code, 0);
+    // 认领是可选的（向后兼容）：不认领直接收口照常
+    assert.equal(lzy(["step", "done", "N1", "--note", "n"], d).code, 0);
+    assert.equal(lzy(["step", "done", "N3", "--note", "n"], d).code, 0);
+    assert.equal(lzy(["loop", "claim", "F1"], d).code, 0); // F 项同规则可认领
+    assert.equal(lzy(["step", "done", "F1", "--evidence", "saw"], d).code, 0);
+    assert.equal(lzy(["loop", "finish"], d).code, 0);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ── 步级认领加固钉（R1 双审修复轮，goal v005-core#N8）──────────────────────
+
+test("认领健壮性：旧 goal.json 无 deps/claim 字段容忍、畸形 claim 形状、release 缺 id 拒", () => {
+  const d = repo();
+  const goalAt = join(d, ".lazyzcode", "loop", "goal.json");
+  try {
+    assert.equal(lzy(["loop", "register", "cl2", "--title", "t"], d).code, 0);
+    const p = setup(d, THREE_STEPS);
+    assert.equal(lzy(["loop", "plan", p], d).code, 0);
+    assert.equal(lzy(["loop", "start"], d).code, 0);
+    // 手写旧形态 goal.json（R6 前落盘无 deps/claim 字段）→ status/claim 照常
+    writeFileSync(
+      goalAt,
+      JSON.stringify({
+        version: 1, slug: "cl2", title: "t", status: "executing",
+        startedAt: "2026-09-10T00:00:00.000Z",
+        steps: [
+          { id: "N1", kind: "N", title: "x", status: "pending", doneAt: null, note: null, evidence: null },
+          { id: "N2", kind: "N", title: "y", status: "pending", doneAt: null, note: null, evidence: null },
+        ],
+      }),
+    );
+    const st0 = lzy(["loop", "status"], d);
+    assert.equal(st0.code, 0);
+    assert.doesNotMatch(st0.out, /undefined|NaN/);
+    assert.equal(lzy(["loop", "claim", "N1"], d).code, 0);
+    // 畸形 claim：字符串 → 不算在场；坏时间戳 → 不算在场（可再认领）
+    const g = JSON.parse(readFileSync(goalAt, "utf8"));
+    g.steps.find((s) => s.id === "N2").claim = "bogus";
+    writeFileSync(goalAt, JSON.stringify(g));
+    assert.equal(lzy(["loop", "claim", "N2"], d).code, 0);
+    // 远未来时间戳 = 在场认领（互斥成立）；唯一出路 --release（ADR-0004 修正案三已知边界钉）
+    const g2 = JSON.parse(readFileSync(goalAt, "utf8"));
+    g2.steps.find((s) => s.id === "N1").claim = { at: "not-a-date" };
+    g2.steps.find((s) => s.id === "N2").claim = { at: "9999-01-01T00:00:00.000Z" };
+    writeFileSync(goalAt, JSON.stringify(g2));
+    const st1 = lzy(["loop", "status"], d).out;
+    assert.doesNotMatch(st1, /N1\s+\[N\] x \[claimed\]/); // 坏时间戳不算认领
+    assert.match(st1, /N2\s+\[N\] y \[claimed\]/); // 远未来戳算在场
+    assert.match(lzy(["loop", "claim", "N2"], d).out, /已被认领/);
+    assert.equal(lzy(["loop", "claim", "N2", "--release"], d).code, 0);
+    assert.equal(lzy(["loop", "claim", "N2"], d).code, 0);
+    // release 缺 id → 用法错（评审 R1-A6）
+    assert.match(lzy(["loop", "claim", "--release"], d).out, /用法/);
+    // release 吃值 → 拒（--release=yes 静默反义防，评审 R2-A）
+    assert.match(lzy(["loop", "claim", "N1", "--release=yes"], d).out, /裸旗标不吃值/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("status 下一步标注（R1-A4）：指向被认领/被阻塞步时点名，不裸指", () => {
+  const d = repo();
+  try {
+    assert.equal(lzy(["loop", "register", "nx", "--title", "t"], d).code, 0);
+    const p = setup(d, DEPS_PLAN);
+    assert.equal(lzy(["loop", "plan", p], d).code, 0);
+    assert.equal(lzy(["loop", "start"], d).code, 0);
+    // 最初下一步 N1 被阻塞（dep N2 未 done）
+    let st = lzy(["loop", "status"], d).out;
+    assert.match(st, /下一步 → N1 \[N\] a（被阻塞：N2）/);
+    assert.equal(lzy(["loop", "claim", "N2"], d).code, 0);
+    st = lzy(["loop", "status"], d).out;
+    assert.match(st, /下一步 → N1 \[N\] a（被阻塞：N2）/);
+    // 依赖收口后认领 N1：下一步行标注（已认领）
+    assert.equal(lzy(["step", "done", "N2", "--note", "n"], d).code, 0);
+    assert.equal(lzy(["loop", "claim", "N1"], d).code, 0);
+    st = lzy(["loop", "status"], d).out;
+    assert.match(st, /下一步 → N1 \[N\] a（已认领）/);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

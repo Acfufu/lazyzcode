@@ -22,3 +22,6 @@ artifacts/
 # codegraph 本地索引（工具自建库，不入库）
 .codegraph/
 .zcode/
+
+# pnpm 误跑再生锁文件（本仓零依赖根包；2026-09-14 Q3 拍板升 ignore——删了三回复发）
+pnpm-lock.yaml

@@ -69,3 +69,19 @@ zw 默认串行，图的重心收益只在并行存在时成立，硬上=没人�
 ②同目标撞槽再发；③多模型分发现实化（并行会话分属不同 provider 账户）。**前置件**：
 角色指模型走宿主 10-provider 目录（宪法 §3.5 不自研模型路由不推翻）；doctor 经验并发带
 按 provider 分桶各测。
+
+## 修正案三（2026-09-14，goal v005-core）：并行认领最小链落地
+
+**升格落地**——修正案二的预注册触发器经 2026-09-13 grilling 拍板②提前升格推翻；范围经
+2026-09-14 grilling Q2 锁定为最小可用链。四件：①计划项依赖边——条目行下一行
+`deps: N1,N2` 声明，计划门校验引用存在/不自指/无环（`core/loop.js`
+`parsePlanItems`/`validateDeps`；旧计划文件零变化）；②匿名步级认领——`lzy loop claim`
+（不记 sessionId，ADR-0009 同款立场；TTL 复用 48h；无阻塞校验=deps 全 done 才可认领；
+`lzy step done` 自清；`--release` 释放；无参列可认领集；`lzy loop status` 增
+claimed/blocked/可认领三读面），实现 `core/loop.js` `claimStep`，矩阵测试
+`test/loop.e2e.test.js`、依赖边门测试 `test/plan-gate.contract.test.js`；③worktree 派工
+走宿主目录成文（zw SKILL.md Execute 节 Parallel dispatch；§3.5 不推翻）；④doctor 按
+provider 分桶测带（`band-by-provider` 行，completed 完成面×429 脏面；429 谓词与账号带
+零语义变化）。**不做清单维持**：多模型分发、角色指模型。已知边界：认领匿名——
+**未过期**认领只能 `--release` 释放（过期认领不需释放，重认领自然覆写）；归属升级
+路径（UPS 触发词携带步号由钩子写归属）记档不实现。

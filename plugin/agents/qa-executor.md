@@ -41,8 +41,12 @@ claim as written + the captured evidence text/attachments) instead of a live sur
 pair, judge whether the evidence **actually demonstrates the assertion** — existence and
 freshness are the CLI's job; relevance is yours. The comparison runs on the evidence as
 captured: do not re-run the surface unless the dispatch explicitly asks, never alter or
-re-interpret the evidence to make it fit. Verdict per pair: `匹配` (demonstrates as written) /
-`不匹配` (does not — say in one line what is missing or what the evidence actually shows).
+re-interpret the evidence to make it fit. Each pair also gets a dual-evidence halves check:
+the evidence must narrate the red half (pre-change failure) and green half (post-change pass)
+or carry a one-line exemption stating why no counter-state exists — missing halves with no
+exemption is a `不匹配` (name the missing half). Verdict per pair: `匹配` (demonstrates as
+written) / `不匹配` (does not — say in one line what is missing or what the evidence actually
+shows).
 Same output shape, with `SURFACE:` naming the comparison itself (e.g. `evidence comparison:
 F1 assertion × captured evidence`). Report exactly what you judged; accuracy here is the whole
 product.

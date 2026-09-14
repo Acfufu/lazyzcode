@@ -19,6 +19,21 @@ versioning is SemVer.
   other internal notes now render with a proper shell carrying
   `robots: noindex, follow` — links from the guide keep working, but the
   pages no longer hit search indexes as unstyled fragments.
+- **Red-green evidence discipline (dual evidence)**: every F-item claim now
+  carries two halves by default — a **red** capture of the assertion failing
+  on the pre-change state (taken before the edit) and a **green** capture of
+  it passing after. Surfaces where no counter-state can be constructed get a
+  one-line exemption (reason required, not a silent skip). The `qa-executor`
+  comparator checks halves presence per pair; missing halves without an
+  exemption is a `不匹配`. Protocol/skill-text layer (zw SKILL, qa-executor
+  contract, bilingual guide); zero CLI changes.
+- **Adversarial checklist** (`docs/research-adversarial-checklist.md`): the
+  nine-class adversarial sheet mapped to the project's existing defenses with
+  per-class three-state verdicts (defended / tightened this round / recorded
+  debt with promotion conditions), plus provenance and license-boundary notes
+  (taxonomy cited as facts from OhMyZcode, itself an OmO ultraqa transplant;
+  all prose self-written). HEAVY finishes touching command, parse, or
+  state-merge surfaces self-check against it.
 
 ### Changed
 

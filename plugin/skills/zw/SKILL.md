@@ -149,6 +149,14 @@ suggested command; it returns verbatim observed output and a MATCH verdict.
 `lzy step done F1 --evidence "<the observable result you actually saw>"`
 
 - **Tests alone never prove done.** Green tests are necessary, not sufficient.
+- **Red-green evidence (dual evidence).** Every F-item claim carries two halves
+  by default: a **red** capture showing the assertion failing on the pre-change
+  state, and a **green** capture showing it passing on the post-change state.
+  Capture the red half before you edit. If no counter-state can be constructed
+  for the surface (pure reachability, ambient facts), say so in a one-line
+  exemption inside the evidence text — exemptions state why, they are not a
+  silent skip. Narrate both halves in `--evidence`; attach both captures with
+  `--evidence-file` when they are files.
 - **Mechanical $0 checks first (成本两件套)**: exhaust zero-cost mechanical
   verification before any semantic/model-judged check — CLI stdout, file
   existence and content assertions, `grep`/`diff`. Never spend a model call on
@@ -182,10 +190,16 @@ keep working, never declare victory.
 
 **Evidence comparison (comparator, HEAVY mandatory).** Existence and freshness are the CLI's
 gates; relevance is not checked by any CLI — so before `finish`, dispatch `qa-executor` in
-comparator mode over every F item's assertion–evidence pair. A `不匹配` verdict means the
+comparator mode over every F item's assertion–evidence pair. The comparator also checks
+dual-evidence halves: every F item shows red + green or a one-line exemption, and a missing
+half without an exemption is a `不匹配`. A `不匹配` verdict means the
 evidence does not demonstrate the claim: re-capture on the right surface, or if the F item
 itself was wrong, amend the plan honestly — then re-run. LIGHT goals: do the comparison
 yourself as a self-check (weaker — you authored the evidence; know its blind spot).
+
+**Adversarial coverage.** HEAVY finishes touching command, parse, or state-merge surfaces
+self-check against `docs/research-adversarial-checklist.md` — the standing nine-class sheet:
+probe what applies, record why the rest are excluded.
 
 **Commit ledger (ADR-0005).** Every commit made inside a goal carries a trailer-style
 pointer `Goal: <slug>#<step>` (e.g. `Goal: ledger-discipline#N3`) — humans and agents alike;

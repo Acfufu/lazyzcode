@@ -321,6 +321,12 @@ falsifiable, and is a "none" credible?
 - Evidence is bound to `git rev-parse HEAD^{tree}` — the content snapshot of
   the current commit. **Commit first, capture after.** Uncommitted changes do
   not count.
+- **Red-green evidence (dual evidence).** By default every F-item claim needs
+  two halves: a **red** capture of the assertion failing on the pre-change
+  state (taken before you edit) and a **green** capture of it passing after.
+  If no counter-state can be constructed for the surface, say so in a one-line
+  exemption inside the evidence text — an exemption explains, it does not
+  silently skip.
 - The moment the code changes, old evidence is stale *by construction*. The
   finish gate re-checks freshness and rejects stale or unbound evidence.
 - Captured material can be archived under `.lazyzcode/evidence/`.

@@ -1,0 +1,26 @@
+# LazyZCode
+
+> The discipline layer for ZCode: plan → execute → take evidence → never stop
+> half-done. An npm-installable plugin (skills, hooks, read-only discipline
+> agents) plus a lightweight `lzy` CLI that add a goal-loop state machine, a
+> decision-complete plan gate, real-surface evidence bound to git tree hashes,
+> and a Stop-hook pull-back to the ZCode coding agent. MIT licensed, zero
+> telemetry, macOS first.
+
+Install: `npm i -g lazyzcode && lzy install` (needs the ZCode desktop app,
+Node ≥ 22, git).
+
+## Docs
+
+- [Guide (English)](https://raw.githubusercontent.com/acfufu/lazyzcode/main/docs/guide/en.md): installation, first goal loop, trigger words & protocol, concepts, CLI reference
+- [指南（简体中文）](https://raw.githubusercontent.com/acfufu/lazyzcode/main/docs/guide/zh.md): 安装、第一个目标循环、触发与协议、概念、CLI 参考
+- [For developers (English)](https://raw.githubusercontent.com/acfufu/lazyzcode/main/docs/developers/en.md): plugin payload, hooks, discipline agents, CLI internals, contributing
+- [开发者视角（简体中文）](https://raw.githubusercontent.com/acfufu/lazyzcode/main/docs/developers/zh.md): 插件载荷、钩子、纪律角色、CLI 内部与贡献
+- [README](https://raw.githubusercontent.com/acfufu/lazyzcode/main/README.md): project overview and 10-minute quick start
+- [CHANGELOG](https://raw.githubusercontent.com/acfufu/lazyzcode/main/CHANGELOG.md): release history
+
+## Optional
+
+- [Docs site](https://acfufu.github.io/lazyzcode/): rendered documentation home
+- [npm package](https://www.npmjs.com/package/lazyzcode): `lazyzcode` on npm
+- [GitHub repository](https://github.com/acfufu/lazyzcode): source, issues, releases

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="34%" r="70%">
+      <stop offset="0%" stop-color="#131a24"/>
+      <stop offset="100%" stop-color="#0a0c10"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <svg x="510" y="86" width="180" height="180" viewBox="0 0 64 64">
+    <rect x="2" y="2" width="60" height="60" rx="15" fill="#0d1016"/>
+    <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="14.25" stroke="#2a3340" stroke-width="1.5"/>
+    <path d="M19 20 H45 L19 44 H37" stroke="#4fd6b8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="46" cy="44" r="4.6" fill="#4fd6b8"/>
+  </svg>
+  <text x="600" y="392" text-anchor="middle" fill="#f2f5f9"
+        font-family="-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="92" font-weight="700">LazyZCode</text>
+  <text x="600" y="458" text-anchor="middle" fill="#8b95a5"
+        font-family="-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="33">Plan &#8594; execute &#8594; take evidence &#8594; never stop half-done.</text>
+  <rect x="440" y="502" width="320" height="56" rx="12" fill="#0d1016" stroke="#2a3340" stroke-width="1.5"/>
+  <text x="600" y="538" text-anchor="middle" fill="#4fd6b8"
+        font-family="'SF Mono', Menlo, Consolas, monospace" font-size="26">npm i -g lazyzcode</text>
+</svg>

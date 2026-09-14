@@ -2,6 +2,19 @@
   "name": "lazyzcode",
   "version": "0.0.5",
   "description": "AI coding-workflow discipline layer for ZCode: plan, execute, take evidence, never stop half-done. Plugin + lightweight CLI (lzy).",
+  "keywords": [
+    "zcode",
+    "ai-coding",
+    "coding-agent",
+    "agent-workflow",
+    "discipline",
+    "goal-loop",
+    "plan-gate",
+    "evidence",
+    "cli",
+    "plugin",
+    "developer-tools"
+  ],
   "type": "module",
   "license": "MIT",
   "author": "LazyZCode contributors",
@@ -12,7 +25,7 @@
   "bugs": {
     "url": "https://github.com/acfufu/lazyzcode/issues"
   },
-  "homepage": "https://github.com/acfufu/lazyzcode#readme",
+  "homepage": "https://acfufu.github.io/lazyzcode/",
   "bin": {
     "lzy": "cli/lzy.js"
   },

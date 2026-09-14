@@ -15,27 +15,37 @@ exclude:
   - evidence
 
 defaults:
+  # 兜底：其余 md（adr/spikes/diagnostics/research 等内部工程记录）走 bare 布局，
+  # 带 noindex 头——链接不断（guide 引用它们），但不进索引稀释精修页。
+  - scope:
+      path: ""
+    values:
+      layout: bare
   - scope:
       path: "guide/en.md"
     values:
       layout: guide
       lang: en
       title: Documentation
+      description: Install LazyZCode and run your first goal loop in ZCode — plan gate, evidence bound to git tree hashes, trigger words, hooks, and the full lzy CLI reference.
   - scope:
       path: "guide/zh.md"
     values:
       layout: guide
       lang: zh
       title: 文档
+      description: 安装 LazyZCode，在 ZCode 里跑通第一个目标循环——计划门、绑 tree hash 的证据、触发词、钩子与 lzy CLI 全参考。
   - scope:
       path: "developers/en.md"
     values:
       layout: page
       lang: en
       title: For developers
+      description: How LazyZCode works under the hood — the plugin payload, hooks, discipline agents, and the lzy CLI internals, plus how to extend and contribute.
   - scope:
       path: "developers/zh.md"
     values:
       layout: page
       lang: zh
       title: 开发者视角
+      description: LazyZCode 的底层机制——插件载荷、钩子、纪律角色与 lzy CLI 内部，以及如何扩展与贡献。

@@ -1,0 +1,53 @@
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Where does LazyZCode keep its state?",
+      "acceptedAnswer": { "@type": "Answer", "text": "In a .lazyzcode/ directory inside your project: loop state, plans, and archived evidence. It is deliberately separate from ZCode's own .zcode/ directory; add it to .gitignore if you do not want to commit it." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does LazyZCode collect telemetry?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Zero telemetry. Everything lzy doctor reports is computed locally from your own files and engine logs." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does LazyZCode write my config.json?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Never. Enabling goes through the engine's official plugins enable command; the installer only deploys files and writes LazyZCode's own registry." }
+    },
+    {
+      "@type": "Question",
+      "name": "Why didn't my zw trigger word fire?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Matching is stratified: a bare zw fires only at the start of a prompt; a mid-sentence zw is ignored on purpose. Use the explicit lazyzcode:zw anywhere, or ulw / ultrawork anywhere word-bounded." }
+    },
+    {
+      "@type": "Question",
+      "name": "Why did lzy loop finish reject my evidence?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Evidence is bound to the tree hash of the commit that was current when it was captured. If code changed after capture, the evidence is stale by construction: commit, then re-capture with lzy step done." }
+    },
+    {
+      "@type": "Question",
+      "name": "I hit a 1302 rate limit. Is LazyZCode broken?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. That is the GLM plan's account-level concurrency limit. The rate-limit line of lzy doctor reports your measured pressure and a suggested session budget." }
+    },
+    {
+      "@type": "Question",
+      "name": "My hooks do nothing at all. What now?",
+      "acceptedAnswer": { "@type": "Answer", "text": "The engine was probably launched without node on its PATH, which is common when the desktop app starts from the Dock. The bundled run-hook.sh launcher resolves node from nvm or Homebrew; the hook-node line of lzy doctor shows what it found." }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I run two goal loops at once?",
+      "acceptedAnswer": { "@type": "Answer", "text": "One loop per project directory. A finished loop keeps the slot until lzy loop reset clears it." }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use the CLI without the plugin?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. The CLI works anywhere; the plugin needs the engine. The workflow works best with both: the hooks and skill text drive the discipline that the CLI enforces." }
+    }
+  ]
+}
+</script>

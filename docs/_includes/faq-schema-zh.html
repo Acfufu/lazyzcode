@@ -1,0 +1,53 @@
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "LazyZCode 的状态放在哪里？",
+      "acceptedAnswer": { "@type": "Answer", "text": "项目内的 .lazyzcode/ 目录：循环状态、计划、归档证据。有意与 ZCode 自己的 .zcode/ 目录划清边界；不想提交就加进 .gitignore。" }
+    },
+    {
+      "@type": "Question",
+      "name": "LazyZCode 会上报数据吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "不会。零遥测。lzy doctor 报告的一切都从你本地的文件与引擎日志算出来。" }
+    },
+    {
+      "@type": "Question",
+      "name": "LazyZCode 会写我的 config.json 吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "永不。启用走引擎官方 plugins enable 命令；安装器只部署文件、写 LazyZCode 自己的注册表。" }
+    },
+    {
+      "@type": "Question",
+      "name": "为什么我的 zw 触发词没触发？",
+      "acceptedAnswer": { "@type": "Answer", "text": "匹配是分层的：裸 zw 只在提示词句首触发；句中 zw 被忽略（这是特性）。任意位置用显式全名 lazyzcode:zw，或词边界匹配的 ulw / ultrawork。" }
+    },
+    {
+      "@type": "Question",
+      "name": "lzy loop finish 为什么拒绝我的证据？",
+      "acceptedAnswer": { "@type": "Answer", "text": "证据绑定取证当时所在提交的 tree hash。取证后又改了代码，证据按构造即过期：先提交，再用 lzy step done 重新取证。" }
+    },
+    {
+      "@type": "Question",
+      "name": "撞上 1302 速率限制，是 LazyZCode 坏了吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "不是。那是 GLM 套餐的账号级并发限流。lzy doctor 的 rate-limit 行给出实测压力与建议会话预算。" }
+    },
+    {
+      "@type": "Question",
+      "name": "钩子完全没反应怎么办？",
+      "acceptedAnswer": { "@type": "Answer", "text": "多半是引擎启动时 PATH 里没有 node（从 Dock 直启桌面端的常见场景）。自带的 run-hook.sh 启动器会自动兜底 nvm/Homebrew；lzy doctor 的 hook-node 行告诉你它解析到了什么。" }
+    },
+    {
+      "@type": "Question",
+      "name": "能同时跑两个目标循环吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "每个项目目录一个循环。已完成的循环会占位，直到 lzy loop reset 清掉。" }
+    },
+    {
+      "@type": "Question",
+      "name": "能只用 CLI 不装插件吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "可以。CLI 到哪都能用；插件需要引擎。两者齐用效果最好：钩子和技能文本驱动纪律，CLI 落实纪律。" }
+    }
+  ]
+}
+</script>

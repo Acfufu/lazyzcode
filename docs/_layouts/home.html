@@ -3,8 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ site.title }} — {{ site.description }}</title>
+  <title>LazyZCode — The discipline layer for ZCode</title>
   <meta name="description" content="{{ site.description }}">
+  {% include seo.html %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "LazyZCode",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS",
+    "description": "The discipline layer for ZCode: plan, execute, take evidence, never stop half-done. A plugin plus a lightweight CLI (lzy) that turns agent claims into verified facts.",
+    "url": "https://acfufu.github.io/lazyzcode/",
+    "codeRepository": "https://github.com/acfufu/lazyzcode",
+    "license": "https://opensource.org/licenses/MIT",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Organization", "name": "LazyZCode contributors" },
+    "keywords": "ZCode, AI coding agent, discipline layer, goal loop, plan gate, evidence, CLI"
+  }
+  </script>
   <meta name="theme-color" content="#0a0c10">
   <script>(function(){try{var t=localStorage.getItem("lzy-theme")||"auto";if(t==="auto")t=window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t;}catch(e){}})();</script>
   <link rel="icon" type="image/svg+xml" href="{{ site.baseurl }}/assets/favicon.svg">

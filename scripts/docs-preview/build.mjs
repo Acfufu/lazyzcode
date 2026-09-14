@@ -14,7 +14,7 @@ const OUT = process.env.DOCS_OUT || path.join(REPO, "dist");
 const config = fs.readFileSync(path.join(SRC, "_config.yml"), "utf8");
 const grab = (key) => config.match(new RegExp(`^${key}:\\s*(.+)$`, "m"))?.[1].trim();
 const BASE = grab("baseurl");
-const SITE = { title: grab("title"), description: grab("description") };
+const SITE = { title: grab("title"), description: grab("description"), url: grab("url") };
 
 marked.use(gfmHeadingId({ prefix: "" }));
 
@@ -24,10 +24,10 @@ const include = (n) => read(path.join(SRC, "_includes", n));
 
 // mirrors the defaults map in docs/_config.yml
 const PAGES = {
-  "guide/en.md": { lang: "en", title: "Documentation", layout: "guide" },
-  "guide/zh.md": { lang: "zh", title: "文档", layout: "guide" },
-  "developers/en.md": { lang: "en", title: "For developers", layout: "page" },
-  "developers/zh.md": { lang: "zh", title: "开发者视角", layout: "page" },
+  "guide/en.md": { lang: "en", title: "Documentation", layout: "guide", description: "Install LazyZCode and run your first goal loop in ZCode — plan gate, evidence bound to git tree hashes, trigger words, hooks, and the full lzy CLI reference." },
+  "guide/zh.md": { lang: "zh", title: "文档", layout: "guide", description: "安装 LazyZCode，在 ZCode 里跑通第一个目标循环——计划门、绑 tree hash 的证据、触发词、钩子与 lzy CLI 全参考。" },
+  "developers/en.md": { lang: "en", title: "For developers", layout: "page", description: "How LazyZCode works under the hood — the plugin payload, hooks, discipline agents, and the lzy CLI internals, plus how to extend and contribute." },
+  "developers/zh.md": { lang: "zh", title: "开发者视角", layout: "page", description: "LazyZCode 的底层机制——插件载荷、钩子、纪律角色与 lzy CLI 内部，以及如何扩展与贡献。" },
   "index.md": { layout: "home" },
 };
 
@@ -51,37 +51,37 @@ function rewriteMdLinks(html, rel) {
 }
 
 function liquid(tpl, page, content) {
-  let out = tpl.replace(/{% if page.lang == 'zh' %}([\s\S]*?){% else %}([\s\S]*?){% endif %}/g,
+  // order matters: includes expand first so their internals flow through the
+  // later stages (same as Jekyll, where includes are rendered in place)
+  let out = tpl.replace(/{% include ([\w.-]+\.html) %}/g, (_, n) => include(n));
+  out = out.replace(/{% if page.lang == 'zh' %}([\s\S]*?){% else %}([\s\S]*?){% endif %}/g,
     (_, zh, en) => (page.lang === "zh" ? zh : en));
-  out = out.replace(/{% include (nav-en|nav-zh)\.html %}/g, (_, n) => include(`${n}.html`));
   const vars = {
     "page.lang": page.lang ?? "en",
     "page.title": page.title ?? SITE.title,
+    "page.url": page.url ?? "/",
     "site.title": SITE.title,
     "site.description": SITE.description,
+    "site.url": SITE.url,
     "site.baseurl": BASE,
     content,
   };
   out = out.replace(/\{\{\s*page\.title\s*\|\s*default:\s*site\.title\s*\}\}/g, page.title ?? SITE.title);
+  out = out.replace(/\{\{\s*page\.description\s*\|\s*default:\s*site\.description\s*\}\}/g, page.description ?? SITE.description);
   out = out.replace(/\{\{\s*page\.lang\s*\|\s*default:\s*'en'\s*\}\}/g, page.lang ?? "en");
   return out.replace(/\{\{\s*([a-z.]+)\s*\}\}/g, (m, k) => (k in vars ? vars[k] : m));
 }
-
-const bareShell = (title, content) => `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
-<link rel="stylesheet" href="${BASE}/assets/docs.css"></head>
-<body><div class="wrap layout" style="grid-template-columns:1fr"><main class="content">${content}</main></div></body></html>`;
 
 let built = 0;
 for (const file of walk(SRC)) {
   const rel = path.relative(SRC, file);
   if (!rel.endsWith(".md")) continue;
-  const meta = PAGES[rel] ?? { layout: "bare", title: path.basename(rel, ".md") };
+  const meta = { ...(PAGES[rel] ?? { layout: "bare", title: path.basename(rel, ".md") }), url: sitePathOf(rel) };
   const body = rewriteMdLinks(marked.parse(read(file)), rel);
   let html;
   if (meta.layout === "guide" || meta.layout === "page") html = liquid(layout(`${meta.layout}.html`), meta, body);
   else if (meta.layout === "home") html = liquid(layout("home.html"), meta, body);
-  else html = bareShell(meta.title, body);
+  else html = liquid(layout("bare.html"), meta, body);
   const outPath = rel === "index.md"
     ? path.join(OUT, "index.html")
     : path.join(OUT, rel.replace(/\.md$/, ""), "index.html");
@@ -92,4 +92,8 @@ for (const file of walk(SRC)) {
 
 fs.cpSync(path.join(SRC, "assets"), path.join(OUT, "assets"), { recursive: true });
 if (fs.existsSync(path.join(SRC, "reports"))) fs.cpSync(path.join(SRC, "reports"), path.join(OUT, "reports"), { recursive: true });
+// Jekyll copies root-level static files verbatim; mirror the ones we ship
+for (const f of ["llms.txt", "sitemap.xml"]) {
+  if (fs.existsSync(path.join(SRC, f))) fs.copyFileSync(path.join(SRC, f), path.join(OUT, f));
+}
 console.log(`built ${built} pages -> ${path.relative(REPO, OUT)}`);

@@ -3,6 +3,30 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Docs-site SEO/GEO pass**: canonical URLs, Open Graph / Twitter card
+  metadata with a 1200×630 social image (`docs/assets/og.png`, source
+  `og.svg`), hreflang pairs between the English and Chinese guide/developers
+  pages, per-page `<meta description>`, a static `sitemap.xml` covering the
+  five curated pages, and JSON-LD (`SoftwareApplication` on the home page,
+  `FAQPage` mirroring the on-page FAQs on both guides).
+- **`llms.txt`** at the site root for generative engines, linking the raw
+  markdown surfaces.
+- **`bare` layout for internal records**: adr/spikes/diagnostics/research and
+  other internal notes now render with a proper shell carrying
+  `robots: noindex, follow` — links from the guide keep working, but the
+  pages no longer hit search indexes as unstyled fragments.
+
+### Changed
+
+- `npm` metadata: package `keywords` added; `homepage` now points at the
+  docs site. The local docs-preview build mirrors the Jekyll head pipeline
+  (generic includes, `page.url`/`page.description`, real `bare` layout,
+  static-file copy), so local previews match the Pages build.
+
 ## [0.0.5] - 2026-09-14
 
 > 0.0.5 is the internal-hardening release: the parallel-claim minimal chain

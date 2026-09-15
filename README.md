@@ -56,6 +56,13 @@ lzy doctor           # local health report (zero telemetry)
 `lzy install` never writes your `config.json` — enabling flows only through the
 engine's official `plugins enable` ([ADR-0001](docs/adr/0001-installer-enable-via-engine-cli.md)).
 
+Prefer the plugin marketplace? In ZCode's `/plugin` panel run
+`/plugin marketplace add Acfufu/lazyzcode`, then install **lazyzcode** from it —
+the same engine code path as the official marketplace, pinned to release tags.
+The marketplace route installs the plugin layer only (skills, hooks, agents);
+the `lzy` CLI still comes from npm, so `npm i -g lazyzcode` remains the
+recommended full install.
+
 ### Start your first goal loop
 
 Open a fresh ZCode session in any project and type:
@@ -288,6 +295,29 @@ machinery; LazyZCode is the workflow that makes them finish what they start.
 | 💬 **comment-checker** | Advisory TODO/debug-residue nudges; never blocks |
 | 🩺 **`lzy doctor`** | Offline health report incl. hook-node resolution and rate-limit pressure |
 | 🔒 **Privacy & red lines** | Zero telemetry; `lzy` never writes your `config.json` |
+
+## 🆚 Ten things only LazyZCode does
+
+As of September 2026 the official ZCode marketplace lists 19 plugins and none
+of them is a discipline layer — so instead of a competitor table, here is what
+only LazyZCode ships, and the one capability we have not built yet.
+
+| # | Only here | In one line |
+| --- | --- | --- |
+| 1 | **Tree-hash evidence binding** | F-item evidence binds to `git rev-parse HEAD^{tree}` — change the code and old evidence is stale by construction |
+| 2 | **Engine-internal Stop pull-back** | a lazy stop gets pulled back to work: at most 2 continuations per session, 1 of the engine's shared 3 reserved for background notifications |
+| 3 | **Handoff release** | a lint-enforced handoff snapshot lets the agent wrap up cleanly — the next Stop releases once, without spending the continuation budget |
+| 4 | **Claim-scoped sessions** | the pull-back only reaches sessions that claimed the goal; bystander sessions in the same repo are never hijacked; per-step claims coordinate multi-worker runs |
+| 5 | **Measured rate-limit triage** | `lzy doctor` reads your own engine logs: deduplicated 429 turns, an empirical concurrency band, and an off-peak window cross-checked against declared pricing peaks |
+| 6 | **Failure families, not "unknown"** | transport deaths (request never reached the server) and content-moderation kills (mid-stream; an in-place retry reproduces) are counted separately, never fed into the concurrency math |
+| 7 | **Known unknowns, mandatory** | HEAVY plans must declare 1–3 unverified premises, each with a falsification path — "none" requires a one-line note of where you looked |
+| 8 | **Project memory with a staleness fingerprint** | `init-deep` drafts layered `AGENTS.md` maps; a commit-lag signal says when the map has fallen behind |
+| 9 | **A review gate that cannot be forced** | a `REVISE` verdict refuses plan adoption; `--force` does not bypass it |
+| 10 | **Zero telemetry by constitution** | diagnostics are local-only, there is no configuration surface, and nothing phones home |
+
+**The one gap we own:** a self-evolution loop (the harness improving its own
+discipline) is not built — it stays a recorded long-horizon item rather than
+shipping early.
 
 ## 🧠 Why "done" needs evidence
 

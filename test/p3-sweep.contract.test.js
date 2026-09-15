@@ -317,7 +317,9 @@ test("run-hook 启动器：--print-node 解析；PATH-less 时 fallback 或 fail
     const probe = (args, env) =>
       spawnSync(comspec, ["/d", "/s", "/c", `"${LAUNCHER_WIN}" ${args.join(" ")}`], {
         encoding: "utf8",
-        timeout: 10_000,
+        // 30s 同本文件其余 win32 探针预算（216/242/265）：runner 上 cmd→批处理→node 单趟
+        // 延迟实测 0.1s–2s 波动，10s 上限在 5.4s 基线旁贴线偶发误杀（2026-09-15 CI 实录）
+        timeout: 30_000,
         windowsVerbatimArguments: true,
         input: "",
         ...(env ? { env } : {}),

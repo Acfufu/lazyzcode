@@ -40,7 +40,7 @@ function hook(name, input, extraEnv = {}) {
     input: typeof input === "string" ? input : JSON.stringify(input),
     encoding: "utf8",
     timeout: 20_000,
-    env: { ...process.env, HOME: ISOLATED_HOME, ...extraEnv },
+    env: { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME, ...extraEnv },
   });
   return { code: r.status, out: (r.stdout ?? "").trim() };
 }
@@ -387,7 +387,7 @@ test("水位警戒线（plan-v2 Phase 2-3）：超阈值注一次、窗内不重
     assert.equal(create.status, 0);
     goalAt(d, "executing", [{ id: "F1", kind: "F", status: "pending" }]);
     counterAt(d, "s", 0);
-    const wlEnv = { HOME: home };
+    const wlEnv = { HOME: home, USERPROFILE: home };
     const o1 = JSON.parse(hook("stop.js", { sessionId: "s", cwd: d }, wlEnv).out);
     assert.equal(o1.continue, true);
     assert.match(o1.additionalContext, /水位警戒/);
@@ -400,7 +400,7 @@ test("水位警戒线（plan-v2 Phase 2-3）：超阈值注一次、窗内不重
     // env 抬线：另一会话不触警
     counterAt(d, "s2", 0);
     const o3 = JSON.parse(
-      hook("stop.js", { sessionId: "s2", cwd: d }, { HOME: home, LZY_WATERLINE_POINTS: "999999" }).out,
+      hook("stop.js", { sessionId: "s2", cwd: d }, { HOME: home, USERPROFILE: home, LZY_WATERLINE_POINTS: "999999" }).out,
     );
     assert.equal(o3.continue, true);
     assert.doesNotMatch(o3.additionalContext, /水位警戒/);

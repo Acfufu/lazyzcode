@@ -98,7 +98,7 @@ test("lzy agents-md：缺口退出码 1 + 详单行；补齐后退出码 0", () 
   const home = mkdtempSync(join(tmpdir(), "lzy-amd-home-"));
   try {
     const run = (args) => spawnSync(process.execPath, [CLI, ...args], {
-      cwd: d, encoding: "utf8", timeout: 60_000, env: { ...process.env, HOME: home },
+      cwd: d, encoding: "utf8", timeout: 60_000, env: { ...process.env, HOME: home, USERPROFILE: home },
     });
     const r1 = run(["agents-md"]);
     assert.equal(r1.status, 1);
@@ -130,7 +130,7 @@ test("doctor agents-md 行：warn（有缺口）/ ok（覆盖完整）/ skip（�
     const d1 = fixture();
     try {
       const r = spawnSync(process.execPath, [CLI, "doctor"], {
-        cwd: d1, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: home },
+        cwd: d1, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: home, USERPROFILE: home },
       });
       const l = line(`${r.stdout ?? ""}${r.stderr ?? ""}`);
       assert.ok(l, "doctor 输出应含 agents-md 行");
@@ -146,7 +146,7 @@ test("doctor agents-md 行：warn（有缺口）/ ok（覆盖完整）/ skip（�
       mkdirSync(join(d2, "api"), { recursive: true });
       writeFileSync(join(d2, "api", "package.json"), "{}\n");
       const r = spawnSync(process.execPath, [CLI, "doctor"], {
-        cwd: d2, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: home },
+        cwd: d2, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: home, USERPROFILE: home },
       });
       const l = line(`${r.stdout ?? ""}${r.stderr ?? ""}`);
       assert.ok(l);
@@ -159,7 +159,7 @@ test("doctor agents-md 行：warn（有缺口）/ ok（覆盖完整）/ skip（�
     const d3 = mk();
     try {
       const r = spawnSync(process.execPath, [CLI, "doctor"], {
-        cwd: d3, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: home },
+        cwd: d3, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: home, USERPROFILE: home },
       });
       const l = line(`${r.stdout ?? ""}${r.stderr ?? ""}`);
       assert.ok(l);

@@ -1,8 +1,10 @@
 #!/bin/sh
-# lzy 钩子启动器：引擎以自身 env 直接 spawn 钩子命令，其 PATH 不保证解析得到 node
+# lzy 钩子启动器（POSIX 面）：引擎以自身 env 直接 spawn 钩子命令，其 PATH 不保证解析得到 node
 #（2026-09-07 探针实锤：GUI 直启的引擎 env 无 nvm bin，裸 `node` ENOENT → 四钩子静默全灭，
 # 且失败发生在引擎侧，钩子 JS 里的 fail-open 根本没机会执行）。
-# 用法（hooks.json）：/bin/sh "${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh" <script.js> [args…]
+# 用法（hooks.json）："${ZCODE_PLUGIN_ROOT}/hooks/run-hook" <script.js> [args…]
+#   POSIX（sh -c）按 shebang 走本文件；Windows（cmd.exe）经 PATHEXT 解析对偶孪生 run-hook.cmd
+#   （两文件一行清单跨双平台，schema 无平台字段，见 docs/design-crossplatform.md §1）。
 # 纪律：node 彻底解析不到时记一行 /tmp/lzy-hook-launcher.log 后 exit 0 放行（fail-open，绝不阻断会话）。
 set -u
 dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"

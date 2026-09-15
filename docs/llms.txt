@@ -5,7 +5,7 @@
 > agents) plus a lightweight `lzy` CLI that add a goal-loop state machine, a
 > decision-complete plan gate, real-surface evidence bound to git tree hashes,
 > and a Stop-hook pull-back to the ZCode coding agent. MIT licensed, zero
-> telemetry, macOS first.
+> telemetry, macOS / Windows / Linux.
 
 Install: `npm i -g lazyzcode && lzy install` (needs the ZCode desktop app,
 Node ≥ 22, git).

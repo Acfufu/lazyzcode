@@ -10,9 +10,13 @@ jobs:
     strategy:
       matrix:
         node: [22, 24]
-    runs-on: ubuntu-latest
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     # scheduleAdvisory 断言「UTC+8 宿主下的本地小时渲染」（core/ratelimit.js 双轴：
     # 直方图=进程本地 getHours，计价表=UTC+8）——runner 默认 TZ=UTC 会错开 8h 致三只挂。
+    # windows 腿（ADR-0011 三平台支持）：TZ env 在 win32 Node 的语义已在 Windows VM 实证
+    #（goal crossplatform-support N7，VM 本身 UTC+8 且 TZ=UTC 子进程断言通过）；
+    # sqlite3 CLI 缺席的 windows runner 上两套门控套件按既有 skip 语义跳过。
     env:
       TZ: Asia/Shanghai
     steps:

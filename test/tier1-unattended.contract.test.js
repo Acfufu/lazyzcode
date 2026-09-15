@@ -110,7 +110,7 @@ test("doctor schedule：集中段 fixture → warn 建议窗口行（与 rate-li
     }
     writeLog(join(h, ".zcode", "cli", "log"), lines);
     const r = spawnSync(process.execPath, [CLI, "doctor"], {
-      cwd: d, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: h },
+      cwd: d, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: h, USERPROFILE: h },
     });
     const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
     const sched = line(out, "schedule");
@@ -141,7 +141,7 @@ test("doctor schedule：无集中段→skip；无日志→skip（不捏窗口）
       }),
     ]);
     const r = spawnSync(process.execPath, [CLI, "doctor"], {
-      cwd: d1, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: h1 },
+      cwd: d1, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: h1, USERPROFILE: h1 },
     });
     const sched = line(`${r.stdout ?? ""}${r.stderr ?? ""}`, "schedule");
     assert.ok(sched);
@@ -156,7 +156,7 @@ test("doctor schedule：无集中段→skip；无日志→skip（不捏窗口）
   const d2 = mkdtempSync(join(tmpdir(), "lzy-sched-r2-"));
   try {
     const r = spawnSync(process.execPath, [CLI, "doctor"], {
-      cwd: d2, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: h2 },
+      cwd: d2, encoding: "utf8", timeout: 120_000, env: { ...process.env, HOME: h2, USERPROFILE: h2 },
     });
     const sched = line(`${r.stdout ?? ""}${r.stderr ?? ""}`, "schedule");
     assert.ok(sched);

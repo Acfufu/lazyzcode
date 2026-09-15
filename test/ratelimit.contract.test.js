@@ -230,7 +230,7 @@ test("端到端：双 provider 出 band-by-provider 行（含短名/连贯/无�
       spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
         encoding: "utf8",
         timeout: 60_000,
-        env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+        env: { ...process.env, HOME: d, USERPROFILE: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
       });
     const r = spawnDoctor();
     const line = pbLine(r.stdout);
@@ -287,7 +287,7 @@ test("端到端：doctor cost 行两分支（scratch HOME 无账本→读数缺�
       spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
         encoding: "utf8",
         timeout: 60_000,
-        env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+        env: { ...process.env, HOME: d, USERPROFILE: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
       });
     // 分支一：零限流窗口（仅 started）→ cost 行出且注明读数缺席
     writeLog(d, LOG_DIR[0], [started("2026-09-06T10:00:00.000Z", "c1")]);
@@ -329,7 +329,7 @@ test("端到端（HOME 覆盖）：doctor stdout 出现 rate-limit warn 行；�
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      env: { ...process.env, HOME: d, USERPROFILE: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     const line = rlLine(r.stdout);
     assert.ok(line, `stdout 应含 rate-limit 行：\n${r.stdout}\n${r.stderr}`);
@@ -344,7 +344,7 @@ test("端到端（HOME 覆盖）：doctor stdout 出现 rate-limit warn 行；�
       const r2 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
         encoding: "utf8",
         timeout: 60_000,
-        env: { ...process.env, HOME: empty, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+        env: { ...process.env, HOME: empty, USERPROFILE: empty, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
       });
       const line2 = rlLine(r2.stdout);
       assert.ok(line2, "stdout 应含 rate-limit skip 行");
@@ -503,7 +503,7 @@ test("端到端：全桶皆脏（无净活跃对照）+ 125 分钟连撞 → 措
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      env: { ...process.env, HOME: d, USERPROFILE: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     const line = rlLine(r.stdout);
     assert.ok(line, `stdout 应含 rate-limit 行：\n${r.stdout}\n${r.stderr}`);
@@ -524,7 +524,7 @@ test("端到端：band=null（只有失败事件零 started）→ 第三分支�
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      env: { ...process.env, HOME: d, USERPROFILE: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     const line = rlLine(r.stdout);
     assert.ok(line, `stdout 应含 rate-limit 行：\n${r.stdout}\n${r.stderr}`);
@@ -547,7 +547,7 @@ test("端到端（TZ=UTC）：集中段本地小时渲染确定 + 满配行 ≤3
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d, TZ: "UTC" },
+      env: { ...process.env, HOME: d, USERPROFILE: d, TZ: "UTC" },
     });
     const line = rlLine(r.stdout);
     assert.ok(line, `stdout 应含 rate-limit 行：\n${r.stdout}\n${r.stderr}`);
@@ -716,7 +716,7 @@ test("端到端：doctor transport 行 warn（ENETDOWN+fake-ip 提示）；纯 s
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      env: { ...process.env, HOME: d, USERPROFILE: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     const line = transportLine(r.stdout);
     assert.ok(line, `stdout 应含 transport 行：\n${r.stdout}\n${r.stderr}`);
@@ -732,7 +732,7 @@ test("端到端：doctor transport 行 warn（ENETDOWN+fake-ip 提示）；纯 s
       const r2 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
         encoding: "utf8",
         timeout: 60_000,
-        env: { ...process.env, HOME: d2, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+        env: { ...process.env, HOME: d2, USERPROFILE: d2, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
       });
       const line2 = transportLine(r2.stdout);
       assert.ok(line2, "stdout 应含 transport ok 行");
@@ -747,7 +747,7 @@ test("端到端：doctor transport 行 warn（ENETDOWN+fake-ip 提示）；纯 s
       const r3 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
         encoding: "utf8",
         timeout: 60_000,
-        env: { ...process.env, HOME: empty, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+        env: { ...process.env, HOME: empty, USERPROFILE: empty, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
       });
       const line3 = transportLine(r3.stdout);
       assert.ok(line3, "stdout 应含 transport skip 行");
@@ -891,7 +891,7 @@ test("端到端：doctor content 行 warn 命中零-429 早退分支（纯杀流
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      env: { ...process.env, HOME: d, USERPROFILE: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     const line = contentLine(r.stdout);
     assert.ok(line, `stdout 应含 content 行：\n${r.stdout}\n${r.stderr}`);
@@ -907,7 +907,7 @@ test("端到端：doctor content 行 warn 命中零-429 早退分支（纯杀流
       const r2 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
         encoding: "utf8",
         timeout: 60_000,
-        env: { ...process.env, HOME: d2, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+        env: { ...process.env, HOME: d2, USERPROFILE: d2, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
       });
       const line2 = contentLine(r2.stdout);
       assert.ok(line2, "stdout 应含 content ok 行");
@@ -922,7 +922,7 @@ test("端到端：doctor content 行 warn 命中零-429 早退分支（纯杀流
       const r3 = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
         encoding: "utf8",
         timeout: 60_000,
-        env: { ...process.env, HOME: empty, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+        env: { ...process.env, HOME: empty, USERPROFILE: empty, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
       });
       const line3 = contentLine(r3.stdout);
       assert.ok(line3, "stdout 应含 content skip 行");
@@ -1012,7 +1012,7 @@ test("doctor rate-limit 行截断标注(sparse fixture 真实超限)且行长 �
     const r = spawnSync(process.execPath, [join(ROOT, "cli", "lzy.js"), "doctor"], {
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      env: { ...process.env, HOME: d, USERPROFILE: d, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     const line = rlLine(r.stdout);
     assert.ok(line, `stdout 应含 rate-limit 行:\n${r.stdout}\n${r.stderr}`);

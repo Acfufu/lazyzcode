@@ -36,7 +36,7 @@
     {
       "@type": "Question",
       "name": "钩子完全没反应怎么办？",
-      "acceptedAnswer": { "@type": "Answer", "text": "多半是引擎启动时 PATH 里没有 node（从 Dock 直启桌面端的常见场景）。自带的 run-hook.sh 启动器会自动兜底 nvm/Homebrew；lzy doctor 的 hook-node 行告诉你它解析到了什么。" }
+      "acceptedAnswer": { "@type": "Answer", "text": "多半是引擎启动时 PATH 里没有 node（从 Dock 直启桌面端的常见场景）。自带的 run-hook 启动器会自动兜底——POSIX 走 nvm/Homebrew，Windows 经 run-hook.cmd 孪生走 nvm-windows/Program Files；lzy doctor 的 hook-node 行告诉你它解析到了什么。" }
     },
     {
       "@type": "Question",

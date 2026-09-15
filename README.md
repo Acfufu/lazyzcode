@@ -42,8 +42,10 @@
 
 ## 🚀 Install (10 minutes)
 
-Prerequisites: macOS, the ZCode desktop app (logged in), Node ≥ 22, git
-(evidence binding uses tree hashes, so git is required).
+Prerequisites: macOS, Windows, or Linux; the ZCode desktop app (logged in),
+Node ≥ 22, git (evidence binding uses tree hashes, so git is required). Engine
+layouts are detected on all three platforms (macOS app bundle, Linux deb
+`/opt/ZCode`, Windows per-user `%LOCALAPPDATA%\Programs\ZCode`).
 
 ```bash
 npm i -g lazyzcode   # the lzy CLI + the plugin payload
@@ -129,8 +131,9 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 
 Engine and install state, enabled flags, hook syntax self-check (vm-parsed in a
 worker, including `hooks.json` registry validation), node version floor,
-`hook-node` resolution (the launcher's nvm/homebrew fallback for GUI-launched
-sessions), the `lzy` PATH shim, `.lazyzcode/` state hygiene, a platform notice,
+`hook-node` resolution (the launcher's node fallback chain — nvm/homebrew on
+POSIX, nvm-windows/Program Files on Windows — for GUI-launched sessions), the
+`lzy` PATH shim, `.lazyzcode/` state hygiene, a platform notice,
 GLM plan rate-limit pressure (last 2 days of engine logs, read-only:
 deduplicated 429 turns, fatal turns, longest sustained run, and an empirical
 concurrency band — warn-only, never flips the exit code), transport-death
@@ -250,8 +253,9 @@ cross-checked against the declared pricing-peak table.
   survives.
 - **Hooks do nothing at all:** usually the engine's hook environment lacks
   `node` (ZCode.app launched from the Dock). `lzy doctor`'s `hook-node` line
-  diagnoses it; the bundled `run-hook.sh` launcher falls back to nvm/homebrew
-  automatically. Details:
+  diagnoses it; the bundled `run-hook` launcher (with its `run-hook.cmd` twin
+  on Windows) falls back automatically (nvm/homebrew on POSIX,
+  nvm-windows/Program Files on Windows). Details:
   [docs/diagnostics/2026-09-07-hook-spawn-env.md](docs/diagnostics/2026-09-07-hook-spawn-env.md).
 - **`lzy: command not found`:** install globally (`npm i -g lazyzcode`) or call
   `node <repo>/cli/lzy.js …` directly.
@@ -307,7 +311,7 @@ machine). Zero npm dependencies, Node ≥ 22, pure ESM.
 
 ```
 lazyzcode/
-├── plugin/   → the lazyzcode plugin: skills/zw + skills/init-deep, hooks/ (5, via run-hook.sh), agents/ (3)
+├── plugin/   → the lazyzcode plugin: skills/zw + skills/init-deep, hooks/ (5, via the run-hook launcher), agents/ (3)
 ├── core/     → shared logic: loop, installer, doctor, ratelimit, agentsmd, engine, git, paths, status
 ├── cli/      → the lzy entry (cli/lzy.js) + syntax-check worker
 ├── test/     → contract tests (node:test, zero deps) + GitHub Actions (node 22/24)
@@ -321,8 +325,10 @@ installs plugins and nothing else — enabling goes through the engine's officia
 
 ### Known limitations
 
-- The engine layout detection covers macOS only; other platforms report
-  "not found" instead of guessing.
+- Platform support (ADR-0011): macOS, Windows and Linux are all supported;
+  engine layouts are measured on each, the distribution matrix is
+  arm64-live-verified (Windows 11 / Ubuntu ARM VMs), and x64 coverage follows
+  the official download matrix by documentation.
 - Driving the engine headlessly (`--prompt`) requires the desktop's injected
   model credentials; the mechanism is validated by probes, live headless
   acceptance is deferred.

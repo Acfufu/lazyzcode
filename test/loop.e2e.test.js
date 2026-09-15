@@ -28,7 +28,7 @@ function repo({ git = true } = {}) {
 }
 
 function lzy(args, cwd, opts = {}) {
-  const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", timeout: 60_000, ...opts, env: { ...process.env, HOME: ISOLATED_HOME } });
+  const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", timeout: 60_000, ...opts, env: { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME } });
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 

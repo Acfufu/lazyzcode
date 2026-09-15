@@ -59,7 +59,7 @@ function history(cwd) {
     cwd,
     encoding: "utf8",
     timeout: 60_000,
-    env: { ...process.env, HOME: ISOLATED_HOME },
+    env: { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME },
   });
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }

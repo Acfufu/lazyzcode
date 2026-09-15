@@ -85,7 +85,7 @@ test("CLI：lzy loop cost 无账本降级输出退出码 0（ISOLATED_HOME，零
       cwd: d,
       encoding: "utf8",
       timeout: 60_000,
-      env: { ...process.env, HOME: ISOLATED_HOME, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+      env: { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
     });
     assert.equal(r.status, 0);
     assert.match(`${r.stdout}${r.stderr}`, /计费账本缺席/);

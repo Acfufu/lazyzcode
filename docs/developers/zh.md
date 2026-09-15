@@ -33,7 +33,7 @@ LazyZCode 是边界分明的三块：引擎加载的插件、独占循环状态�
   <g fill="var(--muted)" text-anchor="middle" font-size="11.5">
     <text x="115" y="124">桌面端 · zcode.cjs</text>
     <text x="420" y="88">skills/zw · 编排文本</text>
-    <text x="420" y="107">hooks ×5 · 经 run-hook.sh</text>
+    <text x="420" y="107">hooks ×5 · 经 run-hook 启动器</text>
     <text x="420" y="126">agents ×3 · 只读角色</text>
     <text x="720" y="83">目标循环状态机</text>
     <text x="720" y="193" class="mono" font-weight="400">goal.json · plans · evidence</text>
@@ -153,8 +153,10 @@ finish</code> 拒绝之；<code>lzy step done</code> 在重取证时重新绑定
 
 ## 钩子生命周期
 
-五个钩子骑在引擎的会话时间线上。它们全部经 `plugin/hooks/run-hook.sh`
-拉起：启动器按 PATH → nvm → Homebrew 的顺序解析 `node`，从 Dock 直启的
+五个钩子骑在引擎的会话时间线上。它们全部经 `plugin/hooks/run-hook`
+拉起：POSIX 按 PATH → nvm → Homebrew 顺序解析 `node`（Windows 经 PATHEXT
+把同一清单行解析到 `run-hook.cmd` 孪生，兜底 nvm-windows/Program Files），
+从 Dock 直启的
 ZCode（钩子环境没有 node）也能正常工作；解析结果由 `lzy doctor` 的
 `hook-node` 检查报告。
 
@@ -187,7 +189,7 @@ ZCode（钩子环境没有 node）也能正常工作；解析结果由 `lzy doct
     <text x="780" y="106">请求续跑</text>
     <text x="780" y="123">≤2 次 · 交接放行</text>
   </g>
-  <text x="420" y="165" fill="var(--faint)" text-anchor="middle" font-size="11.5">session-start.js · trigger.js · comment-checker.js · tripwire.js · stop.js — 全部经 run-hook.sh 拉起</text>
+  <text x="420" y="165" fill="var(--faint)" text-anchor="middle" font-size="11.5">session-start.js · trigger.js · comment-checker.js · tripwire.js · stop.js — 全部经 run-hook 启动器拉起</text>
 </svg>
 <figcaption>引擎暴露 7 个钩子事件和共享池 3 次 stop-continuation（后台通知
 同池扣减）；LazyZCode 每会话至多花 2 次，任何异常一律放行。</figcaption>
@@ -233,7 +235,8 @@ Pages 在其上多一层 rouge 语法高亮，其余一致。
 
 ## 兼容性备注
 
-- 引擎布局探测仅 macOS；其他平台明确报「未找到」。
+- 引擎布局探测覆盖 macOS / Windows / Linux 三平台（ADR-0011）；分发矩阵按
+  arm64 实证，x64 以官方下载矩阵文档声明。
 - 本项目瞄准的引擎面：7 个钩子事件、≤3 次 stop-continuation（共享池）、
   原生 AGENTS.md 注入。
 - headless 驱动需要桌面端注入的凭据；机制已经探针验证，活体验收顺延。

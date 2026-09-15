@@ -30,7 +30,7 @@ function repo() {
 const freshHome = () => mkdtempSync(join(tmpdir(), "lzy-t2-home-"));
 
 function mkLzy(home) {
-  const env = { ...process.env, HOME: home };
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
   return (args, cwd, opts = {}) =>
     lzyRaw(args, cwd, { env, ...opts });
 }
@@ -126,7 +126,7 @@ test("证据附件边界：文件缺失拒绝、多附件追加落位、超上�
     assert.equal(two.code, 0);
     const goal = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
     assert.deepEqual(
-      goal.steps.find((s) => s.id === "F1").evidence.files.map((f) => f.path.split("/").pop()),
+      goal.steps.find((s) => s.id === "F1").evidence.files.map((f) => f.path.split(/[\\/]/).pop()),
       // 代数命名（plan-v2 Phase 2-1）：同次取证 seq=1，index 1/2
       ["edge.F1.1.1.png", "edge.F1.1.2.png"],
     );

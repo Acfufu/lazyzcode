@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const HOOKS = join(ROOT, "plugin", "hooks");
@@ -45,7 +45,7 @@ function hook(name, input, cwd) {
     input: JSON.stringify(input),
     encoding: "utf8",
     timeout: 20_000,
-    env: { ...process.env, HOME: ISOLATED_HOME },
+    env: { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME },
     ...(cwd ? { cwd } : {}),
   });
   return { code: r.status, out: (r.stdout ?? "").trim() };
@@ -200,7 +200,7 @@ test("stop：首拉只记快照不计振；有推进 stall/stuck 自愈", () => 
 // ── 兼容与卫生（hook-lib 直测 + 钩子串联） ─────────────────────────────────
 
 test("hook-lib：损坏 JSON 计 0、listClaims 排除 .lock/.tmp 且目录缺失→空集", async () => {
-  const lib = await import(join(HOOKS, "hook-lib.js"));
+  const lib = await import(pathToFileURL(join(HOOKS, "hook-lib.js")).href);
   const d = scratch();
   try {
     assert.deepEqual(lib.listClaims(d), []); // 目录不存在

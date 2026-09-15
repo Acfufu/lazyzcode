@@ -51,3 +51,50 @@
 - **Pages（第 13 步）**：`POST /repos/.../pages` source=main `/docs` 已执行；**首建失败**——Liquid 把 `docs/reviews/` 历史报告表格里的 <code>&#123;&#123;&#123;</code> 当模板语法炸掉整个构建（历史评审从未过 Jekyll；本地预览走 marked 无此面，属双工具链保真缺口）→ `_config.yml` 排除 `reviews`/`evidence` 修复（a0f40c9），guide 指向 `diagnostics/` 的真实链接不受影响。实测：站点与 guide/zh、developers、adr、ablation 深层页全 200，锚点渲染正常。**二课（2026-09-14）：本行先以反引号字面写入三连左花括号，fda2c31 的 Pages 构建即被同一机制再次炸掉——写事故记录本身复发事故；修复=花括号改 HTML 实体书写（Liquid 不可见、浏览器渲染等价）。**
 - **同日附带**：git 历史重整为 22 条英文里程碑提交后公开（重整详情见提交史与备份注记）。
 - **仍未执行**：第 11 步 ZCode 插件市场（另立项）。
+
+## 执行记录（0.0.6，跨平台首发——待实弹）
+
+> 机械件已备（goal v006-release-mechanics，2026-09-15）：版本三体 0.0.6、CHANGELOG 定版、活面清扫完毕。剩余动作全部是用户侧三命令，按序执行。
+
+### Runbook（按序）
+
+1. **push dev**：`git push origin dev`——未推提交随本次上远端，CI 的 windows-latest 腿首跑，其绿判即 ADR-0011 验收线「CI 全硬」的最后悬置格（本地代理证据=Windows VM 套件 0 挂）。
+2. **tag**：`git tag v0.0.6 && git push origin v0.0.6`——tag 待史压缩拍板后落（若先压缩未推段，则打在压缩后 tip；两情形都不需要 force，未推段重排后 push 仍是 fast-forward）。
+3. **publish**：`npm publish`（2FA 走浏览器授权，同 0.0.5）；发后隔离 prefix 冒烟：`npm i -g lazyzcode && lzy --version`（应 0.0.6）+ `lzy doctor`。若 publish 日≠定版日（CHANGELOG 写的 2026-09-15），改 CHANGELOG 一行重提即可。
+4. **GitHub Release**：以本节下方草稿为 notes 创建 `v0.0.6` Release。
+5. **Pages 滞后提醒**：文档站部署自 `main`——本批三平台措辞在并回 main 前不上站（dev 分支模型的既知代价）。
+
+### GitHub Release notes 草稿（v0.0.6）
+
+```markdown
+## Highlights
+
+- **Windows and Linux are now supported.** One hooks manifest line across all three
+  platforms: a POSIX shell runs the extensionless `run-hook` launcher, and on Windows
+  cmd.exe resolves the same line to the `run-hook.cmd` twin via PATHEXT. The engine
+  location table now covers the macOS app bundle, Linux deb installs (`/opt/ZCode`), and
+  Windows per-user installs (`%LOCALAPPDATA%\Programs\ZCode`).
+- **`lzy doctor` is platform-aware**: the `hook-node` check probes the per-OS launcher
+  (explicitly via cmd.exe on Windows, since Node ≥ 18 refuses to spawn `.cmd` directly),
+  and the `platform` row reports the engine-candidate hit per platform instead of the
+  former darwin-only stance.
+- **Windows is a first-class test platform**: the suite passes on win32 (ESM file-URL
+  imports, USERPROFILE-aware isolation, platform-branched launcher contract), and CI
+  gained a `windows-latest` leg alongside ubuntu.
+- **Live acceptance on ARM VMs**: the full chain (install → doctor → engine hook
+  registration `hooks: 5` → goal-loop finish) verified on Windows 11 ARM64 and Ubuntu
+  aarch64 virtual machines.
+- Docs (README, guide, developers pages, llms.txt, FAQ schema) now state three-platform
+  support with the coverage boundary below.
+
+## Coverage boundary
+
+Live evidence covers **arm64** guests (Parallels VMs on an Apple Silicon host). x64
+coverage follows the official ZCode download matrix (three platforms × dual arch) by
+documentation; the detection paths are architecture-independent (environment-based).
+
+## Upgrade
+
+`npm i -g lazyzcode && lzy install` — requires the ZCode desktop app (logged in),
+Node ≥ 22, and git.
+```

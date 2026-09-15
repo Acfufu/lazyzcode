@@ -9,6 +9,7 @@ import { collectStatus } from "./status.js";
 import { readRepoManifest } from "./installer.js";
 import {
   billingDbPath,
+  findEngine,
   installPathFor,
   packageRoot,
   repoPluginDir,
@@ -93,17 +94,27 @@ function checkNode(push) {
 
 // 钩子命令由引擎以自身 env 直接 spawn，其 PATH 未必解析得到 node（2026-09-07 探针实锤：
 // GUI 直启场景引擎 env 无 nvm，裸 `node` ENOENT → 四钩子静默全灭，且钩子侧 fail-open 无从触发）。
-// 本检查三层判读：启动器（run-hook.sh，含 nvm/homebrew fallback）能否解析 → 不可解析=fail；
-// 可解析但当前 PATH 无 node → warn（钩子依赖 fallback）；PATH 直解 → ok。
+// 本检查三层判读：启动器（POSIX run-hook / win32 run-hook.cmd，含 nvm/homebrew fallback）能否解析
+// → 不可解析=fail；可解析但当前 PATH 无 node → warn（钩子依赖 fallback）；PATH 直解 → ok。
 function checkHookNode(push) {
-  const launcher = join(repoPluginDir(), "hooks", "run-hook.sh");
+  const win32 = process.platform === "win32";
+  const launcher = join(repoPluginDir(), "hooks", win32 ? "run-hook.cmd" : "run-hook");
   let resolved = "";
   try {
-    const r = spawnSync("/bin/sh", [launcher, "--print-node"], {
-      shell: false,
-      timeout: 10_000,
-      encoding: "utf8",
-    });
+    // Node ≥18 对 .cmd/.bat 直接 spawn 抛 EINVAL（CVE-2024-27980 加固），win32 必须显式经
+    // cmd.exe（/d 忽略 AutoRun；/s 修引号解析以支持带空格路径，整串加引号走 verbatim 传参）。
+    const r = win32
+      ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `"${launcher}" --print-node`], {
+          shell: false,
+          windowsVerbatimArguments: true,
+          timeout: 10_000,
+          encoding: "utf8",
+        })
+      : spawnSync("/bin/sh", [launcher, "--print-node"], {
+          shell: false,
+          timeout: 10_000,
+          encoding: "utf8",
+        });
     resolved = (r.stdout ?? "").trim();
   } catch {}
   if (!resolved) {
@@ -375,10 +386,16 @@ export function checkLedger(push, cwd) {
 }
 
 function checkPlatform(push) {
-  if (process.platform === "darwin") {
-    push("platform", "ok", "macOS 布局受支持");
+  // 平台感知（ADR-0011 三平台支持）：报引擎候选命中态，而非 darwin 二分立场。
+  const found = findEngine();
+  if (found) {
+    push("platform", "ok", `${process.platform} 引擎候选命中：${found}`);
   } else {
-    push("platform", "warn", `macOS-only 立场：${process.platform} 的引擎定位未支持（paths.js 绝不盲猜）`);
+    push(
+      "platform",
+      "warn",
+      `引擎未找到（桌面端未装？候选见 paths.js engineCandidates；${process.platform}）`,
+    );
   }
 }
 

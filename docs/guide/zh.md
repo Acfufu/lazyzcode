@@ -21,12 +21,13 @@ CLI（目标循环状态机）。
 
 ### 前置条件
 
-- **macOS** —— LazyZCode 目前只做 macOS 的引擎布局探测；其他平台明确报
-  「未找到」，绝不盲猜。
+- **macOS / Windows / Linux** —— LazyZCode 对三平台都做引擎布局探测（macOS
+  应用包、Linux deb `/opt/ZCode`、Windows 每用户 `%LOCALAPPDATA%\Programs\ZCode`），
+  绝不盲猜。
 - **ZCode 桌面端**，已安装并登录。LazyZCode 跑在 ZCode *里面*，没有单独的登录。
 - **Node.js ≥ 22** —— 任意在维护的 LTS。nvm 或 Homebrew 装的都行：当引擎的钩子
-  环境里没有 `node` 时，插件自带的启动器会扫这两个位置（见
-  [钩子与生命周期](#钩子与生命周期)）。
+  环境里没有 `node` 时，插件自带的启动器会扫这两个位置（Windows 经
+  nvm-windows/Program Files 解析；见 [钩子与生命周期](#钩子与生命周期)）。
 - **git** —— 证据绑定用 `git rev-parse HEAD^{tree}`，干活的项目必须是 git 仓库。
 
 ### 安装
@@ -62,11 +63,11 @@ lzy uninstall
 
 | 项 | 建议 | 说明 |
 | --- | --- | --- |
-| 操作系统 | **macOS** | 当下唯一做了引擎布局探测的平台。 |
+| 操作系统 | **macOS / Windows / Linux** | 三平台引擎布局探测全覆盖（ADR-0011）。 |
 | ZCode | 桌面端，已登录 | 钩子与插件都经桌面端引擎装载。 |
 | Node.js | ≥ 22，nvm 或 Homebrew | `lzy doctor` 的 `hook-node` 检查会告诉你钩子实际走哪条解析路径。 |
 | 项目 | git 仓库 | 证据绑定要求存在提交；F 项证据在提交**之后**取证。 |
-| 启动方式 | 均可 | 终端启动或 Dock 直启都行；Dock 场景由 `run-hook.sh` 启动器兜底。 |
+| 启动方式 | 均可 | 终端启动或 Dock 直启都行；Dock 场景由 `run-hook` 启动器兜底。 |
 
 ## 概览
 
@@ -138,7 +139,8 @@ zw 实现一个带测试的 CSV 导出接口
 
 **钩子全无反应。**
 多半是引擎启动时 PATH 里没有 `node`（从 Dock 直启 ZCode.app 的常见场景）。
-自带的 `run-hook.sh` 启动器会自动兜底 nvm/Homebrew；`lzy doctor` 的
+自带的 `run-hook` 启动器会自动兜底——POSIX 走 nvm/Homebrew，Windows 走
+nvm-windows/Program Files；`lzy doctor` 的
 `hook-node` 行告诉你它解析到了什么。详见
 [docs/diagnostics/2026-09-07-hook-spawn-env.md](../diagnostics/2026-09-07-hook-spawn-env.md)。
 
@@ -338,10 +340,13 @@ UTC+8 静态表、人工维护）标注重叠并给出计价安全窗。计价�
 | `stop.js` | Stop | 循环开着时带剩余步骤上下文请求续跑（每会话至多 2 次）；一次性消费交接标记并放行（不耗预算）。 |
 | `tripwire.js` | PostToolUseFailure（`^mcp__`） | 同一 MCP 工具在 10 分钟窗内连续失败 2 次时提示一次（成功不重置连击，TTL 才重臂）——引向换工具或 `lzy loop handoff` 干净收尾；只提示不阻断，用户手动取消不计，仅在有开放目标时生效。 |
 
-五条命令都经 `plugin/hooks/run-hook.sh` 启动：引擎用*自己的*环境拉起钩子，而
-GUI 直启的 ZCode 可能 PATH 里没有 `node`——启动器兜底 nvm（取最高版本）与
-Homebrew 位置，落空则记 `/tmp/lzy-hook-launcher.log` 并以 0 退出（fail-open）。
-`lzy doctor` 的 `hook-node` 检查报告解析结果。
+五条命令都经 `plugin/hooks/run-hook` 启动：引擎用*自己的*环境拉起钩子，而
+GUI 直启的 ZCode 可能 PATH 里没有 `node`。一份清单服务两个平台家族——POSIX
+shell 执行无扩展名的 `run-hook` 脚本，Windows 的 cmd.exe 经 PATHEXT 把同一
+名字解析到 `run-hook.cmd` 孪生。启动器在 POSIX 兜底 nvm（取最高版本）与
+Homebrew 位置（Windows 兜底 nvm-windows 与 Program Files），落空则记
+`/tmp/lzy-hook-launcher.log`（Windows 为 `%TEMP%\lzy-hook-launcher.log`）并以
+0 退出（fail-open）。`lzy doctor` 的 `hook-node` 检查报告解析结果。
 
 ## 限流纪律
 
@@ -430,7 +435,7 @@ lzy version                     打印版本
 | `ledger` | 提交账本巡逻：goal 起点后提交缺 `Goal:` 尾注的比例（warn，不翻退出码） |
 | `waterline` | 近 5h 滚动积分 vs 自参照警戒线（sqlite3 缺席时如实报降级） |
 | `orphan-wake` | 本仓 unbound wake automation 的空转巡逻（无挂载即 skip） |
-| `platform` | 平台提示（仅 macOS 探测） |
+| `platform` | 按平台报引擎候选命中态（命中=ok+引擎路径） |
 | `agents-md` | AGENTS.md 分层覆盖审计 + 地图落后提示（基点后覆盖域 ≥50 提交；根缺失 = `skip`；`lzy agents-md` 详单） |
 | `rate-limit` | 近 2 日引擎日志的 GLM 套餐 429 压力 |
 | `transport` | 传输死亡（请求未达服务端类故障，如 ENETDOWN）：独立分族计数，绝不进并发带数学 |
@@ -460,7 +465,9 @@ LazyZCode **没有配置文件**。一切皆推导：
 
 ## 兼容性与限制
 
-- 引擎探测**仅 macOS**；其他平台报「未找到」，不盲猜。
+- 引擎探测与全安装链支持 **macOS / Windows / Linux** 三平台（ADR-0011）；
+  分发矩阵按 arm64 实证（Windows 11 / Ubuntu ARM 虚拟机活体），x64 覆盖以官方
+  下载矩阵文档声明。
 - **headless**（`--prompt`）驱动引擎需要桌面端注入的模型凭据；机制已经探针
   验证，活体 headless 验收顺延。
 - **每个项目目录一个目标循环**，且已完成的循环占位直到 `lzy loop reset`。

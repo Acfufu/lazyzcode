@@ -3,10 +3,33 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
-## [Unreleased]
+## [0.0.6] - 2026-09-15
 
 ### Added
 
+- **Cross-platform research base**: engine hook-spawn semantics (strict schema with no
+  platform fields; `shell` three-state resolution; `process` launch primitive), official
+  download surface (3 platforms × dual arch at 3.11.2), live VM probes on Windows 11
+  ARM64 + Ubuntu aarch64 (engine layout isomorphism, node/npm trial installs, cmd
+  PATHEXT probe), and a three-break obstacle inventory — `docs/research-crossplatform.md`.
+- **Cross-platform design doc**: full-install-chain options with cost tiers and a single
+  recommendation (C-pair extensionless launcher; engine-candidates table extension;
+  platform-aware doctor line) — `docs/design-crossplatform.md`.
+- **ADR-0011**: 0.0.6 ships three-platform distribution, revising the recon-only
+  decision; acceptance = three-VM live evidence + CI matrix, arm64 evidence boundary
+  declared.
+- **Three-platform distribution support** (ADR-0011 acceptance): launcher C′ pair — an
+  extensionless `run-hook` (POSIX) plus a `run-hook.cmd` twin (Windows resolves the same
+  hooks.json line via PATHEXT, forward-slash engine-shape commands included) — with
+  `run-hook.sh` retired; `engineCandidates()` extended to a three-platform data table
+  (Linux `/opt/ZCode/...`, Windows per-user `%LOCALAPPDATA%\Programs\ZCode\...`, measured
+  on live installs); platform-aware doctor (`hook-node` probes the per-OS launcher, the
+  `platform` row reports the engine-candidate hit); Windows test-mine treatment
+  (file-URL dynamic imports, USERPROFILE-aware test isolation, platform-branched launcher
+  contract, line-ending pins) and a windows-latest CI leg; three-VM live acceptance
+  (doctor, launcher probes, engine `plugins list` hooks:5, full loop chain) on
+  Windows 11 ARM64 and Ubuntu aarch64; bilingual docs declare three-platform support
+  with the arm64-live / x64-by-documentation boundary.
 - **Docs-site SEO/GEO pass**: canonical URLs, Open Graph / Twitter card
   metadata with a 1200×630 social image (`docs/assets/og.png`, source
   `og.svg`), hreflang pairs between the English and Chinese guide/developers

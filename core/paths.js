@@ -1,5 +1,6 @@
 // 路径定位：引擎 zcode.cjs、ZCode CLI 插件根、注册表、仓库内插件载荷。
-// P0 只覆盖 macOS 布局；其他平台由 lzy status 明确报「未找到」，绝不盲猜。
+// 引擎候选按平台数据表（darwin/linux 实测布局，win32 候选见 engineCandidates）；候选全空由
+// lzy status 明确报「未找到」，绝不盲猜。
 import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,12 +64,22 @@ export function hookScriptPaths(rootDir) {
   }
 }
 
+// 各平台引擎候选路径（ADR-0011 三平台支持）：全部为实测布局，绝不盲猜——
+// darwin: /Applications/ZCode.app（实测本机）；linux: /opt/ZCode（deb 布局实测，recon §3.2）；
+// win32: %LOCALAPPDATA%\Programs\ZCode（per-user NSIS 实测，recon §3.2 + goal N5 落位实测）。
 export function engineCandidates() {
   const fromEnv = process.env.LZY_ZCODE_ENGINE;
   // env 设置即整体替换默认候选：让「引擎缺失→手动启用回退」路径可被测试触达（评审 R3-9）。
   if (fromEnv) return [fromEnv];
   if (platform() === "darwin") {
     return ["/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs"];
+  }
+  if (platform() === "linux") {
+    return ["/opt/ZCode/resources/glm/zcode.cjs"];
+  }
+  if (platform() === "win32") {
+    const localAppData = process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local");
+    return [join(localAppData, "Programs", "ZCode", "resources", "glm", "zcode.cjs")];
   }
   return [];
 }

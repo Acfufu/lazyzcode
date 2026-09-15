@@ -1,5 +1,5 @@
 {
-  "description": "LazyZCode goal-loop hooks: trigger-word bootstrap, session bootstrap, Stop continuation (budget-capped, sessionId-isolated), comment-checker advisory (goal-gated, inject-only) and the same-tool failure-streak tripwire (PostToolUseFailure, MCP-only, TTL window, warn-once). All commands run via run-hook.sh so node resolves even when the engine spawns hooks with a PATH that has no node.",
+  "description": "LazyZCode goal-loop hooks: trigger-word bootstrap, session bootstrap, Stop continuation (budget-capped, sessionId-isolated), comment-checker advisory (goal-gated, inject-only) and the same-tool failure-streak tripwire (PostToolUseFailure, MCP-only, TTL window, warn-once). All commands run via the run-hook launcher so node resolves even when the engine spawns hooks with a PATH that has no node; the extensionless sh file serves POSIX and cmd.exe resolves the same line to run-hook.cmd via PATHEXT on Windows.",
   "hooks": {
     "PostToolUse": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" comment-checker.js",
+            "command": "\"${ZCODE_PLUGIN_ROOT}/hooks/run-hook\" comment-checker.js",
             "timeout": 10
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" tripwire.js",
+            "command": "\"${ZCODE_PLUGIN_ROOT}/hooks/run-hook\" tripwire.js",
             "timeout": 10
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" trigger.js",
+            "command": "\"${ZCODE_PLUGIN_ROOT}/hooks/run-hook\" trigger.js",
             "timeout": 10
           }
         ]
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" session-start.js",
+            "command": "\"${ZCODE_PLUGIN_ROOT}/hooks/run-hook\" session-start.js",
             "timeout": 10
           }
         ]
@@ -52,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/sh \"${ZCODE_PLUGIN_ROOT}/hooks/run-hook.sh\" stop.js",
+            "command": "\"${ZCODE_PLUGIN_ROOT}/hooks/run-hook\" stop.js",
             "timeout": 10
           }
         ]

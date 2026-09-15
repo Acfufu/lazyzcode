@@ -23,7 +23,7 @@
 - [ ] CLI 命令表齐全（快照 13 行）：install / sync / status / doctor / 目标循环 / 步级认领 claim / 证据包 export / 交接 handoff / 跨仓清单 list / 目标谱系 history / 积分报表 cost / agents-md / uninstall——新命令进 `cli/lzy.js` 必须同批进双语表。
 - [ ] 「`lzy doctor` 都查什么」段与实跑输出一致（含 rate-limit / transport / content / band-by-provider / cost / schedule / agents-md / claims / ledger / waterline / orphan-wake / hook-node——核验：跑 `lzy doctor` 逐行对描述）。
 - [ ] 「之后的路 / Your next moves」承载记住 + 接着走两拍的入口（快速上手只教循环）。
-- [ ] 架构树与实际一致（skills 2、hooks 5 经 run-hook.sh、agents 3、core 模块清单）。
+- [ ] 架构树与实际一致（skills 2、hooks 5 经 run-hook 启动器[win32 走 run-hook.cmd 孪生]、agents 3、core 模块清单）。
 - [ ] schedule 措辞口径：「限流实测 ∩ 计价高峰对照」（2026-09-10 起，双语 8 处；不许退回纯限流表述）。
 
 ### 首页（`docs/_layouts/home.html`）

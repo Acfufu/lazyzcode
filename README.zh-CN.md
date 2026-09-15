@@ -40,7 +40,9 @@
 
 ## 🚀 安装（10 分钟）
 
-前置：macOS、ZCode 桌面端（已登录）、Node ≥ 22、git（证据绑定 tree hash，必需）。
+前置：macOS / Windows / Linux、ZCode 桌面端（已登录）、Node ≥ 22、git（证据绑定
+tree hash，必需）。三平台引擎布局均已适配探测（macOS 应用包、Linux deb
+`/opt/ZCode`、Windows 每用户 `%LOCALAPPDATA%\Programs\ZCode`）。
 
 ```bash
 npm i -g lazyzcode   # 获得 lzy 命令与插件载荷
@@ -116,8 +118,9 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 ### `lzy doctor` 都查什么
 
 引擎与安装状态、启用标志、钩子语法自检（worker 内 vm 解析，含 `hooks.json`
-注册校验）、node 版本下限、`hook-node` 解析（启动器的 nvm/homebrew 兜底，专治
-GUI 直启场景）、`lzy` PATH shim、`.lazyzcode/` 状态卫生、平台提示、GLM
+注册校验）、node 版本下限、`hook-node` 解析（启动器的 node 回退链——POSIX
+nvm/homebrew、Windows nvm-windows/Program Files，专治 GUI 直启场景）、`lzy`
+PATH shim、`.lazyzcode/` 状态卫生、平台提示、GLM
 套餐限流压力（近 2 日引擎日志只读扫描：去重后的 429 回合、判死回合、最长连撞、
 经验并发带——warn-only，不翻退出码）、传输死亡回合独立分族计数（`transport`：
 请求未达服务端类故障如 ENETDOWN，绝不进并发带数学）、内容审核杀流独立分族计数
@@ -210,7 +213,8 @@ SessionStart 重注入循环现状，新会话接着上次干。
   被 429 判死后等数分钟再 `zw 继续`——状态在 `.lazyzcode/` 不丢。
 - **钩子全无反应：** 十有八九是引擎钩子环境里没有 `node`（从 Dock 直启
   ZCode.app 的常见场景）。`lzy doctor` 的 `hook-node` 行给判定；插件自带
-  `run-hook.sh` 启动器自动兜底 nvm/homebrew。详见
+  `run-hook` 启动器自动兜底（POSIX 走 nvm/homebrew；Windows 经 `run-hook.cmd`
+  孪生走 nvm-windows/Program Files）。详见
   [docs/diagnostics/2026-09-07-hook-spawn-env.md](docs/diagnostics/2026-09-07-hook-spawn-env.md)。
 - **`lzy: command not found`：** 全局安装（`npm i -g lazyzcode`），或
   `node <仓库>/cli/lzy.js …` 直调。
@@ -262,7 +266,7 @@ Node ≥ 22、纯 ESM。
 
 ```
 lazyzcode/
-├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（5 个，经 run-hook.sh）、agents/（3 只）
+├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（5 个，经 run-hook 启动器）、agents/（3 只）
 ├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、agentsmd、engine、git、paths、status
 ├── cli/      → lzy 入口（cli/lzy.js）+ 语法检查 worker
 ├── test/     → 契约测试（node:test 零依赖）+ GitHub Actions（node 22/24）
@@ -275,7 +279,9 @@ lazyzcode/
 
 ### 已知限制
 
-- 引擎布局探测仅覆盖 macOS；其他平台明确报「未找到」，绝不盲猜。
+- 平台支持（ADR-0011）：macOS / Windows / Linux 三平台支持；三平台引擎布局均已
+  实测，分发矩阵按 arm64 实证（Windows 11 / Ubuntu ARM 虚拟机活体）——x64 覆盖
+  以官方下载矩阵文档声明。
 - headless（`--prompt`）驱动引擎需要桌面端注入的模型凭据；机制已由探针验证，
   活体 headless 验收顺延。
 

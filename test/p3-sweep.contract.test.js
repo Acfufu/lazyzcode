@@ -6,11 +6,12 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const HOOKS = join(ROOT, "plugin", "hooks");
-const LAUNCHER = join(HOOKS, "run-hook.sh");
+const LAUNCHER = join(HOOKS, "run-hook"); // POSIX 面（win32 走 run-hook.cmd 孪生，见启动器契约）
+const LAUNCHER_WIN = join(HOOKS, "run-hook.cmd");
 
 const scratch = () => mkdtempSync(join(tmpdir(), "lzy-p3-"));
 const cleanup = (...dirs) => {
@@ -24,7 +25,7 @@ function lzy(args, cwd) {
     cwd,
     encoding: "utf8",
     timeout: 30_000,
-    env: { ...process.env, HOME: ISOLATED_HOME },
+    env: { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME },
   });
 }
 
@@ -117,7 +118,7 @@ test("doctor 疤痕巡逻（ADR-0006）：空壳 loop 目录→warn 指手动 rm
       cwd: d,
       encoding: "utf8",
       timeout: 120_000,
-      env: { ...process.env, HOME: h },
+      env: { ...process.env, HOME: h, USERPROFILE: h },
     });
   const lineOf = (out, name) => out.split(/\r?\n/).find((l) => l.includes(name));
   // 疤痕态：有 .lazyzcode/loop/ 无 goal.json（旧版写命令疤痕）→ warn 且指引手动 rm -r；
@@ -157,7 +158,7 @@ test("doctor 疤痕巡逻豁免 metrics.json（放行计数跨 reset 永续，�
       cwd: d,
       encoding: "utf8",
       timeout: 120_000,
-      env: { ...process.env, HOME: h },
+      env: { ...process.env, HOME: h, USERPROFILE: h },
     });
   const lineOf = (out, name) => out.split(/\r?\n/).find((l) => l.includes(name));
   const d1 = scratch();
@@ -191,14 +192,16 @@ test("注册表字节幂等：重复 upsert 不重写、updatedAt 不漂移（R3
   const d = scratch();
   try {
     const code = `
-      import { upsertRegistryEntry } from ${JSON.stringify(join(ROOT, "core", "installer.js"))};
-      import { installPathFor } from ${JSON.stringify(join(ROOT, "core", "paths.js"))};
+      import { upsertRegistryEntry } from ${JSON.stringify(pathToFileURL(join(ROOT, "core", "installer.js")).href)};
+      import { installPathFor } from ${JSON.stringify(pathToFileURL(join(ROOT, "core", "paths.js")).href)};
       import { readFileSync, statSync, mkdirSync } from "node:fs";
+      import { homedir } from "node:os";
+      import { join as pjoin } from "node:path";
       const m = { name: "lazyzcode", version: "0.0.1" };
       mkdirSync(installPathFor(m), { recursive: true });
       const p = installPathFor(m);
       upsertRegistryEntry(m, p);
-      const rp = process.env.HOME + "/.zcode/cli/plugins/installed_plugins.json";
+      const rp = pjoin(homedir(), ".zcode", "cli", "plugins", "installed_plugins.json");
       const b1 = readFileSync(rp, "utf8");
       const t1 = statSync(rp).mtimeMs;
       upsertRegistryEntry(m, p);
@@ -209,7 +212,7 @@ test("注册表字节幂等：重复 upsert 不重写、updatedAt 不漂移（R3
     `;
     const r = spawnSync(process.execPath, ["--input-type=module", "-e", code], {
       encoding: "utf8",
-      env: { ...process.env, HOME: d },
+      env: { ...process.env, HOME: d, USERPROFILE: d },
       timeout: 30_000,
     });
     assert.equal(r.status, 0, r.stderr);
@@ -225,7 +228,7 @@ test("installPathFor：name/version 白名单校验、非法即清晰报错（R1
   const d = scratch();
   try {
     const code = `
-      import { installPathFor } from ${JSON.stringify(join(ROOT, "core", "paths.js"))};
+      import { installPathFor } from ${JSON.stringify(pathToFileURL(join(ROOT, "core", "paths.js")).href)};
       const attempt = (m) => { try { installPathFor(m); return "no-throw"; } catch (e) { return e.message; } };
       console.log(JSON.stringify({
         badVersion: attempt({ name: "lazyzcode" }),
@@ -235,7 +238,7 @@ test("installPathFor：name/version 白名单校验、非法即清晰报错（R1
     `;
     const r = spawnSync(process.execPath, ["--input-type=module", "-e", code], {
       encoding: "utf8",
-      env: { ...process.env, HOME: d },
+      env: { ...process.env, HOME: d, USERPROFILE: d },
       timeout: 30_000,
     });
     assert.equal(r.status, 0, r.stderr);
@@ -252,7 +255,7 @@ test("sessionId 消毒：恶意 id 不逸出 sessions/ 目录（R1-3）", () => 
   const d = scratch();
   try {
     const code = `
-      import { writeSessionCounter, readSessionCounter } from ${JSON.stringify(join(HOOKS, "hook-lib.js"))};
+      import { writeSessionCounter, readSessionCounter } from ${JSON.stringify(pathToFileURL(join(HOOKS, "hook-lib.js")).href)};
       const evil = "../../evil";
       writeSessionCounter(${JSON.stringify(d)}, evil, 1);
       console.log(JSON.stringify({ read: readSessionCounter(${JSON.stringify(d)}, evil) }));
@@ -307,7 +310,35 @@ test("stop 并发：同会话 6 连发续跑发放不超过 2（R1-4 锁语义�
   }
 });
 
-test("run-hook.sh：--print-node 解析；PATH-less 时 fallback 或 fail-open（分支 A）", () => {
+test("run-hook 启动器：--print-node 解析；PATH-less 时 fallback 或 fail-open（分支 A；win32 走 .cmd 孪生）", () => {
+  if (process.platform === "win32") {
+    // Node ≥18 对 .cmd 直接 spawn 抛 EINVAL（CVE-2024-27980），doctor 同款显式过 cmd
+    const comspec = process.env.ComSpec ?? "cmd.exe";
+    const probe = (args, env) =>
+      spawnSync(comspec, ["/d", "/s", "/c", `"${LAUNCHER_WIN}" ${args.join(" ")}`], {
+        encoding: "utf8",
+        timeout: 10_000,
+        windowsVerbatimArguments: true,
+        ...(env ? { env } : {}),
+      });
+    const r1 = probe(["--print-node"]);
+    assert.equal(r1.status, 0);
+    assert.match(r1.stdout.trim(), /node(\.exe)?$/);
+    const strippedEnv = { PATH: join(process.env.SystemRoot ?? "C:\\Windows", "System32"), SystemRoot: process.env.SystemRoot ?? "C:\\Windows", USERPROFILE: process.env.USERPROFILE ?? "" };
+    const r2 = probe(["--print-node"], strippedEnv);
+    if (r2.status === 0) {
+      assert.match(r2.stdout.trim(), /node(\.exe)?$/);
+      const r3 = probe(["stop.js"], strippedEnv);
+      assert.equal(r3.status, 0);
+      assert.equal(r3.stdout.trim(), "{}");
+    } else {
+      // 回退链彻底落空：exit 0 静默放行（fail-open），绝不阻断
+      const r3 = probe(["stop.js"], strippedEnv);
+      assert.equal(r3.status, 0);
+      assert.equal(r3.stdout.trim(), "");
+    }
+    return;
+  }
   const r1 = spawnSync("/bin/sh", [LAUNCHER, "--print-node"], { encoding: "utf8", timeout: 10_000 });
   assert.equal(r1.status, 0);
   assert.match(r1.stdout.trim(), /node$/);
@@ -354,7 +385,7 @@ test("orphan-wake doctor 检查（plan-v2 Phase 2-4）：无索引 skip/零 wake
       cwd: d,
       encoding: "utf8",
       timeout: 120_000,
-      env: { ...process.env, HOME: h },
+      env: { ...process.env, HOME: h, USERPROFILE: h },
     });
   const d1 = scratch();
   const h1 = scratch(); // 无索引库

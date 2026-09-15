@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const GIT = ["-c", "user.email=t@t.test", "-c", "user.name=t"];
@@ -34,7 +34,7 @@ function commit(dir, message) {
 }
 
 async function run(cwd) {
-  const { checkLedger } = await import(join(ROOT, "core", "doctor.js"));
+  const { checkLedger } = await import(pathToFileURL(join(ROOT, "core", "doctor.js")).href);
   const rows = [];
   checkLedger((name, state, detail) => rows.push({ name, state, detail }), cwd);
   return rows;

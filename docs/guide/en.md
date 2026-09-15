@@ -22,13 +22,15 @@ One package installs both halves of LazyZCode: the `lazyzcode:zw` plugin
 
 ### Prerequisites
 
-- **macOS** — LazyZCode detects the ZCode engine layout on macOS only; other
-  platforms report "not found" instead of guessing.
+- **macOS, Windows, or Linux** — LazyZCode detects the ZCode engine layout on
+  all three (macOS app bundle, Linux deb `/opt/ZCode`, Windows per-user
+  `%LOCALAPPDATA%\Programs\ZCode`); nothing is guessed.
 - **ZCode desktop app**, installed and logged in. LazyZCode runs *inside*
   ZCode; there is no separate login.
 - **Node.js ≥ 22** — any maintained LTS. Installed via nvm or Homebrew both
   work: the bundled hook launcher scans both locations when the engine's hook
-  environment lacks `node` (see [Hooks & lifecycle](#hooks--lifecycle)).
+  environment lacks `node` (Windows resolves via nvm-windows/Program Files;
+  see [Hooks & lifecycle](#hooks--lifecycle)).
 - **git** — evidence binding uses `git rev-parse HEAD^{tree}`, so the project
   you work in must be a git repository.
 
@@ -69,11 +71,11 @@ official `plugins uninstall` path.
 
 | Item | Recommendation | Notes |
 | --- | --- | --- |
-| Operating system | **macOS** | The only platform with engine layout detection today. |
+| Operating system | **macOS, Windows, or Linux** | Engine layout detection covers all three (ADR-0011). |
 | ZCode app | Desktop, logged in | Hooks and the plugin load through the desktop engine. |
 | Node.js | ≥ 22, via nvm or Homebrew | The `hook-node` doctor check reports exactly which resolution path your hooks will use. |
 | Project | A git repository | Evidence binding requires commits to exist; F-item evidence is captured **after** a commit. |
-| Launch style | Either | Launching ZCode from the terminal or the Dock both work; the Dock case is handled by the `run-hook.sh` launcher. |
+| Launch style | Either | Launching ZCode from the terminal or the Dock both work; the Dock case is handled by the `run-hook` launcher. |
 
 ## Overview
 
@@ -160,8 +162,9 @@ budget. See [Rate-limit discipline](#rate-limit-discipline).
 
 **My hooks do nothing at all.**
 Your engine was probably launched without `node` on its PATH (common when
-ZCode.app starts from the Dock). The bundled `run-hook.sh` launcher resolves
-node from nvm/Homebrew automatically; `lzy doctor`'s `hook-node` line tells
+ZCode.app starts from the Dock). The bundled `run-hook` launcher resolves
+node automatically — nvm/Homebrew on POSIX, nvm-windows/Program Files on
+Windows; `lzy doctor`'s `hook-node` line tells
 you what it found. Details in
 [docs/diagnostics/2026-09-07-hook-spawn-env.md](../diagnostics/2026-09-07-hook-spawn-env.md).
 
@@ -418,10 +421,14 @@ findings come from the repository, not from the main agent's assumptions.
 | `stop.js` | Stop | Requests continuation (max 2/session) with the remaining-steps context while a loop is open; consumes a registered handoff marker once and releases without spending the budget. |
 | `tripwire.js` | PostToolUseFailure (`^mcp__`) | Warns once when the same MCP tool fails twice inside a 10-minute window (successes don't reset the streak — the TTL does). Steers toward switching tools or closing cleanly via `lzy loop handoff`; inject-only, isInterrupt-exempt, only active with an open goal. |
 
-All five commands route through `plugin/hooks/run-hook.sh`: the engine spawns
+All five commands route through `plugin/hooks/run-hook`: the engine spawns
 hooks with *its own* environment, and a GUI-launched ZCode may have no `node`
-on PATH — the launcher falls back to nvm (highest version) and Homebrew
-locations, logs to `/tmp/lzy-hook-launcher.log`, and exits 0 (fail-open) if
+on PATH. One manifest line serves both platform families — POSIX shells
+execute the extensionless `run-hook` script, while on Windows cmd.exe resolves
+the same name to the `run-hook.cmd` twin via PATHEXT. The launcher falls back
+to nvm (highest version) and Homebrew locations on POSIX (nvm-windows and
+Program Files on Windows), logs to `/tmp/lzy-hook-launcher.log`
+(`%TEMP%\lzy-hook-launcher.log` on Windows), and exits 0 (fail-open) if
 everything is missing. `lzy doctor`'s `hook-node` check reports the resolved
 path.
 
@@ -528,7 +535,7 @@ do.
 | `ledger` | Commit-ledger patrol: share of goal-era commits missing the `Goal:` trailer (warn, never flips the exit code) |
 | `waterline` | Rolling 5-hour point burn vs the self-calibrated nudge threshold (degraded note when sqlite3 is absent) |
 | `orphan-wake` | Idle-burn patrol for unbound wake automations anchored here (skip when none mounted) |
-| `platform` | Platform notice (macOS-only detection) |
+| `platform` | Engine-candidate notice per platform (ok + path when the desktop engine is found) |
 | `agents-md` | Layered AGENTS.md coverage audit + staleness hint (≥50 covered-dir commits since the map's last commit; skip when no root file; `lzy agents-md` for details) |
 | `rate-limit` | GLM plan 429 pressure from the last 2 days of engine logs |
 | `transport` | Transport deaths (request-never-reached-server failures, e.g. ENETDOWN): counted as a separate family, never fed into the concurrency math |
@@ -559,8 +566,10 @@ Privacy: zero telemetry; diagnostics are computed locally and printed locally.
 
 ## Compatibility & limitations
 
-- **macOS only** for engine detection; other platforms report "not found"
-  rather than guessing.
+- **macOS, Windows, and Linux** are supported for engine detection and the
+  full install chain (ADR-0011); the distribution matrix is arm64-live-verified
+  (Windows 11 / Ubuntu ARM VMs), x64 coverage follows the official download
+  matrix by documentation.
 - **Headless** driving of the engine (`--prompt`) needs the desktop's injected
   model credentials; the mechanism is probe-validated, live headless
   acceptance is deferred.

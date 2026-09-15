@@ -1,0 +1,68 @@
+{
+  "$schema_note": [
+    "LazyZCode 自建插件市场索引（配方沿 OMZ 活体模板 djt889/OhMyZcode 同构）。",
+    "引擎按 .claude-plugin/marketplace.json → marketplace.json 顺序发现本文件，路径与文件名不可改。",
+    "用户侧一次 /plugin marketplace add Acfufu/lazyzcode，此后搜索/安装/更新/启用全走引擎自己的",
+    "installMarketplacePlugin——与官方市场同一条代码路径。",
+    "",
+    "source 用 github 而非 git：引擎 resolveRepositoryPluginSource 先试 GitHub tarball API",
+    "（requireSingleRoot + stripRoot，无需本机 git），401/403/404 或 submodule/LFS 才回退 git clone。",
+    "path 指向本仓 plugin/ 子目录（stripRoot 后 join+validate，引擎源码实锤支持子目录载荷）。",
+    "ref 钉发布 tag（可复现锚点）；sha 字段有意不写——本文件与载荷同仓，写自身 commit sha 是自指，",
+    "无法在提交前得知；引擎 pin = sha ?? ref，tag 已承担该角色。若将来拆独立市场仓再补 sha。",
+    "",
+    "每次发布须同步 bump plugins[].version 与 ref（见 docs/release-checklist.md 第 11 步）。",
+    "注意：市场路只装插件层（技能/钩子/代理）；lzy CLI 仍来自 npm。"
+  ],
+  "name": "lazyzcode-marketplace",
+  "version": 1,
+  "description": "LazyZCode: the discipline layer for ZCode — plan, execute, take evidence, never stop half-done.",
+  "description_i18n": {
+    "en": "LazyZCode: the discipline layer for ZCode — plan, execute, take evidence, never stop half-done.",
+    "zh-CN": "LazyZCode：ZCode 的纪律层——计划、执行、拿证据、不做完不停。"
+  },
+  "owner": {
+    "name": "Acfufu",
+    "url": "https://github.com/Acfufu/lazyzcode"
+  },
+  "plugins": [
+    {
+      "name": "lazyzcode",
+      "version": "0.0.6",
+      "displayName": "LazyZCode",
+      "displayName_i18n": {
+        "zh-CN": "LazyZCode"
+      },
+      "description": "A goal loop with a decision-complete plan gate, tree-hash-bound evidence, and a bounded Stop pull-back. Ships two skills (zw, init-deep), five hooks, three read-only agents. The loop state machine needs the lzy CLI: npm i -g lazyzcode.",
+      "description_i18n": {
+        "en": "A goal loop with a decision-complete plan gate, tree-hash-bound evidence, and a bounded Stop pull-back. Ships two skills (zw, init-deep), five hooks, three read-only agents. The loop state machine needs the lzy CLI: npm i -g lazyzcode.",
+        "zh-CN": "带决策完备计划门、tree-hash 证据绑定与有界 Stop 拉回的目标循环。随附两个技能（zw、init-deep）、五个钩子、三只只读代理。循环状态机需要 lzy CLI：npm i -g lazyzcode。"
+      },
+      "author": {
+        "name": "Acfufu",
+        "url": "https://github.com/Acfufu/lazyzcode"
+      },
+      "homepage": "https://github.com/Acfufu/lazyzcode",
+      "category": "productivity",
+      "tags": ["discipline", "workflow", "goal-loop", "evidence", "code-review"],
+      "examplePrompts": [
+        "zw implement pagination for the /users endpoint",
+        "zw 继续",
+        "lazyzcode:init-deep"
+      ],
+      "examplePrompts_i18n": {
+        "zh-CN": [
+          "zw 给 /users 接口加分页",
+          "zw 继续",
+          "lazyzcode:init-deep"
+        ]
+      },
+      "source": {
+        "source": "github",
+        "repo": "Acfufu/lazyzcode",
+        "ref": "v0.0.6",
+        "path": "plugin"
+      }
+    }
+  ]
+}

@@ -3,6 +3,25 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **`lzy update` command** (ADR-0012): one-command upgrade — probes the registry
+  with `npm view`, compares against the globally installed package, runs
+  `npm install -g lazyzcode@latest`, then spawns a **fresh child process** from
+  the new install path to run `lzy sync` (an in-process sync would deploy the
+  new payload with the old in-memory code). Already-latest exits without
+  installing; npm-missing and every mid-chain failure print recovery hints
+  (manual two-step; the upgraded-but-not-synced mid-state names itself).
+  npm spawns use the standing safe shape (literal argv + `shell:false`; win32
+  via `cmd.exe /d /s /c`, CVE-2024-27980 hardened shape).
+- **Bilingual README upgrade section** (`### Upgrade` / `### 升级`): documents
+  `lzy update`, the manual two steps for 0.0.6-and-earlier, and why two steps
+  are required (live sessions read the engine cache's versioned directory, so a
+  bare npm upgrade is invisible to sessions; `enabledPlugins` survives version
+  bumps with no re-enable). `lzy update` row added to both CLI tables.
+
 ## [0.0.6] - 2026-09-15
 
 ### Added

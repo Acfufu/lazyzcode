@@ -96,6 +96,26 @@ lzy doctor           # 深度本地诊断，全程离线
 放大产出的不是模型本身，是那份对的外架。lazyzcode 是同一思路在软件工程里
 的样子。
 
+### 升级
+
+0.0.7 起一条命令：
+
+```bash
+lzy update           # npm 拉最新包，再由新装路径的全新子进程执行 lzy sync
+```
+
+0.0.6 及更早版本，用手动两步升级（也正是 `lzy update` 自动化的内容）：
+
+```bash
+npm i -g lazyzcode@latest && lzy sync
+```
+
+为什么必须是两步：真实会话读的是引擎缓存里的版本目录
+（`~/.zcode/cli/plugins/cache/.../<版本>/`），不是 npm 包目录——单独 npm 升级对
+会话不生效。`lzy sync` 把新载荷原子部署进新缓存目录并更新注册表。已开启的会话
+不受影响，新会话生效。启用态按插件 id 挂在 `enabledPlugins` 上，跨版本不变，
+免重 enable。
+
 ### 卸载
 
 ```bash
@@ -108,6 +128,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | --- | --- | --- |
 | `install` | `lzy install` | 插件载荷落位引擎缓存 + 注册表 + 启用（只走官方路径；`config.json` 零写入） |
 | `sync` | `lzy sync [--watch]` | 改完代码热重载载荷；`--watch` 持续监听 |
+| `update` | `lzy update` | 一键升级：npm 拉最新包，再由新装路径的全新子进程执行 `lzy sync`（已是最新则免装；任一环失败均给手动两步指路） |
 | `status` | `lzy status` | 快速体检；退出码 0 = 无 fail 级检查（warn/skip 不影响） |
 | `doctor` | `lzy doctor` | 全量诊断——见下 |
 | 目标循环 | `lzy loop register <slug> --title "…"` → `lzy loop plan <计划.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | 状态机：注册 → 计划门 → 执行 → 证据 → 终验门 |

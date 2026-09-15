@@ -110,6 +110,29 @@ and three consumer subscriptions proved Vinogradov's three-primes theorem in
 three days — what multiplied the output was not the model alone but the right
 scaffold. LazyZCode is that idea for software engineering.
 
+### Upgrade
+
+From 0.0.7 on, one command does it:
+
+```bash
+lzy update           # npm pulls the latest package, then a fresh child process runs lzy sync
+```
+
+On 0.0.6 or earlier, upgrade with the manual two steps (which is exactly what
+`lzy update` automates):
+
+```bash
+npm i -g lazyzcode@latest && lzy sync
+```
+
+Why two steps: live sessions read the plugin payload from the engine cache's
+versioned directory (`~/.zcode/cli/plugins/cache/.../<version>/`), not from the
+npm package — so upgrading the npm package alone changes nothing in your
+sessions. `lzy sync` atomically deploys the new payload into a new cache
+directory and updates the registry. Running sessions are unaffected; new
+sessions pick up the new version. Your enable state hangs off the plugin id in
+`enabledPlugins`, so it survives version bumps — no re-enable needed.
+
 ### Uninstall
 
 ```bash
@@ -122,6 +145,7 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | --- | --- | --- |
 | `install` | `lzy install` | Deploy the plugin payload to the engine cache, register, and enable (official engine path only; zero `config.json` writes) |
 | `sync` | `lzy sync [--watch]` | Hot-reload the payload after edits; `--watch` keeps syncing on change |
+| `update` | `lzy update` | One-command upgrade: npm pulls the latest package, then a fresh child process from the new install runs `lzy sync` (skips when already latest; manual two-step hints on any failure) |
 | `status` | `lzy status` | Quick health check; exit 0 = no fail-level findings (warn/skip do not flip it) |
 | `doctor` | `lzy doctor` | Full diagnostics — see below |
 | Goal loop | `lzy loop register <slug> --title "…"` → `lzy loop plan <plan.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | The state machine: register → plan gate → execute → evidence → finish gate |

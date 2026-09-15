@@ -29,9 +29,9 @@
 
 10. 三处 gitignored 的 `.mimosa/`（`plugin/hooks/`、`test/spike/four-styles/`、`docs/reports/`）是守卫运行态：**绝不整目录拷贝**进任何发布载体。tarball 已验证不含；zip/网盘分发前 `find . -name ".mimosa"` 复查。
 
-## ZCode 插件市场（可选，另立项）
+## ZCode 插件市场（市场 B 路——物料已落地，2026-09-16）
 
-11. 按引擎市场清单格式另立 manifest 并提 PR（P4 报告口径；cache 装载只认 `.zcode/.claude/.codex` 三风格）。
+11. manifest 已入库：`.claude-plugin/marketplace.json`（goal v006-closeout）。配方：引擎按 `.claude-plugin/marketplace.json` → `marketplace.json` 顺序发现；条目 `source = {source:"github", repo:"Acfufu/lazyzcode", ref:"<发布 tag>", path:"plugin"}`——tarball API 免本机 git、`pin = sha ?? ref`（同仓 manifest 有意不写 sha）、`path` 指向 `plugin/` 子目录（stripRoot 后 join 校验，引擎实锤）。**每发布同步**：`plugins[].version` 与 `ref` 改成新 tag，与版本三体 bump 同一批提交。活体取证配方：引擎 app-server stdio 发 `plugins/marketplace/add`（信封 `{id, method, params}`，`workspace = {workspacePath, workspaceKey}`，`source = "Acfufu/lazyzcode"`）→ `plugins/overview` 的 availablePlugins 列出 lazyzcode 即绿；红半 = push 前同调用报 `Marketplace manifest not found in GitHub repo`。**runbook 订单 lesson（0.0.6 实测）**：tag 须最后切、publish 从 tagged 树发起——0.0.6 的 tag 落在尾随修复 4 提交之前（test-only + 行尾 renormalize，已核实零运行时 delta，但属流程瑕疵）。
 
 ## 版本流转纪律
 
@@ -98,3 +98,8 @@ documentation; the detection paths are architecture-independent (environment-bas
 `npm i -g lazyzcode && lzy install` — requires the ZCode desktop app (logged in),
 Node ≥ 22, and git.
 ```
+
+### 补记（2026-09-16，goal v006-closeout）
+
+- 上节 Runbook 五步已全部实弹收官（2026-09-15：push/tag v0.0.6/GitHub Release/npm publish，registry latest=0.0.6，CI 四腿含 windows stdin 修复 eedb25c 全绿）。
+- 第 11 步市场物料落地：`.claude-plugin/marketplace.json` 入库 + README 双语市场安装路径；活体取证与 runbook 订单 lesson 记在第 11 步。

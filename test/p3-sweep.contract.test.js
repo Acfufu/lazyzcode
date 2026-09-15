@@ -319,6 +319,7 @@ test("run-hook 启动器：--print-node 解析；PATH-less 时 fallback 或 fail
         encoding: "utf8",
         timeout: 10_000,
         windowsVerbatimArguments: true,
+        input: "",
         ...(env ? { env } : {}),
       });
     const r1 = probe(["--print-node"]);

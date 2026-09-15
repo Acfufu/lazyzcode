@@ -4,6 +4,7 @@
 import { resolve } from "node:path";
 import { watch } from "node:fs";
 import { install, sync, uninstall, readRepoManifest } from "../core/installer.js";
+import { createUpdater } from "../core/update.js";
 import { collectStatus } from "../core/status.js";
 import { collectDoctor } from "../core/doctor.js";
 import { createEngineCli } from "../core/engine.js";
@@ -144,6 +145,15 @@ async function cmdUninstall() {
       : `  ➖ 未发现 ${r.id} 的安装物（注册表与缓存均无记录，无改动）`,
   );
   for (const s of r.steps) console.log(`  · ${s}`);
+}
+
+// 一键升级（ADR-0012）：npm 拉最新包，再由新装路径的全新子进程执行 sync——
+// 本进程还持旧代码，进程内 sync 是「旧逻辑部署新载荷」，绝不做。
+async function cmdUpdate() {
+  const r = await createUpdater().update();
+  console.log("lzy update");
+  for (const line of r.lines) console.log(`  ${line}`);
+  process.exitCode = r.code !== 0 ? r.code : process.exitCode;
 }
 
 // ── 目标循环（lzy loop / lzy step）──────────────────────────────────────────
@@ -357,6 +367,8 @@ function printHelp() {
 安装管理：
   lzy install      安装并启用插件（落位引擎缓存 + 注册表 + 官方 plugins enable）
   lzy sync         重新部署仓库 plugin/ 载荷（热重载；新会话生效）；--watch 持续监听
+  lzy update       一键升级：npm 拉 latest 包，再由新装路径的全新子进程执行 sync
+                    （已是最新则免装；npm 缺席/中途失败均给手动两步指路）
   lzy status       检查引擎/安装/启用/装载/目标循环状态（只读；退出码 0=无 fail 级检查，warn/skip 不影响）
   lzy doctor       深度本地诊断：status 全套 + hook 语法自检/node 下限/lzy 解析/状态卫生/限流体检
   lzy uninstall    卸载插件（优先官方 plugins uninstall）
@@ -406,6 +418,11 @@ async function main() {
       return cmdInstall();
     case "sync":
       return cmdSync(args);
+    case "update":
+      if (args.length > 1) {
+        throw new LoopError("lzy update 不接参数（一键升级：npm 拉 latest 包 + 新装子进程 sync）");
+      }
+      return cmdUpdate();
     case "status":
       return cmdStatus();
     case "doctor":

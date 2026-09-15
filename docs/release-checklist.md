@@ -103,3 +103,38 @@ Node ≥ 22, and git.
 
 - 上节 Runbook 五步已全部实弹收官（2026-09-15：push/tag v0.0.6/GitHub Release/npm publish，registry latest=0.0.6，CI 四腿含 windows stdin 修复 eedb25c 全绿）。
 - 第 11 步市场物料落地：`.claude-plugin/marketplace.json` 入库 + README 双语市场安装路径；活体取证与 runbook 订单 lesson 记在第 11 步。
+
+## 执行记录（0.0.7，`lzy update` 首发——机械件已备，publish 留用户）
+
+> 机械件（2026-09-16，维护者指令直发，未走 goal loop——槽位被 done 态 gpt-v3-feedback-triage 占用，未动用户记录）：版本三体 0.0.7、市场 manifest `version`/`ref` 随发布同步（第 11 步）、CHANGELOG 定版、AGENTS.md §2 状态行跟齐。本节提交不带 `Goal:` 尾注（账本巡逻预期一条 warn）。
+
+### Runbook（按序）
+
+1. **push main**（发布提交与 GPT V3 triage docs 提交随行上远端）。
+2. **CI 全绿再 tag**（0.0.6 lesson：tag 最后切）：四腿（node 22/24 × ubuntu/windows）全绿后 `git tag v0.0.7 && git push origin v0.0.7`。
+3. **GitHub Release**：以本节下方草稿为 notes 创建 `v0.0.7`。
+4. **publish（用户手动）**：`npm publish`（2FA 浏览器授权，同 0.0.5/0.0.6）；publish 日≠2026-09-16 则改 CHANGELOG 一行重提。
+5. **发后核验**：registry `dist-tag latest=0.0.7`；隔离 prefix 冒烟 `npm i -g lazyzcode && lzy --version`（应 0.0.7）+ `lzy doctor`；真机狗粮 `lzy update`（本机全局 0.0.6 → 0.0.7，升级链活体）。
+6. **win32 三 VM 实弹**（0.0.7 特有，publish 后才可做——升级目标必须是已发布版本）：Win11 ARM64 装 npm 0.0.6 → `lzy update` 应经 ComSpec 链升 0.0.7 并子进程 sync（ADR-0012 更新链的 win32 全链活体验收，v007 顺延件）。
+
+### GitHub Release notes 草稿（v0.0.7）
+
+```markdown
+## Highlights
+
+- **`lzy update` — one command to upgrade.** Probes the registry with `npm view`,
+  upgrades the global package, then re-runs `sync` from a **fresh child process**
+  spawned out of the new install (an in-process sync would deploy the new payload
+  with the old in-memory code). Already-latest exits without installing; every
+  mid-chain failure prints a recovery hint, and the upgraded-but-not-synced
+  mid-state names itself.
+- **Bilingual upgrade docs**: what `lzy update` automates, why live sessions need
+  the extra `sync` step (they read the engine cache's versioned directory, so a
+  bare npm upgrade is invisible to them), and why `enabledPlugins` survives
+  version bumps without re-enabling.
+
+## Upgrade
+
+New: `lzy update`. On 0.0.6 or earlier: `npm i -g lazyzcode && lzy sync`.
+Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
+```

@@ -138,6 +138,9 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | Tier | `lzy loop tier heavy` | LIGHT→HEAVY 单向升级；HEAVY 无 PASS 评审采纳被机器拒（采纳时点门） |
 | 步级认领 | `lzy loop claim [<id>] [--release]` | 同目标多工人的匿名步级认领：48h 互斥、按计划 `deps:` 依赖边做阻塞校验、`step done` 自动释放；无参列可认领集 |
 | 证据包 | `lzy loop export` | 重导出证据包（`<slug>.report.md`）；`finish` 时亦自动归档 |
+| 红绿 manifest | `lzy evidence red <Fid> --evidence … · waive-red <Fid> --reason · list` | 双证据机器账本：红半绑自己的面（缺省复合指纹、`--surface` 外部表面）；waive=一行豁免的机器形态；绿半 `step done` 即镜像；`list` 读按 F manifest |
+| 失效 DAG | `lzy dag dependents <id|surface>` | 跨 reset 中央账本：「什么依赖 X」；verify/finish 从它判证据时效——损坏即 fail-closed 拒（ADR-0014） |
+| 机器证明 | `lzy attest comparator --file <json>` | 对照判决落机器 attestation（HEAVY finish 强制现行 MATCH）；每次 finish 落 LOOP_COMPLETE 终验证明 |
 | 交接 | `lzy loop handoff --snapshot <文件>` | 登记干净交接——下个 Stop 放行一次，不消耗续跑预算 |
 | 跨仓清单 | `lzy loop list [--root <目录>]` | 只读扫同级仓的目标循环（状态/进度/认领/新鲜度/存根）；匿名放行计数跨 reset 永续 |
 | 目标谱系 | `lzy loop history` | 只读并集证据包 ∪ salvage 存根 ∪ git 尾注——每个历史目标的状态、提交数与最近活动 |

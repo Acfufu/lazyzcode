@@ -530,6 +530,8 @@ tool). Aliases are equal — `zw` is the primary.
 | `lzy loop status` | progress, next step, evidence freshness |
 | `lzy step done <ID> [--note] [--evidence] [--evidence-file …]` | complete a step (F requires evidence; files bound by sha256) |
 | `lzy loop verify` | evidence freshness report (exit 1 when stale/unbound evidence **or no goal exists**) |
+| `lzy evidence red <Fid> · waive-red <Fid> --reason · list` | dual-evidence ledger: record the red half (own surface), the one-line exemption's machine form, and the per-F manifest view |
+| `lzy dag dependents <id|surface>` | "what depends on X" against the central invalidation DAG (read-only) |
 | `lzy attest comparator --file <json>` | record comparator verdicts (schema `{slug, items:[{fid, verdict, basis}]}`; HEAVY finish enforces current MATCH) |
 | `lzy loop finish` | final gate: all done + fresh evidence + all {host}∪subjects trees clean (+ HEAVY: MATCH attestation); auto-archives the evidence bundle and writes the final attestation |
 | `lzy loop export` | re-export the evidence bundle to `.lazyzcode/evidence/<slug>.report.md` |

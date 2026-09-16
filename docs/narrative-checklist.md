@@ -62,7 +62,7 @@
 | guide 锚点 | en 21 + zh 21 | `grep -c '^## ' docs/guide/en.md docs/guide/zh.md` + docs-preview 锚点检查 |
 | 首页特性卡 | 6 | `grep -c 'class="feature"' docs/_layouts/home.html` |
 | 技能数 | 2 | `ls plugin/skills/`；对双语 README 自述句 |
-| CLI 表行 | guide 快起栅栏 18/语言 · README 表 16/语言 · 帮助枚举 15 loop 族（handoff 豁免，canonical 16；安装管理块 6 条含 update） | 三面分记（2026-09-14 R4 订正：旧「14/语言」指代不明；R6 订正帮助枚举字面值）；2026-09-16 v008 刷新：guide 快起栅栏 14→18（subject add/remove/list+tier）、README 表 14→16（证据主体 subject+Tier 两行）、帮助枚举 13→15/canonical 14→16（subject/tier 入列）；guide 双语快起栅栏互等、README 双语表互等；handoff 文档面在场而帮助枚举无（豁免记账，基线前已存在） |
+| CLI 表行 | guide 快起栅栏 18/语言 · README 表 16/语言 · 帮助枚举 15 loop 族（handoff 豁免，canonical 16；安装管理块 6 条含 update） | 三面分记（2026-09-14 R4 订正：旧「14/语言」指代不明；R6 订正帮助枚举字面值）；2026-09-16 v008 刷新：guide 快起栅栏 14→18（subject add/remove/list+tier）、README 表 14→16（证据主体 subject+Tier 两行）、帮助枚举 13→15/canonical 14→16（subject/tier 入列）；guide 双语快起栅栏互等、README 双语表互等；handoff 文档面在场而帮助枚举无（豁免记账，基线前已存在）；2026-09-17 v009 刷新：guide 快起栅栏 18→21（evidence red/dag dependents/attest comparator 三行）、README 表 16→19（红绿 manifest/失效 DAG/机器证明三行）、帮助枚举 loop 族 15→17/canonical 16→18+新增证据账本块 4 条与对照 attestation 块 1 条（三面分记仍互等） |
 | doctor 检查清单 | 见 README doctor 段 | `lzy doctor` 实跑逐行对描述 |
 
 ## 收尾验证链（必跑）

@@ -156,6 +156,9 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | Tier | `lzy loop tier heavy` | One-way LIGHT→HEAVY upgrade; HEAVY adoption without a PASS review is machine-rejected (adoption-time gate) |
 | Step claims | `lzy loop claim [<id>] [--release]` | Anonymous per-step claiming for same-goal multi-worker runs: 48h mutex, blocked-step checks against plan `deps:` edges, `step done` auto-releases; bare form lists claimable steps |
 | Evidence bundle | `lzy loop export` | Re-export the evidence bundle (`<slug>.report.md`); also auto-archived at `finish` |
+| Red-green manifest | `lzy evidence red <Fid> --evidence … · waive-red <Fid> --reason · list` | Dual-evidence machine ledger: the red half binds its own surface (composite fingerprint by default, `--surface` for external); waive is the one-line exemption's machine form; greens mirror at `step done`; `list` reads the per-F manifest |
+| Invalidation DAG | `lzy dag dependents <id|surface>` | The central cross-reset ledger: "what depends on X"; verify/finish judge evidence freshness from it — fail-closed on corruption (ADR-0014) |
+| Attestations | `lzy attest comparator --file <json>` | Comparator verdicts as machine attestations (HEAVY finish enforces a current MATCH); every finish writes the LOOP_COMPLETE final attestation |
 | Handoff | `lzy loop handoff --snapshot <file>` | Register a clean handoff — the next Stop releases once, without spending the continue budget |
 | Cross-repo list | `lzy loop list [--root <dir>]` | Read-only sweep of sibling repos' goal loops (status, progress, claims, staleness, salvage stubs); anonymous release counters survive reset |
 | Goal lineage | `lzy loop history` | Read-only union of evidence bundles, salvage stubs, and git ledger trailers — every past goal with status, commit count, and latest activity |

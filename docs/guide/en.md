@@ -229,6 +229,9 @@ lzy loop claim [<id>] [--release]        # per-step claim (anonymous, 48h mutex)
 lzy step done <ID> [--note "…"] [--evidence "…"] [--evidence-file <file>]…
 lzy loop status                         # progress, next step, evidence freshness, tier/subjects/snapshot
 lzy loop verify                         # evidence freshness audit (exit 1 = stale/unbound); prints per-tree head/dirty lines
+lzy evidence red <Fid> --evidence "…"   # red half on its own surface (waive-red --reason = machine exemption)
+lzy dag dependents <id|surface>         # "what depends on X" (central ledger, read-only)
+lzy attest comparator --file <json>     # comparator verdicts as attestation (HEAVY finish enforces MATCH)
 lzy loop finish                         # the final gate: fresh composite fingerprint + all trees clean; auto-archives
 lzy loop export                         # re-export the evidence bundle
 lzy loop handoff --snapshot <file>      # register a clean handoff; next Stop releases once

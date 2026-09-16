@@ -195,6 +195,9 @@ lzy loop claim [<id>] [--release]        # 步级认领（匿名、48h 互斥）
 lzy step done <ID> [--note "…"] [--evidence "…"] [--evidence-file <文件>]…
 lzy loop status                         # 进度、下一步、证据新鲜度、tier/subjects/快照
 lzy loop verify                         # 证据时效审计（退出码 1 = 过期/未绑定）；逐树头哈希/脏态行
+lzy evidence red <Fid> --evidence "…"   # 红半绑自己的面（waive-red --reason=一行豁免的机器形态）
+lzy dag dependents <id|surface>         # 「什么依赖 X」（中央账本，只读）
+lzy attest comparator --file <json>     # 对照判决落 attestation（HEAVY finish 强制 MATCH）
 lzy loop finish                         # 终验门：复合指纹新鲜+全树 clean；自动归档
 lzy loop export                         # 重导出证据包
 lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次

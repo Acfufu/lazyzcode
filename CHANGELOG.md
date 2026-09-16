@@ -5,6 +5,28 @@ versioning is SemVer.
 
 ## [Unreleased]
 
+### Added
+
+- **Central invalidation DAG + red/green evidence manifest** (0.0.9 baton 1,
+  ADR-0014): a machine ledger at `.lazyzcode/loop/dag.json` — cross-reset
+  resident, JSON atomic write with a payload sha256 checksum, fail-closed on
+  corruption (every reading command rejects with a recovery pointer, never a
+  silent empty ledger). `lzy evidence red <Fid>` records the red half with its
+  OWN surface (composite fingerprint by default, `--surface` for external
+  surfaces such as a published version), `lzy evidence waive-red <Fid>
+  --reason` is the machine form of the one-line exemption, and the green half
+  is mirrored automatically at `step done` (capture-time edge registration,
+  dag-first: a ledger write failure rejects the whole command with goal.json
+  untouched). Rebinds append `supersedes` edges; `red_of` pairs red halves to
+  greens (multiple edges legal, latest wins). `lzy evidence list` renders the
+  per-F manifest (halves, surface short codes, rebind chain, hash-surface
+  stale column, orphan labeling) and `lzy dag dependents <id|surface>`
+  answers "what depends on X". Plan adoption registers plan+review nodes with
+  `reviews`/`plans` edges. The ledger only records — it gates nothing until
+  baton 2 switches verify/finish authority to the DAG. Storage medium ruling:
+  JSON, not node:sqlite (unflagged sqlite only exists from Node 22.13/23.4,
+  which would silently raise the `>=22` engines floor).
+
 ### Changed
 
 - **Dirty-rejection message now names the files**: the finish integrity gate's `dirty`

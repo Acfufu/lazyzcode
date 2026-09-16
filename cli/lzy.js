@@ -23,6 +23,7 @@ import {
   formatRepoList,
   formatStatus,
   handoffGoal,
+  fingerprintSubjects,
   noGoalMessage,
   readGoal,
   recordEvidenceHalf,
@@ -37,6 +38,7 @@ import {
 import {
   dependents as dagDependents,
   loadDag,
+  stalePreview,
 } from "../core/dag.js";
 import { findEngine, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
@@ -450,19 +452,63 @@ async function cmdEvidence(args) {
     const dag = loadDag(cwd);
     const slug = slugFlag ?? goal.slug;
     const nodes = dag.nodes.filter((n) => n.slug === slug || (n.kind === "review" && dag.nodes.some((p) => p.id === reviewPlanIdOf(dag, n) && p.slug === slug)));
-    console.log(`证据账本 · 目标 ${slug} · ${nodes.length} 节点（机器只记账不裁决）`);
-    for (const n of nodes) {
-      if (n.kind === "evidence") {
-        const surf = n.surface ? `${n.surface.kind}:${String(n.surface.value).slice(0, 10)}` : "（无表面）";
-        console.log(`  ${n.id} [${n.half}] ${n.step} gen${n.seq} · ${surf} · ${String(n.text).slice(0, 60)}`);
-        for (const file of n.files ?? []) {
-          console.log(`    附件 ${file.path}（sha256 ${file.sha256.slice(0, 12)}…）`);
-        }
-      } else {
-        console.log(`  ${n.id} [${n.kind}] ${shortNode(n)}`);
+    console.log(`证据账本 · 目标 ${slug} · ${nodes.length} 节点（机器只记账不裁决——缺半不拦门，执法在协议文本+comparator）`);
+    // plan/review 一等公民（按 slug/planHash 对 goal.json，永不标孤儿）
+    const planNodes = nodes.filter((n) => n.kind === "plan");
+    const reviewNodes = nodes.filter((n) => n.kind === "review");
+    const latestPlan = planNodes[planNodes.length - 1];
+    if (latestPlan) {
+      const rev = reviewNodes.filter((r) => r.planHash === latestPlan.planHash);
+      console.log(`  计划 ${latestPlan.id} · planHash ${String(latestPlan.planHash).slice(0, 10)} · 评审 ${rev.length ? rev.map((r) => r.id).join("/") : "无节点"}`);
+    }
+    // goal.json 在场才做孤儿判定（历史账本无基准，不妄判）
+    const stepsById = goal && goal.slug === slug ? new Map(goal.steps.map((s) => [s.id, s])) : null;
+    const currentFp = stepsById ? fingerprintSubjects(cwd, goal.subjects) : null;
+    const staleMap = new Map(stalePreview(dag, currentFp).map((x) => [x.node.id, x.status]));
+    const evNodes = nodes.filter((n) => n.kind === "evidence");
+    const byStep = new Map();
+    for (const n of evNodes) {
+      if (!byStep.has(n.step)) byStep.set(n.step, []);
+      byStep.get(n.step).push(n);
+    }
+    const stepIds = [...new Set([...(stepsById ? [...stepsById.keys()].filter((id) => stepsById.get(id).kind === "F") : []), ...byStep.keys()])];
+    const surfShort = (s) =>
+      s == null ? "（无表面）" : s.kind === "fingerprint" ? `指纹 ${s.value.slice(0, 10)}` : `外部:${s.value}`;
+    const staleLabel = (st) =>
+      st === "fresh" ? "新鲜" : st === "stale" ? "过期" : st === "superseded" ? "历史代次" : st === "external" ? "外部表面、机器不可查" : "—";
+    for (const fid of stepIds) {
+      const halves = byStep.get(fid) ?? [];
+      const greens = halves.filter((n) => n.half === "green").sort((a, b) => a.seq - b.seq);
+      const reds = halves.filter((n) => n.half === "red");
+      const waives = halves.filter((n) => n.half === "waived");
+      const cur = greens[greens.length - 1];
+      const greenPart = cur
+        ? `绿 ✓ gen${cur.seq}（${surfShort(cur.surface)} · ${staleLabel(staleMap.get(cur.id))}）`
+        : "绿 ✗（未录）";
+      const redPart = reds.length
+        ? `红 ✓ ${reds.map((r) => `${r.id} gen${r.seq}（${surfShort(r.surface)}）`).join(" ")}`
+        : waives.length
+          ? `红 ➖ waived（${waives.map((w) => `「${String(w.text).slice(0, 40)}」`).join(" ")}）`
+          : "红 ✗（未录）";
+      console.log(`  ${fid} · ${greenPart} · ${redPart}`);
+      if (greens.length > 1) {
+        console.log(`    rebind 链 ${greens.length} 代（gen${greens[0].seq}→gen${cur.seq}，现行 gen${cur.seq}）`);
       }
     }
-    console.log(`  边 ${dag.edges.length} 条（captured_on/red_of/supersedes/reviews/plans）`);
+    // 孤儿=green 节点代数超前 goal.json 已落地代数（dag-first 部分失败残留）；red/waived
+    // 本就不入 goal.json（边即记录），永不标孤儿。如实标注不静默隐藏。
+    if (stepsById) {
+      const orphans = evNodes.filter((n) => {
+        if (n.half !== "green") return false;
+        const st = stepsById.get(n.step);
+        return !st || n.seq > (st.evidenceSeq ?? 1) - 1;
+      });
+      for (const o of orphans) {
+        console.log(`  ⚠ 孤儿节点 ${o.id}（${o.slug}/${o.step} gen${o.seq}）：账本有而 goal.json 无此代数记录（dag-first 部分失败残留）`);
+      }
+    } else {
+      console.log("  （历史账本：goal 状态已清，无孤儿判定基准）");
+    }
     return;
   }
   if (!_[1]) {

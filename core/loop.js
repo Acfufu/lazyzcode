@@ -6,6 +6,18 @@ import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync,
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { createGit } from "./git.js";
+import {
+  addCapturedOn,
+  addEdge,
+  addSupersedes,
+  appendEvidenceNode,
+  appendPlanNode,
+  appendReviewNode,
+  findLatestGreen,
+  loadDag,
+  pairReds,
+  saveDag,
+} from "./dag.js";
 
 export const GOAL_VERSION = 1;
 const ACTIVE_STATES = new Set(["planning", "executing"]);
@@ -104,7 +116,7 @@ function withLock(cwd, fn) {
 
 // 恢复式报错（ADR-0006 严格就地语义）：无 goal 的全部出口共用同一文案源——报出实际检查的
 // 绝对路径 + 一行恢复指引（目录解析不 walk-up，走错目录时人需要知道该回哪个根）。
-function noGoalMessage(cwd) {
+export function noGoalMessage(cwd) {
   return (
     `本目录没有目标循环状态（已检查 ${loopDir(cwd)}）。` +
     `恢复：在注册了目标的工作区根重跑此命令；多仓目标回宿主工作区根；新建用 lzy loop register <slug> --title …`
@@ -665,6 +677,101 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
   if (step.kind === "F") step.evidenceSeq = (step.evidenceSeq ?? 1) + 1;
   writeGoal(cwd, goal);
   return { goal, step, rebinding, dirty: git ? git.dirty() : false };
+}
+
+// ── 红绿机器账本（v009 棒1，ADR-0014）：red/waive-red 半的登记面 ─────────────
+// 红半/waive 边只存在中央 DAG（goal.json 零改动——机器只记账不裁决，缺半不拦任何门，
+// 执法仍在协议文本+comparator）。E-01 调和：red 各绑各面——--surface 显式外部表面
+// （已发布版版本号等自由串），缺省=当前复合指纹（改前取证时点即 base 树）。
+export function recordEvidenceHalf(cwd, git, id, { half, text = null, files = null, surfaceExternal = null } = {}) {
+  return withLock(cwd, () => doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal }));
+}
+
+function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal }) {
+  const goal = requireActive(cwd, "executing");
+  const step = goal.steps.find((s) => s.id === id);
+  if (!step) {
+    throw new LoopError(`无此步骤：${id}（现有：${goal.steps.map((s) => s.id).join(" ") || "无"}）`);
+  }
+  if (step.kind !== "F") {
+    throw new LoopError(`红绿账本只记 F 项（${id} 是 ${step.kind} 项；红绿纪律是终验项的取证纪律）`);
+  }
+  const isWaive = half === "waived";
+  const trimmed = text?.trim() ?? null;
+  const cap = isWaive ? NOTE_MAX : EVIDENCE_MAX;
+  const label = isWaive ? "--reason" : "--evidence";
+  if (!trimmed) {
+    throw new LoopError(
+      isWaive
+        ? `终验项 ${id} 的红半豁免必须带 --reason（一行豁免的机器形态：说明为何构造不出反态）`
+        : `终验项 ${id} 必须带 ${label}（改前态上的失败取证：红半与绿半各绑各面）`,
+    );
+  }
+  if (trimmed.length > cap) {
+    throw new LoopError(`${label} 超上限 ${cap} 字符（当前 ${trimmed.length}）；请凝成一两句`);
+  }
+  let surface = null;
+  if (!isWaive) {
+    if (surfaceExternal) {
+      surface = { kind: "external", value: surfaceExternal };
+    } else {
+      const fp = fingerprintSubjects(cwd, goal.subjects);
+      if (!fp) {
+        throw new LoopError(`无绑定表面可记（宿主非 git 仓？）；用 --surface 显式声明外部表面`);
+      }
+      surface = { kind: "fingerprint", value: fp };
+    }
+  }
+  // 代数对齐绿半：红半瞄准下一取证代数（绿半落地时 completeStep 推进到同一数）
+  const seq = (step.evidenceSeq ?? 1) + 1;
+  const attached = attachHalfFiles(cwd, goal, step, files, seq, half);
+  // dag-first：账本写失败=整命令拒（goal.json 本就不动）；附件已拷贝的残留属既有
+  // 部分失败家族（与 completeStep 的 writeGoal 失败同语义，无害孤儿）。
+  const dag = loadDag(cwd);
+  const node = appendEvidenceNode(dag, {
+    slug: goal.slug,
+    step: id,
+    seq,
+    half,
+    surface,
+    text: trimmed,
+    files: attached ?? [],
+  });
+  if (surface) addCapturedOn(dag, node.id, surface);
+  saveDag(cwd, dag);
+  return { node, dirty: git ? git.dirty() : false };
+}
+
+// 红半附件：与 attachEvidenceFiles 同约束，命名带 half 段（<slug>.<F>.<half>.<seq>.<n><ext>）
+// ——红半与绿半瞄准同一代数，不带 half 段会互相覆写。
+function attachHalfFiles(cwd, goal, step, files, seq, half) {
+  if (!files || files.length === 0) return undefined;
+  if (files.length > EVIDENCE_FILES_MAX) {
+    throw new LoopError(`附件超上限：最多 ${EVIDENCE_FILES_MAX} 个/项（当前 ${files.length}）`);
+  }
+  const outDir = join(cwd, ".lazyzcode", "evidence");
+  mkdirSync(outDir, { recursive: true });
+  return files.map((src, i) => {
+    let st;
+    try {
+      st = statSync(src);
+    } catch {
+      throw new LoopError(`证据文件不可读：${src}`);
+    }
+    if (!st.isFile()) throw new LoopError(`证据路径不是文件：${src}`);
+    if (st.size > EVIDENCE_FILE_MAX_BYTES) {
+      throw new LoopError(`证据文件超上限 ${EVIDENCE_FILE_MAX_BYTES} bytes：${src}（${st.size}）`);
+    }
+    const ext = (/(\.[a-z0-9]{1,9})$/i.exec(basename(src))?.[1] ?? ".bin").toLowerCase();
+    const dest = join(outDir, `${goal.slug}.${step.id}.${half}.${seq}.${i + 1}${ext}`);
+    copyFileSync(src, dest);
+    return {
+      path: relative(cwd, dest),
+      name: basename(src),
+      sha256: createHash("sha256").update(readFileSync(dest)).digest("hex"),
+      bytes: st.size,
+    };
+  });
 }
 
 // ── 4b. 步级认领（决策 #21 最小链，2026-09-14）：同目标多工人占步互斥 ────────

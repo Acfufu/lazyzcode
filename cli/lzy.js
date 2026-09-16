@@ -23,7 +23,9 @@ import {
   formatRepoList,
   formatStatus,
   handoffGoal,
+  noGoalMessage,
   readGoal,
+  recordEvidenceHalf,
   registerGoal,
   removeSubject,
   resetLoop,
@@ -32,6 +34,10 @@ import {
   verifyEvidence,
   writeGoalReport,
 } from "../core/loop.js";
+import {
+  dependents as dagDependents,
+  loadDag,
+} from "../core/dag.js";
 import { findEngine, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
 import { auditAgentsMd, formatAgentsMd } from "../core/agentsmd.js";
@@ -43,7 +49,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -411,6 +417,105 @@ async function cmdStep(args) {
   console.log(pending ? `  下一步 → ${pending.id} [${pending.kind}] ${pending.title}` : "  全部步骤已收口 → lzy loop finish 做终验");
 }
 
+// ── 证据账本命令族（v009 棒1，ADR-0014）：red/waive-red=写路径（锁内、dag-first），
+// list=红绿 manifest 视图，机器只记账不裁决（缺半不拦门，执法在协议文本+comparator）。
+function evidenceFileArgs(cwd, f) {
+  const raw = f["evidence-file"];
+  if (Array.isArray(raw)) return raw.map((p) => resolve(cwd, p));
+  return typeof raw === "string" ? [resolve(cwd, raw)] : null;
+}
+
+function shortNode(node) {
+  if (!node) return "（对端不在账本）";
+  if (node.kind === "evidence") {
+    return `${node.id} evidence ${node.half} ${node.slug}/${node.step} gen${node.seq}`;
+  }
+  if (node.kind === "plan") return `${node.id} plan ${node.slug} ${String(node.planHash).slice(0, 10)}`;
+  return `${node.id} review ${String(node.planHash).slice(0, 10)} ${String(node.verdict ?? "").slice(0, 40)}`;
+}
+
+async function cmdEvidence(args) {
+  const { _, f } = parseArgs(args);
+  const action = _[0];
+  const cwd = process.cwd();
+  if (action !== "red" && action !== "waive-red" && action !== "list") {
+    throw new LoopError("用法：lzy evidence red <Fid> … | waive-red <Fid> --reason … | list [--goal <slug>]");
+  }
+  if (action === "list") {
+    const slugFlag = typeof f.goal === "string" ? f.goal : null;
+    const goal = readGoal(cwd);
+    if (!goal && !slugFlag) {
+      throw new LoopError(`${noGoalMessage(cwd)}（查历史目标账本可加 --goal <slug>）`);
+    }
+    const dag = loadDag(cwd);
+    const slug = slugFlag ?? goal.slug;
+    const nodes = dag.nodes.filter((n) => n.slug === slug || (n.kind === "review" && dag.nodes.some((p) => p.id === reviewPlanIdOf(dag, n) && p.slug === slug)));
+    console.log(`证据账本 · 目标 ${slug} · ${nodes.length} 节点（机器只记账不裁决）`);
+    for (const n of nodes) {
+      if (n.kind === "evidence") {
+        const surf = n.surface ? `${n.surface.kind}:${String(n.surface.value).slice(0, 10)}` : "（无表面）";
+        console.log(`  ${n.id} [${n.half}] ${n.step} gen${n.seq} · ${surf} · ${String(n.text).slice(0, 60)}`);
+        for (const file of n.files ?? []) {
+          console.log(`    附件 ${file.path}（sha256 ${file.sha256.slice(0, 12)}…）`);
+        }
+      } else {
+        console.log(`  ${n.id} [${n.kind}] ${shortNode(n)}`);
+      }
+    }
+    console.log(`  边 ${dag.edges.length} 条（captured_on/red_of/supersedes/reviews/plans）`);
+    return;
+  }
+  if (!_[1]) {
+    throw new LoopError(
+      action === "red"
+        ? "用法：lzy evidence red <Fid> --evidence <改前态失败取证> [--evidence-file <文件>]… [--surface <外部表面描述>]"
+        : "用法：lzy evidence waive-red <Fid> --reason <一行豁免理由>",
+    );
+  }
+  const textFlag = action === "red" ? f.evidence : f.reason;
+  const { node, dirty } = recordEvidenceHalf(cwd, createGit(cwd), _[1], {
+    half: action === "red" ? "red" : "waived",
+    text: typeof textFlag === "string" ? textFlag : null,
+    files: evidenceFileArgs(cwd, f),
+    surfaceExternal: typeof f.surface === "string" ? f.surface : null,
+  });
+  console.log(`${ICON.ok} 红半账本已记：${node.id} · ${node.half} · ${node.slug}/${node.step} gen${node.seq}`);
+  if (node.surface) {
+    console.log(`  表面（各绑各面）${node.surface.kind}:${node.surface.kind === "fingerprint" ? node.surface.value.slice(0, 10) : node.surface.value}`);
+  }
+  for (const file of node.files ?? []) {
+    console.log(`  附件 ${file.path}（sha256 ${file.sha256.slice(0, 12)}… · ${file.bytes} bytes）`);
+  }
+  if (dirty) {
+    console.log("  ⚠ 工作区有未提交改动：红半应绑定改前态（先在改动前取证，或用 --surface 声明外部表面）");
+  }
+}
+
+// review 节点的所属 plan 节点 id（经 reviews 边反查；无边= null）
+function reviewPlanIdOf(dag, reviewNode) {
+  const e = dag.edges.find((x) => x.type === "reviews" && x.from === reviewNode.id);
+  return e ? e.to : null;
+}
+
+// ── DAG 查询命令族（只读，无锁——原子写保证读者见旧或新，绝不见半写） ─────────
+function cmdDag(args) {
+  const { _ } = parseArgs(args);
+  if (_[0] !== "dependents" || !_[1] || _[2]) {
+    throw new LoopError("用法：lzy dag dependents <节点id|表面值>（「什么依赖 X」）");
+  }
+  const dag = loadDag(process.cwd());
+  const res = dagDependents(dag, _[1]);
+  console.log(`依赖查询 · ${res.kind} ${res.id} · 命中 ${res.hits.length}`);
+  for (const h of res.hits) {
+    if (res.kind === "surface") {
+      console.log(`  ← captured_on ${shortNode(h.node)}`);
+    } else {
+      const to = typeof h.edge.to === "object" ? `surface ${h.edge.to.kind}:${String(h.edge.to.value).slice(0, 10)}` : h.edge.to;
+      console.log(`  ${h.direction === "outgoing" ? "→" : "←"} ${h.edge.type} ${h.direction === "outgoing" ? to : shortNode(h.node)}`);
+    }
+  }
+}
+
 async function cmdVersion() {
   let v = "unknown";
   try {
@@ -471,6 +576,16 @@ function printHelp() {
   lzy loop export                           重导出证据包到 .lazyzcode/evidence/<slug>.report.md
   lzy loop abandon / reset                  放弃 / 清除状态
 
+证据账本（中央失效 DAG，跨目标常驻——机器只记账不裁决，ADR-0014）：
+  lzy evidence red <Fid> --evidence <text> [--evidence-file <文件>]… [--surface <描述>]
+                                            登记红半（改前态失败取证；缺省绑当前复合指纹，
+                                            --surface 声明外部表面如已发布版版本号）
+  lzy evidence waive-red <Fid> --reason <理由>
+                                            登记红半豁免（真构造不出反态的面；一行豁免的
+                                            机器形态）
+  lzy evidence list [--goal <slug>]         红绿 manifest 视图（halves 配对/表面短码/rebind 链）
+  lzy dag dependents <节点id|表面值>        「什么依赖 X」查询（只读）
+
 项目记忆（AGENTS.md 分层，确定性审计——写盘归 init-deep 技能且草稿先行）：
   lzy agents-md    资格谓词+覆盖审计详单（退出码 0=覆盖完整无超限，1=有缺口/超限）
 
@@ -510,6 +625,10 @@ async function main() {
       return cmdLoop(args.slice(1));
     case "step":
       return cmdStep(args.slice(1));
+    case "evidence":
+      return cmdEvidence(args.slice(1));
+    case "dag":
+      return cmdDag(args.slice(1));
     case "agents-md":
       return cmdAgentsMd();
     case "version":

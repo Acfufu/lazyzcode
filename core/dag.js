@@ -93,10 +93,12 @@ function assertSurface(surface) {
   }
 }
 
-export function appendEvidenceNode(dag, { slug, step, seq, half, surface, text = "", files = [] }) {
+export function appendEvidenceNode(dag, { slug, step, seq, half, surface = null, text = "", files = [] }) {
   if (!slug || !step) throw new DagError("evidence 节点缺 slug/step");
   if (!EVIDENCE_HALVES.has(half)) throw new DagError(`evidence half 非法：${half}（red|green|waived）`);
-  assertSurface(surface);
+  // surface 可空：waived=豁免本无红表面；green 指纹 null=宿主非 git 仓的未绑定证据
+  //（0.0.8 语义容忍，verify 侧标「未绑定」——账本如实记 null，不造回归）。
+  if (surface != null) assertSurface(surface);
   const node = {
     id: nextId(dag),
     kind: "evidence",
@@ -104,7 +106,7 @@ export function appendEvidenceNode(dag, { slug, step, seq, half, surface, text =
     step,
     seq,
     half,
-    surface: { kind: surface.kind, value: surface.value },
+    surface: surface ? { kind: surface.kind, value: surface.value } : null,
     text,
     files,
     at: Date.now(),
@@ -206,6 +208,7 @@ export function stalePreview(dag, currentFingerprint) {
     .map((n) => {
       if (n.half !== "green") return { node: n, status: "n/a" };
       if (superseded.has(n.id)) return { node: n, status: "superseded" };
+      if (n.surface == null) return { node: n, status: "unknown" };
       if (n.surface.kind === "external") return { node: n, status: "external" };
       if (currentFingerprint == null) return { node: n, status: "unknown" };
       return { node: n, status: n.surface.value === currentFingerprint ? "fresh" : "stale" };

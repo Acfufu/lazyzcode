@@ -1,0 +1,39 @@
+# LazyZCode docs site robots.txt
+# 若仓库改名或换组织，与 docs/_config.yml 的 url/baseurl 一起改下方 Sitemap 行。
+
+# 传统搜索引擎：全站放行（内部工程记录页自带 noindex 头，无需在此屏蔽）
+User-agent: *
+Allow: /
+
+# AI 爬虫（GEO 立场：明确欢迎引用与训练抓取）
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+Sitemap: https://acfufu.github.io/lazyzcode/sitemap.xml

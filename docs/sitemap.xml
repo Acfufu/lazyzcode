@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- 手工维护：只收 5 个精修页（可索引面）。内部工程记录走 bare 布局 noindex，不入册。
-     若仓库改名或换组织，与 docs/_config.yml 的 url/baseurl 一起改。 -->
+     若仓库改名或换组织，与 docs/_config.yml 的 url/baseurl 一起改。
+     lastmod = 对应页面内容的最近提交日，内容有实质改动时顺手更新。 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://acfufu.github.io/lazyzcode/</loc></url>
-  <url><loc>https://acfufu.github.io/lazyzcode/guide/en/</loc></url>
-  <url><loc>https://acfufu.github.io/lazyzcode/guide/zh/</loc></url>
-  <url><loc>https://acfufu.github.io/lazyzcode/developers/en/</loc></url>
-  <url><loc>https://acfufu.github.io/lazyzcode/developers/zh/</loc></url>
+  <url><loc>https://acfufu.github.io/lazyzcode/</loc><lastmod>2026-09-07</lastmod></url>
+  <url><loc>https://acfufu.github.io/lazyzcode/guide/en/</loc><lastmod>2026-09-16</lastmod></url>
+  <url><loc>https://acfufu.github.io/lazyzcode/guide/zh/</loc><lastmod>2026-09-16</lastmod></url>
+  <url><loc>https://acfufu.github.io/lazyzcode/developers/en/</loc><lastmod>2026-09-15</lastmod></url>
+  <url><loc>https://acfufu.github.io/lazyzcode/developers/zh/</loc><lastmod>2026-09-15</lastmod></url>
 </urlset>

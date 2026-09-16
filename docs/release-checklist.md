@@ -35,7 +35,7 @@
 
 ## 版本流转纪律
 
-12. 改版本号必须三方同步：`package.json` / `plugin/.zcode-plugin/plugin.json` / `CHANGELOG.md`——不一致会被 `test/package.surface.test.js` 拦下。
+12. 改版本号必须三方同步：`package.json` / `plugin/.zcode-plugin/plugin.json` / `CHANGELOG.md`——不一致会被 `test/package.surface.test.js` 拦下。**外加两处文档站同步（无测试拦截，靠人）**：`docs/_layouts/home.html` 的 SoftwareApplication JSON-LD `softwareVersion`、`docs/sitemap.xml` 相关页的 `lastmod`。
 
 ## GitHub Pages（文档站）
 

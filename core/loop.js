@@ -356,7 +356,7 @@ function doStartLoop(cwd, git) {
   }
   goal.status = "executing";
   goal.startedAt = new Date().toISOString();
-  goal.baseTreeHash = git ? git.treeHash() : null;
+  goal.baseTreeHash = git ? git.headTreeHash() : null;
   writeGoal(cwd, goal);
   return goal;
 }
@@ -441,7 +441,7 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
     step.kind === "F"
       ? {
           text: trimmedEvidence,
-          treeHash: git ? git.treeHash() : null,
+          treeHash: git ? git.headTreeHash() : null,
           at: step.doneAt,
           ...(attached ? { files: attached } : {}),
         }
@@ -542,7 +542,7 @@ export function formatClaimList(cwd) {
 export function verifyEvidence(cwd, git) {
   const goal = readGoal(cwd);
   if (!goal) throw new LoopError(noGoalMessage(cwd));
-  const current = git ? git.treeHash() : null;
+  const current = git ? git.headTreeHash() : null;
   const fresh = [];
   const stale = [];
   const unbound = [];
@@ -607,7 +607,7 @@ export function exportReport(cwd, git) {
     throw new LoopError(`目标 ${goal.slug} 还没采纳计划，无可导出（先 lzy loop plan）`);
   }
   const done = goal.steps.filter((s) => s.status === "done").length;
-  const current = git ? git.treeHash() : null;
+  const current = git ? git.headTreeHash() : null;
   const lines = [
     `# 目标循环报告：${goal.slug} — ${goal.title}`,
     "",

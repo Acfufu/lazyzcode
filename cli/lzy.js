@@ -258,7 +258,7 @@ async function cmdLoop(args) {
           "用法：lzy loop handoff --snapshot <快照文件>（先把交接状态写入快照，再登记交接）",
         );
       }
-      const marker = handoffGoal(cwd, snap, git.treeHash());
+      const marker = handoffGoal(cwd, snap, git.headTreeHash());
       console.log("✔ 交接已登记：下一次 Stop 钩子将消费标记并放行（目标保持 executing，状态在盘）");
       console.log(`  快照：${marker.snapshot}`);
       console.log("  下一步：结束本会话；用户开新上下文后以「zw 继续」续跑");

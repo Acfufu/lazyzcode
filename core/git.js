@@ -7,8 +7,9 @@ import { spawnSync } from "node:child_process";
 // finish/verify 会把无绑定证据视为不新鲜，绝不静默放行）。
 export function createGit(cwd) {
   return {
-    // `git rev-parse HEAD^{tree}`：当前工作树的内容快照哈希；代码一变，旧证据作废。
-    treeHash() {
+    // `git rev-parse HEAD^{tree}`：HEAD 头树哈希（已提交内容快照），非「工作树快照」——
+    // 未提交改动不在哈希内，代码一变（提交后）旧证据作废。多树=每根一 createGit(root) 实例。
+    headTreeHash() {
       const r = spawnSync("git", ["rev-parse", "HEAD^{tree}"], {
         cwd,
         shell: false,
@@ -18,6 +19,10 @@ export function createGit(cwd) {
       if (r.error || r.status !== 0) return null;
       const out = (r.stdout ?? "").trim();
       return /^[0-9a-f]{40,64}$/.test(out) ? out : null;
+    },
+    // deprecated 别名（v008-integrity-kernel#N2 正名遗留）：一版后删，新代码一律 headTreeHash()。
+    treeHash() {
+      return this.headTreeHash();
     },
     // 工作区有未提交改动时为 true（证据应跟随提交：先提交再取证，否则证据可辩驳）。
     // 只排除 .lazyzcode/ 自身的账本：精确路径判定，含该子串的其他路径（如 backup.lazyzcode/）照常报警（评审 R2-2）。

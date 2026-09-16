@@ -28,7 +28,7 @@
   "plugins": [
     {
       "name": "lazyzcode",
-      "version": "0.0.7",
+      "version": "0.0.8",
       "displayName": "LazyZCode",
       "displayName_i18n": {
         "zh-CN": "LazyZCode"
@@ -60,7 +60,7 @@
       "source": {
         "source": "github",
         "repo": "Acfufu/lazyzcode",
-        "ref": "v0.0.7",
+        "ref": "v0.0.8",
         "path": "plugin"
       }
     }

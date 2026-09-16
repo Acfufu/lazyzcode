@@ -145,3 +145,48 @@ Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 - 隔离 prefix 冒烟：`npm i -g lazyzcode` → `lzy --version` 0.0.7 + `lzy doctor` 18 ✔ 零失败。
 - 真机狗粮：手动两步 0.0.6→0.0.7 + sync 过；`lzy update` 已是最新路径活体（EXIT=0）。**勘误**：`update` 无法从更老版本自举（0.0.6 全局无此命令）——「0.0.6 → lzy update」不是合法狗粮链，跨版本桥=README 手动两步；真升级链活体=降版标记配方（v007 F2）。
 - **win32 三 VM 实弹（Runbook 第 6 步，Win11 ARM64，SYSTEM exec 上下文）**：registry 新装 0.0.7（9s）→「已是最新」半区 EXIT=0 → `npm pkg set version=0.0.6 --prefix <全局根>` 降戳（F2 配方 win32 版，免 cmd 引号地狱）→ `lzy update` 全链 EXIT=0：probe 0.0.6 vs 0.0.7 → ComSpec spawn `npm i -g lazyzcode@latest` → **全新子进程 sync 输出可见（stdio inherit）**、缓存 0.0.7 落 systemprofile 下（prlctl exec=SYSTEM 会话既知形态）→ 终态三件核对全绿（package.json 复原 0.0.7 / `--version` 0.0.7 / 缓存 manifest 在场）。ADR-0012 win32 验收线闭环。
+
+## 执行记录（0.0.8，完整性内核——机械件已备，publish 留用户）
+
+> 机械件（2026-09-16，维护者指令直发，未走 goal loop）：版本三体 0.0.8、市场 manifest `version`/`ref` 钉 v0.0.8（第 11 步每发布同步）、CHANGELOG 定版、AGENTS.md §2 状态行跟齐。本节提交不带 `Goal:` 尾注（账本巡逻预期一条 warn，同 0.0.7 先例）。
+
+### Runbook（按序）
+
+1. **push main**（定版提交与 integrity-kernel 未推提交随行上远端）。
+2. **CI 全绿再 tag**（0.0.6 lesson：tag 最后切）：四腿（node 22/24 × ubuntu/windows）全绿后 `git tag v0.0.8 && git push origin v0.0.8`。
+3. **GitHub Release**：以本节下方草稿为 notes 创建 `v0.0.8`。
+4. **publish（用户手动）**：从 tagged 树先 `npm publish --dry-run` 复核文件清单与敏感串（第 3 步检查项），再 `npm publish`（2FA 浏览器授权，同 0.0.5–0.0.7）。
+5. **发后核验**：registry `dist-tag latest=0.0.8`；隔离 prefix 冒烟 `npm i -g lazyzcode && lzy --version`（应 0.0.8）+ `lzy doctor`；真机狗粮 `lzy update`（本机 0.0.7 → 0.0.8 升级链活体）。
+6. **win32 三 VM 复测**（publish 后才可做）：registry 新装 0.0.8 + `lzy doctor` + scratch loop 全链 finish。
+
+### GitHub Release notes 草稿（v0.0.8）
+
+```markdown
+## Highlights
+
+- **finish integrity gate — dirty goals can no longer report done (P0-A closure).**
+  `lzy loop finish` now runs a per-root integrity check over every tree in the
+  goal's evidence scope (the host repo plus any declared subjects): dirty
+  (uncommitted changes), missing (root gone / not a git repo / unparseable HEAD),
+  and git failure (fail-closed) each reject the finish. **No bypass flag.**
+- **Composite evidence fingerprints (multi-tree)**: F-item evidence binds the sha256
+  over the HEAD tree hash of every root in the host ∪ subjects set — any root
+  changing, or the subject set itself changing, stales the evidence. Legacy
+  evidence keeps the 0.0.7-identical single-tree comparison.
+- **Subjects (multi-tree goals)**: declare sibling repos with `subjects: <path>`
+  plan-header lines and manage them with `lzy loop subject add|remove|list`
+  (`remove` is the missing-root deadlock escape).
+- **Plan snapshot + hash**: adoption snapshots the plan and binds `goal.planHash`;
+  reviews bind the reviewed artifact; status re-verifies the snapshot hash
+  (tamper visible).
+- **Tier persistence + HEAVY machine gate**: `register --tier heavy`, one-way
+  `lzy loop tier heavy`; a HEAVY goal is rejected at adoption without a PASS
+  review verdict (`--force` does not cross).
+- **Atomic finish reports**: the report archive lands (tmp+rename) before the goal
+  flips to `done`; a failure leaves the goal `executing` with a recovery path.
+
+## Upgrade
+
+`lzy update` (0.0.7+). On 0.0.6 or earlier: `npm i -g lazyzcode && lzy sync`.
+Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
+```

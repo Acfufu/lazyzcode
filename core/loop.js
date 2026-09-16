@@ -732,6 +732,7 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
 // 执法仍在协议文本+comparator）。E-01 调和：red 各绑各面——--surface 显式外部表面
 // （已发布版版本号等自由串），缺省=当前复合指纹（改前取证时点即 base 树）。
 export function recordEvidenceHalf(cwd, git, id, { half, text = null, files = null, surfaceExternal = null } = {}) {
+  requireGoalPreLock(cwd); // fail-fast 补口（v009 棒2#N6，ADR-0006 家法）：无 goal 不留空壳
   return withLock(cwd, () => doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal }));
 }
 

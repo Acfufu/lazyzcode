@@ -8,10 +8,13 @@ import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
 import { readRepoManifest } from "./installer.js";
 import {
+  MARKETPLACE,
+  PLUGIN_NAME,
   billingDbPath,
   findEngine,
   installPathFor,
   packageRoot,
+  pluginsRoot,
   repoPluginDir,
   tasksIndexPath,
   userCliLogDir,
@@ -34,6 +37,41 @@ export const STALENESS_HINT_AT = 50;
 export function formatStalenessHint(lag, threshold = STALENESS_HINT_AT) {
   if (lag === null || !Number.isFinite(lag) || lag < threshold) return "";
   return ` · 地图落后 ${lag} 个提交（lazyzcode:init-deep 可刷新）`;
+}
+
+// 债3（v009 棒2收尾）：CLI 包版本 vs 载荷缓存版本对照——「CLI 新/载荷旧」的 ADR-0012
+// 中间态自查面（npm 已升未 sync 时真实会话仍读旧载荷，模型不知道新纪律/新拦门）。
+// 三态：CLI 版本在缓存目录集=ok / 不在=warn（带 sync 指路）/ 缓存缺席=skip。fail-soft
+// warn-only 家法；版本两侧实读（package.json + 缓存目录枚举），不写死。
+function checkPayloadVersion(push) {
+  let cliVersion = null;
+  try {
+    cliVersion = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).version ?? null;
+  } catch {}
+  const cacheBase = join(pluginsRoot(), "cache", MARKETPLACE, PLUGIN_NAME);
+  let versions = [];
+  try {
+    versions = readdirSync(cacheBase).filter((d) => /^\d+\.\d+\.\d+$/.test(d));
+  } catch {}
+  if (versions.length === 0) {
+    push("payload-ver", "skip", `载荷缓存缺席（未安装）——安装后真实会话才读得到载荷${cliVersion ? `（CLI ${cliVersion}）` : ""}`);
+    return;
+  }
+  versions.sort((a, b) => {
+    const pa = a.split(".").map(Number);
+    const pb = b.split(".").map(Number);
+    for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+    return 0;
+  });
+  if (cliVersion && versions.includes(cliVersion)) {
+    push("payload-ver", "ok", `缓存 [${versions.join(", ")}] · CLI ${cliVersion} 一致`);
+  } else {
+    push(
+      "payload-ver",
+      "warn",
+      `缓存 [${versions.join(", ")}] 无 CLI ${cliVersion ?? "未知"} 的载荷目录：跑 lzy sync（npm 已升未 sync 时真实会话仍读旧载荷——ADR-0012 中间态自查面）`,
+    );
+  }
 }
 
 function checkHooks(push) {
@@ -588,6 +626,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     checkNode,
     checkHookNode,
     checkLzyPath,
+    checkPayloadVersion,
     (p) => checkLoopState(p, cwd),
     (p) => checkClaims(p, cwd),
     (p) => checkWaterline(p),

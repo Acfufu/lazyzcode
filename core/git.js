@@ -14,16 +14,20 @@ function statusPorcelain(cwd, timeoutMs = 10_000) {
   });
 }
 
-function porcelainHasDirty(stdout) {
-  return (stdout ?? "")
-    .split(/\r?\n/)
-    .some((line) => {
-      const raw = line.slice(3).trim(); // porcelain v1：XY<空格>path
-      if (!raw) return false;
-      const renamed = raw.includes(" -> ") ? raw.split(" -> ").pop() : raw;
-      const p = renamed.replace(/^"(.*)"$/, "$1"); // git 对特殊字符路径加引号
-      return p !== ".lazyzcode" && !p.startsWith(".lazyzcode/");
-    });
+// porcelain 行 → 计入脏判的路径数组（口径单一来源：dirty() 与 integrity() 共用）。
+// 排除 .lazyzcode 账本自身；重命名取新路径；git 对特殊字符路径加引号须剥离。
+// multisession-discipline#N1：dirty 态带路径列表（此前只回 bool，用户得自己 git status）。
+function porcelainDirtyPaths(stdout) {
+  const out = [];
+  for (const line of (stdout ?? "").split(/\r?\n/)) {
+    const raw = line.slice(3).trim(); // porcelain v1：XY<空格>path
+    if (!raw) continue;
+    const renamed = raw.includes(" -> ") ? raw.split(" -> ").pop() : raw;
+    const p = renamed.replace(/^"(.*)"$/, "$1"); // git 对特殊字符路径加引号
+    if (p === ".lazyzcode" || p.startsWith(".lazyzcode/")) continue;
+    out.push(p);
+  }
+  return out;
 }
 
 // 工厂：cwd 为工作区根。git 不可用/非 git 仓库时返回 null（调用方按「无绑定」降级，
@@ -81,7 +85,8 @@ export function createGit(cwd) {
           detail: (r.stderr ?? "").trim().slice(0, 300) || `git status 退出码 ${r.status}`,
         };
       }
-      return porcelainHasDirty(r.stdout) ? { state: "dirty" } : { state: "clean" };
+      const dirtyPaths = porcelainDirtyPaths(r.stdout);
+      return dirtyPaths.length > 0 ? { state: "dirty", paths: dirtyPaths } : { state: "clean" };
     },
     // 工作区有未提交改动时为 true（证据应跟随提交：先提交再取证，否则证据可辩驳）。
     // 只排除 .lazyzcode/ 自身的账本：精确路径判定，含该子串的其他路径（如 backup.lazyzcode/）照常报警（评审 R2-2）。
@@ -110,7 +115,7 @@ export function createGit(cwd) {
     dirty() {
       const r = statusPorcelain(cwd);
       if (r.error || r.status !== 0) return false;
-      return porcelainHasDirty(r.stdout);
+      return porcelainDirtyPaths(r.stdout).length > 0;
     },
     // 可回收工件盘点（C 面）：porcelain 路径清单（口径同 dirty()，排除 .lazyzcode/ 自身账本）。
     // git 不可用/非 git 仓库时返回 null（调用方降级：存根只留资产指针，不阻断销毁）。

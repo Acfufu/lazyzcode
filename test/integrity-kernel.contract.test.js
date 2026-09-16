@@ -106,6 +106,8 @@ test("git: integrity 原语 clean/dirty/missing/error 四态可辨", () => {
     mkdirSync(join(d, ".lazyzcode"), { recursive: true });
     writeFileSync(join(d, ".lazyzcode", "ledger"), "x");
     assert.equal(createGit(d).integrity().state, "dirty"); // .lazyzcode/ 豁免不改 dirty 判定，dirty 来自 uncommitted.txt
+    // multisession-discipline#N1：dirty 态带命中路径，且 .lazyzcode/ 账本不入列表
+    assert.deepEqual(createGit(d).integrity().paths, ["uncommitted.txt"]);
     assert.equal(createGit(join(d, "nope")).integrity().state, "missing");
     // fail-closed：index 成目录（部分 git 版本对垃圾字节 index 自愈恢复，故用目录占位）
     rmSync(join(sib, ".git", "index"));
@@ -362,12 +364,27 @@ test("finish 第四拒：host 脏分支（文案命中 host 根）+ metrics 计�
   const d = repo();
   try {
     cycle(d);
-    writeFileSync(join(d, "dirty.txt"), "d\n");
-    assert.throws(() => finishLoop(d, createGit(d)), /完整性闸门拒绝（dirty）：host/);
+    for (const n of ["dirty1.txt", "dirty2.txt", "dirty3.txt", "dirty4.txt"]) {
+      writeFileSync(join(d, n), "d\n");
+    }
+    let dirtyMsg = "";
+    assert.throws(
+      () => finishLoop(d, createGit(d)),
+      (e) => {
+        dirtyMsg = e.message;
+        return /完整性闸门拒绝（dirty）：host/.test(e.message);
+      },
+    );
+    // multisession-discipline#N1：列命中路径前 3 条 + 超出计数 + 两分句（.gitignore / 多会话归因）
+    assert.match(dirtyMsg, /命中：dirty1\.txt、dirty2\.txt、dirty3\.txt 等 4 处/);
+    assert.match(dirtyMsg, /\.gitignore/);
+    assert.match(dirtyMsg, /另一个会话/);
     const m = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "metrics.json"), "utf8"));
     assert.equal(m.finish_reject_dirty, 1);
     assert.equal(m.finish_attempts, 1);
-    rmSync(join(d, "dirty.txt"));
+    for (const n of ["dirty1.txt", "dirty2.txt", "dirty3.txt", "dirty4.txt"]) {
+      rmSync(join(d, n));
+    }
     finishLoop(d, createGit(d)); // 清障后过
     assert.equal(goalJson(d).status, "done");
   } finally {
@@ -631,5 +648,42 @@ test("未知子命令清单含 subject/tier；status 正向 tier/subjects/快照
     assert.match(st, /tier light · subjects 0 项/);
   } finally {
     rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("worktree-as-subject：兄弟 worktree 接受 + 脏态按根隔离 + 提交即指纹耦变", () => {
+  // multisession-discipline#N4：结清 v008 计划已知未知 #3（worktree 派工时 subject 指向
+  // worktree 根即可——指纹按根隔离、共享对象库不串扰脏态判定）。
+  const host = repo();
+  const wtBase = mkdtempSync(join(tmpdir(), "lzy-v008-wt-"));
+  const wt = join(wtBase, "wt");
+  try {
+    const g = (args, cwd = host) => spawnSync("git", args, { cwd, encoding: "utf8" });
+    cycle(host); // executing 态
+    const r = g(["worktree", "add", "-b", "wt-branch", wt]);
+    assert.equal(r.status, 0, `git worktree add 失败：${r.stderr}`);
+
+    // ① 兄弟 worktree 作 subject：接受（在宿主树外的独立树根）
+    assert.equal(addSubject(host, wt).added, true);
+    assert.equal(goalJson(host).subjects.length, 1);
+
+    // ② 脏态按根隔离：worktree 内未提交改动只脏该根，宿主保持 clean
+    writeFileSync(join(wt, "wip.txt"), "w\n");
+    assert.equal(createGit(wt).integrity().state, "dirty");
+    assert.deepEqual(createGit(wt).integrity().paths, ["wip.txt"]);
+    assert.equal(createGit(host).integrity().state, "clean");
+
+    // ③ 提交即耦变：worktree 头树变 → 复合指纹变，而宿主头树不动（声明=纳入判据）
+    const before = fingerprintSubjects(host, goalJson(host).subjects);
+    const hostHead = createGit(host).headTreeHash();
+    g(["add", "-A"], wt);
+    g(["commit", "-qm", "wt commit"], wt);
+    const after = fingerprintSubjects(host, goalJson(host).subjects);
+    assert.notEqual(after, before);
+    assert.equal(createGit(host).headTreeHash(), hostHead);
+    assert.equal(createGit(wt).integrity().state, "clean");
+  } finally {
+    rmSync(host, { recursive: true, force: true });
+    rmSync(wtBase, { recursive: true, force: true });
   }
 });

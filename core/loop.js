@@ -773,6 +773,17 @@ export function verifyEvidence(cwd, git) {
   return { current, fingerprint, fresh, stale, unbound };
 }
 
+// dirty 命中路径提示（multisession-discipline#N1）：前 3 条 + 超出计数。路径缺席（旧形状/
+// 异常路径）时静默省略该子句——提示永不改变拒绝语义，只改变可读性。
+const DIRTY_PATH_HINT_MAX = 3;
+
+function dirtyPathHint(paths) {
+  if (!Array.isArray(paths) || paths.length === 0) return "";
+  const head = paths.slice(0, DIRTY_PATH_HINT_MAX).join("、");
+  const more = paths.length > DIRTY_PATH_HINT_MAX ? ` 等 ${paths.length} 处` : "";
+  return `命中：${head}${more}。`;
+}
+
 // ── 6. 完成：全部步骤 done + F 项证据全部新鲜 ──────────────────────────────
 export function finishLoop(cwd, git, opts = {}) {
   requireGoalPreLock(cwd);
@@ -827,7 +838,7 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
     const which = root === cwd ? "host" : "subject";
     const advice =
       check.state === "dirty"
-        ? "该根有未提交改动：commit 或 stash 后重跑 finish（.lazyzcode/ 账本不计该根脏；先提交再取证，未提交改动不进指纹）。"
+        ? `该根有未提交改动：commit 或 stash 后重跑 finish（.lazyzcode/ 账本不计该根脏；先提交再取证，未提交改动不进指纹）。${dirtyPathHint(check.paths)}杂物文件可写进 .gitignore 或移出仓库，不必为它提交；若这不是你的改动，可能是同一工作目录里另一个会话的未提交工作。`
         : check.state === "missing"
           ? `该根不存在/非 git 仓/HEAD 不可解析，不可验收：复原路径，或 lzy loop subject remove <path> 移出集合，或 lzy loop abandon。${check.detail ? `（${check.detail}）` : ""}`
           : `git 调用失败（fail-closed 按拒处理）：修复 git 后重跑 finish。原始报错：${check.detail ?? "未知"}`;

@@ -248,3 +248,10 @@ Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 `lzy update` (0.0.7+). On 0.0.6 or earlier: `npm i -g lazyzcode && lzy sync`.
 Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 ```
+
+### 补记（2026-09-17，publish 收官）
+
+- Runbook 1-5 收官：push（17 提交，棒1/棒2/headless spike 随行）→ CI 四腿绿（run 35150826600）→ tag v0.0.9（6c1d099）→ GitHub Release → 用户 `npm publish`（2FA）。registry `dist-tags.latest=0.0.9`；发布 shasum `90ec5417…` 与 dry-run 逐字一致；publish 时刻 2026-09-16T21:20Z（=本地 09-17，CHANGELOG 日期成立，无需重提）。
+- 隔离 prefix 冒烟：`lzy --version` = 0.0.9（载荷同版本）。**npm 12 新雷=EALLOWREMOTE**（remote tarball URL 直装默认禁，同 EALLOWGIT 策略家族）——绕法=`lazyzcode@0.0.9 --prefer-online`；另注 **npm view 元数据缓存滞后数分钟**（publish 后直读仍得旧版，registry HTTP 端点才是真相源；`lzy update` 的探测在数分钟后自然读到新版）。
+- 真机狗粮：`lzy update` 0.0.8→0.0.9 全链 EXIT=0（探测→升级→新装子进程 sync 输出可见，缓存 0.0.9 目录落位）；升级后 doctor install/files 双 ✔（15 文件逐文件 sha256 一致）；隔离 0.0.9 doctor 对未 sync 缓存的 install ⚠/files ✖ 行=ADR-0012 中间态自名活体。
+- win32 VM 复测：待约（Runbook 第 6 步，publish 后才可做）。

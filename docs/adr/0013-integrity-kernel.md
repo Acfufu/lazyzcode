@@ -31,3 +31,12 @@ LOCK_STALE_MS 10s 留余量）仍有单根超时×多根的残差、闸门检查
 TOCTOU 窗口（ms 级，结局=对较旧树 finish 而非伪造）、report tmp 落盘窗口的
 kill -9 孤儿（history 按 `.report.md` 后缀过滤不受扰）、`VERDICT:` 标记形态是
 机器门载荷（parseVerdict 无标记回退串可 spoof——评审协议要求标记形态）。
+
+**后补记（2026-09-16，goal multisession-discipline）**：①计划已知未知 #3 结清——
+「worktree 派工时 subject 指向 worktree 根即可（指纹按根隔离、共享对象库不串扰
+脏态判定）」已由实测 + 契约用例（test/integrity-kernel.contract.test.js
+`worktree-as-subject` 三断言：接受/脏态按根隔离/提交即指纹耦变）+ SKILL
+Host workspace 句承载；未声明 worktree 仍在闸门视野外=声明纪律残差同族。
+②dirty 拒的 detail：`git.integrity()` 的 dirty 态现带 `paths`（命中路径，排除
+`.lazyzcode/`），finish 报文列前 3 条 + 超出计数（结清 GPT 蓝图 N1「报错列前 N 个
+dirty paths」欠账）。

@@ -3,6 +3,31 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Changed
+
+- **Dirty-rejection message now names the files**: the finish integrity gate's `dirty`
+  branch lists the first 3 offending paths (plus an "…等 N 处" count for the rest,
+  `.lazyzcode/` ledger excluded), and adds two sentences — stray files can go into
+  `.gitignore` or move out of the repo (no need to commit them), and a path you did
+  not touch may be another session's uncommitted work in the same working directory.
+  `git.integrity()`'s dirty state now carries `paths`; the rejection semantics are
+  unchanged. Closes a GPT-blueprint N1 clause ("报错列前 N 个 dirty paths").
+
+### Added
+
+- **Same-workspace multi-session discipline** (skill + guide, both languages): one
+  goal slot per workspace — a second `register` is rejected and a `done` goal keeps
+  the slot until `lzy loop reset`; never `reset`/`abandon` a slot another session is
+  actively running (new skill red line); parallel goals each get their own worktree
+  **created outside the host tree** (an in-tree worktree dir reads as untracked and
+  blocks the host's own finish); same-goal co-workers split per step via
+  `lzy loop claim` with one writer committing at a time.
+- **worktree-as-subject contract test**: a sibling worktree root is accepted as a
+  subject, its dirt is attributed per root (host stays clean), and a commit there
+  changes the composite fingerprint (declaring = coupling).
+
 ## [0.0.8] - 2026-09-16
 
 ### Changed

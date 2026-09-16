@@ -1068,13 +1068,16 @@ export function resetLoop(cwd, git) {
 
 // 孤儿/残留清理（评审 R2-11）：kill -9 落在 tmp 写入与 rename 之间会留孤儿 .tmp；
 // 会话计数器在 goal 清除后也成悬空状态。doctor 的状态卫生与 reset 指引共用此语义。
+// tmp 家族表（v009-bat1#N2）：goal.json 之外再收中央 DAG 账本（core/dag.js saveDag
+// 同一命名约定 .<basename>.<pid>.<ts>.tmp）——新增常驻账本须在此登记，否则孤儿不可清。
 function cleanupLoopResidue(cwd) {
   const dir = loopDir(cwd);
   const goalName = basename(goalPath(cwd));
+  const tmpFamilies = [`.${goalName}.`, ".dag.json."];
   let cleaned = 0;
   try {
     for (const f of readdirSync(dir)) {
-      if (f.startsWith(`.${goalName}.`) && f.endsWith(".tmp")) {
+      if (f.endsWith(".tmp") && tmpFamilies.some((p) => f.startsWith(p))) {
         rmSync(join(dir, f), { force: true });
         cleaned++;
       }

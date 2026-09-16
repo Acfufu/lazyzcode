@@ -173,8 +173,11 @@ function checkLoopState(push, cwd) {
     sessions = 0;
   }
   try {
-    // kill -9 落在 writeGoal 与 rename 之间的孤儿 tmp（评审 R2-11）
-    orphanTmp = readdirSync(dir).filter((f) => f.startsWith(".goal.json.") && f.endsWith(".tmp")).length;
+    // kill -9 落在 writeGoal/saveDag 与 rename 之间的孤儿 tmp（评审 R2-11；
+    // v009-bat1#N2 家族表与 cleanupLoopResidue 的 tmpFamilies 同源：goal.json + dag.json）
+    orphanTmp = readdirSync(dir).filter(
+      (f) => f.endsWith(".tmp") && (f.startsWith(".goal.json.") || f.startsWith(".dag.json.")),
+    ).length;
   } catch {
     orphanTmp = 0;
   }
@@ -197,8 +200,9 @@ function checkLoopState(push, cwd) {
       // 目录在场即疤痕（空目录也是残留）；豁免=有意产物/正常残留：salvage/ 存根、
       // metrics.json 放行计数（跨 reset 永续）、空 sessions/（reset 清内容留目录；
       // 非空场景已在上方残留分支分流，走到此处必为空）、snapshots/ 计划快照档案
-      // （v008#N7 采纳即快照，reset 不清——照证据报告先例）
-      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots"]);
+      // （v008#N7 采纳即快照，reset 不清——照证据报告先例）、dag.json 中央失效 DAG
+      // 账本（v009-bat1#N2，跨 reset 常驻，照 metrics.json 先例）
+      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json"]);
       emptyScar = entries.length === 0 || entries.some((e) => !EXEMPT.has(e));
     } catch {
       emptyScar = false; // 目录缺席 = 真干净

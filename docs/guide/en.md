@@ -602,7 +602,17 @@ Privacy: zero telemetry; diagnostics are computed locally and printed locally.
   model credentials; the mechanism is probe-validated, live headless
   acceptance is deferred.
 - **One goal loop per project directory**, and a finished loop occupies the
-  slot until `lzy loop reset`.
+  slot until `lzy loop reset`. **With several sessions in the same directory**:
+  a second goal is rejected by `register`, and a `done` goal keeps the slot —
+  never `reset` a goal another session is actively running (that is its
+  executing state; clearing it leaves only a salvage stub). Serial is the
+  default within one tree. To run goals in parallel, give each its own git
+  worktree **created outside the host tree** (an in-tree worktree dir reads as
+  untracked and blocks the host's own `finish`). Multiple sessions on the SAME
+  goal split work per step via `lzy loop claim`, with one writer committing at
+  a time — any commit invalidates the others' captured F evidence, and anyone's
+  uncommitted work blocks everyone's `finish` (read `lzy loop status` for
+  claims and dirt first).
 - Trigger matching is deliberately stratified — if you want the loop from
   mid-sentence, say `lazyzcode:zw` or `ultrawork`.
 

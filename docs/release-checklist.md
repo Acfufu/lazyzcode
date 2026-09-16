@@ -190,3 +190,12 @@ Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 `lzy update` (0.0.7+). On 0.0.6 or earlier: `npm i -g lazyzcode && lzy sync`.
 Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 ```
+
+### 补记（2026-09-16，publish 收官 + win32 VM 复测）
+
+- 发布过程 CI 抓获第五族 win32 测试雷（memory windows-test-mines-families）：integrity-kernel 夹具 `split("/").pop()` 取 basename，win32 反斜杠路径切不开→整条绝对路径写进 `subjects:` 头→production `path.resolve` 折出双重前缀，7 个测试同根因翻红且断言形态迥异（误伤面=共用 sibName 的全部用例）；`startsWith("/")` 绝对路径断言同族（realpath 在 win32 给盘符）。mac 本地+ubuntu CI 双绿不构成 win32 证据。test-only 修复 69992ff（basename/isAbsolute），CI 四腿绿后 tag v0.0.8 最后切（=69992ff）。
+- Runbook 1-5 收官：push → CI 四腿绿 → tag → GitHub Release → 用户 `npm publish`（2FA）。registry `dist-tag latest=0.0.8`，发布 shasum `b6064e34…` 与 dry-run 逐字一致。
+- 隔离 prefix 冒烟：`npm i -g lazyzcode`（隔离 prefix）→ `lzy --version` 0.0.8 + doctor 全套运作。
+- 真机狗粮：`lzy update` 0.0.7→0.0.8 全链 EXIT=0（探测→升级→新装子进程 sync 输出可见）；`lzy update` 已是最新半区通；doctor install/files 双 ✔（缓存 15 文件逐文件 sha256 一致）。
+- **win32 VM 复测（Runbook 第 6 步，Win11 ARM64，SYSTEM exec 上下文）**：`lzy update` 0.0.7→0.0.8 EXIT=0（ComSpec 链+新装子进程 sync，缓存落 systemprofile 既知形态）→ doctor（payload/install/files/hooks/node 全 ✔；engine/platform ⚠=SYSTEM 上下文不见用户级桌面端，既知形态非缺陷）→ scratch loop 全链（register→plan〔快照 sha256 行在场〕→start→step done N1/F1〔证据绑指纹 6d733f8087〕→finish 过：完整性闸门文案+报告归档）→ status 快照复核一致。0.0.8 完整性内核 win32 活体验收闭环。
+- VM 探针作业教训：prlctl exec 的 cmd 对正斜杠路径 mkdir/cd 报「找不到路径」，且 cd 失败后 `&` 链继续在默认 cwd（system32）执行——node 相对写入会残留 system32（已清理）；配方=`%TEMP%` 相对路径 cd 链 + 一切文件操作走 node。

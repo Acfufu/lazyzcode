@@ -2,9 +2,10 @@
 // 证据验证（F 项绑定 tree hash，代码一变旧证据作废）→ 完成。
 // 状态落工作区 .lazyzcode/loop/goal.json（与宿主 .zcode/ 划清边界，宪法 §4 决策 #6）。
 // 本模块零 spawn（tree hash 经 core/git.js 取），全部同步语义。
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
+import { createGit } from "./git.js";
 
 export const GOAL_VERSION = 1;
 const ACTIVE_STATES = new Set(["planning", "executing"]);
@@ -163,6 +164,7 @@ export function registerGoal(cwd, slug, title) {
       startedAt: null,
       finishedAt: null,
       baseTreeHash: null,
+      subjects: [],
       steps: [],
     };
     writeGoal(cwd, goal);
@@ -182,6 +184,11 @@ const DEPS_RE = /^\s*deps:\s*(.*)$/;
 // 孤儿扫描容 bullet 前缀（`- deps: …` 也算声明形态——门姿势「不静默吞」对齐，评审 R2-B）。
 const DEPS_ORPHAN_RE = /^\s*(?:[-*]\s+)?deps\s*:/i;
 const DEP_TOKEN_RE = /^[NF]\d+$/;
+// subject 集声明（v008-integrity-kernel#N3，拍板③）：计划头 `subjects: <path>` 每行一路径，
+// 相对路径按宿主根解析；头内重复=LoopError；路径不存在/非 git 仓/与宿主包含=LoopError 拒采纳。
+// 正文杂散 subjects: 行沿 deps orphan 家法响亮拒绝（行级 <!--lzy:allow--> 豁免同款）。
+const SUBJECTS_RE = /^\s*subjects:\s*(\S+)\s*$/;
+const SUBJECTS_ORPHAN_RE = /^\s*(?:[-*]\s+)?subjects\s*:/i;
 
 function parsePlanItems(body) {
   const lines = body.split(/\r?\n/);
@@ -283,6 +290,132 @@ function parseVerdict(review) {
   return "UNVERIFIED";
 }
 
+// ── 2.5 subject 集（v008-integrity-kernel#N3）───────────────────────────────
+// 校验单个 subject 根：存在目录、git 仓（HEAD 头树可解析）、与宿主无包含关系（任一向，
+// 尾分隔符判定防 /foo 误配 /foobar——拍板③只认兄弟仓根，host 子目录只会复刻 host 树）。
+// 返回 realpath 归一绝对路径。
+function validateSubjectRoot(cwd, p) {
+  const abs = resolve(cwd, p);
+  let st;
+  try {
+    st = statSync(abs);
+  } catch {
+    throw new LoopError(`subject 路径不存在：${abs}`);
+  }
+  if (!st.isDirectory()) throw new LoopError(`subject 路径不是目录：${abs}`);
+  const root = realpathSync(abs);
+  const host = realpathSync(cwd);
+  if (root === host) throw new LoopError(`subject 不能是宿主仓自身：${root}`);
+  if (root.startsWith(host + sep) || host.startsWith(root + sep)) {
+    throw new LoopError(
+      `subject 与宿主仓存在包含关系（拍板③只认兄弟仓根）：subject=${root} host=${host}`,
+    );
+  }
+  if (!createGit(root).headTreeHash()) {
+    throw new LoopError(`subject 不是 git 仓库（HEAD 头树不可解析）：${root}`);
+  }
+  return root;
+}
+
+// 计划头 subjects: 行解析：仅首个清单项之前生效；头内重复（realpath 后）=LoopError；
+// 头内形态非法（bullets/空值）与正文杂散 subjects: 行=LoopError（不静默吞家法）。
+function parseSubjectsHeader(cwd, body) {
+  const lines = body.split(/\r?\n/);
+  const firstItem = lines.findIndex((l) => ITEM_RE.test(l));
+  const headerEnd = firstItem === -1 ? lines.length : firstItem;
+  const declared = [];
+  for (let i = 0; i < headerEnd; i++) {
+    const line = lines[i];
+    if (line.includes("<!--lzy:allow-->")) continue;
+    const m = line.match(SUBJECTS_RE);
+    if (m) {
+      declared.push(m[1]);
+      continue;
+    }
+    if (SUBJECTS_ORPHAN_RE.test(line)) {
+      throw new LoopError(
+        `subjects: 头声明形态非法（语法：subjects: <path> 每行一路径，仅计划头）：L${i + 1}: ${line.trim().slice(0, 60)}`,
+      );
+    }
+  }
+  const roots = declared.map((p) => validateSubjectRoot(cwd, p));
+  const seen = new Set();
+  for (const root of roots) {
+    if (seen.has(root)) throw new LoopError(`subjects: 头声明重复路径：${root}`);
+    seen.add(root);
+  }
+  for (let i = headerEnd; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.includes("<!--lzy:allow-->")) continue;
+    if (SUBJECTS_ORPHAN_RE.test(line)) {
+      throw new LoopError(
+        `孤儿 subjects: 行（声明仅在计划头，首个清单项之前）：L${i + 1}: ${line.trim().slice(0, 60)}`,
+      );
+    }
+  }
+  return roots;
+}
+
+// 复合指纹：subject 集={host}∪roots 每根 HEAD 头树哈希，按 realpath 排序拼
+// "realpath\0hash\n" 串取 sha256。任一根树变（或集合变）→ 指纹变 → 全体绑定指纹的
+// F 证据过期。防御分支：根消失/非 git 仓时该根以 "missing" 参与串（采纳门已拒，此处
+// 兜底；finish 闸门另有 missing 分支拦「重录取证致指纹含 missing 仍 fresh」穿越）。
+// 缺键归一单点：roots 按 `?? []` 归一（0.0.8 前的 goal 无 subjects 键，计算面同容忍）。
+export function fingerprintSubjects(cwd, roots) {
+  const list = [resolve(cwd), ...(Array.isArray(roots) ? roots : [])];
+  const parts = list.map((root) => {
+    let rp = root;
+    try {
+      rp = realpathSync(root);
+    } catch {
+      // 根消失：按存储路径参与排序，哈希记 missing
+    }
+    const hash = createGit(root).headTreeHash() ?? "missing";
+    return { rp, hash };
+  });
+  parts.sort((a, b) => (a.rp < b.rp ? -1 : a.rp > b.rp ? 1 : 0));
+  return createHash("sha256").update(parts.map((x) => `${x.rp}\0${x.hash}\n`).join("")).digest("hex");
+}
+
+// 中途加 subject（仅 executing）：校验镜像采纳门；realpath 幂等去重。
+// 语义：任何集合变化→指纹变化→全体已录 F 证据过期，重取后才可 finish。
+export function addSubject(cwd, path) {
+  requireGoalPreLock(cwd);
+  return withLock(cwd, () => {
+    const goal = requireActive(cwd, "executing");
+    const root = validateSubjectRoot(cwd, path);
+    const subjects = goal.subjects ?? [];
+    if (subjects.includes(root)) return { goal, root, added: false };
+    goal.subjects = [...subjects, root];
+    writeGoal(cwd, goal);
+    return { goal, root, added: true };
+  });
+}
+
+// 中途移除 subject（仅 executing）：集合维护命令（评审 4 轮增补=missing 死锁出口：
+// 根永久消失时 remove 是 abandon 外唯一出路）。收窄与从未声明同信任级——不违「无逃生门」
+// （证据过期语义照走：移除后指纹变，全体 F 证据过期须重取）。
+export function removeSubject(cwd, path) {
+  requireGoalPreLock(cwd);
+  return withLock(cwd, () => {
+    const goal = requireActive(cwd, "executing");
+    const subjects = goal.subjects ?? [];
+    let rp;
+    try {
+      rp = realpathSync(resolve(cwd, path));
+    } catch {
+      rp = resolve(cwd, path); // 根已消失：按入参归一参与匹配
+    }
+    const idx = subjects.indexOf(rp);
+    if (idx === -1) {
+      throw new LoopError(`该路径不在 subject 集合：${rp}（当前集合 ${subjects.length} 项）`);
+    }
+    goal.subjects = subjects.filter((_, i) => i !== idx);
+    writeGoal(cwd, goal);
+    return { goal, root: rp };
+  });
+}
+
 export function adoptPlan(cwd, planFile, opts = {}) {
   requireGoalPreLock(cwd);
   return withLock(cwd, () => doAdoptPlan(cwd, planFile, opts));
@@ -323,7 +456,9 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
     throw new LoopError("计划里没有清单项（语法：- [N1] … / - [F1] …，F 项需真实表面证据）");
   }
   validateDeps(items);
+  const subjects = parseSubjectsHeader(cwd, body);
   goal.planPath = relative(cwd, planFile) || planFile;
+  goal.subjects = subjects;
   const verdict = review ? parseVerdict(review) : null;
   goal.review = review
     ? { by: "plan-reviewer", verdict: verdict === "PASS" ? "PASS" : "UNVERIFIED", summary: review.slice(0, 500), at: new Date().toISOString() }

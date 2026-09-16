@@ -12,6 +12,7 @@ import { createGit } from "../core/git.js";
 import {
   LoopError,
   abandonLoop,
+  addSubject,
   adoptPlan,
   claimStep,
   completeStep,
@@ -24,6 +25,7 @@ import {
   handoffGoal,
   readGoal,
   registerGoal,
+  removeSubject,
   resetLoop,
   startLoop,
   verifyEvidence,
@@ -288,6 +290,41 @@ async function cmdLoop(args) {
       }
       return;
     }
+    case "subject": {
+      // subject 集维护（v008-integrity-kernel#N3）：add/remove 写面（仅 executing）+ list 读面。
+      // 语义提示必附：任何集合变化→复合指纹变→全体已录 F 证据过期，重取后才可 finish。
+      const action = _[1] ?? "list";
+      if (action === "add" || action === "remove") {
+        if (!_[2]) throw new LoopError(`用法：lzy loop subject ${action} <path>`);
+        if (_[3]) throw new LoopError(`多余参数：${_[3]}（一次一个路径）`);
+        if (action === "add") {
+          const { goal, root, added } = addSubject(cwd, _[2]);
+          console.log(
+            added
+              ? `✔ subject 已加入：${root}（共 ${goal.subjects.length} 项）`
+              : `✔ subject 已在集合（幂等跳过）：${root}（共 ${goal.subjects.length} 项）`,
+          );
+        } else {
+          const { goal, root } = removeSubject(cwd, _[2]);
+          console.log(`✔ subject 已移除：${root}（剩 ${goal.subjects.length} 项）`);
+        }
+        console.log("  集合变化=复合指纹变化：全体已录 F 证据过期，重取后才可 finish");
+        return;
+      }
+      if (action === "list") {
+        if (_[2]) throw new LoopError(`多余参数：${_[2]}（用法：lzy loop subject list）`);
+        const goal = readGoal(cwd);
+        const subjects = goal?.subjects ?? [];
+        if (subjects.length === 0) {
+          console.log("subjects：空（单树 host——证据时效与 finish 闸门只看宿主树）");
+        } else {
+          console.log(`subjects（${subjects.length} 项）：`);
+          for (const root of subjects) console.log(`  ${root}`);
+        }
+        return;
+      }
+      throw new LoopError(`未知 subject 子命令：${action}（用法：lzy loop subject add <path> | remove <path> | list）`);
+    }
     case "status":
       console.log(formatStatus(cwd, git));
       return;
@@ -304,7 +341,7 @@ async function cmdLoop(args) {
       console.log(formatCost(cwd, readGoal(cwd)));
       return;
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/subject/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff）`);
   }
 }
 
@@ -377,6 +414,10 @@ function printHelp() {
   lzy loop register <slug> --title <标题>   注册目标（进入 planning）
   lzy loop plan <计划文件> [--force]        计划门：采纳 N/F 清单（默认拒绝待定项）
   lzy loop start                            开跑（planning → executing，打印实测并发纪律行）
+  lzy loop subject add <path>               声明兄弟仓根入 subject 集（仅 executing；校验 git 仓/
+                                            与宿主无包含；集合变化=全体 F 证据过期须重取）
+  lzy loop subject remove <path>            移除 subject（missing 死锁出口；证据过期语义照走）
+  lzy loop subject list                     列 subject 集（空=单树 host）
   lzy loop claim [<id>] [--release]         步级认领（决策 #21）：占步互斥 48h；无参列出可
                                             认领集（同目标多工人挑步）；done 自动释放
   lzy loop status                           查看进度与下一步

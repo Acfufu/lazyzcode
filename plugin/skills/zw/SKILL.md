@@ -164,6 +164,19 @@ lzy step done N1 --note "<what was done, one line>"
   holds a fresh claim on — reconcile the claim listing first (`lzy loop claim`).
   Serial remains the default; the `lzy loop start` 并发纪律 line wins
   over any general rule here.
+- **Same-workspace multi-session**: one goal slot per workspace — a second
+  `register` in the same tree is rejected, and a `done` goal keeps the slot until
+  `lzy loop reset`. Default to serial in one tree: finish or take over the running
+  goal before starting another. **Never `reset`/`abandon` a slot another session is
+  actively running** — that destroys its executing state (only a salvage stub
+  survives); the slot error means "move to a worktree", never "clear the slot". To
+  run goals in parallel, give each its own git worktree **created outside the host
+  tree** (an in-tree worktree dir reads as untracked and blocks the host's own
+  finish via the integrity gate). Multiple sessions cooperating on the SAME goal
+  coordinate per step via `lzy loop claim` with one writer committing at a time:
+  any commit advances the tree hash and invalidates the other sessions' captured F
+  evidence, and anyone's uncommitted work blocks everyone's finish — read
+  `lzy loop status` (claims, dirt) before you claim the finish.
 
 ### 4 · Evidence (F items)
 
@@ -270,6 +283,10 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
 - Parallel workers on a cross-repo goal: claim steps (`lzy loop claim`) and
   edit code in your own worktrees, but all `lzy` traffic — claim, step done,
   status — stays at the host root (see "Parallel dispatch" in §3 · Execute).
+- A worktree root works as a subject too (`lzy loop subject add <worktree-path>`):
+  per-root dirt and HEAD are tracked independently (its uncommitted work shows as
+  DIRTY on that root only). An undeclared worktree stays invisible to the gate —
+  declaring it is the discipline.
 
 ## Continuation (how the Stop hook drives you)
 
@@ -450,6 +467,9 @@ zw 继续（无人值守：只推进 executing 目标；无目标或 planning �
    legacy evidence stays single-tree). Tests alone ≠ evidence.
 3. `.lazyzcode/` is the loop's single source of truth — if speech and state
    disagree, trust the state, then fix the speech.
+4. Never `reset`/`abandon` a goal slot another session is actively running —
+   one writer per tree; hitting an occupied slot means move to a worktree
+   (outside the host tree), not clear the slot.
 
 ## Roles (plugin agents)
 

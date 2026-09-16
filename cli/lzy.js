@@ -27,6 +27,7 @@ import {
   registerGoal,
   removeSubject,
   resetLoop,
+  setTier,
   startLoop,
   verifyEvidence,
   writeGoalReport,
@@ -42,7 +43,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -168,8 +169,10 @@ async function cmdLoop(args) {
 
   switch (sub) {
     case "register": {
-      const goal = registerGoal(cwd, _[1], f.title);
-      console.log(`✔ 目标已注册：${goal.slug} — ${goal.title}（状态 planning）`);
+      const goal = registerGoal(cwd, _[1], f.title, {
+        tier: typeof f.tier === "string" ? f.tier : undefined,
+      });
+      console.log(`✔ 目标已注册：${goal.slug} — ${goal.title}（状态 planning · tier ${goal.tier}）`);
       console.log("  下一步：写决策完备计划到 .lazyzcode/plans/<slug>.md，然后 lzy loop plan <文件>");
       return;
     }
@@ -180,8 +183,9 @@ async function cmdLoop(args) {
       console.log(`✔ 计划门通过：${goal.steps.length} 项已采纳（N:${goal.steps.filter((s) => s.kind === "N").length} F:${goal.steps.filter((s) => s.kind === "F").length}）`);
       if (review) {
         console.log(`  评审记录：${goal.review.verdict} · ${goal.review.at}`);
-      } else {
-        console.log("  ⚠ 未带 --review：HEAVY tier 须先过 plan-reviewer 评审门（判决 PASS 后带 --review 采纳）");
+      } else if ((goal.tier ?? "light") === "light") {
+        // v008#N8：HEAVY 无 PASS 已是 core 机器拒（采纳直接失败）；此提示只对 LIGHT 语境有意义。
+        console.log("  ⚠ 未带 --review：LIGHT 无评审要求；若目标实为 HEAVY（多文件/高风险），tier 先行（register --tier heavy 或 lzy loop tier heavy）再过 plan-reviewer 评审门");
       }
       console.log(`  计划快照：.lazyzcode/loop/snapshots/${goal.slug}.md（sha256 ${goal.planHash.slice(0, 10)}…，reset 不清）`);
       for (const w of warnings) console.log(`  ⚠ ${w}`);
@@ -336,6 +340,20 @@ async function cmdLoop(args) {
       }
       throw new LoopError(`未知 subject 子命令：${action}（用法：lzy loop subject add <path> | remove <path> | list）`);
     }
+    case "tier": {
+      // tier 升级（v008#N8）：只升不降；机器门=采纳时点，executing 升级为程序性自报（ADR-0013）。
+      const value = _[1];
+      if (!value) throw new LoopError("用法：lzy loop tier heavy（只升不降；light→heavy 单向）");
+      if (_[2]) throw new LoopError(`多余参数：${_[2]}（用法：lzy loop tier heavy）`);
+      const { goal, changed, warn } = setTier(cwd, value);
+      console.log(
+        changed
+          ? `✔ tier 已升级：${goal.slug} → ${goal.tier}`
+          : `✔ tier 已是 ${goal.tier}（no-op）`,
+      );
+      if (warn) console.log(`  ⚠ ${warn}`);
+      return;
+    }
     case "status":
       console.log(formatStatus(cwd, git));
       return;
@@ -352,7 +370,7 @@ async function cmdLoop(args) {
       console.log(formatCost(cwd, readGoal(cwd)));
       return;
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/subject/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/subject/tier/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff）`);
   }
 }
 
@@ -426,9 +444,12 @@ function printHelp() {
   lzy uninstall    卸载插件（优先官方 plugins uninstall）
 
 目标循环（状态在工作区 .lazyzcode/）：
-  lzy loop register <slug> --title <标题>   注册目标（进入 planning）
-  lzy loop plan <计划文件> [--force]        计划门：采纳 N/F 清单（默认拒绝待定项）
+  lzy loop register <slug> --title <标题>   注册目标（进入 planning；--tier heavy 声明重目标，
+                                            HEAVY 采纳时无 PASS 评审会被机器拒）
+  lzy loop plan <计划文件> [--force]        计划门：采纳 N/F 清单（默认拒绝待定项；采纳即快照
+                                            绑 planHash，复采纳换哈希须重评审）
   lzy loop start                            开跑（planning → executing，打印实测并发纪律行）
+  lzy loop tier heavy                       tier 升级（只升不降；机器门=采纳时点，ADR-0013）
   lzy loop subject add <path>               声明兄弟仓根入 subject 集（仅 executing；校验 git 仓/
                                             与宿主无包含；集合变化=全体 F 证据过期须重取）
   lzy loop subject remove <path>            移除 subject（missing 死锁出口；证据过期语义照走）

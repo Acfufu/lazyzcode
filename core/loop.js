@@ -135,11 +135,16 @@ export function nextStep(goal) {
 }
 
 // ── 1. 注册 ────────────────────────────────────────────────────────────────
-export function registerGoal(cwd, slug, title) {
+export function registerGoal(cwd, slug, title, { tier = "light" } = {}) {
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/i.test(slug ?? "")) {
     throw new LoopError(`slug 不合法：${slug}（仅字母数字与连字符，≤64 字符）`);
   }
   if (!title?.trim()) throw new LoopError("目标标题不能为空（--title）");
+  // tier 落盘（v008#N8）：大小写归一为小写；非法值 LoopError。
+  const tierNorm = typeof tier === "string" ? tier.toLowerCase() : tier;
+  if (tierNorm !== "light" && tierNorm !== "heavy") {
+    throw new LoopError(`tier 不合法：${tier}（light | heavy，默认 light）`);
+  }
   // 查重+写入同一临界区（评审 R6A-1）：并发 register 双方 readGoal 均 null 时
   // 各自 writeGoal 原子覆盖，先注册的目标无痕丢失——唯一漏网的 goal.json 变更操作补齐入锁。
   return withLock(cwd, () => {
@@ -159,6 +164,7 @@ export function registerGoal(cwd, slug, title) {
       slug,
       title: title.trim(),
       status: "planning",
+      tier: tierNorm,
       planPath: null,
       createdAt: new Date().toISOString(),
       startedAt: null,
@@ -169,6 +175,38 @@ export function registerGoal(cwd, slug, title) {
     };
     writeGoal(cwd, goal);
     return goal;
+  });
+}
+
+// tier 升级子命令（v008#N8）：planning/executing 可用；light→heavy 单向（反向 LoopError，
+// 只升不降宪法）；大小写归一；同值=no-op。升级时 review 为空或非 PASS→warn 一行
+// （warn-only 保住只升不降；机器门=采纳时点，executing 升级为程序性自报不回溯评审，
+// ADR-0013 记 warn 与语义在案）。
+export function setTier(cwd, value) {
+  requireGoalPreLock(cwd);
+  return withLock(cwd, () => {
+    const goal = requireActive(cwd, "planning", "executing");
+    const norm = typeof value === "string" ? value.toLowerCase() : value;
+    if (norm !== "light" && norm !== "heavy") {
+      throw new LoopError(`tier 不合法：${value}（用法：lzy loop tier heavy）`);
+    }
+    const current = goal.tier ?? "light";
+    if (norm === "light" && current === "heavy") {
+      throw new LoopError("tier 只升不降：heavy 目标不可降为 light（宪法 Tier 规则）");
+    }
+    if (norm === current) {
+      return { goal, changed: false, warn: null };
+    }
+    goal.tier = norm;
+    let warn = null;
+    if (norm === "heavy") {
+      const verdict = goal.review?.verdict ?? null;
+      if (verdict !== "PASS") {
+        warn = "本目标从未过评审门（review 为空或非 PASS）——HEAVY 机器门只在采纳时点执法，此升级为程序性自报";
+      }
+    }
+    writeGoal(cwd, goal);
+    return { goal, changed: true, warn };
   });
 }
 
@@ -431,6 +469,18 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
     throw new LoopError(
       `计划评审未过门（plan-reviewer 判决 REVISE）。按评审意见修计划、重跑评审后再采纳；评审记录：${review.slice(0, 200)}`,
     );
+  }
+  // ── HEAVY 机器门（v008#N8，拍板②「无 PASS 机器拒」）：HEAVY 目标采纳必须带 PASS 评审，
+  // 任意非空非 PASS 串（含 UNVERIFIED）同拒，--force 不越过；LIGHT 无评审行为不变。
+  // 判据=当次 --review 的 parseVerdict（采纳时点归一），不重解析盘上 500 截断的 summary。
+  if ((goal.tier ?? "light") === "heavy") {
+    const verdict = review ? parseVerdict(review) : null;
+    if (verdict !== "PASS") {
+      throw new LoopError(
+        `HEAVY 目标机器拒：无 PASS 评审不得采纳（${review ? `判决 ${verdict}` : "未带 --review"}）。` +
+          `先过 plan-reviewer 评审门（VERDICT: PASS）再带 --review 采纳；--force 不越过此门。`,
+      );
+    }
   }
   let body;
   try {
@@ -1166,6 +1216,8 @@ export function formatStatus(cwd, git) {
     }
     lines.push(`  快照 ${goal.planHash.slice(0, 10)} · ${snapState}`);
   }
+  // tier/subjects 读面（v008#N8）：缺键容忍（0.0.8 前 goal 无 tier/subjects 键按 light/空集）。
+  lines.push(`  tier ${goal.tier ?? "light"} · subjects ${(goal.subjects ?? []).length} 项`);
   const next = nextStep(goal);
   if (next) {
     // 下一步标注（评审 R1-A4）：指向的 pending 步被认领/阻塞时如实点名，不再裸指。

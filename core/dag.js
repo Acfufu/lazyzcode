@@ -35,13 +35,19 @@ export function dagFilePath(cwd) {
   return dagPath(cwd);
 }
 
-// 读账本：缺席=空账本（首次使用）；在册但解析失败/校验和不符/版本不识别=拒绝。
+// 读账本：缺席（仅 ENOENT）=空账本（首次使用）；其余读失败（EACCES/EISDIR/…）一律
+// DagError 拒——不可读被静默当空库时，下一写命令会整库覆写、毁掉红/waive 唯一副本
+// （v009 双审 ADJ-01 P0，0.0.10 修复）。在册但解析失败/校验和不符/版本不识别/形状
+// 畸形=拒绝（ADJ-05：校验和只证内容未变不证结构可用，畸形须带恢复指路而非裸 TypeError）。
 export function loadDag(cwd) {
   let text;
   try {
     text = readFileSync(dagPath(cwd), "utf8");
-  } catch {
-    return { dagVersion: DAG_VERSION, nodes: [], edges: [] };
+  } catch (err) {
+    if (err && err.code === "ENOENT") return { dagVersion: DAG_VERSION, nodes: [], edges: [] };
+    throw new DagError(
+      `中央 DAG 账本不可读（${err?.code ?? err?.message ?? err}）：${dagPath(cwd)}。不可读状态下写命令一律拒——覆写会毁掉红/waive 唯一副本。${RECOVERY}`,
+    );
   }
   let obj;
   try {
@@ -59,13 +65,43 @@ export function loadDag(cwd) {
       `中央 DAG 账本版本不兼容（盘上 v${payload.dagVersion}，本 lzy 期望 v${DAG_VERSION}）：${dagPath(cwd)}。${RECOVERY}`,
     );
   }
+  if (!Array.isArray(payload.nodes) || !Array.isArray(payload.edges)) {
+    throw new DagError(`中央 DAG 账本形状畸形（nodes/edges 须为数组）：${dagPath(cwd)}。${RECOVERY}`);
+  }
+  for (const n of payload.nodes) {
+    if (!n || typeof n !== "object" || typeof n.id !== "string" || !/^n\d+$/.test(n.id) || typeof n.kind !== "string" || !n.kind) {
+      throw new DagError(`中央 DAG 账本形状畸形（节点缺 id/kind 或 id 非 n<数字> 形）：${dagPath(cwd)}。${RECOVERY}`);
+    }
+  }
+  for (const e of payload.edges) {
+    if (!e || typeof e !== "object" || !EDGE_TYPES.has(e.type) || typeof e.from !== "string" || !e.from || !e.to) {
+      throw new DagError(`中央 DAG 账本形状畸形（边缺 type/from/to 或边型不识别）：${dagPath(cwd)}。${RECOVERY}`);
+    }
+  }
   return payload;
 }
 
 // 写账本：原子写家法同 writeGoal（tmp→rename，0o600）；tmp 命名在 loop/ 清扫与
 // doctor 孤儿 tmp 计数的 .dag.json.*.tmp 家族内（v009#N2 接线）。调用方须持 withLock。
+// 写护栏（ADJ-01 配套，0.0.10）：盘上有载荷而内存为空账本=读写窗口错位或空账本误传，
+// rename 覆写即毁账（POSIX rename 不看目标文件权限）——盘上不可读或有载荷一律拒写空账本。
 export function saveDag(cwd, dag) {
   const p = dagPath(cwd);
+  let diskText = null;
+  try {
+    diskText = readFileSync(p, "utf8");
+  } catch (err) {
+    if (!err || err.code !== "ENOENT") {
+      throw new DagError(`中央 DAG 账本不可读（${err?.code ?? err?.message ?? err}），写护栏拒绝落盘：${p}。${RECOVERY}`);
+    }
+  }
+  const emptyIncoming =
+    Array.isArray(dag?.nodes) && dag.nodes.length === 0 && Array.isArray(dag?.edges) && dag.edges.length === 0;
+  if (diskText != null && diskText.trim() !== "" && emptyIncoming) {
+    throw new DagError(
+      `中央 DAG 写护栏：盘上账本有载荷而本次写入为空账本，拒绝覆写：${p}。重跑当前命令以重新加载账本；确系废弃残留先人工删除该文件。${RECOVERY}`,
+    );
+  }
   mkdirSync(dirname(p), { recursive: true });
   const payload = { dagVersion: dag.dagVersion, nodes: dag.nodes, edges: dag.edges };
   const out = { ...payload, checksum: checksumOf(payload) };

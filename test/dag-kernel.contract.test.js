@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -156,6 +156,76 @@ test("缺席账本=空库（首次使用零误差）", () => {
   const d = repo();
   const dag = loadDag(d);
   assert.deepEqual(dag, { dagVersion: DAG_VERSION, nodes: [], edges: [] });
+});
+
+// ADJ-01 P0（0.0.10）：不可读曾被裸 catch 当空库，下一写命令整库覆写毁红/waive 唯一
+// 副本（红半探针 adj01-chmod-destroy.txt 活体）。回归钉：仅 ENOENT 当缺席。
+test("不可读三态：EACCES（POSIX 腿）/EISDIR/形状畸形（缺 edges 键、nodes:[null]、坏边）都 DagError 拒且带恢复指路", () => {
+  const d = repo();
+  const good = emptyDag();
+  appendEvidenceNode(good, { slug: "s", step: "F1", seq: 1, half: "red", surface: { kind: "external", value: "x" }, text: "r" });
+  saveDag(d, good);
+  const p = dagFileOf(d);
+  const original = readFileSync(p, "utf8");
+  if (process.platform !== "win32") {
+    chmodSync(p, 0o000);
+    try {
+      assert.throws(() => loadDag(d), /不可读.*EACCES.*毁掉红/s);
+    } finally {
+      chmodSync(p, 0o644);
+    }
+  }
+  rmSync(p);
+  mkdirSync(p);
+  try {
+    assert.throws(() => loadDag(d), /不可读.*EISDIR.*恢复/s);
+  } finally {
+    rmSync(p, { recursive: true });
+    writeFileSync(p, original);
+  }
+  const rewrite = (mutate) => {
+    const obj = JSON.parse(original);
+    mutate(obj);
+    delete obj.checksum;
+    obj.checksum = createHash("sha256")
+      .update(JSON.stringify({ dagVersion: obj.dagVersion, nodes: obj.nodes, edges: obj.edges }))
+      .digest("hex");
+    writeFileSync(p, JSON.stringify(obj, null, 2));
+  };
+  rewrite((o) => {
+    delete o.edges;
+  });
+  assert.throws(() => loadDag(d), /形状畸形（nodes\/edges 须为数组）.*恢复/s);
+  rewrite((o) => {
+    o.nodes = [null];
+  });
+  assert.throws(() => loadDag(d), /形状畸形（节点缺 id\/kind.*恢复/s);
+  rewrite((o) => {
+    o.edges = [{ type: "bogus", from: "n1", to: "n2" }];
+  });
+  assert.throws(() => loadDag(d), /形状畸形（边缺 type\/from\/to.*恢复/s);
+});
+
+// ADJ-01 配套：写护栏——盘上不可读或有载荷而内存空账本一律拒落盘（rename 不看目标
+// 文件权限，护栏是 EACCES 场景下防覆写的最后一线）。
+test("写护栏：盘上有载荷而内存空账本拒写且盘面原样；盘上不可读拒落盘（POSIX 腿）", () => {
+  const d = repo();
+  const p = dagFileOf(d);
+  const good = emptyDag();
+  appendEvidenceNode(good, { slug: "s", step: "F1", seq: 1, half: "red", surface: { kind: "external", value: "x" }, text: "r" });
+  saveDag(d, good);
+  const before = readFileSync(p, "utf8");
+  assert.throws(() => saveDag(d, emptyDag()), /写护栏.*拒绝覆写.*重新加载账本/s);
+  assert.equal(readFileSync(p, "utf8"), before);
+  assert.equal(loadDag(d).nodes.length, 1);
+  if (process.platform !== "win32") {
+    chmodSync(p, 0o000);
+    try {
+      assert.throws(() => saveDag(d, good), /写护栏拒绝落盘/s);
+    } finally {
+      chmodSync(p, 0o644);
+    }
+  }
 });
 
 // ── 查询原语 ────────────────────────────────────────────────────────────────

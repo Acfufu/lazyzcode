@@ -3,6 +3,54 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Changed
+
+- **Evidence semantics: single-tree → composite fingerprint** (ADR-0013, decision #23).
+  F-item evidence now binds the sha256 over every `{host}∪subjects` root's HEAD tree
+  hash (realpath-sorted `realpath\0hash\n` concatenation): any root — or the subject
+  set itself — changing makes evidence stale. Legacy evidence (recorded before this
+  change) falls back to the 0.0.7-identical single-host-tree compare; verify/status/
+  report display surfaces show the fingerprint short code for new evidence and keep
+  the tree short code for legacy.
+- **finish gate tightened: integrity gate added (P0-A closure)** — after
+  pending/stale/unbound, a fourth rejection requires every `{host}∪subjects` root to
+  pass a per-root integrity check: dirty (uncommitted changes beyond the per-root
+  `.lazyzcode/` exemption), missing (root gone / not a git repo / unparseable HEAD —
+  including the re-capture-while-missing traversal form), or git process error
+  (fail-closed, raw error in the message). **No bypass flag.** A dirty-tree finish
+  can no longer report done.
+- **finish report archive is atomic**: the report is written (tmp+rename) before the
+  goal flips to `done`; an archive failure leaves the goal `executing` with a
+  recovery path instead of a done state with a ⚠ and no report.
+- **HEAVY review gate is machine-enforced at adoption**: a HEAVY goal (persisted
+  tier) without a PASS review verdict is rejected by the CLI (`--force` does not
+  cross; any non-PASS string including UNVERIFIED is rejected). LIGHT behavior
+  unchanged.
+
+### Added
+
+- **Subjects (multi-tree goals)**: optional `subjects: <path>` plan-header lines
+  (one path per line, header-only, relative to the host root; nonexistent/non-git/
+  host-containing roots rejected loudly, stray body lines follow the deps-orphan
+  rule) plus `lzy loop subject add|remove|list` (executing-only; `remove` is the
+  missing-deadlock escape). Any set change invalidates all captured F evidence.
+- **Plan snapshot + hash**: adoption snapshots the plan to
+  `.lazyzcode/loop/snapshots/<slug>.md` (reset keeps it), binds `goal.planHash`,
+  and stamps `review.planHash` — the review binds the reviewed artifact. Re-adopting
+  an amended plan with an absent or verbatim-identical review warns; status
+  re-verifies the snapshot hash (tamper visible).
+- **Tier persistence**: `register --tier heavy` and one-way `lzy loop tier heavy`
+  (downgrade rejected; same-value no-op; upgrade without a PASS review warns —
+  the machine gate lives at adoption time). status shows tier/subjects with
+  missing-key tolerance for pre-0.0.8 goals.
+- **Bilingual docs** for all of the above: zw SKILL contract text, guide sections,
+  README positioning sentence ("A local, evidence-bound coding goal protocol with
+  durable continuation — not a general workflow engine.") and CLI table rows,
+  adversarial checklist (debt B discharged, new debt D), narrative-checklist
+  counters. ADR-0013 + AGENTS.md decision #23 record the semantics.
+
 ## [0.0.7] - 2026-09-16
 
 ### Added

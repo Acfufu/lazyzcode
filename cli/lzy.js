@@ -225,7 +225,7 @@ async function cmdLoop(args) {
         const hash = g.headTreeHash();
         const dirty = hash === null ? null : g.dirty();
         const state = hash === null ? "missing" : dirty ? "DIRTY" : "clean";
-        console.log(`  树 ${String(hash).slice(0, 10)} ${state.padEnd(6)} ${root}`);
+        console.log(`  树 ${(hash ?? "").slice(0, 10)} ${state.padEnd(6)} ${root}`);
       }
       for (const [label, list] of [["新鲜", fresh], ["过期", stale], ["未绑定", unbound]]) {
         console.log(`  ${label} ${list.length}${list.length ? `：${list.map((s) => s.id).join(" ")}` : ""}`);

@@ -135,7 +135,7 @@ export function appendReviewNode(dag, { planHash, verdict }) {
 // 机器只记账不裁决：MISMATCH 也如实入账，裁决在 finish 门（HEAVY 强制 MATCH）。
 export const COMPARATOR_VERDICTS = new Set(["MATCH", "MISMATCH"]);
 
-export function appendComparatorNode(dag, { slug, planHash, verdict, fingerprint, fileSha256, itemsCount }) {
+export function appendComparatorNode(dag, { slug, planHash, verdict, fingerprint, fileSha256, itemsCount, items = [] }) {
   if (!slug || !planHash) throw new DagError("comparator 节点缺 slug/planHash");
   if (!COMPARATOR_VERDICTS.has(verdict)) throw new DagError(`comparator verdict 非法：${verdict}（MATCH|MISMATCH）`);
   if (typeof fingerprint !== "string" || !fingerprint) throw new DagError("comparator 节点缺可绑复合指纹（宿主非 git 仓无可对照面）");
@@ -149,6 +149,7 @@ export function appendComparatorNode(dag, { slug, planHash, verdict, fingerprint
     fingerprint,
     fileSha256,
     itemsCount: Number(itemsCount) || 0,
+    items,
     at: Date.now(),
   };
   dag.nodes.push(node);

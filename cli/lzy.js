@@ -40,6 +40,7 @@ import {
   loadDag,
   stalePreview,
 } from "../core/dag.js";
+import { recordComparatorAttestation } from "../core/attest.js";
 import { findEngine, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
 import { auditAgentsMd, formatAgentsMd } from "../core/agentsmd.js";
@@ -51,7 +52,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -244,11 +245,12 @@ async function cmdLoop(args) {
     case "finish": {
       // v008#N6：writer 锁内先行（内存 done 渲染 + tmp+rename 原子写），失败=finish 拒——
       // 不再有「⚠ 导出失败但 done 已置」的非原子窗口（报告路径在 writer 成功后即确定）。
-      const goal = finishLoop(cwd, git, {
+      const { goal, attestation } = finishLoop(cwd, git, {
         writeReport: ({ cwd: c, git: g, goal: gl }) => writeGoalReport(c, g, gl),
       });
       console.log(`✔✔ 目标完成：${goal.slug} — ${goal.title}`);
       console.log("  全部步骤收口，F 项证据绑复合指纹，subject 集全 clean。不做完不停——这次真的做完了。");
+      console.log(`  终验 attestation：${attestation.path}（LOOP_COMPLETE 机器证明：planHash+各根头树+指纹+对照记录）`);
       console.log(`  证据包已归档：.lazyzcode/evidence/${goal.slug}.report.md（人接管评审从这份材料开始）`);
       console.log("  收尾：把本目标 2–3 条可复用教训写进宿主项目 memory，下个会话自动可用。");
       console.log("  提醒：若本工作区挂过 wake automation（无人值守唤起），到 App 自动化管理停用（空槽唤起=纯空转）。");
@@ -543,6 +545,25 @@ function reviewPlanIdOf(dag, reviewNode) {
   return e ? e.to : null;
 }
 
+// ── 对照 attestation 命令族（v009 棒2）：结论文件入账（锁内、dag-first），机器只记账
+// 不裁决——MISMATCH 也如实入账，裁决在 finish 门（HEAVY 强制 MATCH）。
+function cmdAttest(args) {
+  const { _, f } = parseArgs(args);
+  if (_[0] !== "comparator") {
+    throw new LoopError("用法：lzy attest comparator --file <结论.json>（schema：{slug, items:[{fid, verdict, basis}], note?}）");
+  }
+  if (_[1]) throw new LoopError(`多余参数：${_[1]}（用法：lzy attest comparator --file <结论.json>）`);
+  const file = typeof f.file === "string" ? resolve(process.cwd(), f.file) : null;
+  const { node, fingerprint } = recordComparatorAttestation(process.cwd(), file);
+  console.log(
+    `${ICON.ok} 对照 attestation 已入账：${node.id} · ${node.verdict} · ${node.itemsCount} 项 · 指纹 ${fingerprint.slice(0, 10)} · 文件 sha256 ${node.fileSha256.slice(0, 12)}…`,
+  );
+  console.log(`  逐项：${node.items.map((it) => `${it.fid}:${it.verdict}`).join(" ")}`);
+  if (node.verdict !== "MATCH") {
+    console.log("  ⚠ MISMATCH 已如实入账（机器只记账不裁决）；HEAVY finish 会被拦——处置不匹配项后重新对照并重录");
+  }
+}
+
 // ── DAG 查询命令族（只读，无锁——原子写保证读者见旧或新，绝不见半写） ─────────
 function cmdDag(args) {
   const { _ } = parseArgs(args);
@@ -632,6 +653,12 @@ function printHelp() {
   lzy evidence list [--goal <slug>]         红绿 manifest 视图（halves 配对/表面短码/rebind 链）
   lzy dag dependents <节点id|表面值>        「什么依赖 X」查询（只读）
 
+对照 attestation（v009 棒2——机器记账，HEAVY finish 强制 MATCH）：
+  lzy attest comparator --file <json>       登记 qa-executor 对照结论（schema：{"slug","items":
+                                            [{"fid","verdict":"MATCH|MISMATCH","basis"}],"note"?}；
+                                            items 须覆盖全部 F 项；HEAVY finish 无 MATCH 记录即拒、
+                                            MISMATCH/指纹过期同拒；LIGHT 可 self-check 免录）
+
 项目记忆（AGENTS.md 分层，确定性审计——写盘归 init-deep 技能且草稿先行）：
   lzy agents-md    资格谓词+覆盖审计详单（退出码 0=覆盖完整无超限，1=有缺口/超限）
 
@@ -673,6 +700,8 @@ async function main() {
       return cmdStep(args.slice(1));
     case "evidence":
       return cmdEvidence(args.slice(1));
+    case "attest":
+      return cmdAttest(args.slice(1));
     case "dag":
       return cmdDag(args.slice(1));
     case "agents-md":

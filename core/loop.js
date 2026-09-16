@@ -6,6 +6,7 @@ import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync,
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { createGit } from "./git.js";
+import { packageRoot } from "./paths.js";
 import {
   addCapturedOn,
   addEdge,
@@ -14,6 +15,7 @@ import {
   appendPlanNode,
   appendReviewNode,
   findGreenByGeneration,
+  findLatestComparator,
   findLatestGreen,
   loadDag,
   pairReds,
@@ -75,7 +77,8 @@ function sleepMs(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function withLock(cwd, fn) {
+// 导出给 attest.js 复用（attest.js → loop.js 单向依赖；锁原语单源不另造）。
+export function withLock(cwd, fn) {
   const lock = join(loopDir(cwd), ".lock");
   mkdirSync(loopDir(cwd), { recursive: true });
   const deadline = Date.now() + LOCK_WAIT_MS;
@@ -127,11 +130,13 @@ export function noGoalMessage(cwd) {
 // 写命令 fail-fast（ADR-0006）：withLock 的 mkdirSync 会在没有 goal 的目录上留下
 // .lazyzcode/loop/ 空壳疤痕，故进锁前先判空即抛（文案走 noGoalMessage 同源）。
 // reset 显式豁免：null-goal 残留清理语义是契约（p3-sweep.contract.test.js 固化）。
-function requireGoalPreLock(cwd) {
+// 导出给 attest.js 复用（attest.js → loop.js 单向依赖；守卫语义单源不另造）。
+export function requireGoalPreLock(cwd) {
   if (!readGoal(cwd)) throw new LoopError(noGoalMessage(cwd));
 }
 
-function requireActive(cwd, ...states) {
+// 导出给 attest.js 复用（attest.js → loop.js 单向依赖；守卫语义单源不另造）。
+export function requireActive(cwd, ...states) {
   const goal = readGoal(cwd);
   if (!goal) throw new LoopError(noGoalMessage(cwd));
   // 空 states = 不限状态（abandon/reset 路径）；空数组是真值，必须按长度判。
@@ -940,7 +945,7 @@ export function verifyEvidence(cwd, git) {
       else stale.push(s);
     }
   }
-  return { current, fingerprint, fresh, stale, unbound };
+  return { current, fingerprint, fresh, stale, unbound, dag };
 }
 
 // dirty 命中路径提示（multisession-discipline#N1）：前 3 条 + 超出计数。路径缺席（旧形状/
@@ -972,7 +977,7 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
       `未完成即停 = 半途而废：还剩 ${pending.map((s) => s.id).join(" ")}（用 lzy step done 逐项收口）`,
     );
   }
-  const { current, stale, unbound } = verifyEvidence(cwd, git);
+  const { current, stale, unbound, fingerprint, dag } = verifyEvidence(cwd, git);
   // 过期（代码后变，重取证即可）与未绑定（git 缺失，重取证也无济于事）必须分诊，药方不同（评审 R2-4）。
   if (stale.length > 0) {
     incMetrics(cwd, "finish_reject_stale");
@@ -989,6 +994,29 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
           ? "证据缺少 tree hash，重新取证即可绑定。"
           : "本目录不是 git 仓库或还没有任何提交——先 git init 并提交，再重新取证。"),
     );
+  }
+  // ── 对照 attestation 机器门（v009 棒2，§⑪ N3）：HEAVY 强制现行记录且 MATCH 且指纹
+  // 未过期；LIGHT 可 self-check 免录（协议层自查）。无逃生 flag（ADR-0013 家法）。
+  let comparator = null;
+  if ((goal.tier ?? "light") === "heavy") {
+    comparator = findLatestComparator(dag, goal.slug, goal.planHash);
+    if (!comparator) {
+      throw new LoopError(
+        `HEAVY finish 需对照 attestation 且 MATCH：先派 qa-executor 对每个 F 项断言×证据逐对对照，` +
+          `再 lzy attest comparator --file <结论.json>（LIGHT 目标可 self-check 免录；机器门无逃生 flag）`,
+      );
+    }
+    if (comparator.verdict !== "MATCH") {
+      throw new LoopError(
+        `对照 attestation 判决为 MISMATCH（记录 ${comparator.id}）：处置不匹配项后重新对照并重录` +
+          `（lzy attest comparator --file …）`,
+      );
+    }
+    if (comparator.fingerprint !== fingerprint) {
+      throw new LoopError(
+        `对照 attestation 已过期（记录 ${comparator.id} 的指纹与当前树不符——对照后代码又变了）：重新对照并重录`,
+      );
+    }
   }
   // ── 第四拒：完整性闸门（P0-A 闭合，v008）——{host}∪subjects 任一根 dirty/missing/git
   // 错即拒，不提供任何绕过 flag（拍板③「无逃生门」）。git spawn 逐根顺序、共享 8s 墙钟
@@ -1030,8 +1058,76 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
       );
     }
   }
+  // ── 终验 attestation（v009 棒2，§⑪ N5）：LOOP_COMPLETE 的机器证明。写失败同报告
+  // 契约（LoopError、状态保持 executing、goal.json 不落 done）。
+  let attestation;
+  try {
+    attestation = writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, reportWritten: typeof writeReport === "function" });
+  } catch (e) {
+    throw new LoopError(
+      `终验 attestation 写失败（finish 未置 done，状态保持 executing）：修复写入失败原因后重跑 finish。原始错误：${e?.message ?? e}`,
+    );
+  }
   writeGoal(cwd, goal);
-  return goal;
+  return { goal, attestation };
+}
+
+// 终验 attestation 落盘（纯写面，校验已在门里）：`.lazyzcode/attestations/<attemptId>.json`，
+// tmp+rename 原子写。attemptId=<slug>-<finish 时刻 UTC 紧凑串（秒粒度）>——追加不覆写
+// （同 slug 重注册再 finish 天然新 id）；目录在 loop/ 之外=doctor 疤痕巡逻零接触、
+// reset 不清（历史证明，同 evidence/ 语义）。
+function writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, reportWritten }) {
+  const dir = join(cwd, ".lazyzcode", "attestations");
+  mkdirSync(dir, { recursive: true });
+  const attemptId = `${goal.slug}-${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`;
+  const reportRel = `.lazyzcode/evidence/${goal.slug}.report.md`;
+  let reportSha = null;
+  if (reportWritten) {
+    try {
+      reportSha = createHash("sha256").update(readFileSync(join(cwd, reportRel))).digest("hex");
+    } catch {
+      reportSha = null;
+    }
+  }
+  const evidence = goal.steps
+    .filter((s) => s.kind === "F" && s.status === "done")
+    .map((s) => {
+      const gen = s.evidenceSeq ? s.evidenceSeq - 1 : 1;
+      const node = findGreenByGeneration(dag, goal.slug, s.id, gen);
+      return { fid: s.id, generation: gen, nodeId: node?.id ?? null, surface: node?.surface ?? null };
+    });
+  const doc = {
+    attemptId,
+    slug: goal.slug,
+    title: goal.title,
+    tier: goal.tier ?? "light",
+    lzyVersion: readLzyVersion(),
+    planHash: goal.planHash ?? null,
+    subjects: [resolve(cwd), ...(goal.subjects ?? [])].map((root) => ({
+      root,
+      headTreeHash: createGit(root).headTreeHash(),
+    })),
+    fingerprint: fingerprint ?? null,
+    evidence,
+    comparator: comparator
+      ? { nodeId: comparator.id, verdict: comparator.verdict, fingerprint: comparator.fingerprint }
+      : null,
+    report: { path: reportRel, sha256: reportSha },
+    finishedAt: goal.finishedAt,
+  };
+  const p = join(dir, `${attemptId}.json`);
+  const tmp = join(dir, `.${attemptId}.${process.pid}.${Date.now()}.tmp`);
+  writeFileSync(tmp, `${JSON.stringify(doc, null, 2)}\n`, { mode: 0o600 });
+  renameSync(tmp, p);
+  return { path: `.lazyzcode/attestations/${attemptId}.json`, attemptId };
+}
+
+function readLzyVersion() {
+  try {
+    return JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).version ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ── 7. 证据包导出：goal 的可审阅档案（评审判决/步骤注记/F 项证据+附件清单）──

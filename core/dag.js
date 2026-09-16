@@ -1,6 +1,7 @@
 // 中央失效 DAG（v009 棒1，ADR-0014）：证据/评审/计划的依赖边账本，跨 reset 常驻
 // `.lazyzcode/loop/dag.json`。取证与评审时注册边（「取证即注册边」），变更时图上
-// 查询传播失效——hash 比对降为边型之一，统一权威的判定切换留棒2（本模块不进任何门）。
+// 查询传播失效——hash 比对降为边型之一。棒2 起 verifyEvidence 以本账本为统一权威
+// （代次锚定选择，fail-closed；见 ADR-0014 增补节）。
 // 本模块零 spawn、全部同步语义；错误用 DagError（渲染口径与 LoopError 同：cli 顶层
 // catch 只取 message），不反向 import loop.js（loop.js→dag.js 单向，免循环依赖）。
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -14,7 +15,7 @@ export const DAG_FILE = "dag.json";
 // evidence.half ∈ red|green|waived；surface.kind ∈ fingerprint|external（红绿各绑各面）。
 export const EVIDENCE_HALVES = new Set(["red", "green", "waived"]);
 export const SURFACE_KINDS = new Set(["fingerprint", "external"]);
-export const EDGE_TYPES = new Set(["captured_on", "red_of", "supersedes", "reviews", "plans"]);
+export const EDGE_TYPES = new Set(["captured_on", "red_of", "supersedes", "reviews", "plans", "attests"]);
 
 export class DagError extends Error {}
 
@@ -129,6 +130,31 @@ export function appendReviewNode(dag, { planHash, verdict }) {
   return node;
 }
 
+// comparator attestation 节点（v009 棒2，§⑪ N3）：对照结论的机器记录。fingerprint
+// 必填非空（非 git 宿主无可绑面，记录即拒——与 evidence red 缺省面同款语义）；
+// 机器只记账不裁决：MISMATCH 也如实入账，裁决在 finish 门（HEAVY 强制 MATCH）。
+export const COMPARATOR_VERDICTS = new Set(["MATCH", "MISMATCH"]);
+
+export function appendComparatorNode(dag, { slug, planHash, verdict, fingerprint, fileSha256, itemsCount }) {
+  if (!slug || !planHash) throw new DagError("comparator 节点缺 slug/planHash");
+  if (!COMPARATOR_VERDICTS.has(verdict)) throw new DagError(`comparator verdict 非法：${verdict}（MATCH|MISMATCH）`);
+  if (typeof fingerprint !== "string" || !fingerprint) throw new DagError("comparator 节点缺可绑复合指纹（宿主非 git 仓无可对照面）");
+  if (typeof fileSha256 !== "string" || !fileSha256) throw new DagError("comparator 节点缺对照文件 sha256");
+  const node = {
+    id: nextId(dag),
+    kind: "comparator",
+    slug,
+    planHash,
+    verdict,
+    fingerprint,
+    fileSha256,
+    itemsCount: Number(itemsCount) || 0,
+    at: Date.now(),
+  };
+  dag.nodes.push(node);
+  return node;
+}
+
 export function addEdge(dag, { type, from, to }) {
   if (!EDGE_TYPES.has(type)) throw new DagError(`边型非法：${type}`);
   if (!from || !to) throw new DagError("边缺 from/to");
@@ -172,6 +198,32 @@ export function findLatestGreen(dag, slug, step) {
   if (greens.length === 0) return null;
   greens.sort((a, b) => a.seq - b.seq || a.at - b.at);
   return greens[greens.length - 1];
+}
+
+// 按代次锚定绿节点（v009 棒2 统一权威的选择原语）：有效性判定锚在 goal.json 记录的
+// 当前代次上，非 latest-wins——孤儿 ghost（dag-first 半失败残留的更高代次）永不可
+// 现行。同代次多条（saveDag 与 writeGoal 间崩溃后重试可致）按 (seq, at) 决胜，
+// 沿 findLatestGreen 排序家法。
+export function findGreenByGeneration(dag, slug, step, seq) {
+  const greens = dag.nodes.filter(
+    (n) => n.kind === "evidence" && n.half === "green" && n.slug === slug && n.step === step && n.seq === seq,
+  );
+  if (greens.length === 0) return null;
+  greens.sort((a, b) => a.seq - b.seq || a.at - b.at);
+  return greens[greens.length - 1];
+}
+
+// 同 goal+planHash 的现行 comparator attestation（最新为现行，历史留档）。
+export function findLatestComparator(dag, slug, planHash) {
+  const nodes = dag.nodes.filter((n) => n.kind === "comparator" && n.slug === slug && n.planHash === planHash);
+  if (nodes.length === 0) return null;
+  nodes.sort((a, b) => a.at - b.at || idNum(a.id) - idNum(b.id));
+  return nodes[nodes.length - 1];
+}
+
+function idNum(id) {
+  const m = /^n(\d+)$/.exec(id);
+  return m ? Number(m[1]) : 0;
 }
 
 function nodeById(dag, id) {

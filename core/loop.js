@@ -13,6 +13,7 @@ import {
   appendEvidenceNode,
   appendPlanNode,
   appendReviewNode,
+  findGreenByGeneration,
   findLatestGreen,
   loadDag,
   pairReds,
@@ -897,10 +898,15 @@ export function formatClaimList(cwd) {
   );
 }
 
-// ── 5. 证据时效双轨：F 项证据绑复合指纹（v008 起）或单树 treeHash（legacy 回退）──
+// ── 5. 证据时效统一权威（v009 棒2，ADR-0014）：判定读中央 DAG 账本——绿节点按
+// goal.json 当前代次锚定选择（孤儿 ghost 不可现行、不阻断），节点 surface 为权威作
+// 比对，hash 比对降为账本上的边型之一；无节点的 treeHash 形态记录=legacy 双轨
+// （0.0.8 行为逐字段同）；fingerprint 形态而节点缺席=账本与 goal.json 分歧，
+// fail-closed 拒（无逃生 flag，沿 ADR-0013 家法；恢复=rebind 重注册节点）。
 export function verifyEvidence(cwd, git) {
   const goal = readGoal(cwd);
   if (!goal) throw new LoopError(noGoalMessage(cwd));
+  const dag = loadDag(cwd); // DagError 原样上抛：账本不可读即拒（消息自带恢复指路）
   const current = git ? git.headTreeHash() : null;
   const fingerprint = fingerprintSubjects(cwd, goal.subjects ?? []);
   const fresh = [];
@@ -909,12 +915,26 @@ export function verifyEvidence(cwd, git) {
   for (const s of goal.steps) {
     if (s.kind !== "F" || s.status !== "done") continue;
     if (s.evidence?.fingerprint) {
-      // 指纹主轨：subject 集任一根变化（含集合增删）即过期；host 非 git 仓=指纹 null=未绑定。
-      if (!fingerprint) unbound.push(s);
-      else if (s.evidence.fingerprint === fingerprint) fresh.push(s);
+      // 指纹主轨（权威=账本节点）：按 goal.json 当前代次锚定绿节点——captureGen =
+      // evidenceSeq-1（doCompleteStep 写后自增），缺省 1。
+      const gen = s.evidenceSeq ? s.evidenceSeq - 1 : 1;
+      const node = findGreenByGeneration(dag, goal.slug, s.id, gen);
+      if (!node) {
+        // 账本-goal 分歧：0.0.8 时代在途 goal 升级（fingerprint 形态先于 DAG）、或账本
+        // 被改动——fail-closed，重取证 rebind 即重注册节点。
+        throw new LoopError(
+          `证据账本不一致：${s.id} 记录第 ${gen} 代绿半但中央 DAG 无对应节点` +
+            `（疑 0.0.8 在途 goal 升级或账本缺改）。` +
+            `恢复：在当前代码上重跑 lzy step done ${s.id} --evidence …（rebind 即重注册账本节点）。`,
+        );
+      }
+      // subject 集任一根变化（含集合增删）即过期；host 非 git 仓=指纹 null=未绑定；
+      // 节点面非指纹（null/external——正常流不产生，防御性归未绑定=强制重取证）。
+      if (!fingerprint || node.surface?.kind !== "fingerprint") unbound.push(s);
+      else if (node.surface.value === fingerprint) fresh.push(s);
       else stale.push(s);
     } else {
-      // legacy 单树轨（0.0.7 证据对象）：行为与 0.0.7 全同。
+      // legacy 单树轨（0.0.7 证据对象，无账本节点）：行为与 0.0.7/0.0.8 全同。
       if (!s.evidence?.treeHash || !current) unbound.push(s);
       else if (s.evidence.treeHash === current) fresh.push(s);
       else stale.push(s);

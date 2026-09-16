@@ -460,11 +460,26 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
   }
   validateDeps(items);
   const subjects = parseSubjectsHeader(cwd, body);
+  // ── plan snapshot+hash（v008#N7）：采纳即快照计划文→.lazyzcode/loop/snapshots/<slug>.md
+  // （reset 不清，照证据报告先例；目录名避开 .lazyzcode/plans/ 同形词），goal.planHash=
+  // sha256(快照内容)，review 携 planHash（评审绑被评审物）。原 planPath 文件继续承载
+  // 换路注记——不可变快照与可变叙事分离。复采纳纪律：planHash 变而评审未换→warn（机器
+  // 不拦；红线句在 SKILL/ADR）——比对基准=存量 goal.review.summary（500 截断面）。
+  const warnings = [];
+  const planHash = createHash("sha256").update(body).digest("hex");
+  if (goal.planHash && goal.planHash !== planHash) {
+    if (!review || review === (goal.review?.summary ?? null)) {
+      warnings.push(
+        `复采纳：计划快照哈希已变而评审未重跑（--review 未带或与上次采纳逐字相同）——修订后的计划须重过 plan-reviewer 再采纳`,
+      );
+    }
+  }
   goal.planPath = relative(cwd, planFile) || planFile;
   goal.subjects = subjects;
+  goal.planHash = planHash;
   const verdict = review ? parseVerdict(review) : null;
   goal.review = review
-    ? { by: "plan-reviewer", verdict: verdict === "PASS" ? "PASS" : "UNVERIFIED", summary: review.slice(0, 500), at: new Date().toISOString() }
+    ? { by: "plan-reviewer", verdict: verdict === "PASS" ? "PASS" : "UNVERIFIED", summary: review.slice(0, 500), at: new Date().toISOString(), planHash }
     : null;
   goal.steps = items.map((it) => ({
     id: it.id,
@@ -477,8 +492,12 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
     note: null,
     evidence: null,
   }));
+  // 快照先落盘再持久 goal（写序：goal.planHash 永不指向缺席快照；快照写失败=采纳失败）。
+  const snapDir = join(loopDir(cwd), "snapshots");
+  mkdirSync(snapDir, { recursive: true });
+  writeFileSync(join(snapDir, `${goal.slug}.md`), body);
   writeGoal(cwd, goal);
-  return goal;
+  return { goal, warnings };
 }
 
 // ── 3. 开跑：planning → executing，记录基线 tree hash ──────────────────────
@@ -1067,6 +1086,9 @@ function writeSalvageStub(cwd, goal, git, reason) {
     "",
     "## 既有资产指针",
     `- 计划：.lazyzcode/plans/${goal.slug}.md（reset/abandon 不删除，PASS 评审文本可复用重采纳）`,
+    ...(goal.planHash
+      ? [`- 计划快照：.lazyzcode/loop/snapshots/${goal.slug}.md（采纳时点不可变副本，sha256 ${goal.planHash.slice(0, 10)}…，reset 不清）`]
+      : []),
     `- 证据包：.lazyzcode/evidence/${goal.slug}.report.md（finish 归档，reset 不清）`,
     "",
   ];
@@ -1130,6 +1152,20 @@ export function formatStatus(cwd, git) {
     `目标 ${goal.slug} — ${goal.title}`,
     `  状态 ${goal.status} · 步骤 ${done.length}/${goal.steps.length} · 计划 ${goal.planPath ?? "未采纳"}`,
   ];
+  // 快照在场+篡改复核读面（v008#N7）：planHash 缺席（0.0.8 前采纳的 goal）=静默不查；
+  // 在场而快照缺席或 sha256 不符→warn（采纳后篡改可见；防本体 goal 中途误警）。
+  if (goal.planHash) {
+    let snapState = "复核一致";
+    try {
+      const snap = readFileSync(join(loopDir(cwd), "snapshots", `${goal.slug}.md`));
+      if (createHash("sha256").update(snap).digest("hex") !== goal.planHash) {
+        snapState = "⚠ sha256 不符（疑篡改）";
+      }
+    } catch {
+      snapState = "⚠ 快照缺席";
+    }
+    lines.push(`  快照 ${goal.planHash.slice(0, 10)} · ${snapState}`);
+  }
   const next = nextStep(goal);
   if (next) {
     // 下一步标注（评审 R1-A4）：指向的 pending 步被认领/阻塞时如实点名，不再裸指。

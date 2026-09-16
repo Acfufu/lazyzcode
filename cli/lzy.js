@@ -176,13 +176,15 @@ async function cmdLoop(args) {
     case "plan": {
       if (!_[1]) throw new LoopError("用法：lzy loop plan <计划文件> [--review \"plan-reviewer: PASS …\"] [--force]");
       const review = typeof f.review === "string" ? f.review : null;
-      const goal = adoptPlan(cwd, resolve(cwd, _[1]), { force: f.force === true, review });
+      const { goal, warnings } = adoptPlan(cwd, resolve(cwd, _[1]), { force: f.force === true, review });
       console.log(`✔ 计划门通过：${goal.steps.length} 项已采纳（N:${goal.steps.filter((s) => s.kind === "N").length} F:${goal.steps.filter((s) => s.kind === "F").length}）`);
       if (review) {
         console.log(`  评审记录：${goal.review.verdict} · ${goal.review.at}`);
       } else {
         console.log("  ⚠ 未带 --review：HEAVY tier 须先过 plan-reviewer 评审门（判决 PASS 后带 --review 采纳）");
       }
+      console.log(`  计划快照：.lazyzcode/loop/snapshots/${goal.slug}.md（sha256 ${goal.planHash.slice(0, 10)}…，reset 不清）`);
+      for (const w of warnings) console.log(`  ⚠ ${w}`);
       console.log("  下一步：lzy loop start 开跑");
       return;
     }

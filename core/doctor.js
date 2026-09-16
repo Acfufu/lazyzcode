@@ -196,8 +196,9 @@ function checkLoopState(push, cwd) {
       const entries = readdirSync(dir); // 能列目录 = 目录在场
       // 目录在场即疤痕（空目录也是残留）；豁免=有意产物/正常残留：salvage/ 存根、
       // metrics.json 放行计数（跨 reset 永续）、空 sessions/（reset 清内容留目录；
-      // 非空场景已在上方残留分支分流，走到此处必为空）
-      const EXEMPT = new Set(["salvage", "metrics.json", "sessions"]);
+      // 非空场景已在上方残留分支分流，走到此处必为空）、snapshots/ 计划快照档案
+      // （v008#N7 采纳即快照，reset 不清——照证据报告先例）
+      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots"]);
       emptyScar = entries.length === 0 || entries.some((e) => !EXEMPT.has(e));
     } catch {
       emptyScar = false; // 目录缺席 = 真干净

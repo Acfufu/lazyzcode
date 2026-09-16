@@ -199,3 +199,52 @@ Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 - 真机狗粮：`lzy update` 0.0.7→0.0.8 全链 EXIT=0（探测→升级→新装子进程 sync 输出可见）；`lzy update` 已是最新半区通；doctor install/files 双 ✔（缓存 15 文件逐文件 sha256 一致）。
 - **win32 VM 复测（Runbook 第 6 步，Win11 ARM64，SYSTEM exec 上下文）**：`lzy update` 0.0.7→0.0.8 EXIT=0（ComSpec 链+新装子进程 sync，缓存落 systemprofile 既知形态）→ doctor（payload/install/files/hooks/node 全 ✔；engine/platform ⚠=SYSTEM 上下文不见用户级桌面端，既知形态非缺陷）→ scratch loop 全链（register→plan〔快照 sha256 行在场〕→start→step done N1/F1〔证据绑指纹 6d733f8087〕→finish 过：完整性闸门文案+报告归档）→ status 快照复核一致。0.0.8 完整性内核 win32 活体验收闭环。
 - VM 探针作业教训：prlctl exec 的 cmd 对正斜杠路径 mkdir/cd 报「找不到路径」，且 cd 失败后 `&` 链继续在默认 cwd（system32）执行——node 相对写入会残留 system32（已清理）；配方=`%TEMP%` 相对路径 cd 链 + 一切文件操作走 node。
+
+## 执行记录（0.0.9，attestation 列车——机械件已备，publish 留用户）
+
+> 机械件（2026-09-17，维护者指令直发，未走 goal loop）：版本三体 0.0.9、市场 manifest `version`/`ref` 钉 v0.0.9（第 11 步每发布同步）、CHANGELOG 定版、README 对比表补第 11 行（attestation 卖点，0.0.9 拍板⑥叙事件；narrative-checklist 计数钉 10/10→11/11 同步）、home.html softwareVersion + sitemap 首页 lastmod、AGENTS §2 跟齐。本节提交不带 `Goal:` 尾注（沿 0.0.7/0.0.8 先例，账本 warn 预期）。
+
+### Runbook（按序）
+
+1. **push main**（定版提交与棒1/棒2/headless spike 共 16+ 个未推提交随行上远端）。
+2. **CI 全绿再 tag**（tag 最后切）：四腿（node 22/24 × ubuntu/windows）全绿后 `git tag v0.0.9 && git push origin v0.0.9`。
+3. **GitHub Release**：以本节下方草稿为 notes 创建 `v0.0.9`。
+4. **publish（用户手动）**：从 tagged 树先 `npm publish --dry-run` 复核文件清单与敏感串（第 3 步检查项），再 `npm publish`（2FA 浏览器授权，同 0.0.5–0.0.8）；publish 日≠2026-09-17 则改 CHANGELOG 一行重提。
+5. **发后核验**：registry `dist-tag latest=0.0.9`；发布 shasum 与 dry-run 逐字比对；隔离 prefix 冒烟 `npm i -g lazyzcode && lzy --version`（应 0.0.9）+ `lzy doctor`；真机狗粮 `lzy update`（0.0.8 → 0.0.9 升级链活体，新载荷含 DAG/attestation 面）。
+6. **win32 VM 复测**（publish 后才可做）：registry 新装 0.0.9 + `lzy doctor`（新增 payload-ver 行与 DAG 面零异常）+ scratch loop 全链 finish（红绿 manifest/attestation 文案活体）。
+
+### GitHub Release notes 草稿（v0.0.9）
+
+```markdown
+## Highlights
+
+- **The evidence ledger is now the judge.** `verify`/`finish` no longer compare
+  hashes by themselves: each F step's green evidence is anchored to the central
+  invalidation DAG (`.lazyzcode/loop/dag.json` — cross-reset, JSON atomic write
+  with a payload checksum, fail-closed on corruption with a recovery pointer).
+  Legacy evidence keeps the 0.0.8-identical dual track; a fingerprint-form
+  record with no ledger node rejects as "账本不一致" (re-record to re-register).
+- **Red/green evidence as a machine manifest**: `lzy evidence red` / `waive-red`
+  record the failing half with its own surface (composite fingerprint by
+  default, `--surface` for external surfaces such as a published version);
+  greens mirror at `step done`; rebinds append `supersedes` chains;
+  `lzy evidence list` renders the per-F manifest, and `lzy dag dependents`
+  answers "what depends on X".
+- **Comparator attestation + HEAVY finish gate**: `lzy attest comparator --file`
+  records qa-executor verdicts as machine attestations bound to slug + planHash
+  + composite fingerprint + file sha256. HEAVY `finish` requires a current
+  MATCH attestation — missing, MISMATCH, and stale all reject. No bypass flag.
+- **LOOP_COMPLETE final attestation**: every successful finish writes
+  `.lazyzcode/attestations/<slug>-<UTC-compact>.json` (plan hash, per-root head
+  trees, composite fingerprint, ledger-anchored evidence refs, comparator
+  record, report sha256) — a machine proof of completion that survives `reset`
+  as history, outside the scar patrol's view.
+- **doctor `payload-ver`**: the installed payload cache version directories vs
+  the running CLI version, so the ADR-0012 "npm upgraded but not synced"
+  intermediate state names itself instead of confusing live sessions.
+
+## Upgrade
+
+`lzy update` (0.0.7+). On 0.0.6 or earlier: `npm i -g lazyzcode && lzy sync`.
+Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
+```

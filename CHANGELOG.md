@@ -3,7 +3,7 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
-## [Unreleased]
+## [0.0.9] - 2026-09-17
 
 ### Added
 

@@ -25,7 +25,7 @@
 - [ ] 「之后的路 / Your next moves」承载记住 + 接着走两拍的入口（快速上手只教循环）。
 - [ ] 架构树与实际一致（skills 2、hooks 5 经 run-hook 启动器[win32 走 run-hook.cmd 孪生]、agents 3、core 模块清单）。
 - [ ] schedule 措辞口径：「限流实测 ∩ 计价高峰对照」（2026-09-10 起，双语 8 处；不许退回纯限流表述）。
-- [ ] 「十件事对比表」双语在场且行数互等（不树靶口径：十项 + 单差距行，无竞品点名；核验：`grep -c '^| [0-9][0-9]* |' README.md README.zh-CN.md` = 10 / 10）。
+- [ ] 「十一件事对比表」双语在场且行数互等（不树靶口径：十一项 + 单差距行，无竞品点名；核验：`grep -c '^| [0-9][0-9]* |' README.md README.zh-CN.md` = 11 / 11；第 11 行=attestation 卖点，2026-09-17 起）。
 - [ ] 市场 B 路安装两行在场（`/plugin marketplace add Acfufu/lazyzcode` 双语各一）+「市场路只装插件层、`lzy` 仍来自 npm」告诫在场（2026-09-16 起）。
 
 ### 首页（`docs/_layouts/home.html`）

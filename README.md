@@ -325,7 +325,7 @@ machinery; LazyZCode is the workflow that makes them finish what they start.
 | 🩺 **`lzy doctor`** | Offline health report incl. hook-node resolution and rate-limit pressure |
 | 🔒 **Privacy & red lines** | Zero telemetry; `lzy` never writes your `config.json` |
 
-## 🆚 Ten things only LazyZCode does
+## 🆚 Eleven things only LazyZCode does
 
 As of September 2026 the official ZCode marketplace lists 19 plugins and none
 of them is a discipline layer — so instead of a competitor table, here is what
@@ -343,6 +343,7 @@ only LazyZCode ships, and the one capability we have not built yet.
 | 8 | **Project memory with a staleness fingerprint** | `init-deep` drafts layered `AGENTS.md` maps; a commit-lag signal says when the map has fallen behind |
 | 9 | **A review gate that cannot be forced** | a `REVISE` verdict refuses plan adoption; `--force` does not bypass it |
 | 10 | **Zero telemetry by constitution** | diagnostics are local-only, there is no configuration surface, and nothing phones home |
+| 11 | **Loop-complete machine attestation** | every `finish` writes a LOOP_COMPLETE proof (plan hash, per-root trees, composite fingerprint, comparator verdict, report sha256) that survives `reset`; HEAVY goals additionally need a recorded comparator `MATCH` |
 
 **The one gap we own:** a self-evolution loop (the harness improving its own
 discipline) is not built — it stays a recorded long-horizon item rather than

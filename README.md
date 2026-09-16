@@ -7,6 +7,9 @@
   <p><strong>The discipline layer for ZCode.</strong><br />
   Plan → execute → take evidence → never stop half-done.</p>
 
+  <p><em>A local, evidence-bound coding goal protocol with durable continuation —
+  not a general workflow engine.</em></p>
+
   <p>
     <a href="docs/guide/en.md">Docs</a>
     ·
@@ -148,7 +151,9 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | `update` | `lzy update` | One-command upgrade: npm pulls the latest package, then a fresh child process from the new install runs `lzy sync` (skips when already latest; manual two-step hints on any failure) |
 | `status` | `lzy status` | Quick health check; exit 0 = no fail-level findings (warn/skip do not flip it) |
 | `doctor` | `lzy doctor` | Full diagnostics — see below |
-| Goal loop | `lzy loop register <slug> --title "…"` → `lzy loop plan <plan.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | The state machine: register → plan gate → execute → evidence → finish gate |
+| Goal loop | `lzy loop register <slug> --title "…" [--tier heavy]` → `lzy loop plan <plan.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | The state machine: register → plan gate → execute → evidence → finish gate (evidence binds the composite fingerprint over the host + declared subjects; finish requires every tree clean) |
+| Subjects | `lzy loop subject add <path> · remove · list` | Declare sibling repo roots for multi-tree goals (executing-only; validated git repos, no host containment) — any set change invalidates captured F evidence |
+| Tier | `lzy loop tier heavy` | One-way LIGHT→HEAVY upgrade; HEAVY adoption without a PASS review is machine-rejected (adoption-time gate) |
 | Step claims | `lzy loop claim [<id>] [--release]` | Anonymous per-step claiming for same-goal multi-worker runs: 48h mutex, blocked-step checks against plan `deps:` edges, `step done` auto-releases; bare form lists claimable steps |
 | Evidence bundle | `lzy loop export` | Re-export the evidence bundle (`<slug>.report.md`); also auto-archived at `finish` |
 | Handoff | `lzy loop handoff --snapshot <file>` | Register a clean handoff — the next Stop releases once, without spending the continue budget |

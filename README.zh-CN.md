@@ -7,6 +7,8 @@
   <p><strong>ZCode 的纪律层。</strong><br />
   计划 → 执行 → 拿证据 → 不做完不停。</p>
 
+  <p><em>一个本地运行、以证据绑定的编码目标协议，带可靠的续跑接手——不是通用工作流引擎。</em></p>
+
   <p>
     <a href="docs/guide/zh.md">文档</a>
     ·
@@ -131,7 +133,9 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | `update` | `lzy update` | 一键升级：npm 拉最新包，再由新装路径的全新子进程执行 `lzy sync`（已是最新则免装；任一环失败均给手动两步指路） |
 | `status` | `lzy status` | 快速体检；退出码 0 = 无 fail 级检查（warn/skip 不影响） |
 | `doctor` | `lzy doctor` | 全量诊断——见下 |
-| 目标循环 | `lzy loop register <slug> --title "…"` → `lzy loop plan <计划.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | 状态机：注册 → 计划门 → 执行 → 证据 → 终验门 |
+| 目标循环 | `lzy loop register <slug> --title "…" [--tier heavy]` → `lzy loop plan <计划.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | 状态机：注册 → 计划门 → 执行 → 证据 → 终验门（证据绑 host+声明 subjects 的复合指纹；finish 要求全树 clean） |
+| 证据主体 | `lzy loop subject add <路径> · remove · list` | 多树目标声明兄弟仓根（仅 executing；校验 git 仓/无包含关系）——集合变化使已录 F 证据全体过期 |
+| Tier | `lzy loop tier heavy` | LIGHT→HEAVY 单向升级；HEAVY 无 PASS 评审采纳被机器拒（采纳时点门） |
 | 步级认领 | `lzy loop claim [<id>] [--release]` | 同目标多工人的匿名步级认领：48h 互斥、按计划 `deps:` 依赖边做阻塞校验、`step done` 自动释放；无参列可认领集 |
 | 证据包 | `lzy loop export` | 重导出证据包（`<slug>.report.md`）；`finish` 时亦自动归档 |
 | 交接 | `lzy loop handoff --snapshot <文件>` | 登记干净交接——下个 Stop 放行一次，不消耗续跑预算 |

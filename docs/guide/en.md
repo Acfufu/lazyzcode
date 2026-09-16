@@ -200,7 +200,9 @@ model follows:
 2. **Triage the tier.** LIGHT for small, contained, low-risk work (a 1–2 item
    plan, one F item). HEAVY for multi-file features, architecture, or anything
    risky or vague — explore first, plan every step. Escalating LIGHT → HEAVY
-   is always allowed; **downgrading is never allowed.**
+   is always allowed — and persisted: register with `--tier heavy` or run
+   `lzy loop tier heavy` before adopting (the HEAVY review gate is enforced by
+   the machine off the persisted tier). **Downgrading is never allowed.**
 3. **Register** the goal with the CLI.
 4. **Plan** with an N/F checklist (see [The plan gate](#the-plan-gate)).
 5. **Execute** step by step, committing work and calling
@@ -216,14 +218,18 @@ scope abandonment) and the rate-limit rules below.
 ## Goal loop commands
 
 ```
-lzy loop register <slug> --title "…"    # planning state
+lzy loop register <slug> --title "…" [--tier heavy]   # planning state; tier defaults to light
 lzy loop plan <file> [--review "…"] [--force]
 lzy loop start                          # records the base tree hash + prints the measured 并发纪律 advisory
+lzy loop subject add <path>             # declare a sibling repo root (executing-only; validated: git repo, no containment)
+lzy loop subject remove <path>          # remove a subject (missing-deadlock escape; evidence invalidation semantics apply)
+lzy loop subject list                   # list the subject set (empty = host-only)
+lzy loop tier heavy                     # tier upgrade, one-way (machine gate is adoption-time)
 lzy loop claim [<id>] [--release]        # per-step claim (anonymous, 48h mutex); bare lists claimable steps
 lzy step done <ID> [--note "…"] [--evidence "…"] [--evidence-file <file>]…
-lzy loop status                         # progress, next step, evidence freshness
-lzy loop verify                         # evidence freshness audit (exit 1 = stale/unbound)
-lzy loop finish                         # the final gate; auto-archives the evidence bundle
+lzy loop status                         # progress, next step, evidence freshness, tier/subjects/snapshot
+lzy loop verify                         # evidence freshness audit (exit 1 = stale/unbound); prints per-tree head/dirty lines
+lzy loop finish                         # the final gate: fresh composite fingerprint + all trees clean; auto-archives
 lzy loop export                         # re-export the evidence bundle
 lzy loop handoff --snapshot <file>      # register a clean handoff; next Stop releases once
 lzy loop cost                           # points report (standing coefficients + promo overlay, read-only)
@@ -234,11 +240,14 @@ lzy loop abandon | lzy loop reset       # give up / clear state
 
 - `lzy loop plan` parses the N/F checklist and rejects undecided (TBD) items.
   Pass the plan-reviewer verdict with `--review "plan-reviewer: PASS …"`;
-  HEAVY goals refuse to adopt a plan without a PASS review, and a `REVISE`
-  verdict is refused even with `--force`. A `deps: N1,N2` line right after an
-  item declares prerequisites — ids must exist, and self-loops, cycles, or
-  orphan `deps:` lines are rejected (quoting the syntax in prose? end that
-  line with `<!--lzy:allow-->`).
+  a `REVISE` verdict is refused even with `--force`, and for HEAVY goals
+  (persisted tier) adoption without a PASS verdict is machine-rejected. Adoption
+  snapshots the plan into `.lazyzcode/loop/snapshots/<slug>.md` and binds
+  `goal.planHash` (review records carry it too — the review binds the reviewed
+  artifact; re-adopting an amended plan requires a fresh review). A
+  `deps: N1,N2` line right after an item declares prerequisites — ids must
+  exist, and self-loops, cycles, or orphan `deps:` lines are rejected (quoting
+  the syntax in prose? end that line with `<!--lzy:allow-->`).
 - `lzy loop start` freezes the base tree hash; drift is reported against it.
   It also prints a 并发纪律 line — a subagent parallelism cap computed from
   your measured 429 data (see [rate-limit discipline](#rate-limit-discipline)).
@@ -249,7 +258,12 @@ lzy loop abandon | lzy loop reset       # give up / clear state
   its sha256 next to the tree hash.
 - `lzy loop finish` archives an evidence bundle to
   `.lazyzcode/evidence/<slug>.report.md` (review verdict, step notes, F-item
-  evidence with attachments); `lzy loop export` re-exports it any time.
+  evidence with attachments) — atomically: the report is written before the
+  goal flips to `done`, so a failed archive leaves the goal `executing` with a
+  recovery path instead of a done state with no report. The integrity gate
+  additionally requires every `{host}∪subjects` root clean — dirty, missing,
+  or git-error roots all reject (no bypass flag). `lzy loop export` re-exports
+  any time.
 - `lzy loop verify` is the audit-only variant of the finish gate (exit 1 when
   evidence is stale or unbound, or when no goal exists).
 - `lzy loop claim` provides anonymous per-step claiming for same-goal
@@ -291,16 +305,23 @@ deps: N1
 - **N items** (implementation) describe work.
 - **F items** (final verification) name a **real surface** and the evidence
   that will be captured on it. A plan without F items does not pass.
+- **Subjects (optional, multi-tree goals)**: `subjects: <path>` header lines —
+  one path per line, header-only (before the first item), relative paths
+  resolve against the host root. Each must exist, be a git repo, and be a
+  sibling (no containment either way with the host). Declared subjects join
+  the evidence fingerprint and the finish gate; any later
+  `subject add`/`remove` invalidates all captured F evidence.
 - **Dependency edges (optional)**: a bare lowercase `deps:` line immediately
   after an item lists case-sensitive N/F ids (deduplicated). Unknown refs,
   self-loops, cycles, and orphan `deps:` lines are rejected loudly.
 - The plan must be **decision-complete**: no TBDs, no "decide later". The gate
   rejects undecided items at adoption time. (If your plan legitimately needs
   the literal string, a line-level `<!--lzy:allow-->` marker exempts it.)
-- HEAVY goals additionally require a **plan-reviewer PASS** recorded via
-  `--review`. The reviewer checks decision-completeness, hidden risks, and
-  whether every F item names a capturable surface. `REVISE` refuses adoption —
-  `--force` cannot bypass it; only a new review can.
+- HEAVY goals (persisted tier) additionally require a **plan-reviewer PASS**
+  recorded via `--review` — machine-enforced at adoption: any non-PASS string
+  (including none at all) is rejected and `--force` cannot bypass it. The
+  reviewer checks decision-completeness, hidden risks, and whether every F
+  item names a capturable surface.
 
 ## Known unknowns
 
@@ -321,9 +342,12 @@ falsifiable, and is a "none" credible?
 - Evidence comes from a **real surface**: a CLI's stdout, an HTTP response, a
   screenshot — not from the model's own summary, and not merely "tests are
   green" (a test run is one surface among several).
-- Evidence is bound to `git rev-parse HEAD^{tree}` — the content snapshot of
-  the current commit. **Commit first, capture after.** Uncommitted changes do
-  not count.
+- Evidence is bound to the **composite fingerprint** — the sha256 over every
+  `{host}∪subjects` root's HEAD tree hash (`git rev-parse HEAD^{tree}` per
+  root). **Commit first, capture after.** Uncommitted changes do not count,
+  and any subject root changing — or the subject set itself changing — makes
+  the evidence stale. Legacy evidence (recorded before 0.0.8) compares the
+  single host tree, unchanged.
 - **Red-green evidence (dual evidence).** By default every F-item claim needs
   two halves: a **red** capture of the assertion failing on the pre-change
   state (taken before you edit) and a **green** capture of it passing after.
@@ -488,14 +512,18 @@ lzy sync [--watch]              re-deploy payload (hot reload; --watch keeps wat
 lzy status                      quick health check (exit 0 = no fail-level findings)
 lzy doctor                      deep local diagnostics (zero telemetry)
 lzy uninstall                   remove cache + registry entry
-lzy loop register <slug> --title <t>    create the goal (planning)
-lzy loop plan <file> [--review <v>] [--force]   adopt the N/F checklist
+lzy loop register <slug> --title <t> [--tier heavy]   create the goal (planning; HEAVY adoption without PASS review is machine-rejected)
+lzy loop plan <file> [--review <v>] [--force]   adopt the N/F checklist (snapshots plan + binds planHash)
 lzy loop start                  planning → executing; records base tree hash + 并发纪律 advisory
+lzy loop subject add <path>     declare sibling repo root (executing-only; validated, dedup'd)
+lzy loop subject remove <path>  remove a subject (missing-deadlock escape)
+lzy loop subject list           list the subject set
+lzy loop tier heavy             tier upgrade, one-way (adoption-time machine gate)
 lzy loop claim [<id>] [--release]  per-step claim (multi-worker; blocked-step checks; 48h mutex)
-lzy loop status                 progress, next step, evidence freshness
-lzy loop verify                 evidence freshness audit (exit 1 = stale/unbound/no goal)
+lzy loop status                 progress, next step, evidence freshness, tier/subjects/snapshot
+lzy loop verify                 evidence freshness audit (exit 1 = stale/unbound/no goal); per-tree head/dirty lines
 lzy step done <ID> [--note <t>] [--evidence <t>] [--evidence-file <f>]…
-lzy loop finish                 final gate: all done + all evidence fresh; archives evidence bundle
+lzy loop finish                 final gate: all done + fresh composite fingerprint + all {host}∪subjects trees clean; atomic archive
 lzy loop export                 re-export the evidence bundle (<slug>.report.md)
 lzy loop cost                   points report (coefficients + promo overlay, read-only)
 lzy loop list [--root <dir>]    cross-repo goal-loop sweep (read-only)

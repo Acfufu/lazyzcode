@@ -171,7 +171,8 @@ nvm-windows/Program Files；`lzy doctor` 的
 1. **开场**精确输出 `**ZW** engaged — <LIGHT|HEAVY> tier`。
 2. **Triage 定级。** LIGHT 用于小而收敛、低风险的活（1–2 项计划、单 F 项）。
    HEAVY 用于多文件特性、架构、任何有风险或含糊的任务——先侦察再逐步计划。
-   LIGHT → HEAVY 随时可升；**永不降级。**
+   LIGHT → HEAVY 随时可升，且要落盘：注册带 `--tier heavy` 或采纳前
+   `lzy loop tier heavy`（HEAVY 评审门由机器按落盘 tier 执法）。**永不降级。**
 3. 用 CLI **注册**目标。
 4. 用 N/F 清单**写计划**（见[计划门](#计划门)）。
 5. 逐步**执行**，落提交、调 `lzy step done <ID>` 带注记——F 项带证据。
@@ -183,14 +184,18 @@ nvm-windows/Program Files；`lzy doctor` 的
 ## 目标循环命令
 
 ```
-lzy loop register <slug> --title "…"    # 进入 planning
+lzy loop register <slug> --title "…" [--tier heavy]   # 进入 planning；tier 默认 light
 lzy loop plan <文件> [--review "…"] [--force]
-lzy loop start                          # 记录基线 tree hash
+lzy loop start                          # 记录基线 tree hash + 实测并发纪律行
+lzy loop subject add <路径>             # 声明兄弟仓根（仅 executing；校验 git 仓/无包含关系）
+lzy loop subject remove <路径>          # 移除 subject（missing 死锁出口；证据过期语义照走）
+lzy loop subject list                   # 列 subject 集（空=单树 host）
+lzy loop tier heavy                     # tier 升级，只升不降（机器门=采纳时点）
 lzy loop claim [<id>] [--release]        # 步级认领（匿名、48h 互斥）；无参列可认领集
 lzy step done <ID> [--note "…"] [--evidence "…"] [--evidence-file <文件>]…
-lzy loop status                         # 进度、下一步、证据新鲜度
-lzy loop verify                         # 证据时效审计（退出码 1 = 过期/未绑定）
-lzy loop finish                         # 终验门
+lzy loop status                         # 进度、下一步、证据新鲜度、tier/subjects/快照
+lzy loop verify                         # 证据时效审计（退出码 1 = 过期/未绑定）；逐树头哈希/脏态行
+lzy loop finish                         # 终验门：复合指纹新鲜+全树 clean；自动归档
 lzy loop export                         # 重导出证据包
 lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次
 lzy loop cost                           # 积分成本报表（常设系数+促销 overlay，只读）
@@ -200,8 +205,10 @@ lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 ```
 
 - `lzy loop plan` 解析 N/F 清单并拒绝待定（TBD）项。评审判决用
-  `--review "plan-reviewer: PASS …"` 传入；HEAVY 目标没有 PASS 评审拒绝采纳，
-  `REVISE` 判决即使 `--force` 也不越过。条目行下一行的 `deps: N1,N2` 声明前置
+  `--review "plan-reviewer: PASS …"` 传入；`REVISE` 判决即使 `--force` 也不越过，
+  HEAVY 目标（落盘 tier）无 PASS 评审被机器拒。采纳即快照计划到
+  `.lazyzcode/loop/snapshots/<slug>.md` 并绑 `goal.planHash`（评审记录同带——
+  评审绑被评审物；修订后复采纳必须重跑评审）。条目行下一行的 `deps: N1,N2` 声明前置
   依赖——引用必须存在，自指/成环/孤儿 `deps:` 行都会被响亮拒绝（正文要引用
   语法？行尾加 `<!--lzy:allow-->`）。
 - `lzy loop start` 冻结基线 tree hash；漂移对照它报告。
@@ -238,13 +245,17 @@ deps: N1
 - **N 项**（实现项）描述工作。
 - **F 项**（终验项）指名一个**真实表面**和将在其上取的证据。没有 F 项的计划
   过不了门。
+- **subjects（可选，多树目标）**：计划头 `subjects: <路径>` 行——每行一路径、
+  仅计划头（首个条目之前）、相对路径按宿主根解析。每根必须存在、是 git 仓、
+  与宿主无包含关系（只认兄弟仓根）。声明的 subject 进入证据指纹与 finish 闸门；
+  中途 add/remove 会使全体已录 F 证据过期。
 - **依赖边（可选）**：条目行下一行的裸小写 `deps:` 列出大小写敏感的 N/F 条目
   id（自动去重）。未知引用、自指、成环、孤儿 `deps:` 行一律响亮拒绝。
 - 计划必须**决策完备**：无 TBD、无「回头再定」。待定项在采纳时即被拒。
   （若计划确实需要这个字面量，行级 `<!--lzy:allow-->` 标记可豁免。）
-- HEAVY 目标还要经 `--review` 记录一条 **plan-reviewer PASS**。评审者核查决策
-  完备性、隐藏风险、以及每个 F 项是否指名了可取证的表面。`REVISE` 拒绝采纳
-  ——`--force` 不越过；只有重新评审能救。
+- HEAVY 目标（落盘 tier）还要经 `--review` 记录一条 **plan-reviewer PASS**——
+  机器在采纳时点执法：任意非 PASS 串（含不带评审）一律拒，`--force` 不越过。
+  评审者核查决策完备性、隐藏风险、以及每个 F 项是否指名了可取证的表面。
 
 ## 已知未知
 
@@ -260,16 +271,20 @@ deps: N1
 
 - 证据来自**真实表面**：某条 CLI 的 stdout、某个 HTTP 返回、一张截图——不是
   模型自己的总结，也不只是「测试全绿」（测试运行只是众多表面之一）。
-- 证据绑定 `git rev-parse HEAD^{tree}`——当前提交的内容快照。**先提交，再
-  取证。** 未提交的改动不算数。
+- 证据绑定**复合指纹**——{host}∪subjects 每根 `git rev-parse HEAD^{tree}`
+  头树哈希按 realpath 排序串接后的 sha256。**先提交，再取证。** 未提交的改动
+  不算数；任一 subject 树变化（或 subject 集本身增删）都使证据过期。
+  legacy 证据（0.0.8 前录取）按单树 host 比对，行为不变。
 - **双证据（红绿两半）**。默认每条 F 项断言要两半证据：**红**半=改动前状态
   上断言失败的取证（动手改之前先取），**绿**半=改动后通过的取证。表面确实
   构造不出反态的，在证据文本里写一行豁免说明——豁免要讲理由，不是静默跳过。
 - 代码一变，旧证据*按构造*过期。终验门重查新鲜度，拒绝过期与未绑定证据。
 - 取证产物（截图/响应转储）用 `--evidence-file` 随证据入账：`lzy` 复制进
   `.lazyzcode/evidence/` 并绑定 sha256（每 F 项 ≤4 个）；`lzy loop finish`
-  自动归档证据包到 `.lazyzcode/evidence/<slug>.report.md`，`lzy loop export`
-  随时重导出。
+  自动归档证据包到 `.lazyzcode/evidence/<slug>.report.md`——原子化：报告先写、
+  goal 后置 done，归档失败目标保持 executing 并给恢复指引（不再是「⚠ 失败但
+  done 已置」）。完整性闸门另要求 {host}∪subjects 每根 clean——脏/missing/
+  git 报错一律拒（无绕过 flag）。`lzy loop export` 随时重导出。
 - `lazyzcode:qa-executor` 代理为此而生：派它去跑取证，并原样报告它实际观察到
   的东西——命令与原始输出。它的天职是对抗证据造假。
 - **证据对照（comparator）**。存在性与新鲜度是机器门；证据是否真的**证明了**
@@ -389,14 +404,18 @@ lzy sync [--watch]              重新部署载荷（热重载；--watch 持续�
 lzy status                      快速体检（退出码 0 = 无 fail 级检查）
 lzy doctor                      深度本地诊断（零遥测）
 lzy uninstall                   删缓存 + 注册表条目
-lzy loop register <slug> --title <标题>    建目标（planning）
-lzy loop plan <文件> [--review <判决>] [--force]   采纳 N/F 清单
+lzy loop register <slug> --title <标题> [--tier heavy]   建目标（planning；HEAVY 无 PASS 评审机器拒）
+lzy loop plan <文件> [--review <判决>] [--force]   采纳 N/F 清单（快照+绑 planHash）
 lzy loop start                  planning → executing；记录基线 tree hash + 打印实测并发纪律行
+lzy loop subject add <路径>     声明兄弟仓根（仅 executing；校验+去重）
+lzy loop subject remove <路径>  移除 subject（missing 死锁出口）
+lzy loop subject list           列 subject 集
+lzy loop tier heavy             tier 升级，只升不降（机器门=采纳时点）
 lzy loop claim [<id>] [--release]  步级认领（多工人；阻塞校验；48h 互斥）
-lzy loop status                 进度、下一步、证据新鲜度
-lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑定/无目标）
+lzy loop status                 进度、下一步、证据新鲜度、tier/subjects/快照
+lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑定/无目标）；逐树头哈希/脏态行
 lzy step done <ID> [--note <注记>] [--evidence <证据>] [--evidence-file <文件>]…
-lzy loop finish                 终验门：全部 done + 全部证据新鲜；自动归档证据包
+lzy loop finish                 终验门：全部 done + 复合指纹新鲜 + {host}∪subjects 全树 clean；原子归档
 lzy loop export                 重导出证据包（<slug>.report.md）
 lzy loop cost                   积分成本报表（常设系数+促销 overlay，只读）
 lzy loop list [--root <目录>]   跨仓目标循环清单（只读）

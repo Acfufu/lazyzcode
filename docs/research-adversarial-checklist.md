@@ -17,7 +17,7 @@
 1. **malformed input（畸形输入）**——垃圾/越界输入不得使状态损坏或静默错行。判决：**已有防护**。计划门逐行语法+依赖边校验+禁词黑名单（`core/loop.js:175-207`：未知引用/自指/成环/孤儿 deps 一律拒）；manifest 名版本白名单 `core/paths.js` installPathFor（`OK_RE`，防缓存目录逸出）；证据附件三重拒绝（非文件/超限/超量，`core/loop.js:372-392`）。
 2. **prompt injection（提示注入）**——不可信文本不得借道计划/证据驱动执行者越权。判决：**已有防护**（残余记账债 A）。计划评审门 REVISE 判决拒绝采纳且 `--force` 不越过（ADR 评审门语义）；触发词词边界匹配防误触（`plugin/hooks/trigger.js`）；工具空转逃逸契约（zw SKILL，源起 sess_95421d3d 事故）。残余：计划文件内容本身无来源标记（见「记账新债」A）。
 3. **cancel-resume（中断续起）**——会话死/引擎重启后状态可续、不重不漏。判决：**已有防护**。Stop 续跑预算按 sessionId 隔离、预留后台通知池（决策 #13，`plugin/hooks/stop.js`）；交接放行一次性 unlink 恰一赢家、放行清振数防重入误振（ADR-0009，`stop.js:131-133` 一带）；SessionStart 状态重注入（`session-start.js`）；无人值守继起协议（zw SKILL Unattended 段）。
-4. **stale state（过期状态）**——旧证据/旧缓存/死认领不得冒充现况。判决：**已有防护**。F 项证据绑 `HEAD^{tree}`、finish 拒过期（决策 #14，`core/loop.js` finish 门）；status 缓存载荷逐文件 sha256 内容比对（路径比对对「在而旧」失明已根治，`core/status.js:89-106`）；交接快照 mtime ≤2h 强制；步级认领 48h TTL 退役（`core/loop.js:463-470,871`）。
+4. **stale state（过期状态）**——旧证据/旧缓存/死认领不得冒充现况。判决：**已有防护**。F 项证据绑复合指纹（{host}∪subjects 每根 `HEAD^{tree}` 头树哈希的 sha256 复合，任一根/集合变化即过期；legacy 证据回退单树比对，0.0.8 起）+ finish 完整性闸门（dirty/missing/fail-closed 三拒，决策 #23）；status 缓存载荷逐文件 sha256 内容比对（路径比对对「在而旧」失明已根治，`core/status.js:89-106`）；交接快照 mtime ≤2h 强制；步级认领 48h TTL 退役（`core/loop.js:463-470,871`）。
 5. **dirty worktree（脏工作区）**——未提交改动不得混入证据或被他人销毁。判决：**已有防护**。证据先提交后取证（红线 #2/决策 #14）；step done 检出脏树即告警「证据应跟随提交」（2026-09-15 本目标 N1 执行中活体目击）；交接脏树清单约束接收者、先对账后清理（zw SKILL Dirty-tree inheritance）。
 6. **hung commands（命令悬挂）**——一切子进程有确定性上界。判决：**已有防护**。引擎调用 30s 超时+argv 字面量+`shell:false`（`core/engine.js:9,42,52`）；钩子 10s timeout（`plugin/hooks/hooks.json` 五处）；限流日志扫描 64MB/文件+10s 时间盒、truncation 如实标注（`core/ratelimit.js:47-48`）；循环锁 5s 等待后持锁 LoopError（`core/loop.js` withLock）。
 7. **flaky tests（不稳定测试）**——绿必须是确定性的绿。判决：**已有防护**。测试发现面收窄治幻影 pass（`package.json:46` glob 形态，v005-core#N6）；时区敏感断言钉宿主 `TZ=Asia/Shanghai`（`.github/workflows/ci.yml:17`）；e2e 隔离 HOME+引擎探测抑制（`LZY_ZCODE_ENGINE`，债③根治）；滚动窗口断言强制漂移从句+时点戳（协议约定）。
@@ -27,8 +27,9 @@
 ## 记账新债（代码级缺口，本轮不修）
 
 - **债 A（注入残余）**：计划文件内容无来源标记/信任分级——门只扫词法（禁词、语法），不问内容从哪来。升格条件：出现「计划内容部分合成自外部不可信文本（网页/外部 issue/他人报告）」的真实工作流时，做来源标注或门级内容来源扫描。
-- **债 B（跨平台钩子 spawn）**：`plugin/hooks/hooks.json` 五处 `/bin/sh` 硬编码 + `run-hook.sh` POSIX sh，Windows 无解释器且失败静默 fail-open；`core/paths.js:70-74` 引擎定位 darwin-only。已由 gap-roadmap §⑦ 第 9 项「跨平台侦察」承接（只读侦察+设计稿），非本清单修复范围。升格条件：侦察结论落设计稿后另立支持目标。
+- **债 B（跨平台钩子 spawn）**：~~`plugin/hooks/hooks.json` 五处 `/bin/sh` 硬编码 + `run-hook.sh` POSIX sh，Windows 无解释器且失败静默 fail-open；`core/paths.js:70-74` 引擎定位 darwin-only。~~ **已 discharged（2026-09-16）**：crossplatform-support 落地 run-hook/`run-hook.cmd` 对偶孪生（hooks.json 五处一行清单跨双平台）+ `core/paths.js` 三平台引擎候选表（win32/linux 实测），见 docs/design-crossplatform.md 与 0.0.6 发布记录。
 - **债 C（证据附件读取面）**：`--evidence-file` 接受任意可读路径（`core/loop.js:382-392` 校验文件性/大小/数量，不约束根目录）——本地单用户 CLI 威胁模型下是操作员自供面而非漏洞。升格条件：`lzy` 面向多用户/受控环境分发时，加工作区根约束。
+- **债 D（subject 集完整性边界残差，2026-09-16 随 0.0.8 增记）**：finish 闸门 git spawn 与并发提交间的 TOCTOU 窗口（锁内检查、锁外 commit——ms 级窗口，结局=对较旧树 finish 而非伪造工作）；`VERDICT:` 标记形态是 N8 机器门的载荷（parseVerdict 无标记回退串可 spoof——评审协议要求标记形态，ADR-0013 记名）。升格条件：真实多工人/多仓误用或事故时按项升格。
 
 ## 结论一行（供 README 对比表引用）
 

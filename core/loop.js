@@ -558,6 +558,22 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
   const snapDir = join(loopDir(cwd), "snapshots");
   mkdirSync(snapDir, { recursive: true });
   writeFileSync(join(snapDir, `${goal.slug}.md`), body);
+  // 评审/采纳即注册边（v009-bat1#N4，ADR-0014）：plan+review 节点与 reviews/plans 边落
+  // 中央 DAG——dag-first（账本写失败=采纳拒，goal.json 未动）。复采纳=新节点追加（账本
+  // 不可变，最新节点为现役——权威切换归棒2）。
+  {
+    const dag = loadDag(cwd);
+    const planNode = appendPlanNode(dag, { slug: goal.slug, planHash });
+    addEdge(dag, { type: "plans", from: planNode.id, to: goal.slug });
+    if (goal.review) {
+      const reviewNode = appendReviewNode(dag, {
+        planHash,
+        verdict: `${goal.review.verdict} ${goal.review.summary}`.slice(0, 300),
+      });
+      addEdge(dag, { type: "reviews", from: reviewNode.id, to: planNode.id });
+    }
+    saveDag(cwd, dag);
+  }
   writeGoal(cwd, goal);
   return { goal, warnings };
 }
@@ -655,7 +671,8 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
   delete step.claim; // 步级认领随收口自动释放（决策 #21：done 即自清，不留僵尸标记）
   step.note = trimmedNote ?? (rebinding ? step.note : null);
   const previousEvidence = rebinding ? step.evidence : null;
-  const attached = attachEvidenceFiles(cwd, goal, step, files, step.evidenceSeq ?? 1);
+  const captureGen = step.evidenceSeq ?? 1;
+  const attached = attachEvidenceFiles(cwd, goal, step, files, captureGen);
   step.evidence =
     step.kind === "F"
       ? {
@@ -675,6 +692,31 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
     );
   }
   if (step.kind === "F") step.evidenceSeq = (step.evidenceSeq ?? 1) + 1;
+  // 取证即注册边（v009-bat1#N4，ADR-0014）：green 半镜像落中央 DAG——dag-first，账本写
+  // 失败=整命令拒（writeGoal 未跑、goal.json 不动、重试安全）；未配对 red/waive 回填
+  // red_of（多条合法、最新为现行），rebind 追加 supersedes。verify/finish 判定不读此账本
+  // （统一权威切换=棒2）。
+  if (step.kind === "F") {
+    const dag = loadDag(cwd);
+    const priorGreen = findLatestGreen(dag, goal.slug, id);
+    const greenNode = appendEvidenceNode(dag, {
+      slug: goal.slug,
+      step: id,
+      seq: captureGen,
+      half: "green",
+      surface: step.evidence.fingerprint
+        ? { kind: "fingerprint", value: step.evidence.fingerprint }
+        : null,
+      text: trimmedEvidence ?? "",
+      files: attached ?? [],
+    });
+    if (step.evidence.fingerprint) {
+      addCapturedOn(dag, greenNode.id, { kind: "fingerprint", value: step.evidence.fingerprint });
+    }
+    if (priorGreen) addSupersedes(dag, priorGreen.id, greenNode.id);
+    pairReds(dag, { slug: goal.slug, step: id, greenId: greenNode.id });
+    saveDag(cwd, dag);
+  }
   writeGoal(cwd, goal);
   return { goal, step, rebinding, dirty: git ? git.dirty() : false };
 }
@@ -722,8 +764,9 @@ function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal
       surface = { kind: "fingerprint", value: fp };
     }
   }
-  // 代数对齐绿半：红半瞄准下一取证代数（绿半落地时 completeStep 推进到同一数）
-  const seq = (step.evidenceSeq ?? 1) + 1;
+  // 代数对齐绿半：红半瞄准的取证代数=绿半即将落地的同一代数（completeStep 的 captureGen
+  // 同源取 step.evidenceSeq ?? 1），配对真值由 red_of 边承载、seq 只作展示。
+  const seq = step.evidenceSeq ?? 1;
   const attached = attachHalfFiles(cwd, goal, step, files, seq, half);
   // dag-first：账本写失败=整命令拒（goal.json 本就不动）；附件已拷贝的残留属既有
   // 部分失败家族（与 completeStep 的 writeGoal 失败同语义，无害孤儿）。

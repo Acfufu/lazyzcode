@@ -1,0 +1,285 @@
+// dag-kernel 契约测试（v009 棒1）：loadDag/saveDag 原子写+校验和 fail-closed / 追加式
+// 节点与边（多条 red_of 最新现行）/ dependents 与 stalePreview / dag-first 失败回滚 /
+// 跨 reset 常驻 / adopt 注册 plan+review / 锁竞争（§⑪ 并发交叉点）/ 同状态双跑字节一致
+// （确定性=冻结 Date.now 与 Date 构造）。
+// 家法同 integrity-kernel.contract.test.js：核心直调（快、确定）+CLI spawn（隔离 HOME 双
+// env、LZY_ZCODE_ENGINE 抑制）；win32 雷回避：basename 断言、不 split("/")。
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createGit } from "../core/git.js";
+import {
+  addCapturedOn,
+  addSupersedes,
+  appendEvidenceNode,
+  appendPlanNode,
+  appendReviewNode,
+  addEdge,
+  dependents,
+  DAG_VERSION,
+  emptyDag,
+  findLatestGreen,
+  loadDag,
+  nextId,
+  pairReds,
+  saveDag,
+  stalePreview,
+} from "../core/dag.js";
+import { adoptPlan, completeStep, readGoal, recordEvidenceHalf, registerGoal, resetLoop, startLoop } from "../core/loop.js";
+
+const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
+const CLI = join(ROOT, "cli", "lzy.js");
+const SUPPRESS_ENGINE = "/nonexistent-lzy-suppressed-engine";
+const HOME = mkdtempSync(join(tmpdir(), "lzy-v009-home-"));
+
+function repo(prefix = "lzy-v009-dag-") {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+  g(["init", "-q"]);
+  g(["config", "user.email", "t@l"]);
+  g(["config", "user.name", "t"]);
+  writeFileSync(join(d, "a.txt"), "a\n");
+  g(["add", "a.txt"]);
+  g(["commit", "-qm", "init"]);
+  return d;
+}
+
+function cli(args, cwd) {
+  const r = spawnSync(process.execPath, [CLI, ...args], {
+    cwd,
+    encoding: "utf8",
+    timeout: 120_000,
+    env: { ...process.env, HOME, USERPROFILE: HOME, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+  });
+  return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+}
+
+function dagFileOf(d) {
+  return join(d, ".lazyzcode", "loop", "dag.json");
+}
+
+function goalJson(d) {
+  return JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+}
+
+function sha256(buf) {
+  return createHash("sha256").update(buf).digest("hex");
+}
+
+// 冻结时钟（Date.now 与 Date 构造都冻——`at` 一律 Date.now() 派生，withLock owner
+// 戳走 new Date()，两者都不可漂）。返回还原函数。
+function freezeClock(fixed = 1_700_000_000_000) {
+  const Real = Date;
+  class Frozen extends Real {
+    constructor(...a) {
+      super(a.length === 0 ? fixed : a[0], ...a.slice(1));
+    }
+    static now() {
+      return fixed;
+    }
+  }
+  globalThis.Date = Frozen;
+  return () => {
+    globalThis.Date = Real;
+  };
+}
+
+function cycle(d) {
+  registerGoal(d, "t", "title");
+  const p = join(d, ".lazyzcode", "plan.md");
+  mkdirSync(join(d, ".lazyzcode"), { recursive: true });
+  writeFileSync(p, "- [N1] x\n- [F1] v\n");
+  adoptPlan(d, p);
+  startLoop(d, createGit(d));
+}
+
+// ── 内核：原子写 + 校验和 + fail-closed ──────────────────────────────────────
+test("saveDag→loadDag round-trip 保形，同状态双跑字节一致（冻结钟）", () => {
+  const d = repo();
+  const restore = freezeClock();
+  try {
+    const dag = emptyDag();
+    const red = appendEvidenceNode(dag, { slug: "s", step: "F1", seq: 1, half: "red", surface: { kind: "external", value: "published:x@1" }, text: "r" });
+    const green = appendEvidenceNode(dag, { slug: "s", step: "F1", seq: 1, half: "green", surface: { kind: "fingerprint", value: "ff".repeat(32) }, text: "g" });
+    addCapturedOn(dag, green.id, { kind: "fingerprint", value: "ff".repeat(32) });
+    pairReds(dag, { slug: "s", step: "F1", greenId: green.id });
+    saveDag(d, dag);
+    const bytes1 = readFileSync(dagFileOf(d));
+    const loaded = loadDag(d);
+    assert.equal(loaded.dagVersion, DAG_VERSION);
+    assert.equal(loaded.nodes.length, 2);
+    assert.equal(loaded.edges.length, 2);
+    saveDag(d, structuredClone(loaded));
+    const bytes2 = readFileSync(dagFileOf(d));
+    assert.equal(bytes2.toString("utf8"), bytes1.toString("utf8"), "同状态双跑必须逐字节一致（prompt-cache/确定性家法）");
+    assert.ok(red.id && green.id && red.id !== green.id);
+  } finally {
+    restore();
+  }
+});
+
+test("tmp 家族命名与无残留：saveDag 后 loop/ 不留 .dag.json.*.tmp", () => {
+  const d = repo();
+  saveDag(d, emptyDag());
+  const loop = join(d, ".lazyzcode", "loop");
+  const residue = readdirSync(loop).filter((f) => f.endsWith(".tmp"));
+  assert.deepEqual(residue, []);
+  assert.ok(existsSync(dagFileOf(d)));
+});
+
+test("fail-closed 三态：JSON 损坏/校验和不符/版本不识别 都拒且带恢复指路", () => {
+  const d = repo();
+  const good = emptyDag();
+  appendEvidenceNode(good, { slug: "s", step: "F1", seq: 1, half: "red", surface: { kind: "external", value: "x" }, text: "r" });
+  saveDag(d, good);
+  const p = dagFileOf(d);
+  const original = readFileSync(p, "utf8");
+  writeFileSync(p, "{corrupt");
+  assert.throws(() => loadDag(d), /JSON 解析失败.*恢复/s);
+  // 篡改节点真值（无关新键会被载荷归一丢弃，须动 nodes/edges 载荷本体）
+  writeFileSync(p, original.replace('"text": "r"', '"text": "tampered"'));
+  assert.throws(() => loadDag(d), /校验和不符.*恢复/s);
+  const obj = JSON.parse(original);
+  obj.dagVersion = 99;
+  delete obj.checksum;
+  obj.checksum = createHash("sha256").update(JSON.stringify({ dagVersion: obj.dagVersion, nodes: obj.nodes, edges: obj.edges })).digest("hex");
+  writeFileSync(p, JSON.stringify(obj, null, 2));
+  assert.throws(() => loadDag(d), /版本不兼容/s);
+});
+
+test("缺席账本=空库（首次使用零误差）", () => {
+  const d = repo();
+  const dag = loadDag(d);
+  assert.deepEqual(dag, { dagVersion: DAG_VERSION, nodes: [], edges: [] });
+});
+
+// ── 查询原语 ────────────────────────────────────────────────────────────────
+test("dependents：节点 id 双向命中；表面值走 captured_on；多条 red_of 取最新", () => {
+  const dag = emptyDag();
+  const red = appendEvidenceNode(dag, { slug: "s", step: "F1", seq: 1, half: "red", surface: { kind: "external", value: "base" }, text: "r" });
+  const g1 = appendEvidenceNode(dag, { slug: "s", step: "F1", seq: 1, half: "green", surface: { kind: "fingerprint", value: "h1" }, text: "g1" });
+  const g2 = appendEvidenceNode(dag, { slug: "s", step: "F1", seq: 2, half: "green", surface: { kind: "fingerprint", value: "h2" }, text: "g2" });
+  addCapturedOn(dag, g1.id, { kind: "fingerprint", value: "h1" });
+  addCapturedOn(dag, g2.id, { kind: "fingerprint", value: "h2" });
+  addSupersedes(dag, g1.id, g2.id);
+  assert.equal(pairReds(dag, { slug: "s", step: "F1", greenId: g1.id }), 1);
+  // rebind：同一 red 再配新绿（追加不删，最新为现行）
+  assert.equal(pairReds(dag, { slug: "s", step: "F1", greenId: g2.id }), 0, "已配对的 red 不重复配");
+  const fromRed = dependents(dag, red.id);
+  const redOfs = fromRed.hits.filter((h) => h.edge.type === "red_of");
+  assert.equal(redOfs.length, 1);
+  const bySurface = dependents(dag, "h2");
+  assert.equal(bySurface.kind, "surface");
+  assert.equal(bySurface.hits.length, 1);
+  assert.equal(bySurface.hits[0].node.id, g2.id);
+  const ofPlan = emptyDag();
+  const plan = appendPlanNode(ofPlan, { slug: "s", planHash: "ph" });
+  const review = appendReviewNode(ofPlan, { planHash: "ph", verdict: "PASS x" });
+  addEdge(ofPlan, { type: "reviews", from: review.id, to: plan.id });
+  addEdge(ofPlan, { type: "plans", from: plan.id, to: "s" });
+  const deps = dependents(ofPlan, plan.id);
+  assert.equal(deps.hits.length, 2, "plan 节点双向：reviews 入边+plans 出边");
+});
+
+test("stalePreview 五态：fresh/stale/superseded/external/null 指纹", () => {
+  const dag = emptyDag();
+  appendEvidenceNode(dag, { slug: "s", step: "F1", seq: 1, half: "green", surface: { kind: "fingerprint", value: "h1" }, text: "" });
+  const g2 = appendEvidenceNode(dag, { slug: "s", step: "F1", seq: 2, half: "green", surface: { kind: "fingerprint", value: "h2" }, text: "" });
+  appendEvidenceNode(dag, { slug: "s", step: "F2", seq: 1, half: "green", surface: { kind: "external", value: "pub@1" }, text: "" });
+  const g4 = appendEvidenceNode(dag, { slug: "s", step: "F3", seq: 1, half: "green", surface: null, text: "" });
+  addSupersedes(dag, dag.nodes[0].id, g2.id);
+  const map = new Map(stalePreview(dag, "h2").map((x) => [x.node.id, x.status]));
+  assert.equal(map.get(dag.nodes[0].id), "superseded");
+  assert.equal(map.get(g2.id), "fresh");
+  assert.equal(map.get(dag.nodes[2].id), "external");
+  assert.equal(map.get(g4.id), "unknown");
+  assert.ok(findLatestGreen(dag, "s", "F1").id === g2.id);
+  assert.equal(nextId(dag), `n${dag.nodes.length + 1}`);
+});
+
+// ── 接线行为（核心直调） ────────────────────────────────────────────────────
+test("dag-first：corrupt 账本令 step done 整命令拒且 goal.json 不动", () => {
+  const d = repo();
+  cycle(d);
+  writeFileSync(dagFileOf(d), "{corrupt");
+  const before = sha256(readFileSync(join(d, ".lazyzcode", "loop", "goal.json")));
+  assert.throws(() => completeStep(d, createGit(d), "F1", { evidence: "绿半" }), /恢复/);
+  const after = sha256(readFileSync(join(d, ".lazyzcode", "loop", "goal.json")));
+  assert.equal(after, before, "dag-first：账本写失败=goal.json 零改动（重试安全）");
+  assert.equal(goalJson(d).steps.find((s) => s.id === "F1").status, "pending");
+});
+
+test("adoptPlan 注册 plan+review 节点与 reviews/plans 边；step done 镜像 green 并配对 red", () => {
+  const d = repo();
+  registerGoal(d, "t", "title");
+  const p = join(d, ".lazyzcode", "plan.md");
+  mkdirSync(join(d, ".lazyzcode"), { recursive: true });
+  writeFileSync(p, "- [F1] v\n");
+  adoptPlan(d, p, { review: "plan-reviewer: PASS — t" });
+  let dag = loadDag(d);
+  const planNode = dag.nodes.find((n) => n.kind === "plan");
+  const reviewNode = dag.nodes.find((n) => n.kind === "review");
+  assert.ok(planNode && reviewNode, "采纳即注册 plan+review");
+  assert.equal(reviewNode.planHash, planNode.planHash);
+  assert.ok(dag.edges.some((e) => e.type === "reviews" && e.from === reviewNode.id && e.to === planNode.id));
+  assert.ok(dag.edges.some((e) => e.type === "plans" && e.to === "t"));
+  startLoop(d, createGit(d));
+  recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "红半" });
+  completeStep(d, createGit(d), "F1", { evidence: "绿半" });
+  dag = loadDag(d);
+  const green = dag.nodes.find((n) => n.kind === "evidence" && n.half === "green");
+  const red = dag.nodes.find((n) => n.kind === "evidence" && n.half === "red");
+  assert.ok(green && red);
+  assert.ok(dag.edges.some((e) => e.type === "red_of" && e.from === red.id && e.to === green.id), "green 落地回填 red_of");
+  const goal = goalJson(d);
+  assert.equal(green.seq, (goal.steps.find((s) => s.id === "F1").evidenceSeq ?? 1) - 1, "green gen=落地取证代数");
+});
+
+test("rebind：二次取证追加 supersedes 与新 captured_on，旧 red_of 保留（历史）", () => {
+  const d = repo();
+  cycle(d);
+  completeStep(d, createGit(d), "F1", { evidence: "绿1" });
+  writeFileSync(join(d, "a.txt"), "b\n");
+  spawnSync("git", ["add", "a.txt"], { cwd: d });
+  spawnSync("git", ["commit", "-qm", "c2"], { cwd: d });
+  completeStep(d, createGit(d), "F1", { evidence: "绿2" });
+  const dag = loadDag(d);
+  const greens = dag.nodes.filter((n) => n.kind === "evidence" && n.half === "green");
+  assert.equal(greens.length, 2);
+  assert.ok(dag.edges.some((e) => e.type === "supersedes" && e.from === greens[1].id && e.to === greens[0].id));
+});
+
+test("跨 reset 常驻：resetLoop 后 dag.json 与节点原样（照 metrics.json 先例）", () => {
+  const d = repo();
+  cycle(d);
+  completeStep(d, createGit(d), "F1", { evidence: "绿" });
+  const before = readFileSync(dagFileOf(d), "utf8");
+  resetLoop(d, createGit(d));
+  assert.equal(readFileSync(dagFileOf(d), "utf8"), before);
+  assert.ok(!existsSync(join(d, ".lazyzcode", "loop", "goal.json")));
+});
+
+test("锁竞争（§⑪ 交叉点）：持锁在 forces evidence red 等满 5s 后 LoopError", () => {
+  const d = repo();
+  cycle(d);
+  mkdirSync(join(d, ".lazyzcode", "loop", ".lock")); // 无 owner.json=必等满 LOCK_WAIT_MS
+  const t0 = Date.now();
+  assert.throws(() => recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "x" }), /持锁/);
+  const waited = Date.now() - t0;
+  assert.ok(waited >= 4_500, `等锁应≥4.5s（实测 ${waited}ms）`);
+});
+
+test("CLI 双跑字节一致（list 同状态 stdout 逐字节同）+ 引擎抑制不触真引擎", () => {
+  const d = repo();
+  cycle(d);
+  recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "红半" });
+  const r1 = cli(["evidence", "list"], d);
+  const r2 = cli(["evidence", "list"], d);
+  assert.equal(r1.code, 0);
+  assert.equal(r2.out, r1.out, "list 同状态双跑逐字节一致");
+});

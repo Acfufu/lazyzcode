@@ -206,7 +206,12 @@ suggested command; it returns verbatim observed output and a MATCH verdict.
   their OWN surface), `lzy evidence waive-red <Fid> --reason …` is the machine
   form of the one-line exemption, and the green half is mirrored automatically at
   `step done`. `lzy evidence list` renders the per-F manifest (halves, surfaces,
-  rebind chain). The ledger only records — it adjudicates nothing; the
+  rebind chain). **Since baton 2 the ledger is the unified validity authority**:
+  `verify`/`finish` judge evidence freshness from the ledger's green node for the
+  goal.json-recorded generation (orphan ghosts never count as current), and an
+  unreadable ledger or a fingerprint-form record with no ledger node fails closed
+  (recovery = re-record via `step done`). The ledger only records — it adjudicates
+  nothing; the
   comparator's pairing/existence check reads `lzy evidence list` as its first
   source, while assertion-vs-evidence matching is still judged per pair by
   qa-executor, unchanged.
@@ -239,8 +244,13 @@ lzy loop finish
 
 Passes only when every step is done, every F item's evidence fingerprint is fresh
 against the current subject set, AND every {host}∪subjects tree is clean
-(dirty/missing/git-error all reject; no bypass flag). This is the only valid
+(dirty/missing/git-error all reject; no bypass flag) — and, for HEAVY goals, a
+current MATCH comparator attestation (see §4). This is the only valid
 "done". 不做完不停 — if finish rejects, keep working, never declare victory.
+On success `finish` also writes the **final attestation**
+`.lazyzcode/attestations/<attemptId>.json` — the LOOP_COMPLETE machine proof
+(planHash, per-root head trees, composite fingerprint, ledger-anchored evidence
+refs, comparator record, report sha256); it survives `reset` as history.
 
 **Evidence comparison (comparator, HEAVY mandatory).** Existence and freshness are the CLI's
 gates; relevance is not checked by any CLI — so before `finish`, dispatch `qa-executor` in
@@ -250,6 +260,12 @@ half without an exemption is a `不匹配`. A `不匹配` verdict means the
 evidence does not demonstrate the claim: re-capture on the right surface, or if the F item
 itself was wrong, amend the plan honestly — then re-run. LIGHT goals: do the comparison
 yourself as a self-check (weaker — you authored the evidence; know its blind spot).
+**Machine attestation (0.0.9 baton 2):** transcribe the comparator verdicts into a minimal
+JSON (`{"slug", "items": [{"fid", "verdict": "MATCH|MISMATCH", "basis"}], "note"?}` — items
+must cover every F item) and record it with
+`lzy attest comparator --file <verdicts.json>`. For HEAVY goals `finish` machine-enforces a
+current MATCH attestation whose fingerprint matches the tree (missing / MISMATCH / stale all
+reject, no bypass); LIGHT goals may skip the recording.
 
 **Adversarial coverage.** HEAVY finishes touching command, parse, or state-merge surfaces
 self-check against `docs/research-adversarial-checklist.md` — the standing nine-class sheet:
@@ -514,7 +530,8 @@ tool). Aliases are equal — `zw` is the primary.
 | `lzy loop status` | progress, next step, evidence freshness |
 | `lzy step done <ID> [--note] [--evidence] [--evidence-file …]` | complete a step (F requires evidence; files bound by sha256) |
 | `lzy loop verify` | evidence freshness report (exit 1 when stale/unbound evidence **or no goal exists**) |
-| `lzy loop finish` | final gate: all done + fresh evidence + all {host}∪subjects trees clean; auto-archives the evidence bundle |
+| `lzy attest comparator --file <json>` | record comparator verdicts (schema `{slug, items:[{fid, verdict, basis}]}`; HEAVY finish enforces current MATCH) |
+| `lzy loop finish` | final gate: all done + fresh evidence + all {host}∪subjects trees clean (+ HEAVY: MATCH attestation); auto-archives the evidence bundle and writes the final attestation |
 | `lzy loop export` | re-export the evidence bundle to `.lazyzcode/evidence/<slug>.report.md` |
 | `lzy loop abandon` / `lzy loop reset` | give up / clear state |
 | `lzy doctor` | deep local diagnostics incl. rate-limit pressure (zero telemetry) |

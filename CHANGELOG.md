@@ -26,6 +26,35 @@ versioning is SemVer.
   baton 2 switches verify/finish authority to the DAG. Storage medium ruling:
   JSON, not node:sqlite (unflagged sqlite only exists from Node 22.13/23.4,
   which would silently raise the `>=22` engines floor).
+- **Unified DAG authority + comparator attestation + final attestation** (0.0.9
+  baton 2, ADR-0014 addendum): `verify`/`finish` now judge evidence freshness
+  from the ledger — each F step's green node is anchored to the generation
+  recorded in goal.json (orphan ghosts never count as current and never block;
+  the ledger node's surface is the authority; legacy `treeHash` records keep the
+  0.0.8-identical dual track). A fingerprint-form record with no anchored ledger
+  node rejects fail-closed as "账本不一致" with a recovery pointer (re-record via
+  `step done` re-registers the node); an unreadable ledger rejects everywhere as
+  before. `lzy attest comparator --file <verdicts.json>` records qa-executor
+  comparator verdicts as machine attestations (schema-validated: slug match,
+  known F ids, MATCH|MISMATCH enum, full coverage; bound to slug + planHash +
+  composite fingerprint + file sha256, `attests` edge to the current plan node).
+  HEAVY `finish` machine-enforces a current MATCH attestation whose fingerprint
+  matches the tree — missing, MISMATCH, and stale all reject, no bypass; LIGHT
+  goals may self-check without recording. On success `finish` writes the **final
+  attestation** `.lazyzcode/attestations/<slug>-<UTC-compact>.json` — the
+  LOOP_COMPLETE machine proof (attemptId at second granularity, planHash,
+  per-root head trees, composite fingerprint, ledger-anchored evidence refs,
+  comparator record, report sha256) — atomic, surviving `reset` as history, and
+  outside `loop/` so the scar patrol never sees it.
+- **doctor `payload-ver` line** (debt #3 closeout): compares the actually
+  installed payload cache version directories against the running CLI's
+  package.json version — ok when the CLI version has a cache directory, warn
+  with a `lzy sync` pointer when not (the ADR-0012 "npm upgraded but not synced"
+  intermediate state where real sessions still load the old payload), skip when
+  no cache exists. Versions are read live on both sides, never hardcoded.
+- **fail-fast hardening**: `lzy evidence red|waive-red` in a directory without a
+  goal no longer creates the `.lazyzcode/loop/` shell before rejecting
+  (ADR-0006 pre-lock check; `lzy loop claim` already had it).
 
 ### Changed
 

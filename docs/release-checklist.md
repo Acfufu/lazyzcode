@@ -138,3 +138,10 @@ Node ≥ 22, and git.
 New: `lzy update`. On 0.0.6 or earlier: `npm i -g lazyzcode && lzy sync`.
 Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 ```
+
+### 补记（2026-09-16，publish 收官 + win32 三 VM 实弹）
+
+- Runbook 1-5 全部实弹收官：push → CI 四腿绿 → tag v0.0.7（f52e171，=origin/main 尖）→ GitHub Release → 用户 `npm publish`（2FA）。registry `dist-tag latest=0.0.7`，发布 shasum 与 dry-run 逐字节一致（f0b9d7a1…）。
+- 隔离 prefix 冒烟：`npm i -g lazyzcode` → `lzy --version` 0.0.7 + `lzy doctor` 18 ✔ 零失败。
+- 真机狗粮：手动两步 0.0.6→0.0.7 + sync 过；`lzy update` 已是最新路径活体（EXIT=0）。**勘误**：`update` 无法从更老版本自举（0.0.6 全局无此命令）——「0.0.6 → lzy update」不是合法狗粮链，跨版本桥=README 手动两步；真升级链活体=降版标记配方（v007 F2）。
+- **win32 三 VM 实弹（Runbook 第 6 步，Win11 ARM64，SYSTEM exec 上下文）**：registry 新装 0.0.7（9s）→「已是最新」半区 EXIT=0 → `npm pkg set version=0.0.6 --prefix <全局根>` 降戳（F2 配方 win32 版，免 cmd 引号地狱）→ `lzy update` 全链 EXIT=0：probe 0.0.6 vs 0.0.7 → ComSpec spawn `npm i -g lazyzcode@latest` → **全新子进程 sync 输出可见（stdio inherit）**、缓存 0.0.7 落 systemprofile 下（prlctl exec=SYSTEM 会话既知形态）→ 终态三件核对全绿（package.json 复原 0.0.7 / `--version` 0.0.7 / 缓存 manifest 在场）。ADR-0012 win32 验收线闭环。

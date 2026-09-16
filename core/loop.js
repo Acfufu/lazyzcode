@@ -740,6 +740,32 @@ function doFinishLoop(cwd, git) {
           : "本目录不是 git 仓库或还没有任何提交——先 git init 并提交，再重新取证。"),
     );
   }
+  // ── 第四拒：完整性闸门（P0-A 闭合，v008）——{host}∪subjects 任一根 dirty/missing/git
+  // 错即拒，不提供任何绕过 flag（拍板③「无逃生门」）。git spawn 逐根顺序、共享 8s 墙钟
+  // 预算（< LOCK_STALE_MS 10s 留余量；单根超时/预算耗尽按 fail-closed 拒）。
+  const GATE_BUDGET_MS = 8_000;
+  const gateStart = Date.now();
+  for (const root of [cwd, ...(goal.subjects ?? [])]) {
+    const remaining = GATE_BUDGET_MS - (Date.now() - gateStart);
+    let check;
+    if (remaining <= 0) {
+      check = { state: "error", detail: `闸门墙钟预算 ${GATE_BUDGET_MS}ms 耗尽（根 ${root} 未检）` };
+    } else {
+      check = createGit(root).integrity(remaining);
+    }
+    if (check.state === "clean") continue;
+    incMetrics(cwd, "finish_reject_dirty");
+    const which = root === cwd ? "host" : "subject";
+    const advice =
+      check.state === "dirty"
+        ? "该根有未提交改动：commit 或 stash 后重跑 finish（.lazyzcode/ 账本不计该根脏；先提交再取证，未提交改动不进指纹）。"
+        : check.state === "missing"
+          ? `该根不存在/非 git 仓/HEAD 不可解析，不可验收：复原路径，或 lzy loop subject remove <path> 移出集合，或 lzy loop abandon。${check.detail ? `（${check.detail}）` : ""}`
+          : `git 调用失败（fail-closed 按拒处理）：修复 git 后重跑 finish。原始报错：${check.detail ?? "未知"}`;
+    throw new LoopError(
+      `finish 完整性闸门拒绝（${check.state}）：${which} ${root}。${advice}`,
+    );
+  }
   goal.status = "done";
   goal.finishedAt = new Date().toISOString();
   writeGoal(cwd, goal);

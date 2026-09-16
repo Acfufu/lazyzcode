@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, openSync, ftruncateSync, closeSync, appendFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, openSync, ftruncateSync, closeSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -83,6 +83,9 @@ test("证据附件：--evidence-file 复制入 evidence/ 并绑 sha256；report 
     // status 显示附件计数
     assert.match(lzy(["loop", "status"], d).out, /附件 1/);
     // finish 自动归档证据包 + memory 收尾提示
+    // v008 翻转：未跟踪 plan.md/shot.png 移入 .lazyzcode/（attach 后移；树不变），finish 过完整性闸门
+    renameSync(join(d, "plan.md"), join(d, ".lazyzcode", "plan.md"));
+    renameSync(shot, join(d, ".lazyzcode", "shot.png"));
     const fin = lzy(["loop", "finish"], d);
     assert.equal(fin.code, 0);
     assert.match(fin.out, /证据包已归档/);

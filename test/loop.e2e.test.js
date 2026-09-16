@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,6 +95,8 @@ test("全链：计划门→REVISE force 不越过→证据门→过期拦截→f
     assert.equal(lzy(["loop", "finish"], d).code, 1); // 终验拦截
     assert.match(lzy(["loop", "finish"], d).out, /已过期/);
     assert.equal(lzy(["step", "done", "F1", "--evidence", "rebind"], d).code, 0);
+    // v008 完整性闸门 fixture 翻转：未跟踪 plan.md 移入 .lazyzcode/（树不变），finish 过闸门
+    renameSync(join(d, "plan.md"), join(d, ".lazyzcode", "plan.md"));
     const fin = lzy(["loop", "finish"], d);
     assert.equal(fin.code, 0);
     assert.match(fin.out, /目标完成/);
@@ -212,6 +214,9 @@ test("finish 埋点与 rebind 痕迹（plan-v2 Phase 2-1）：三分拒绝计数
     assert.equal(f.evidenceHistory[0].text, "v1");
     assert.ok(f.evidenceHistory[0].files[0].path.includes("m.F1.1.1.txt"));
     // 放行：attempts 累计三分，成功不设独立计数（首过率=1 - rejects/attempts）
+    // v008 翻转：未跟踪 plan.md/cap.txt 移入 .lazyzcode/（cap.txt 在最终 attach 后移；树不变）
+    renameSync(join(d, "plan.md"), join(d, ".lazyzcode", "plan.md"));
+    renameSync(join(d, "cap.txt"), join(d, ".lazyzcode", "cap.txt"));
     assert.equal(lzy(["loop", "finish"], d).code, 0);
     m = JSON.parse(readFileSync(mp, "utf8"));
     assert.equal(m.finish_attempts, 3);
@@ -524,6 +529,8 @@ test("步级认领：executing 闸门/阻塞拒/互斥拒/释放/过期重认领
     assert.equal(lzy(["step", "done", "N3", "--note", "n"], d).code, 0);
     assert.equal(lzy(["loop", "claim", "F1"], d).code, 0); // F 项同规则可认领
     assert.equal(lzy(["step", "done", "F1", "--evidence", "saw"], d).code, 0);
+    // v008 翻转：未跟踪 plan.md 移入 .lazyzcode/（树不变），finish 过完整性闸门
+    renameSync(join(d, "plan.md"), join(d, ".lazyzcode", "plan.md"));
     assert.equal(lzy(["loop", "finish"], d).code, 0);
   } finally {
     rmSync(d, { recursive: true, force: true });

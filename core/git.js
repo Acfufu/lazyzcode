@@ -2,6 +2,29 @@
 // 与 engine.js 同一安全形态：可执行为字面量 "git"，argv 全字面量数组 + shell:false，
 // cwd 由调用方（loop 状态机）传入，绝不拼任何命令行。
 import { spawnSync } from "node:child_process";
+import { statSync } from "node:fs";
+
+// ── v008-integrity-kernel#N5：porcelain 取数与脏判抽公共帮手（dirty 与 integrity 共用口径）──
+function statusPorcelain(cwd, timeoutMs = 10_000) {
+  return spawnSync("git", ["status", "--porcelain"], {
+    cwd,
+    shell: false,
+    timeout: Math.max(1_000, Math.min(10_000, timeoutMs)),
+    encoding: "utf8",
+  });
+}
+
+function porcelainHasDirty(stdout) {
+  return (stdout ?? "")
+    .split(/\r?\n/)
+    .some((line) => {
+      const raw = line.slice(3).trim(); // porcelain v1：XY<空格>path
+      if (!raw) return false;
+      const renamed = raw.includes(" -> ") ? raw.split(" -> ").pop() : raw;
+      const p = renamed.replace(/^"(.*)"$/, "$1"); // git 对特殊字符路径加引号
+      return p !== ".lazyzcode" && !p.startsWith(".lazyzcode/");
+    });
+}
 
 // 工厂：cwd 为工作区根。git 不可用/非 git 仓库时返回 null（调用方按「无绑定」降级，
 // finish/verify 会把无绑定证据视为不新鲜，绝不静默放行）。
@@ -23,6 +46,42 @@ export function createGit(cwd) {
     // deprecated 别名（v008-integrity-kernel#N2 正名遗留）：一版后删，新代码一律 headTreeHash()。
     treeHash() {
       return this.headTreeHash();
+    },
+    // per-root 完整性原语（v008-integrity-kernel#N5）：返回可辨状态形状 {state, detail?}，
+    // state ∈ clean | dirty | missing | error。missing=根不存在/非 git 仓/HEAD 不可解析
+    // （不可验收）；error=fail-closed（git 进程错/非零退出码，含索引损坏——按拒处理）。
+    // 与 dirty() 的分野：dirty() fail-open 仅保留给 step-done 建议面；本原语供 finish 闸门。
+    // timeoutMs=共享墙钟预算的剩余量（闸门 8s 预算 < LOCK_STALE_MS 留余量）；超时归 error。
+    // .lazyzcode/ 豁免按每根各自适用（subject 仓自持 .lazyzcode/ 同样不计该根脏）。
+    integrity(timeoutMs = 10_000) {
+      let st;
+      try {
+        st = statSync(cwd);
+      } catch {
+        return { state: "missing", detail: "根不存在" };
+      }
+      if (!st.isDirectory()) return { state: "missing", detail: "根不是目录" };
+      const to = Math.max(1_000, Math.min(10_000, timeoutMs));
+      const head = spawnSync("git", ["rev-parse", "HEAD^{tree}"], {
+        cwd, shell: false, timeout: to, encoding: "utf8",
+      });
+      if (head.error) {
+        return { state: "error", detail: `git rev-parse: ${head.error.message ?? head.error}` };
+      }
+      if (head.status !== 0) {
+        return { state: "missing", detail: (head.stderr ?? "").trim().slice(0, 200) || "HEAD 头树不可解析" };
+      }
+      const r = statusPorcelain(cwd, to);
+      if (r.error) {
+        return { state: "error", detail: `git status: ${r.error.message ?? r.error}` };
+      }
+      if (r.status !== 0) {
+        return {
+          state: "error",
+          detail: (r.stderr ?? "").trim().slice(0, 300) || `git status 退出码 ${r.status}`,
+        };
+      }
+      return porcelainHasDirty(r.stdout) ? { state: "dirty" } : { state: "clean" };
     },
     // 工作区有未提交改动时为 true（证据应跟随提交：先提交再取证，否则证据可辩驳）。
     // 只排除 .lazyzcode/ 自身的账本：精确路径判定，含该子串的其他路径（如 backup.lazyzcode/）照常报警（评审 R2-2）。
@@ -46,23 +105,12 @@ export function createGit(cwd) {
       }
       return { total, missing };
     },
+    // 工作区有未提交改动时为 true（证据应跟随提交：先提交再取证，否则证据可辩驳）。
+    // 只排除 .lazyzcode/ 自身的账本：精确路径判定，含该子串的其他路径（如 backup.lazyzcode/）照常报警（评审 R2-2）。
     dirty() {
-      const r = spawnSync("git", ["status", "--porcelain"], {
-        cwd,
-        shell: false,
-        timeout: 10_000,
-        encoding: "utf8",
-      });
+      const r = statusPorcelain(cwd);
       if (r.error || r.status !== 0) return false;
-      return (r.stdout ?? "")
-        .split(/\r?\n/)
-        .some((line) => {
-          const raw = line.slice(3).trim(); // porcelain v1：XY<空格>path
-          if (!raw) return false;
-          const renamed = raw.includes(" -> ") ? raw.split(" -> ").pop() : raw;
-          const p = renamed.replace(/^"(.*)"$/, "$1"); // git 对特殊字符路径加引号
-          return p !== ".lazyzcode" && !p.startsWith(".lazyzcode/");
-        });
+      return porcelainHasDirty(r.stdout);
     },
     // 可回收工件盘点（C 面）：porcelain 路径清单（口径同 dirty()，排除 .lazyzcode/ 自身账本）。
     // git 不可用/非 git 仓库时返回 null（调用方降级：存根只留资产指针，不阻断销毁）。

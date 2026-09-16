@@ -358,10 +358,13 @@ function parseSubjectsHeader(cwd, body) {
 
 // 复合指纹：subject 集={host}∪roots 每根 HEAD 头树哈希，按 realpath 排序拼
 // "realpath\0hash\n" 串取 sha256。任一根树变（或集合变）→ 指纹变 → 全体绑定指纹的
-// F 证据过期。防御分支：根消失/非 git 仓时该根以 "missing" 参与串（采纳门已拒，此处
-// 兜底；finish 闸门另有 missing 分支拦「重录取证致指纹含 missing 仍 fresh」穿越）。
+// F 证据过期。防御分支：subject 根消失/非 git 仓时该根以 "missing" 参与串（采纳门已拒，
+// 此处兜底；finish 闸门另有 missing 分支拦「重录取证致指纹含 missing 仍 fresh」穿越）。
+// host 自身非 git 仓 → 返回 null（unbound 语义，镜像 legacy `!treeHash` 谓词）。
 // 缺键归一单点：roots 按 `?? []` 归一（0.0.8 前的 goal 无 subjects 键，计算面同容忍）。
 export function fingerprintSubjects(cwd, roots) {
+  const hostHash = createGit(cwd).headTreeHash();
+  if (!hostHash) return null;
   const list = [resolve(cwd), ...(Array.isArray(roots) ? roots : [])];
   const parts = list.map((root) => {
     let rp = root;
@@ -370,7 +373,7 @@ export function fingerprintSubjects(cwd, roots) {
     } catch {
       // 根消失：按存储路径参与排序，哈希记 missing
     }
-    const hash = createGit(root).headTreeHash() ?? "missing";
+    const hash = root === resolve(cwd) ? hostHash : (createGit(root).headTreeHash() ?? "missing");
     return { rp, hash };
   });
   parts.sort((a, b) => (a.rp < b.rp ? -1 : a.rp > b.rp ? 1 : 0));
@@ -576,7 +579,9 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
     step.kind === "F"
       ? {
           text: trimmedEvidence,
-          treeHash: git ? git.headTreeHash() : null,
+          // v008 起证据绑复合指纹（{host}∪subjects）；treeHash 字段停写，legacy 证据
+          // 对象保留原字段不动（verify 双轨回退比对，行为与 0.0.7 全同）。
+          fingerprint: fingerprintSubjects(cwd, goal.subjects),
           at: step.doneAt,
           ...(attached ? { files: attached } : {}),
         }
@@ -673,21 +678,30 @@ export function formatClaimList(cwd) {
   );
 }
 
-// ── 5. 证据时效：F 项证据的 tree hash 是否仍等于当前工作树 ─────────────────
+// ── 5. 证据时效双轨：F 项证据绑复合指纹（v008 起）或单树 treeHash（legacy 回退）──
 export function verifyEvidence(cwd, git) {
   const goal = readGoal(cwd);
   if (!goal) throw new LoopError(noGoalMessage(cwd));
   const current = git ? git.headTreeHash() : null;
+  const fingerprint = fingerprintSubjects(cwd, goal.subjects ?? []);
   const fresh = [];
   const stale = [];
   const unbound = [];
   for (const s of goal.steps) {
     if (s.kind !== "F" || s.status !== "done") continue;
-    if (!s.evidence?.treeHash || !current) unbound.push(s);
-    else if (s.evidence.treeHash === current) fresh.push(s);
-    else stale.push(s);
+    if (s.evidence?.fingerprint) {
+      // 指纹主轨：subject 集任一根变化（含集合增删）即过期；host 非 git 仓=指纹 null=未绑定。
+      if (!fingerprint) unbound.push(s);
+      else if (s.evidence.fingerprint === fingerprint) fresh.push(s);
+      else stale.push(s);
+    } else {
+      // legacy 单树轨（0.0.7 证据对象）：行为与 0.0.7 全同。
+      if (!s.evidence?.treeHash || !current) unbound.push(s);
+      else if (s.evidence.treeHash === current) fresh.push(s);
+      else stale.push(s);
+    }
   }
-  return { current, fresh, stale, unbound };
+  return { current, fingerprint, fresh, stale, unbound };
 }
 
 // ── 6. 完成：全部步骤 done + F 项证据全部新鲜 ──────────────────────────────
@@ -756,7 +770,11 @@ export function exportReport(cwd, git) {
     const mark = s.status === "done" ? "✔" : "·";
     lines.push(`- ${mark} ${s.id} [${s.kind}] ${s.title}${s.note ? ` — ${s.note}` : ""}`);
     if (s.evidence) {
-      lines.push(`  - 证据 @ tree ${(s.evidence.treeHash ?? "未绑定").slice(0, 10)} · ${s.evidence.at}：${s.evidence.text}`);
+      // 指纹化显示面（v008）：新证据显示指纹短码，legacy 证据维持 tree 短码（防「未绑定」回归）。
+      const bind = s.evidence.fingerprint
+        ? `指纹 ${s.evidence.fingerprint.slice(0, 10)}`
+        : `tree ${(s.evidence.treeHash ?? "未绑定").slice(0, 10)}`;
+      lines.push(`  - 证据 @ ${bind} · ${s.evidence.at}：${s.evidence.text}`);
       for (const f of s.evidence.files ?? []) {
         lines.push(`  - 附件 \`${f.path}\`（sha256 ${f.sha256.slice(0, 16)}… · ${f.bytes} bytes）`);
       }
@@ -1077,10 +1095,12 @@ export function formatStatus(cwd, git) {
           if (undone.length > 0) flag = ` [blocked: ${undone.join(",")}]`;
         }
       }
+      const evBind = s.evidence?.fingerprint
+        ? `指纹@${s.evidence.fingerprint.slice(0, 10)}`
+        : `证据@${(s.evidence?.treeHash ?? "未绑定").slice(0, 10)}`;
       const ev =
         s.kind === "F" && s.evidence
-          ? ` 证据@${(s.evidence.treeHash ?? "未绑定").slice(0, 10)}` +
-            (s.evidence.files?.length ? ` · 附件 ${s.evidence.files.length}` : "")
+          ? ` ${evBind}` + (s.evidence.files?.length ? ` · 附件 ${s.evidence.files.length}` : "")
           : "";
       lines.push(`  ${mark} ${s.id.padEnd(4)} [${s.kind}] ${s.title}${flag}${ev}`);
     }

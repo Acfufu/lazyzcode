@@ -209,8 +209,17 @@ async function cmdLoop(args) {
       return;
     }
     case "verify": {
-      const { current, fresh, stale, unbound } = verifyEvidence(cwd, git);
-      console.log(`当前 tree ${(current ?? "未知").slice(0, 10)}`);
+      const { current, fingerprint, fresh, stale, unbound } = verifyEvidence(cwd, git);
+      console.log(`当前 tree ${(current ?? "未知").slice(0, 10)}${fingerprint ? ` · 复合指纹 ${fingerprint.slice(0, 10)}` : " · 复合指纹 未绑定（host 非 git 仓）"}`);
+      // 每树头树哈希/脏态行（v008）：subject 集逐根对照，missing 如实点名。
+      const subjects = readGoal(cwd)?.subjects ?? [];
+      for (const root of [resolve(cwd), ...subjects]) {
+        const g = createGit(root);
+        const hash = g.headTreeHash();
+        const dirty = hash === null ? null : g.dirty();
+        const state = hash === null ? "missing" : dirty ? "DIRTY" : "clean";
+        console.log(`  树 ${String(hash).slice(0, 10)} ${state.padEnd(6)} ${root}`);
+      }
       for (const [label, list] of [["新鲜", fresh], ["过期", stale], ["未绑定", unbound]]) {
         console.log(`  ${label} ${list.length}${list.length ? `：${list.map((s) => s.id).join(" ")}` : ""}`);
       }
@@ -369,7 +378,11 @@ async function cmdStep(args) {
     console.log("  ⚠ 工作区有未提交改动：证据应跟随提交（先 commit 再取证，否则 tree hash 不含这些改动）");
   }
   if (step.evidence) {
-    console.log(`  证据已绑定 tree ${(step.evidence.treeHash ?? "未绑定").slice(0, 10)}：${step.evidence.text.slice(0, 80)}`);
+    // 指纹化显示面（v008）：新证据显示指纹短码，legacy 证据维持 tree 短码（防「未绑定」回归）。
+    const bind = step.evidence.fingerprint
+      ? `指纹 ${(step.evidence.fingerprint ?? "").slice(0, 10)}`
+      : `tree ${(step.evidence.treeHash ?? "未绑定").slice(0, 10)}`;
+    console.log(`  证据已绑定 ${bind}：${step.evidence.text.slice(0, 80)}`);
     for (const file of step.evidence.files ?? []) {
       console.log(`  附件 ${file.path}（sha256 ${file.sha256.slice(0, 12)}… · ${file.bytes} bytes）`);
     }

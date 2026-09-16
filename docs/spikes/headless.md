@@ -16,7 +16,7 @@
 
 `.node-bundle-meta.json` 实读：`runtime=electron-node, entry=zcode.cjs, source=apps/zcode-cli/packages/cli/dist/zcode.cjs`。
 
-## 2. headless 契约面（--help 全文 dump 在 p0 同目录存档；未单独成档，原文见引擎）
+## 2. headless 契约面（--help 全文 dump 存档 p1-help-full.txt）
 
 - 单发：`--prompt <text>` / `-p, --print`（位置式）；机器输出 `--json`
 - 续接：`--resume <sessionId>`（`sess_…` 形）；`-c, --continue`（取 cwd 最新会话）
@@ -91,6 +91,7 @@ perl -e 'alarm 120; exec @ARGV' env HOME=<隔离HOME> node "$ENGINE" --resume <s
 | 文件 | 角色 |
 |---|---|
 | p0-launch-forms.txt | P0 三形态 + node:sqlite |
+| p1-help-full.txt | P1 `--help` 契约面全文（62 行） |
 | p2-empty-home-green.txt | **绿半**：空 HOME round-trip 摘要 JSON |
 | p3a-red-no-auth.txt | **红半①**：双 provider env 摘除 → 启动门拒原文 |
 | p3a2-builtin-only.txt | **红半②**：仅 builtin → 模型创建门拒原文 |

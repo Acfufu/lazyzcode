@@ -29,6 +29,7 @@ import {
   resetLoop,
   startLoop,
   verifyEvidence,
+  writeGoalReport,
 } from "../core/loop.js";
 import { findEngine, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
@@ -227,15 +228,14 @@ async function cmdLoop(args) {
       return;
     }
     case "finish": {
-      const goal = finishLoop(cwd, git);
+      // v008#N6：writer 锁内先行（内存 done 渲染 + tmp+rename 原子写），失败=finish 拒——
+      // 不再有「⚠ 导出失败但 done 已置」的非原子窗口（报告路径在 writer 成功后即确定）。
+      const goal = finishLoop(cwd, git, {
+        writeReport: ({ cwd: c, git: g, goal: gl }) => writeGoalReport(c, g, gl),
+      });
       console.log(`✔✔ 目标完成：${goal.slug} — ${goal.title}`);
-      console.log("  全部步骤收口，F 项证据绑定当前 tree hash。不做完不停——这次真的做完了。");
-      try {
-        const r = exportReport(cwd, git);
-        console.log(`  证据包已归档：${r.path}（人接管评审从这份材料开始）`);
-      } catch (e) {
-        console.log(`  ⚠ 证据包导出失败：${e.message}`);
-      }
+      console.log("  全部步骤收口，F 项证据绑复合指纹，subject 集全 clean。不做完不停——这次真的做完了。");
+      console.log(`  证据包已归档：.lazyzcode/evidence/${goal.slug}.report.md（人接管评审从这份材料开始）`);
       console.log("  收尾：把本目标 2–3 条可复用教训写进宿主项目 memory，下个会话自动可用。");
       console.log("  提醒：若本工作区挂过 wake automation（无人值守唤起），到 App 自动化管理停用（空槽唤起=纯空转）。");
       return;

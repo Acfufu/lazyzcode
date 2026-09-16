@@ -705,12 +705,12 @@ export function verifyEvidence(cwd, git) {
 }
 
 // ── 6. 完成：全部步骤 done + F 项证据全部新鲜 ──────────────────────────────
-export function finishLoop(cwd, git) {
+export function finishLoop(cwd, git, opts = {}) {
   requireGoalPreLock(cwd);
-  return withLock(cwd, () => doFinishLoop(cwd, git));
+  return withLock(cwd, () => doFinishLoop(cwd, git, opts));
 }
 
-function doFinishLoop(cwd, git) {
+function doFinishLoop(cwd, git, { writeReport = null } = {}) {
   const goal = requireActive(cwd, "executing");
   // 埋点（plan-v2 Phase 2-1）：finish 尝试与三分拒绝计数——veto 判定式①「finish 首过率」
   // 的数据面；incMetrics 契约永不抛，计数失败不影响拒绝/放行语义。
@@ -766,8 +766,20 @@ function doFinishLoop(cwd, git) {
       `finish 完整性闸门拒绝（${check.state}）：${which} ${root}。${advice}`,
     );
   }
+  // ── 原子收尾（v008#N6）：先在内存置 done/finishedAt（writer 渲染完成态，报告状态行
+  // =done、formatHistory 解析不退化），writer 成功后才 writeGoal 落盘；失败→LoopError
+  // （不落盘不置 done，goal 保持 executing，状态文件与报告永不互相说谎）。
   goal.status = "done";
   goal.finishedAt = new Date().toISOString();
+  if (typeof writeReport === "function") {
+    try {
+      writeReport({ cwd, git, goal });
+    } catch (e) {
+      throw new LoopError(
+        `证据包归档失败（finish 未置 done，状态保持 executing）：修复写入失败原因后重跑 finish（或先 lzy loop export 留档）。原始错误：${e?.message ?? e}`,
+      );
+    }
+  }
   writeGoal(cwd, goal);
   return goal;
 }
@@ -775,12 +787,10 @@ function doFinishLoop(cwd, git) {
 // ── 7. 证据包导出：goal 的可审阅档案（评审判决/步骤注记/F 项证据+附件清单）──
 // 人在接管前要快速看清「凭什么说做完了」，这就是那份材料（OmO 哲学：接管=失败信号，
 // 接管时人需要证据，不是结论）。落 .lazyzcode/evidence/<slug>.report.md，reset 不清它。
-export function exportReport(cwd, git) {
-  const goal = readGoal(cwd);
-  if (!goal) throw new LoopError(noGoalMessage(cwd));
-  if (goal.steps.length === 0) {
-    throw new LoopError(`目标 ${goal.slug} 还没采纳计划，无可导出（先 lzy loop plan）`);
-  }
+// v008#N6 拆分：buildReportLines（纯渲染）+ writeReportFile（tmp 落盘+rename 原子写，
+// 支持指定目标路径）+ writeGoalReport（finish 的锁内 writer 回调形态——接收内存中已置
+// done 的 goal 对象渲染，不从盘上重读，报告状态行=done）。
+function buildReportLines(cwd, git, goal) {
   const done = goal.steps.filter((s) => s.status === "done").length;
   const current = git ? git.headTreeHash() : null;
   const lines = [
@@ -806,10 +816,32 @@ export function exportReport(cwd, git) {
       }
     }
   }
-  const p = join(cwd, ".lazyzcode", "evidence", `${goal.slug}.report.md`);
+  return lines;
+}
+
+function writeReportFile(cwd, goal, lines, targetPath) {
+  const p = targetPath ?? join(cwd, ".lazyzcode", "evidence", `${goal.slug}.report.md`);
   mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, `${lines.join("\n")}\n`);
+  // tmp 落盘+rename 原子写：kill -9 窗口的 .tmp 残片为无害孤儿（history 读面按
+  // .report.md 后缀过滤不受扰；ADR-0013 已知边界）。
+  const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
+  writeFileSync(tmp, `${lines.join("\n")}\n`);
+  renameSync(tmp, p);
   return { path: relative(cwd, p) };
+}
+
+// finish 的 writer 回调形态：用内存中的 goal（已置 done）渲染，不从盘上重读。
+export function writeGoalReport(cwd, git, goal) {
+  return writeReportFile(cwd, goal, buildReportLines(cwd, git, goal));
+}
+
+export function exportReport(cwd, git) {
+  const goal = readGoal(cwd);
+  if (!goal) throw new LoopError(noGoalMessage(cwd));
+  if (goal.steps.length === 0) {
+    throw new LoopError(`目标 ${goal.slug} 还没采纳计划，无可导出（先 lzy loop plan）`);
+  }
+  return writeReportFile(cwd, goal, buildReportLines(cwd, git, goal));
 }
 
 export function abandonLoop(cwd, git) {

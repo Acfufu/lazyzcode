@@ -199,6 +199,17 @@ suggested command; it returns verbatim observed output and a MATCH verdict.
   exemption inside the evidence text — exemptions state why, they are not a
   silent skip. Narrate both halves in `--evidence`; attach both captures with
   `--evidence-file` when they are files.
+  **Machine ledger (0.0.9, ADR-0014):** the halves are also machine-accounted —
+  `lzy evidence red <Fid> --evidence … [--surface <external-surface>]` records the
+  red half (default surface = composite fingerprint at capture time; `--surface`
+  binds an external surface such as a published version, and red/green each bind
+  their OWN surface), `lzy evidence waive-red <Fid> --reason …` is the machine
+  form of the one-line exemption, and the green half is mirrored automatically at
+  `step done`. `lzy evidence list` renders the per-F manifest (halves, surfaces,
+  rebind chain). The ledger only records — it adjudicates nothing; the
+  comparator's pairing/existence check reads `lzy evidence list` as its first
+  source, while assertion-vs-evidence matching is still judged per pair by
+  qa-executor, unchanged.
 - **Mechanical $0 checks first (成本两件套)**: exhaust zero-cost mechanical
   verification before any semantic/model-judged check — CLI stdout, file
   existence and content assertions, `grep`/`diff`. Never spend a model call on

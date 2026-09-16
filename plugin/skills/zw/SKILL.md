@@ -27,7 +27,11 @@ Then run the tier triage below and follow the workflow. No preamble before it.
   beyond reading the files you will touch.
 - **HEAVY** — multi-file features, architecture, anything risky or vague. Explore
   first (read code, run quick probes), then plan every step.
-- Escalate LIGHT→HEAVY freely when you discover scope. **Never downgrade.**
+- Escalate LIGHT→HEAVY freely when you discover scope — and persist it: register
+  with `--tier heavy` or run `lzy loop tier heavy` before adopting. The HEAVY
+  review gate is enforced by the machine off the persisted tier, not your
+  narration: HEAVY adoption without a PASS review is hard-rejected. **Never
+  downgrade.**
   Quota pressure may inform the initial triage choice (see Rate-limit
   discipline) — it never lowers the risk bar.
 - **Mention ≠ invocation.** If the user message only mentions zw/ulw in passing
@@ -39,12 +43,15 @@ Then run the tier triage below and follow the workflow. No preamble before it.
 ### 1 · Register
 
 ```
-lzy loop register <slug> --title "<goal in one line>"
+lzy loop register <slug> --title "<goal in one line>" [--tier heavy]
 ```
 
 slug: kebab-case. One active goal per workspace. A finished (`done`) or abandoned goal
 still occupies the slot — run `lzy loop reset` first to clear it (reset removes loop
 state; your evidence lives in commits and the plan file, not in the reset state).
+`--tier` defaults to light; `--tier heavy` declares a heavy goal up front — HEAVY
+adoption without a PASS review is machine-rejected (not a reminder; `--force` does
+not cross it).
 
 ### 2 · Plan (decision-complete gate + review gate)
 
@@ -59,15 +66,27 @@ suggest running `lazyzcode:init-deep` first — the plan gate reads better with 
 project map in place.
 
 ```
+subjects: ../sibling-repo
+subjects: /abs/other-repo
+
 - [N1] <implementation step>
 - [N2] <implementation step>
 deps: N1
-- [F1] <final verification via a real surface — name the surface>
+- [F1] <final verification via a real surface — name the surface)
 ```
 
 Rules:
 - **N items** are implementation steps; **F items** are final verifications that
   require real-surface evidence (HTTP response / screenshot / CLI stdout).
+- **Subjects (multi-tree goals)**: optional `subjects: <path>` header lines —
+  one path per line, header-only (before the first item; stray body lines are
+  rejected like orphan `deps:`), relative paths resolve against the host root.
+  Each must exist, be a git repo, and not contain/be contained by the host
+  (siblings only). Declare subjects as early as you know them: evidence binds
+  the composite fingerprint over {host}∪subjects, so any mid-loop
+  `lzy loop subject add|remove` invalidates ALL captured F evidence (re-capture
+  before finish). Undeclared sibling repos stay invisible to the freshness gate
+  — declaring them is the discipline.
 - **Dependency edges (optional)**: a `deps: N1,N2` line immediately after an
   item declares its prerequisites — the declaration line must be bare
   lowercase `deps:` (bullet-led or `Deps:` variants are rejected as orphans);
@@ -100,7 +119,10 @@ Rules:
   and plan path. On `VERDICT: PASS` adopt with the review record:
   `lzy loop plan .lazyzcode/plans/<slug>.md --review "plan-reviewer: PASS — <one-line summary>"`.
   On `VERDICT: REVISE` the CLI rejects adoption — fix the plan per the review
-  items and re-review; never bypass with `--force`.
+  items and re-review; never bypass with `--force`. Amending an adopted plan and
+  re-adopting requires a fresh review — a changed snapshot hash with an unchanged
+  review string is a red line (the CLI warns; the record must not lie about what
+  was reviewed).
 - **LIGHT**: run the reviewer's checklist yourself (decision-complete, F surfaces
   named, scope tight). `--review` optional.
 
@@ -126,8 +148,11 @@ lzy step done N1 --note "<what was done, one line>"
   `- [!] attempt <n>: dropped <approach A> because <reason>; switching to <B>`.
   The plan file is the attempt history; a fresh claimer must not re-walk a
   falsified path.
-- **Commit before evidence**: evidence binds to `git rev-parse HEAD^{tree}`;
-  uncommitted changes are invisible to the hash. Commit your step, then verify.
+- **Commit before evidence — and before finish**: evidence binds to the composite
+  fingerprint (per-subject HEAD tree hashes); uncommitted changes are invisible
+  to it. Commit your step, then verify. At finish the integrity gate additionally
+  requires every {host}∪subjects root clean — dirty, missing, or git-error roots
+  all reject, no bypass flag.
 - **Parallel dispatch (same-goal multi-worker, minimal claim chain)**: when the
   measured concurrency cap allows ≥2, workers coordinate per step — claim first
   with `lzy loop claim <id>` (anonymous, 48h mutual exclusion; bare
@@ -149,6 +174,10 @@ suggested command; it returns verbatim observed output and a MATCH verdict.
 `lzy step done F1 --evidence "<the observable result you actually saw>"`
 
 - **Tests alone never prove done.** Green tests are necessary, not sufficient.
+- **Evidence binds the composite fingerprint**: sha256 over every
+  {host}∪subjects root's HEAD tree hash — any root changing (or the subject set
+  itself changing) makes the evidence stale. Legacy evidence (recorded pre-0.0.8)
+  compares the single host tree, unchanged behavior.
 - **Red-green evidence (dual evidence).** Every F-item claim carries two halves
   by default: a **red** capture showing the assertion failing on the pre-change
   state, and a **green** capture showing it passing on the post-change state.
@@ -184,9 +213,10 @@ suggested command; it returns verbatim observed output and a MATCH verdict.
 lzy loop finish
 ```
 
-Passes only when every step is done AND every F item's evidence tree-hash equals
-the current code. This is the only valid "done". 不做完不停 — if finish rejects,
-keep working, never declare victory.
+Passes only when every step is done, every F item's evidence fingerprint is fresh
+against the current subject set, AND every {host}∪subjects tree is clean
+(dirty/missing/git-error all reject; no bypass flag). This is the only valid
+"done". 不做完不停 — if finish rejects, keep working, never declare victory.
 
 **Evidence comparison (comparator, HEAVY mandatory).** Existence and freshness are the CLI's
 gates; relevance is not checked by any CLI — so before `finish`, dispatch `qa-executor` in
@@ -231,9 +261,12 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
 - Directory resolution is strict-cwd (no walk-up): a missing-goal error prints
   the exact path it checked — return to the host root; don't expect a flag to
   relax it.
-- Take F-item evidence **after the last code-repo commit**; if a sibling repo
-  gains commits before `finish`, re-verify and re-record (the freshness gate
-  only sees the host tree). Never `register` from a non-host root.
+- Take F-item evidence **after the last code-repo commit**; a sibling repo only
+  enters the freshness gate once it is a declared subject — put it in the plan
+  header or `lzy loop subject add <path>` (any set change invalidates all
+  captured F evidence; re-capture before finish). If a subject repo gains
+  commits before `finish`, re-verify and re-record. Never `register` from a
+  non-host root.
 - Parallel workers on a cross-repo goal: claim steps (`lzy loop claim`) and
   edit code in your own worktrees, but all `lzy` traffic — claim, step done,
   status — stays at the host root (see "Parallel dispatch" in §3 · Execute).
@@ -259,9 +292,10 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
 - When you feel the `[lzy]` nudge: continue the **current step**. Do not replan,
   do not summarize, do not ask questions — work.
 - **No-op detection (pull-back integrity):** every pull-back must move the
-  loop's state set — {done count, F-item evidence.treeHash set, handoff
-  registrations, salvage stubs}. A `step done` rebinding whose treeHash did
-  not change counts as a no-op; two consecutive handoff registrations with
+  loop's state set — {done count, F-item evidence fingerprint set (legacy
+  evidence: tree-hash set), handoff registrations, salvage stubs}. A
+  `step done` rebinding whose fingerprint did not change counts as a no-op; two
+  consecutive handoff registrations with
   zero state-set movement are likewise violations (a handoff is a graceful
   hand-back per ADR-0009, not a free bail-out channel). Zero movement means
   you are padding: stop working the loop and close cleanly.
@@ -300,6 +334,11 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
   ## 复归指令
   <the exact resume command/prompt — e.g. zw 继续>
   ```
+
+  Multi-subject goals: the two headings above are CLI lint literals and must stay
+  byte-identical — under 脏树清单 and tree hash, list each {host}∪subjects root's
+  status and HEAD tree hash separately (one block per root), so the receiver
+  reconciles every tree, not just the host.
 
 - **Dirty-tree inheritance:** the snapshot's 脏树清单 binds the receiver. A
   claiming session reconciles against that list FIRST; `checkout` / `reset`
@@ -407,7 +446,8 @@ zw 继续（无人值守：只推进 executing 目标；无目标或 planning �
 
 1. Never write the user's `config.json`; plugin enabling flows only through the
    engine's official CLI (`lzy install` handles this).
-2. Evidence is tree-hash-bound. Tests alone ≠ evidence.
+2. Evidence is bound to the composite fingerprint (per-subject tree hashes;
+   legacy evidence stays single-tree). Tests alone ≠ evidence.
 3. `.lazyzcode/` is the loop's single source of truth — if speech and state
    disagree, trust the state, then fix the speech.
 
@@ -435,13 +475,15 @@ tool). Aliases are equal — `zw` is the primary.
 
 | Command | Purpose |
 |---|---|
-| `lzy loop register <slug> --title …` | create goal (planning) |
-| `lzy loop plan <file> [--force]` | adopt checklist (rejects TBD) |
+| `lzy loop register <slug> --title … [--tier heavy]` | create goal (planning; HEAVY adoption without PASS review is machine-rejected) |
+| `lzy loop plan <file> [--force]` | adopt checklist (rejects TBD; snapshots the plan + binds planHash) |
 | `lzy loop start` | planning → executing; prints the measured 并发纪律 advisory |
+| `lzy loop subject add/remove <path> · subject list` | declare/remove sibling repo roots (executing-only; any set change invalidates all F evidence) |
+| `lzy loop tier heavy` | tier upgrade, one-way (machine gate is adoption-time; ADR-0013) |
 | `lzy loop status` | progress, next step, evidence freshness |
 | `lzy step done <ID> [--note] [--evidence] [--evidence-file …]` | complete a step (F requires evidence; files bound by sha256) |
 | `lzy loop verify` | evidence freshness report (exit 1 when stale/unbound evidence **or no goal exists**) |
-| `lzy loop finish` | final gate: all done + fresh evidence; auto-archives the evidence bundle |
+| `lzy loop finish` | final gate: all done + fresh evidence + all {host}∪subjects trees clean; auto-archives the evidence bundle |
 | `lzy loop export` | re-export the evidence bundle to `.lazyzcode/evidence/<slug>.report.md` |
 | `lzy loop abandon` / `lzy loop reset` | give up / clear state |
 | `lzy doctor` | deep local diagnostics incl. rate-limit pressure (zero telemetry) |

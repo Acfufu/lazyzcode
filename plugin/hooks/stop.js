@@ -239,7 +239,7 @@ try {
         additionalContext:
           `[lzy] 目标循环「${goal.slug}」全部步骤已收口，但终验门未过。` +
           `运行 node <lazyzcode>/cli/lzy.js loop finish 做证据时效终验` +
-          `（F 项证据 tree hash 须等于当前代码），通过后目标才算 done。` +
+          `（F 项证据复合指纹须新鲜，{host}∪subjects 全树 clean），通过后目标才算 done。` +
           (waterline ? `\n${waterline}` : ""),
       };
     }

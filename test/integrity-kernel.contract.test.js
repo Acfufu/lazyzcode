@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createGit } from "../core/git.js";
@@ -128,13 +128,13 @@ test("subjects 头：多行相对路径→realpath 绝对路径数组；host 不
   const sib = repo("lzy-v008-sib-");
   try {
     registerGoal(d, "t", "title");
-    const sibName = sib.split("/").pop(); // 兄弟目录名（同 tmpdir 父级）
+    const sibName = basename(sib); // 兄弟目录名（同 tmpdir 父级）
     const p = writePlan(d, `subjects: ../${sibName}\n\n${PLAN}`);
     adoptPlan(d, p, {});
     const g = goalJson(d);
     assert.equal(g.subjects.length, 1);
     assert.ok(g.subjects[0].endsWith(sibName));
-    assert.ok(g.subjects[0].startsWith("/"));
+    assert.ok(isAbsolute(g.subjects[0])); // realpath 绝对路径（POSIX 斜杠 / win32 盘符）
   } finally {
     rmSync(d, { recursive: true, force: true });
     rmSync(sib, { recursive: true, force: true });
@@ -144,14 +144,14 @@ test("subjects 头：多行相对路径→realpath 绝对路径数组；host 不
 test("subjects 头四拒：不存在 / 非 git / 头内重复 / 正文杂散行；allow 豁免正测", () => {
   const d = repo();
   const sib = repo("lzy-v008-sib-");
-  const sibName = sib.split("/").pop();
+  const sibName = basename(sib);
   try {
     registerGoal(d, "t", "title");
     assert.throws(() => adoptPlan(d, writePlan(d, `subjects: ../no-such-repo\n\n${PLAN}`), {}), /subject 路径不存在/);
     const plainSib = mkdtempSync(join(tmpdir(), "lzy-v008-plain-")); // 兄弟位置的普通目录（非 git）
     try {
       assert.throws(
-        () => adoptPlan(d, writePlan(d, `subjects: ../${plainSib.split("/").pop()}\n\n${PLAN}`), {}),
+        () => adoptPlan(d, writePlan(d, `subjects: ../${basename(plainSib)}\n\n${PLAN}`), {}),
         /不是 git 仓库/,
       );
     } finally {
@@ -195,7 +195,7 @@ test("fingerprintSubjects：同态稳定、单根变化敏感、集合变化敏�
     const fp0 = fingerprintSubjects(d, []);
     assert.equal(fp0, fingerprintSubjects(d, [])); // 稳定
     assert.match(fp0, /^[0-9a-f]{64}$/);
-    const sibName = sib.split("/").pop();
+    const sibName = basename(sib);
     const sibPath = join(tmpdir(), sibName);
     const fp1 = fingerprintSubjects(d, [sibPath]);
     assert.notEqual(fp1, fp0); // 集合变化敏感
@@ -225,7 +225,7 @@ test("fingerprintSubjects：同态稳定、单根变化敏感、集合变化敏�
 test("addSubject/removeSubject：planning 拒、校验镜像、幂等去重、不在集合拒、remove 后证据过期", () => {
   const d = repo();
   const sib = repo("lzy-v008-sib-");
-  const sibPath = join(tmpdir(), sib.split("/").pop());
+  const sibPath = join(tmpdir(), basename(sib));
   try {
     registerGoal(d, "t", "title");
     adoptPlan(d, writePlan(d), {});
@@ -254,7 +254,7 @@ test("addSubject/removeSubject：planning 拒、校验镜像、幂等去重、�
 test("CLI subject 面：add/remove/list + planning 态拒文案", () => {
   const d = repo();
   const sib = repo("lzy-v008-sib-");
-  const sibPath = join(tmpdir(), sib.split("/").pop());
+  const sibPath = join(tmpdir(), basename(sib));
   try {
     assert.equal(cli(["loop", "register", "t", "--title", "x"], d).code, 0);
     assert.match(cli(["loop", "subject", "add", sibPath], d).out, /planning/);
@@ -321,7 +321,7 @@ test("verify CLI：复合指纹短码行 + 每树 head/脏态行（missing 如�
   const d = repo();
   const sib = repo("lzy-v008-sib-");
   try {
-    cycle(d, { subjects: `../${sib.split("/").pop()}` });
+    cycle(d, { subjects: `../${basename(sib)}` });
     const out = cli(["loop", "verify"], d).out;
     assert.match(out, /复合指纹 [0-9a-f]{10}/);
     const treeLines = out.split("\n").filter((l) => /^\s*树 /.test(l));
@@ -378,15 +378,15 @@ test("finish 第四拒：host 脏分支（文案命中 host 根）+ metrics 计�
 test("finish 第四拒：subject 脏（HEAD 不变指纹 fresh）与 missing（重取穿越被杀）与 fail-closed", () => {
   const d = repo();
   let sib = repo("lzy-v008-sib-");
-  const sibPath = join(tmpdir(), sib.split("/").pop());
+  const sibPath = join(tmpdir(), basename(sib));
   try {
-    cycle(d, { subjects: `../${sib.split("/").pop()}` }); // subject 在取证前入列
+    cycle(d, { subjects: `../${basename(sib)}` }); // subject 在取证前入列
     // ① subject 脏：指纹 fresh，闸门拒且点名 subject 根
     writeFileSync(join(sib, "dirty.txt"), "d\n");
     assert.throws(() => finishLoop(d, createGit(d)), new RegExp(`完整性闸门拒绝（dirty）：subject.*${sibPath.slice(1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     rmSync(join(sib, "dirty.txt")); // 未跟踪文件 git checkout 不清，直接删
     // ② missing：根改名→missing 时重取 F 证据（指纹含 missing 仍 fresh）→finish 拒 missing（穿越杀招）
-    const keep = join(tmpdir(), `keep2-${sib.split("/").pop()}`);
+    const keep = join(tmpdir(), `keep2-${basename(sib)}`);
     renameSync(sib, keep);
     completeStep(d, createGit(d), "F1", { evidence: "rebound while missing" });
     const v = verifyEvidence(d, createGit(d));

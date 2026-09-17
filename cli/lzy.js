@@ -251,7 +251,8 @@ async function cmdLoop(args) {
       });
       console.log(`✔✔ 目标完成：${goal.slug} — ${goal.title}`);
       console.log("  全部步骤收口，F 项证据绑复合指纹，subject 集全 clean。不做完不停——这次真的做完了。");
-      console.log(`  终验 attestation：${attestation.path}（LOOP_COMPLETE 机器证明：planHash+各根头树+指纹+对照记录）`);
+      const planHashLabel = goal.planHash ? "planHash" : "planHash=null（0.0.7 存量无快照）";
+      console.log(`  终验 attestation：${attestation.path}（LOOP_COMPLETE 机器证明：${planHashLabel}+各根头树+指纹+对照记录）`);
       console.log(`  证据包已归档：.lazyzcode/evidence/${goal.slug}.report.md（人接管评审从这份材料开始）`);
       console.log("  收尾：把本目标 2–3 条可复用教训写进宿主项目 memory，下个会话自动可用。");
       console.log("  提醒：若本工作区挂过 wake automation（无人值守唤起），到 App 自动化管理停用（空槽唤起=纯空转）。");
@@ -454,7 +455,11 @@ async function cmdEvidence(args) {
     }
     const dag = loadDag(cwd);
     const slug = slugFlag ?? goal.slug;
-    const nodes = dag.nodes.filter((n) => n.slug === slug || (n.kind === "review" && dag.nodes.some((p) => p.id === reviewPlanIdOf(dag, n) && p.slug === slug)));
+    // ADJ-23（0.0.10）：节点筛选曾是 O(R×N×E) 嵌套扫描（每 review 节点重扫全边表）——
+    // 两次单遍预索引（reviews 边映射+plan slug 集合）后 O(N+E)，万边级不挂死。
+    const reviewPlanOf = new Map(dag.edges.filter((e) => e.type === "reviews").map((e) => [e.from, e.to]));
+    const planSlugs = new Set(dag.nodes.filter((n) => n.kind === "plan" && n.slug === slug).map((n) => n.id));
+    const nodes = dag.nodes.filter((n) => n.slug === slug || (n.kind === "review" && planSlugs.has(reviewPlanOf.get(n.id))));
     console.log(`证据账本 · 目标 ${slug} · ${nodes.length} 节点（机器只记账不裁决——缺半不拦门，执法在协议文本+comparator）`);
     // plan/review 一等公民（按 slug/planHash 对 goal.json，永不标孤儿）
     const planNodes = nodes.filter((n) => n.kind === "plan");

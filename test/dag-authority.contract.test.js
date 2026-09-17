@@ -26,6 +26,7 @@ import {
   stalePreview,
 } from "../core/dag.js";
 import {
+  addSubject,
   adoptPlan,
   completeStep,
   finishLoop,
@@ -628,4 +629,20 @@ test("payload-ver 深对照：注册表钉旧版/内容漂移=warn；市场 B �
   const h3 = homeWith("lazyzcode-local", CLI_VERSION, pkg + "\n<!-- drift -->");
   const warnDrift = line(run(h3, d));
   assert.match(warnDrift, /内容级对照不符.*sync/s);
+});
+
+// ── ⑯ legacy 收紧（ADJ-11，0.0.10）──────────────────────────────────────────
+test("legacy 收紧：多 subject 目标的 legacy 单树证据判过期（subject 提交不可见堵死）", () => {
+  const d = repo();
+  cycle(d);
+  const sib = repo();
+  addSubject(d, sib);
+  const goal = readGoal(d);
+  const step = goal.steps.find((x) => x.id === "F1");
+  step.evidence = { text: "legacy", treeHash: createGit(d).headTreeHash(), at: new Date().toISOString() };
+  delete step.evidenceSeq;
+  writeFileSync(join(d, ".lazyzcode", "loop", "goal.json"), `${JSON.stringify(goal, null, 2)}\n`);
+  // 主树未变（单树哈希仍命中）但多 subject 下 legacy 轨判过期——旧实现照过（假 finish 口子）
+  const v = verifyEvidence(d, createGit(d));
+  assert.equal(v.stale.map((x) => x.id).join(","), "F1", "legacy 轨不再是统一权威的按步退出口");
 });

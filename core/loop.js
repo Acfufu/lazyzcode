@@ -169,7 +169,8 @@ export function registerGoal(cwd, slug, title, { tier = "light" } = {}) {
     const existing = readGoal(cwd);
     if (existing && ACTIVE_STATES.has(existing.status)) {
       throw new LoopError(
-        `已有进行中的目标 ${existing.slug}（${existing.status}）；先 finish/abandon，或 lzy loop reset`,
+        `已有进行中的目标 ${existing.slug}（${existing.status}）——同树串行纪律：接管该目标（读 lzy loop status 与交接快照）或移到树外 worktree 开新目标；` +
+          `绝不 reset/abandon 他人正在跑的槽位（多会话红线，破坏不可逆）`,
       );
     }
     if (existing) {
@@ -988,6 +989,11 @@ export function verifyEvidence(cwd, git) {
       if (!fingerprint || node.surface?.kind !== "fingerprint") unbound.push(s);
       else if (node.surface.value === fingerprint) fresh.push(s);
       else stale.push(s);
+    } else if ((goal.subjects?.length ?? 0) > 0) {
+      // ADJ-11（0.0.10）：legacy 单树证据在多 subject 目标是按步退出口——subject 提交
+      // 对单树哈希不可见，可产出假 finish。收紧：多 subject 目标的 legacy 轨判不可判
+      // 新鲜（重取证即入复合指纹轨）；零 subject 目标保持 0.0.8 逐字段同行为。
+      stale.push(s);
     } else {
       // legacy 单树轨（0.0.7 证据对象，无账本节点）：行为与 0.0.7/0.0.8 全同。
       if (!s.evidence?.treeHash || !current) unbound.push(s);

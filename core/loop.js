@@ -8,6 +8,12 @@ import { createHash } from "node:crypto";
 import { createGit } from "./git.js";
 import { packageRoot } from "./paths.js";
 import {
+  bindPlanToAttempt,
+  closeAttempt,
+  initLineageAtRegister,
+  supersedeAttempt,
+} from "./attempt.js";
+import {
   addCapturedOn,
   addEdge,
   addSupersedes,
@@ -201,6 +207,10 @@ export function registerGoal(cwd, slug, title, { tier = "light" } = {}) {
       // 推导（reset 后重注册不回退）；0.0.9 旧节点无戳=隔离于新实例之外。
       attempt: deriveAttempt(cwd, slug),
     };
+    // 世系初始化（0.1.0 棒B，ADR-0016）：register=本目标运行的开端，attempt.json 重置为
+    // 本运行（历史运行由中央账本 plan 节点 attempt 戳派生）。写序在 goal.json 前——
+    // 世系写失败=注册失败（fail-closed 同 dag-first，不留无世系的半截状态）。
+    initLineageAtRegister(cwd, { slug, n: goal.attempt, tier: tierNorm });
     writeGoal(cwd, goal);
     return goal;
   });
@@ -518,14 +528,33 @@ export function adoptPlan(cwd, planFile, opts = {}) {
   return withLock(cwd, () => doAdoptPlan(cwd, planFile, opts));
 }
 
-function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
+// supersede（0.1.0 棒B，ADR-0016）：executing 期改计划的 forward-only 出口——同一采纳
+// 门（评审/快照/计划节点全照走），旧 attempt 置 superseded、开 attempt+1 新代次。
+export function supersedePlan(cwd, planFile, opts = {}) {
+  requireGoalPreLock(cwd);
+  return withLock(cwd, () => doAdoptPlan(cwd, planFile, { ...opts, supersede: true }));
+}
+
+function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = false, git = null } = {}) {
   // 存量出口（ADJ-09，§⑪ Q5）：executing 态仅当无 planHash（0.0.7 在途/手写旧形，
   // HEAVY 三连拒死锁人群）允许重采纳=补快照重走评审；有 planHash 的 executing 目标
-  // 改计划不走此门（supersede attempt 面=棒B 范围）。
+  // 改计划走 lzy loop supersede（forward-only 世系面，0.1.0 棒B）。
   const goal = requireActive(cwd, "planning", "executing");
-  if (goal.status === "executing" && goal.planHash) {
+  if (supersede) {
+    if (goal.status !== "executing") {
+      throw new LoopError(
+        `supersede 仅 executing 态有语义：目标 ${goal.slug} 当前 ${goal.status}——planning 期直接 lzy loop plan 改计划重采纳即可`,
+      );
+    }
+    if (!goal.planHash) {
+      throw new LoopError(
+        `目标 ${goal.slug} 无计划快照（planHash 缺席）——走重采纳恢复出口 lzy loop plan <文件>，supersede 不适用`,
+      );
+    }
+  }
+  if (goal.status === "executing" && goal.planHash && !supersede) {
     throw new LoopError(
-      `目标 ${goal.slug} 在执行且已有计划快照（planHash 在场）——重采纳仅服务无快照存量（恢复出口）；执行中改计划等 supersede 面`,
+      `目标 ${goal.slug} 在执行且已有计划快照（planHash 在场）——重采纳仅服务无快照存量（恢复出口）；执行中改计划用 lzy loop supersede <文件>（forward-only 世系面）`,
     );
   }
   // 评审门（宪法 §4 #15）：判决 REVISE = 拒绝采纳，--force 不越过（修计划重审才是正道）。
@@ -591,6 +620,11 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
   // 不拦；红线句在 SKILL/ADR）——比对基准=存量 goal.review.summary（500 截断面）。
   const warnings = [];
   const planHash = createHash("sha256").update(body).digest("hex");
+  if (supersede && planHash === goal.planHash) {
+    throw new LoopError(
+      `计划哈希未变（${goal.planHash.slice(0, 10)}…）——supersede 开新代次须实质计划变更；修改计划文件后重跑`,
+    );
+  }
   if (goal.planHash && goal.planHash !== planHash) {
     if (!review || review === (goal.review?.summary ?? null)) {
       warnings.push(
@@ -616,6 +650,18 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
     note: null,
     evidence: null,
   }));
+  // forward-only 代次推进（0.1.0 棒B，ADR-0016）：supersede 开新 attempt=旧+1（deriveAttempt
+  // 家法的内存推进——中央账本 plan 节点带新戳，跨 reset 重注册的序号自然衔接）；旧快照
+  // 归档 .attempt<n>.md 后写新快照（attempt 历史在 snapshots/ 亦可达）；基线头树取当前。
+  const priorAttempt = goal.attempt;
+  if (supersede) {
+    goal.attempt = priorAttempt + 1;
+    goal.baseTreeHash = git ? git.headTreeHash() : goal.baseTreeHash;
+    const prevSnapPath = join(loopDir(cwd), "snapshots", `${goal.slug}.md`);
+    if (existsSync(prevSnapPath)) {
+      copyFileSync(prevSnapPath, join(loopDir(cwd), "snapshots", `${goal.slug}.attempt${priorAttempt}.md`));
+    }
+  }
   // 快照先落盘再持久 goal（写序：goal.planHash 永不指向缺席快照；快照写失败=采纳失败）。
   const snapDir = join(loopDir(cwd), "snapshots");
   mkdirSync(snapDir, { recursive: true });
@@ -636,8 +682,16 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
     }
     saveDag(cwd, dag);
   }
+  // 世系落盘（0.1.0 棒B，ADR-0016）：supersede=旧代次置 superseded+新代次 active（单次
+  // 写，盘上无双 active 中间态）；普通采纳=本代次绑定 planHash。写序在 goal.json 前
+  // （fail-closed 同 dag-first：世系写失败=采纳失败，goal.json 不动）。
+  if (supersede) {
+    supersedeAttempt(cwd, { slug: goal.slug, from: priorAttempt, to: goal.attempt, planHash, tier: goal.tier ?? null });
+  } else {
+    bindPlanToAttempt(cwd, { slug: goal.slug, n: goal.attempt, planHash, tier: goal.tier ?? null });
+  }
   writeGoal(cwd, goal);
-  return { goal, warnings };
+  return { goal, warnings, superseded: supersede ? { from: priorAttempt, to: goal.attempt } : null };
 }
 
 // ── 3. 开跑：planning → executing，记录基线 tree hash ──────────────────────
@@ -1199,6 +1253,9 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
       `终验 attestation 写失败（finish 未置 done，状态保持 executing）：修复写入失败原因后重跑 finish。原始错误：${e?.message ?? e}`,
     );
   }
+  // 世系收口（0.1.0 棒B）：本代次落 completed（写序在 goal.json 前——fail-closed 同
+  // dag-first：世系写失败=finish 拒、状态保持 executing；done 态重入重 finish 幂等重写）。
+  closeAttempt(cwd, { slug: goal.slug, n: goal.attempt, status: "completed" });
   writeGoal(cwd, goal);
   return { goal, attestation };
 }
@@ -1339,6 +1396,7 @@ function doAbandonLoop(cwd, git) {
   const salvage = writeSalvageStub(cwd, goal, git, "abandon 放弃");
   goal.status = "abandoned";
   goal.finishedAt = new Date().toISOString();
+  closeAttempt(cwd, { slug: goal.slug, n: goal.attempt, status: "abandoned" });
   writeGoal(cwd, goal);
   return { ...goal, salvage };
 }
@@ -1474,11 +1532,12 @@ export function resetLoop(cwd, git) {
 // 孤儿/残留清理（评审 R2-11）：kill -9 落在 tmp 写入与 rename 之间会留孤儿 .tmp；
 // 会话计数器在 goal 清除后也成悬空状态。doctor 的状态卫生与 reset 指引共用此语义。
 // tmp 家族表（v009-bat1#N2）：goal.json 之外再收中央 DAG 账本（core/dag.js saveDag
-// 同一命名约定 .<basename>.<pid>.<ts>.tmp）——新增常驻账本须在此登记，否则孤儿不可清。
+// 同一命名约定 .<basename>.<pid>.<ts>.tmp）；attempt.json 世系账本同命名（0.1.0 棒B，
+// core/attempt.js saveAttempts）——新增常驻账本须在此登记，否则孤儿不可清。
 function cleanupLoopResidue(cwd) {
   const dir = loopDir(cwd);
   const goalName = basename(goalPath(cwd));
-  const tmpFamilies = [`.${goalName}.`, ".dag.json."];
+  const tmpFamilies = [`.${goalName}.`, ".dag.json.", ".attempt.json."];
   let cleaned = 0;
   try {
     for (const f of readdirSync(dir)) {

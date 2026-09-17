@@ -281,8 +281,9 @@ function checkLoopState(push, cwd) {
       // metrics.json 放行计数（跨 reset 永续）、空 sessions/（reset 清内容留目录；
       // 非空场景已在上方残留分支分流，走到此处必为空）、snapshots/ 计划快照档案
       // （v008#N7 采纳即快照，reset 不清——照证据报告先例）、dag.json 中央失效 DAG
-      // 账本（v009-bat1#N2，跨 reset 常驻，照 metrics.json 先例）
-      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json"]);
+      // 账本（v009-bat1#N2，跨 reset 常驻，照 metrics.json 先例）、attempt.json 世系
+      // 账本（0.1.0 棒B，跨 reset 常驻，同 dag.json 先例）
+      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json"]);
       emptyScar = entries.length === 0 || entries.some((e) => !EXEMPT.has(e));
     } catch {
       emptyScar = false; // 目录缺席 = 真干净

@@ -32,9 +32,11 @@ import {
   resetLoop,
   setTier,
   startLoop,
+  supersedePlan,
   verifyEvidence,
   writeGoalReport,
 } from "../core/loop.js";
+import { formatAttempts } from "../core/attempt.js";
 import {
   dependents as dagDependents,
   findGreenByGeneration,
@@ -366,6 +368,24 @@ async function cmdLoop(args) {
       if (warn) console.log(`  ⚠ ${warn}`);
       return;
     }
+    case "supersede": {
+      // supersede（0.1.0 棒B，ADR-0016）：executing 期改计划的 forward-only 出口——
+      // 完整采纳门照走（HEAVY 无 PASS 拒），旧 attempt 置 superseded、开新代次。
+      if (!_[1]) throw new LoopError('用法：lzy loop supersede <计划文件> [--review "plan-reviewer: PASS …"]');
+      const review = typeof f.review === "string" ? f.review : null;
+      const { goal, warnings, superseded } = supersedePlan(cwd, resolve(cwd, _[1]), { review, git });
+      console.log(
+        `✔ supersede 完成：attempt ${superseded.from} → ${superseded.to}（forward-only：旧代次置 superseded，其证据不再被 verify/finish 锚定）`,
+      );
+      console.log(`  新计划快照：.lazyzcode/loop/snapshots/${goal.slug}.md（sha256 ${goal.planHash.slice(0, 10)}…；旧快照归档 .attempt${superseded.from}.md）`);
+      for (const w of warnings) console.log(`  ⚠ ${w}`);
+      console.log(`  世系读面：lzy loop attempts  ·  下一步 → ${goal.steps[0].id} [${goal.steps[0].kind}] ${goal.steps[0].title}`);
+      return;
+    }
+    case "attempts":
+      // 世系读面（只读，formatHistory 同款永不 throw 家族）。
+      console.log(formatAttempts(cwd, readGoal(cwd)?.slug ?? null));
+      return;
     case "status":
       console.log(formatStatus(cwd, git));
       return;
@@ -382,7 +402,7 @@ async function cmdLoop(args) {
       console.log(formatCost(cwd, readGoal(cwd)));
       return;
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/start/subject/tier/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/supersede/attempts/start/subject/tier/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff）`);
   }
 }
 
@@ -603,9 +623,35 @@ function cmdAttest(args) {
 
 // ── DAG 查询命令族（只读，无锁——原子写保证读者见旧或新，绝不见半写） ─────────
 function cmdDag(args) {
-  const { _ } = parseArgs(args);
+  const { _, f } = parseArgs(args);
+  if (_[0] === "stale") {
+    // 失效预览查询面（0.1.0 棒B，ADR-0016）：stalePreview 升为正式只读命令——传播语义
+    // 由被动指纹直比承载（verify/finish），此处只应答「现在什么失效了」，不进门。
+    if (_[1]) throw new LoopError("用法：lzy dag stale [--goal <slug>]（失效预览：现行复合指纹逐证据节点比对，只展示不进门）");
+    const cwd = process.cwd();
+    const dag = loadDag(cwd);
+    const goal = readGoal(cwd);
+    const slugFlag = typeof f.goal === "string" ? f.goal : null;
+    const slug = slugFlag ?? goal?.slug ?? null;
+    const currentFp = goal && (!slug || goal.slug === slug) ? fingerprintSubjects(cwd, goal.subjects) : null;
+    const rows = stalePreview(dag, currentFp).filter((r) => !slug || r.node.slug === slug);
+    const label = (st) =>
+      st === "fresh" ? "新鲜" : st === "stale" ? "过期" : st === "superseded" ? "历史代次" : st === "external" ? "外部表面、机器不可查" : st === "unknown" ? "未知（面缺席）" : "不适用（非绿半）";
+    console.log(
+      `失效预览 · ${slug ? `目标 ${slug}` : "全账本"} · ${currentFp ? `现行复合指纹 ${currentFp.slice(0, 10)}` : "复合指纹 未绑定（无 goal 基准）"} · 证据节点 ${rows.length}`,
+    );
+    const counts = {};
+    for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1;
+    console.log(`  ${Object.entries(counts).map(([k, v]) => `${label(k)} ${v}`).join(" · ") || "（无证据节点）"}`);
+    for (const r of rows) {
+      const surf = r.node.surface == null ? "（无表面）" : r.node.surface.kind === "fingerprint" ? `指纹 ${r.node.surface.value.slice(0, 10)}` : `外部:${r.node.surface.value}`;
+      console.log(`  ${r.node.id} ${r.node.half} ${r.node.slug}/${r.node.step} gen${r.node.seq}  ${label(r.status)}  ${surf}`);
+    }
+    console.log("  （只展示不进门：有效性判定仍由 verify/finish 的指纹直比承载，ADR-0016 传播降档口径）");
+    return;
+  }
   if (_[0] !== "dependents" || !_[1] || _[2]) {
-    throw new LoopError("用法：lzy dag dependents <节点id|表面值>（「什么依赖 X」）");
+    throw new LoopError("用法：lzy dag dependents <节点id|表面值>（「什么依赖 X」）| lzy dag stale（失效预览）");
   }
   const dag = loadDag(process.cwd());
   const res = dagDependents(dag, _[1]);
@@ -662,6 +708,9 @@ function printHelp() {
                                             HEAVY 采纳时无 PASS 评审会被机器拒）
   lzy loop plan <计划文件> [--force]        计划门：采纳 N/F 清单（默认拒绝待定项；采纳即快照
                                             绑 planHash，复采纳换哈希须重评审）
+  lzy loop supersede <计划文件> [--review …] 执行中改计划的 forward-only 出口（0.1.0，ADR-0016）：
+                                            旧 attempt 置 superseded、开新代次，完整采纳门照走
+  lzy loop attempts                         attempt 世系读面（只读：attempt.json ∪ 中央账本派生）
   lzy loop start                            开跑（planning → executing，打印实测并发纪律行）
   lzy loop tier heavy                       tier 升级（只升不降；机器门=采纳时点，ADR-0013）
   lzy loop subject add <path>               声明兄弟仓根入 subject 集（仅 executing；校验 git 仓/
@@ -694,6 +743,8 @@ function printHelp() {
                                             机器形态）
   lzy evidence list [--goal <slug>]         红绿 manifest 视图（halves 配对/表面短码/rebind 链）
   lzy dag dependents <节点id|表面值>        「什么依赖 X」查询（只读）
+  lzy dag stale [--goal <slug>]             失效预览（只读：现行复合指纹逐证据节点比对；
+                                            只展示不进门——有效性判定仍归 verify/finish）
 
 对照 attestation（v009 棒2——机器记账，HEAVY finish 强制 MATCH）：
   lzy attest comparator --file <json>       登记 qa-executor 对照结论（schema：{"slug","items":

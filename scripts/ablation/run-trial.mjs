@@ -6,7 +6,7 @@
 // 全程串行（并发上限 1，冻结决策）；工件只写 artifacts/ablation/<trialId>/（gitignored）。
 //
 // CLI：node scripts/ablation/run-trial.mjs --variant <A-F> --task <id> [--rep 1] [--batch b1]
-//        [--max-turns <n>] [--timeout-ms <n>] [--force]
+//        [--timeout-ms <n>] [--force]
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { argv, exit } from "node:process";
@@ -95,7 +95,6 @@ export async function runTrial({
   task,
   rep = 1,
   batch = "b1",
-  maxTurns = null,
   timeoutMs = null,
   force = false,
 }) {
@@ -140,8 +139,7 @@ export async function runTrial({
       cwd: p.scratch,
       prompt,
       resume,
-      maxTurns: legDef.maxTurns ?? maxTurns,
-      timeoutMs,
+      timeoutMs: legDef.timeoutMs ?? timeoutMs, // β leg1 短墙钟=必断（--max-turns 0.16.5 实拒）
       extraEnv: def.switches,
     });
     stdoutParts.push(`===== leg ${i + 1}${resume ? ` (resume ${resume})` : ""} exit=${r.code ?? "?"} signal=${r.signal ?? "-"} =====\n${r.stdout}\n[stderr]\n${r.stderr}\n`);
@@ -174,13 +172,12 @@ if (import.meta.url === `file://${argv[1]}`) {
       else if (argv[i] === "--task") a.task = argv[++i];
       else if (argv[i] === "--rep") a.rep = Number(argv[++i]);
       else if (argv[i] === "--batch") a.batch = argv[++i];
-      else if (argv[i] === "--max-turns") a.maxTurns = Number(argv[++i]);
       else if (argv[i] === "--timeout-ms") a.timeoutMs = Number(argv[++i]);
       else if (argv[i] === "--force") a.force = true;
       else throw new Error(`未知参数：${argv[i]}`);
     }
     if (!a.variant || !a.task) {
-      console.error("用法：--variant <A-F> --task <id> [--rep n] [--batch b] [--max-turns n] [--timeout-ms n] [--force]");
+      console.error("用法：--variant <A-F> --task <id> [--rep n] [--batch b] [--timeout-ms n] [--force]");
       exit(2);
     }
     const r = await runTrial(a);

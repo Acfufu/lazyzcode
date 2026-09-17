@@ -22,7 +22,6 @@ export async function preflight({ timeoutMs = 120_000 } = {}) {
     home,
     cwd: home,
     prompt: "reply with exactly OK",
-    maxTurns: 2,
     timeoutMs,
   });
   const ok = r.ok && /OK/.test(r.stdout);
@@ -54,7 +53,6 @@ export async function runBatch({
   reps = 1,
   preflightOnly = false,
   forceTrial = false,
-  maxTurns = null,
   timeoutMs = null,
 }) {
   if (!tasks || tasks.length === 0) throw new Error("runBatch：tasks 必填（N5 任务集 id）");
@@ -78,7 +76,7 @@ export async function runBatch({
         }
         console.log(`[run-batch] 开跑：${trialId}`);
         try {
-          const r = await runTrial({ variant, task, rep, batch, maxTurns, timeoutMs, force: forceTrial });
+          const r = await runTrial({ variant, task, rep, batch, timeoutMs, force: forceTrial });
           appendFileSync(
             ledgerPath,
             `${JSON.stringify({ trialId, variant, task, rep, status: "done", verdict: r.metrics.verdict, fakeComplete: r.metrics.fakeComplete, dirty429: (r.metrics.rateLimitedEvents ?? 0) > 0, at: new Date().toISOString() })}\n`,
@@ -107,7 +105,6 @@ if (import.meta.url === `file://${argv[1]}`) {
       else if (argv[i] === "--reps") a.reps = Number(argv[++i]);
       else if (argv[i] === "--preflight-only") a.preflightOnly = true;
       else if (argv[i] === "--force-trial") a.forceTrial = true;
-      else if (argv[i] === "--max-turns") a.maxTurns = Number(argv[++i]);
       else if (argv[i] === "--timeout-ms") a.timeoutMs = Number(argv[++i]);
       else throw new Error(`未知参数：${argv[i]}`);
     }
@@ -122,7 +119,6 @@ if (import.meta.url === `file://${argv[1]}`) {
       reps: a.reps,
       preflightOnly: a.preflightOnly,
       forceTrial: a.forceTrial,
-      maxTurns: a.maxTurns,
       timeoutMs: a.timeoutMs,
     });
     console.log(`[run-batch] stage=${r.stage} ok=${r.ok} ran=${r.ran ?? 0}`);

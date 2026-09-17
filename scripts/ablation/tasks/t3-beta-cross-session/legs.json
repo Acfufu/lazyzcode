@@ -1,6 +1,6 @@
 {
   "legs": [
-    { "maxTurns": 5 },
-    { "maxTurns": 30, "wake": true }
+    { "timeoutMs": 240000 },
+    { "timeoutMs": 1800000, "wake": true }
   ]
 }

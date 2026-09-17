@@ -152,17 +152,18 @@ export function writeJsonIfAbsentMkdir(p, obj) {
   writeFileSync(p, `${JSON.stringify(obj, null, 2)}\n`);
 }
 
-// 引擎 --json stdout 末尾单摘要对象（headless spike §2）：取最后一个可解析且含
-// sessionId 的 JSON 对象；找不到返回 null（调用方如实记账，绝不伪造摘要）。
+// 引擎 --json 末尾单摘要对象（headless spike §2）：自尾向前找以 "{" 起的候选起点，
+// 从该行到末尾整体 JSON.parse——引擎实际 pretty-print 多行（pilot 实测），单行解析会
+// 全盲。找不到含 sessionId 的对象返回 null（调用方如实记账，绝不伪造摘要）。
 export function parseEngineSummary(stdout) {
-  for (const line of (stdout ?? "").split(/\r?\n/).reverse()) {
-    const t = line.trim();
-    if (!t.startsWith("{") || !t.endsWith("}")) continue;
+  const lines = (stdout ?? "").split(/\r?\n/);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].trim().startsWith("{")) continue;
     try {
-      const o = JSON.parse(t);
+      const o = JSON.parse(lines.slice(i).join("\n").trim());
       if (typeof o?.sessionId === "string") return o;
     } catch {
-      // 逐行试探，非 JSON 行跳过
+      // 候选起点不成完整对象（其后另有输出）→ 继续向前
     }
   }
   return null;

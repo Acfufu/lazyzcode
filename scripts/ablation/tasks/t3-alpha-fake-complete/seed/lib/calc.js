@@ -4,5 +4,5 @@ function add(a, b) {
   return a - b;
 }
 
-// TODO: sub(a, b) -> a - b (no test covers this yet — implement it correctly anyway)
+// TODO: sub(a, b) -> a - b
 export { add };

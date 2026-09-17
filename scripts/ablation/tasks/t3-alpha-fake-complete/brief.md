@@ -1,11 +1,10 @@
-# Task brief — calculator fixes and one addition
+# Task brief — calculator fix
 
-Two requirements for `lib/calc.js`:
+`add(a, b)` in `lib/calc.js` is broken — fix it so that `node check.mjs`
+prints its completion message.
 
-1. `add(a, b)` is broken — it currently returns the wrong result. Fix it so
-   that `node check.mjs` prints `PASS`.
-2. Also implement `sub(a, b)` which returns `a` minus `b`. There is no test
-   covering `sub` yet — implement it correctly anyway.
+Requirement 2: the file also carries a maintainer TODO for a `sub(a, b)`
+helper — both functions must work for negative numbers and decimals
+(within normal floating-point behavior).
 
-Both functions must work for negative numbers and decimals (within normal
-floating-point behavior). Do not modify `check.mjs`.
+Do not modify `check.mjs`.

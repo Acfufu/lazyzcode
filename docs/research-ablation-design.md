@@ -68,7 +68,7 @@ batch 2（预注册扩展，逐项命中 §6 判据且闲时预算允许才跑�
 
 **认证链（按序降级，全部非交互）**：① 父进程转发 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE`/`ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`；② `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` 指向宿主既有个人凭据；③ 从宿主拷 `~/.zcode/v2/credentials.json`（docs/spikes/headless.md §3 有路径）播种 trial HOME；④ 皆败 = 该 trial abort 记账，绝不假跑、绝不做交互式 login。
 
-**每 batch 前置门**：pre-flight 探针（空任务 `--prompt "reply with OK" --json`，EXIT=0 且 usage 字段在场才开批）；`--max-turns` 语义校准探针（headless spike 自认未测）先行，校准数回填本节。
+**每 batch 前置门**：pre-flight 探针（空任务 `--prompt "reply with OK" --json`，EXIT=0 且 usage 字段在场才开批）；`--max-turns` 语义校准探针（headless spike 自认未测）先行，校准数回填本节。〔回填 2026-09-17，pilot 实测：`--max-turns` 在引擎 0.16.5 解析器实拒（`--help` 列有但 Unknown option，三形态全试）——turn 上限不可用，预算兜底=墙钟 alarm 唯一（预注册缓解生效）；β leg1 必断由短墙钟 240000ms 承担、leg2 上限 1800000ms，单 trial 上限 40 分钟不变。计划文件 N6 attempt 1 同步记账。〕
 
 **五类工件**（每 trial 归档于 `artifacts/ablation/<trialId>/`）：① 引擎 `--json` stdout（含 usage：modelRequestCount/tokens）；② `.lazyzcode/` 树打包（goal.json/dag.json/snapshots/sessions/metrics.json/evidence/attestations）；③ scratch git log；④ `~/.zcode/cli/rollout/model-io-<sid>.jsonl`（隔离 HOME 内）；⑤ metrics.json（extract-metrics 产出）。
 

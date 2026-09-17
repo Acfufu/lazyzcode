@@ -29,6 +29,9 @@ export async function spawnEngine({
   const enginePath = engine || resolveEngine();
   if (!enginePath) return { ok: false, error: "引擎未找到（LZY_ZCODE_ENGINE 可显式指定）", stdout: "", stderr: "", killed: false };
   if (!prompt) throw new Error("spawnEngine：prompt 必填");
+  // null/0/非数一律回默认：调用链（run-batch 不带 --timeout-ms）会把 null 显式传进来，
+  // 而 setTimeout(fn, null)=0ms 立即 SIGKILL（b1 首发事故：18 条 0 秒假 trial）。
+  const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
   // 无 --max-turns：0.16.5 的 --help 列了它但解析器实拒（pilot 校准探针实测，三种形态
   // 全 Unknown option——help 文案滞后家族）。预算上限=墙钟 alarm 唯一兜底（预注册缓解，
   // 设计文档 §8 条目2）；β 题 leg1 的「必断」由短墙钟承担（legs.json timeoutMs）。
@@ -44,7 +47,7 @@ export async function spawnEngine({
     child.stderr.on("data", (c) => (stderr += c));
     const alarm = setTimeout(() => {
       child.kill("SIGKILL"); // 墙钟 alarm：预算耗尽强杀，绝不悬挂整批
-    }, timeoutMs);
+    }, timeout);
     child.on("close", (code, signal) => {
       clearTimeout(alarm);
       resolve({ ok: code === 0 && signal === null, code, signal, stdout, stderr, killed: signal === "SIGKILL" });

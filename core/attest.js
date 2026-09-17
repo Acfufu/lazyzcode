@@ -103,7 +103,7 @@ function resolveItemBinding(dag, goal, it) {
     return { fid: it.fid, verdict: it.verdict, evidenceNodeId: node.id, generation: node.seq, basis: String(it.basis ?? "").slice(0, 300) };
   }
   if (Number.isInteger(it.generation)) {
-    const node = findGreenByGeneration(dag, goal.slug, it.fid, it.generation);
+    const node = findGreenByGeneration(dag, goal.slug, it.fid, it.generation, goal.attempt);
     if (!node) {
       throw new LoopError(
         `item ${it.fid} 的 generation ${it.generation} 无对应绿半节点——先 lzy step done ${it.fid} --evidence … 取证，再对照（对照先于证据不可入账）`,

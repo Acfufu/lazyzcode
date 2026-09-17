@@ -199,10 +199,11 @@ test("孤儿 ghost：植更高代次合法绿节点→判定不变；evidence li
   const list1 = cli(["evidence", "list"], d);
   assert.equal(list1.code, 0);
   assert.doesNotMatch(list1.out, /孤儿/);
-  // 植 ghost：loadDag→append seq=2 绿节点（值=活指纹）→saveDag（全合法，校验和过）
+  // 植 ghost：loadDag→append seq=2 绿节点（值=活指纹，带本实例戳=dag-first 半失败残留
+  // 的现实形态）→saveDag（全合法，校验和过）
   const dag = loadDag(d);
   const fp = verifyEvidence(d, createGit(d)).fingerprint;
-  const ghost = appendEvidenceNode(dag, { slug: "t", step: "F1", seq: 2, half: "green", surface: { kind: "fingerprint", value: fp }, text: "ghost" });
+  const ghost = appendEvidenceNode(dag, { slug: "t", step: "F1", seq: 2, half: "green", surface: { kind: "fingerprint", value: fp }, text: "ghost", attempt: goalJson(d).attempt });
   saveDag(d, dag);
   assert.ok(findGreenByGeneration(loadDag(d), "t", "F1", 1), "锚定 gen1 仍命中");
   const v = verifyEvidence(d, createGit(d));

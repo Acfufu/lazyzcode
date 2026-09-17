@@ -37,6 +37,7 @@ import {
 } from "../core/loop.js";
 import {
   dependents as dagDependents,
+  findGreenByGeneration,
   loadDag,
   stalePreview,
 } from "../core/dag.js";
@@ -468,8 +469,13 @@ async function cmdEvidence(args) {
     const currentFp = stepsById ? fingerprintSubjects(cwd, goal.subjects) : null;
     const staleMap = new Map(stalePreview(dag, currentFp).map((x) => [x.node.id, x.status]));
     const evNodes = nodes.filter((n) => n.kind === "evidence");
+    // 实例隔离（ADJ-44/03，0.0.10）：goal 带实例戳时逐行只显示本实例节点，其他实例
+    // （跨 reset 重注册/0.0.9 无戳旧节点）汇总一行，不再混入当前实例的红绿读面。
+    const myAttempt = goal && Number.isInteger(goal.attempt) ? goal.attempt : null;
+    const cur = myAttempt != null ? evNodes.filter((n) => n.attempt === myAttempt) : evNodes;
+    const others = evNodes.length - cur.length;
     const byStep = new Map();
-    for (const n of evNodes) {
+    for (const n of cur) {
       if (!byStep.has(n.step)) byStep.set(n.step, []);
       byStep.get(n.step).push(n);
     }
@@ -483,24 +489,34 @@ async function cmdEvidence(args) {
       const greens = halves.filter((n) => n.half === "green").sort((a, b) => a.seq - b.seq);
       const reds = halves.filter((n) => n.half === "red");
       const waives = halves.filter((n) => n.half === "waived");
-      const cur = greens[greens.length - 1];
-      const greenPart = cur
-        ? `绿 ✓ gen${cur.seq}（${surfShort(cur.surface)} · ${staleLabel(staleMap.get(cur.id))}）`
-        : "绿 ✗（未录）";
+      // 现行绿与 verify 权威同源锚定（goal.json 当前代次），非 latest-wins（ADJ-03）。
+      const st = stepsById?.get(fid);
+      const anchor =
+        st && myAttempt != null
+          ? findGreenByGeneration(dag, slug, fid, (st.evidenceSeq ?? 1) - 1, myAttempt)
+          : (findGreenByGeneration(dag, slug, fid, (st?.evidenceSeq ?? 1) - 1) ?? greens[greens.length - 1] ?? null);
+      const greenPart = anchor
+        ? `绿 ✓ gen${anchor.seq}（${surfShort(anchor.surface)} · ${staleLabel(staleMap.get(anchor.id))}）`
+        : st?.evidence?.treeHash
+          ? "绿 ◌（legacy 轨：goal.json 单树证据，账本外）"
+          : "绿 ✗（未录）";
       const redPart = reds.length
         ? `红 ✓ ${reds.map((r) => `${r.id} gen${r.seq}（${surfShort(r.surface)}）`).join(" ")}`
         : waives.length
           ? `红 ➖ waived（${waives.map((w) => `「${String(w.text).slice(0, 40)}」`).join(" ")}）`
           : "红 ✗（未录）";
       console.log(`  ${fid} · ${greenPart} · ${redPart}`);
-      if (greens.length > 1) {
-        console.log(`    rebind 链 ${greens.length} 代（gen${greens[0].seq}→gen${cur.seq}，现行 gen${cur.seq}）`);
+      if (greens.length > 1 && (!anchor || greens.some((g) => g.id !== anchor.id))) {
+        console.log(`    rebind 链 ${greens.length} 代（gen${greens[0].seq}→gen${greens[greens.length - 1].seq}，现行 ${anchor ? `gen${anchor.seq}` : "未锚定"}）`);
       }
     }
+    if (others > 0) {
+      console.log(`  （他实例节点 ${others} 条：跨 reset 重注册/无戳旧实例，不混入本实例读面）`);
+    }
     // 孤儿=green 节点代数超前 goal.json 已落地代数（dag-first 部分失败残留）；red/waived
-    // 本就不入 goal.json（边即记录），永不标孤儿。如实标注不静默隐藏。
+    // 本就不入 goal.json（边即记录），永不标孤儿。判定限本实例（跨实例不误诊，ADJ-03）。
     if (stepsById) {
-      const orphans = evNodes.filter((n) => {
+      const orphans = cur.filter((n) => {
         if (n.half !== "green") return false;
         const st = stepsById.get(n.step);
         return !st || n.seq > (st.evidenceSeq ?? 1) - 1;

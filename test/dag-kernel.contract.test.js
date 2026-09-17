@@ -279,11 +279,11 @@ test("dependents：节点 id 双向命中；表面值走 captured_on；多条 re
   addCapturedOn(dag, g2.id, { kind: "fingerprint", value: "h2" });
   addSupersedes(dag, g1.id, g2.id);
   assert.equal(pairReds(dag, { slug: "s", step: "F1", greenId: g1.id }), 1);
-  // rebind：同一 red 再配新绿（追加不删，最新为现行）
-  assert.equal(pairReds(dag, { slug: "s", step: "F1", greenId: g2.id }), 0, "已配对的 red 不重复配");
+  // rebind：同一 red 再配新绿（ADJ-04 实现追文档：多条 red_of 合法，追加不删，最新为现行）
+  assert.equal(pairReds(dag, { slug: "s", step: "F1", greenId: g2.id }), 1, "已配对的 red rebind 时重配新绿");
   const fromRed = dependents(dag, red.id);
   const redOfs = fromRed.hits.filter((h) => h.edge.type === "red_of");
-  assert.equal(redOfs.length, 1);
+  assert.equal(redOfs.length, 2, "两条 red_of 历史（→g1 与 →g2），现行取最新");
   const bySurface = dependents(dag, "h2");
   assert.equal(bySurface.kind, "surface");
   assert.equal(bySurface.hits.length, 1);
@@ -393,4 +393,48 @@ test("CLI 双跑字节一致（list 同状态 stdout 逐字节同）+ 引擎抑�
   const r2 = cli(["evidence", "list"], d);
   assert.equal(r1.code, 0);
   assert.equal(r2.out, r1.out, "list 同状态双跑逐字节一致");
+});
+
+// ADJ-44/04（0.0.10）：跨 reset 同 slug 重注册=新实例（attempt 戳）——配对与 supersedes
+// 限本实例；rebind 时同实例 red 重配现行绿（实现追文档）。
+test("跨实例隔离：旧实例红不配新实例绿、supersedes 不跨实例；同实例 rebind 重配对", () => {
+  const d = repo();
+  registerGoal(d, "t", "title");
+  let p = join(d, ".lazyzcode", "plan.md");
+  mkdirSync(join(d, ".lazyzcode"), { recursive: true });
+  writeFileSync(p, "- [F1] v\n");
+  adoptPlan(d, p);
+  startLoop(d, createGit(d));
+  recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "实例1红半" });
+  completeStep(d, createGit(d), "F1", { evidence: "实例1绿" });
+  resetLoop(d, createGit(d));
+  // 实例2：同 slug 重注册（账本常驻，attempt 推导=2）
+  registerGoal(d, "t", "title");
+  writeFileSync(p, "- [F1] v\n");
+  adoptPlan(d, p);
+  startLoop(d, createGit(d));
+  completeStep(d, createGit(d), "F1", { evidence: "实例2绿（无红半）" });
+  const dag = loadDag(d);
+  assert.equal(goalJson(d).attempt, 2, "attempt 从账本既有戳推导");
+  const greens = dag.nodes.filter((n) => n.kind === "evidence" && n.half === "green");
+  const g1 = greens.find((n) => n.attempt === 1);
+  const g2 = greens.find((n) => n.attempt === 2);
+  assert.ok(g1 && g2, "两实例各带戳");
+  const redOfs = dag.edges.filter((e) => e.type === "red_of");
+  assert.equal(redOfs.length, 1, "仅实例1 内部一条配对");
+  assert.equal(redOfs[0].to, g1.id);
+  assert.ok(!dag.edges.some((e) => e.type === "supersedes" && (e.to === g1.id || e.from === g1.id)), "supersedes 不跨实例");
+  // 实例2 rebind：本实例红半（新录）重配现行绿
+  recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "实例2红半" });
+  writeFileSync(join(d, "a.txt"), "b\n");
+  spawnSync("git", ["add", "a.txt"], { cwd: d });
+  spawnSync("git", ["commit", "-qm", "c2"], { cwd: d });
+  completeStep(d, createGit(d), "F1", { evidence: "实例2绿2" });
+  const dag2 = loadDag(d);
+  const g2b = dag2.nodes.filter((n) => n.kind === "evidence" && n.half === "green" && n.attempt === 2);
+  assert.equal(g2b.length, 2, "实例2 两代绿");
+  const red2 = dag2.nodes.find((n) => n.kind === "evidence" && n.half === "red" && n.text === "实例2红半");
+  const red2Edges = dag2.edges.filter((e) => e.type === "red_of" && e.from === red2.id);
+  assert.equal(red2Edges.length, 1, "实例2 红半只配其落地后的现行绿（g2b）；重配对语义由 dependents 单测钉");
+  assert.equal(red2Edges[0].to, g2b[1].id);
 });

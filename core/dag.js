@@ -130,7 +130,7 @@ function assertSurface(surface) {
   }
 }
 
-export function appendEvidenceNode(dag, { slug, step, seq, half, surface = null, text = "", files = [] }) {
+export function appendEvidenceNode(dag, { slug, step, seq, half, surface = null, text = "", files = [], attempt = null }) {
   if (!slug || !step) throw new DagError("evidence 节点缺 slug/step");
   if (!EVIDENCE_HALVES.has(half)) throw new DagError(`evidence half 非法：${half}（red|green|waived）`);
   // surface 可空：waived=豁免本无红表面；green 指纹 null=宿主非 git 仓的未绑定证据
@@ -148,13 +148,15 @@ export function appendEvidenceNode(dag, { slug, step, seq, half, surface = null,
     files,
     at: Date.now(),
   };
+  if (Number.isInteger(attempt)) node.attempt = attempt;
   dag.nodes.push(node);
   return node;
 }
 
-export function appendPlanNode(dag, { slug, planHash }) {
+export function appendPlanNode(dag, { slug, planHash, attempt = null }) {
   if (!slug || !planHash) throw new DagError("plan 节点缺 slug/planHash");
   const node = { id: nextId(dag), kind: "plan", slug, planHash, at: Date.now() };
+  if (Number.isInteger(attempt)) node.attempt = attempt;
   dag.nodes.push(node);
   return node;
 }
@@ -222,15 +224,19 @@ export function addCapturedOn(dag, evidenceNodeId, surface) {
   addEdge(dag, { type: "captured_on", from: evidenceNodeId, to: { kind: surface.kind, value: surface.value } });
 }
 
-// green 落地时回填配对：对同 slug+step 尚无 red_of 边的 red/waive 节点追加 red_of 边。
-// 同一 red 节点多条 red_of 合法（rebind 后新配对），查询取最新为现行、全部留作历史。
-export function pairReds(dag, { slug, step, greenId }) {
-  const paired = new Set(dag.edges.filter((e) => e.type === "red_of").map((e) => e.from));
+// green 落地时回填配对（ADJ-04，0.0.10=实现追文档）：对本 attempt 同 slug+step 的
+// 全部 red/waive 节点追加 red_of 边——rebind 时同一 red 再配新绿（多条 red_of 合法，
+// 查询取最新为现行、全部留作历史，与 ADR-0014/AGENTS §4#24「red_of 最新现行」同一
+// 语义）。配对按 attempt 戳限本实例（ADJ-44）：undefined 只与 undefined 相配（旧账本
+// 内部语义不变），带戳节点绝不跨实例连线。
+export function pairReds(dag, { slug, step, greenId, attempt }) {
+  const green = dag.nodes.find((n) => n.id === greenId);
+  const ga = green ? green.attempt : attempt;
   let n = 0;
   for (const node of dag.nodes) {
     if (node.kind !== "evidence" || node.slug !== slug || node.step !== step) continue;
     if (node.half !== "red" && node.half !== "waived") continue;
-    if (paired.has(node.id)) continue;
+    if (node.attempt !== ga) continue;
     addEdge(dag, { type: "red_of", from: node.id, to: greenId });
     n += 1;
   }
@@ -246,10 +252,16 @@ export function findNodes(dag, pred) {
   return dag.nodes.filter(pred);
 }
 
-// 同 goal+步骤的最新 green 代次（rebind 判定 supersede 链用）。
-export function findLatestGreen(dag, slug, step) {
+// 同 goal+步骤的最新 green 代次（rebind 判定 supersede 链用）。attempt=本实例戳
+// （ADJ-44，0.0.10）：带戳查询只命中同实例节点，跨实例绿半不构成 supersede 链。
+export function findLatestGreen(dag, slug, step, attempt = null) {
   const greens = dag.nodes.filter(
-    (n) => n.kind === "evidence" && n.half === "green" && n.slug === slug && n.step === step,
+    (n) =>
+      n.kind === "evidence" &&
+      n.half === "green" &&
+      n.slug === slug &&
+      n.step === step &&
+      (!Number.isInteger(attempt) || n.attempt === attempt),
   );
   if (greens.length === 0) return null;
   greens.sort((a, b) => a.seq - b.seq || a.at - b.at);
@@ -259,10 +271,16 @@ export function findLatestGreen(dag, slug, step) {
 // 按代次锚定绿节点（v009 棒2 统一权威的选择原语）：有效性判定锚在 goal.json 记录的
 // 当前代次上，非 latest-wins——孤儿 ghost（dag-first 半失败残留的更高代次）永不可
 // 现行。同代次多条（saveDag 与 writeGoal 间崩溃后重试可致）按 (seq, at) 决胜，
-// 沿 findLatestGreen 排序家法。
-export function findGreenByGeneration(dag, slug, step, seq) {
+// 沿 findLatestGreen 排序家法。attempt 过滤同上（跨实例同代次不互混）。
+export function findGreenByGeneration(dag, slug, step, seq, attempt = null) {
   const greens = dag.nodes.filter(
-    (n) => n.kind === "evidence" && n.half === "green" && n.slug === slug && n.step === step && n.seq === seq,
+    (n) =>
+      n.kind === "evidence" &&
+      n.half === "green" &&
+      n.slug === slug &&
+      n.step === step &&
+      n.seq === seq &&
+      (!Number.isInteger(attempt) || n.attempt === attempt),
   );
   if (greens.length === 0) return null;
   greens.sort((a, b) => a.seq - b.seq || a.at - b.at);

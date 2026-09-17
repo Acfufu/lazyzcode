@@ -190,10 +190,25 @@ export function registerGoal(cwd, slug, title, { tier = "light" } = {}) {
       baseTreeHash: null,
       subjects: [],
       steps: [],
+      // 实例戳（ADJ-44，0.0.10）：跨 reset 常驻账本里同 slug 多实例并存，节点带
+      // attempt 戳隔离——配对/supersedes/锚定都限本实例。序号从账本既有最大戳+1
+      // 推导（reset 后重注册不回退）；0.0.9 旧节点无戳=隔离于新实例之外。
+      attempt: deriveAttempt(cwd, slug),
     };
     writeGoal(cwd, goal);
     return goal;
   });
+}
+
+// 从中央账本推导本实例序号：同 slug 已带戳节点的最大 attempt+1；无戳/无账本=1。
+// loadDag 不可读即抛（dag-first 家法，register 不在损账本上落新实例）。
+function deriveAttempt(cwd, slug) {
+  const dag = loadDag(cwd);
+  let max = 0;
+  for (const n of dag.nodes) {
+    if (n.slug === slug && Number.isInteger(n.attempt)) max = Math.max(max, n.attempt);
+  }
+  return max + 1;
 }
 
 // tier 升级子命令（v008#N8）：planning/executing 可用；light→heavy 单向（反向 LoopError，
@@ -593,7 +608,7 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
   // 不可变，最新节点为现役——权威切换归棒2）。
   {
     const dag = loadDag(cwd);
-    const planNode = appendPlanNode(dag, { slug: goal.slug, planHash });
+    const planNode = appendPlanNode(dag, { slug: goal.slug, planHash, attempt: goal.attempt });
     addEdge(dag, { type: "plans", from: planNode.id, to: goal.slug });
     if (goal.review) {
       const reviewNode = appendReviewNode(dag, {
@@ -730,12 +745,13 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
   // （统一权威切换=棒2）。
   if (step.kind === "F") {
     const dag = loadDag(cwd);
-    const priorGreen = findLatestGreen(dag, goal.slug, id);
+    const priorGreen = findLatestGreen(dag, goal.slug, id, goal.attempt);
     const greenNode = appendEvidenceNode(dag, {
       slug: goal.slug,
       step: id,
       seq: captureGen,
       half: "green",
+      attempt: goal.attempt,
       surface: step.evidence.fingerprint
         ? { kind: "fingerprint", value: step.evidence.fingerprint }
         : null,
@@ -746,7 +762,7 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
       addCapturedOn(dag, greenNode.id, { kind: "fingerprint", value: step.evidence.fingerprint });
     }
     if (priorGreen) addSupersedes(dag, priorGreen.id, greenNode.id);
-    pairReds(dag, { slug: goal.slug, step: id, greenId: greenNode.id });
+    pairReds(dag, { slug: goal.slug, step: id, greenId: greenNode.id, attempt: goal.attempt });
     saveDag(cwd, dag);
   }
   writeGoal(cwd, goal);
@@ -812,6 +828,7 @@ function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal
     surface,
     text: trimmed,
     files: [],
+    attempt: goal.attempt,
   });
   if (surface) addCapturedOn(dag, node.id, surface);
   node.files = attachHalfFiles(cwd, goal, step, files, seq, half, node.id) ?? [];
@@ -956,7 +973,7 @@ export function verifyEvidence(cwd, git) {
       // 指纹主轨（权威=账本节点）：按 goal.json 当前代次锚定绿节点——captureGen =
       // evidenceSeq-1（doCompleteStep 写后自增），缺省 1。
       const gen = s.evidenceSeq ? s.evidenceSeq - 1 : 1;
-      const node = findGreenByGeneration(dag, goal.slug, s.id, gen);
+      const node = findGreenByGeneration(dag, goal.slug, s.id, gen, goal.attempt);
       if (!node) {
         // 账本-goal 分歧：0.0.8 时代在途 goal 升级（fingerprint 形态先于 DAG）、或账本
         // 被改动——fail-closed，重取证 rebind 即重注册节点。
@@ -998,7 +1015,7 @@ function anchoredGreenFor(dag, goal, fid) {
   const s = goal.steps.find((x) => x.id === fid);
   if (!s) return null;
   const gen = s.evidenceSeq ? s.evidenceSeq - 1 : 1;
-  return findGreenByGeneration(dag, goal.slug, fid, gen);
+  return findGreenByGeneration(dag, goal.slug, fid, gen, goal.attempt);
 }
 
 export function finishLoop(cwd, git, opts = {}) {
@@ -1160,7 +1177,7 @@ function writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, r
     .filter((s) => s.kind === "F" && s.status === "done")
     .map((s) => {
       const gen = s.evidenceSeq ? s.evidenceSeq - 1 : 1;
-      const node = findGreenByGeneration(dag, goal.slug, s.id, gen);
+      const node = findGreenByGeneration(dag, goal.slug, s.id, gen, goal.attempt);
       return { fid: s.id, generation: gen, nodeId: node?.id ?? null, surface: node?.surface ?? null };
     });
   const doc = {

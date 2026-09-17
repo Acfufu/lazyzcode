@@ -2,7 +2,7 @@
 
 **Goal** `true-ablation-full-flow` · **特赦** ADR-0015 · **预注册** `docs/research-ablation-design.md`（同提交冻结）· **管线/任务集/开关** 入库 `scripts/ablation/`、`core/loop.js`、`plugin/hooks/`
 **样本**：30 trials = batch 1 全矩阵 24（{A,B,C,D,E,F} × {t1,alpha,beta,delta} × 1 rep）+ batch 2 最小扩展 6（delta 签名格 {A,B,C} 补 rep 至 3）；串行、pre-flight 门过、429 脏窗标记全零。
-**产物面**：`artifacts/ablation/`（30 trial 目录五类工件 + `b1/ledger.jsonl` 30 行，本地产物不入库）。
+**产物面**：`artifacts/ablation/`（30 trial 目录五类工件 + `b1/ledger.jsonl` 30 行，本地产物不入库）。2026-09-17 收尾归档：工件整体迁入主仓 `artifacts/ablation/`（`_host/`=宿主循环状态存档 goal.json/dag.json/metrics/快照；`_pkg/`=变体包暂存），worktree `wt/wt1` 随之拆除；循环工件（attestation/evidence/plan/快照）在 `.lazyzcode/`。
 
 ## 0 · 前置探针（pilot，不计样本）
 

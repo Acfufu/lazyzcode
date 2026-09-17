@@ -181,6 +181,13 @@ nvm-windows/Program Files；`lzy doctor` 的
 
 协议还带行为红线（不伪造证据、不无声弃坑）和下面的限流规则。
 
+0.1.0 起协议文本还标注**执法层级**——L0 协议约定、L1 CLI 机器门、L2 可信宿主
+事件、L3 外部效应——读的人永远知道一条规则是靠承诺维持还是靠机器执法；并在
+tier 之外立了第二根轴：**risk_class**（LOW / MED / HIGH / RESTRICTED，只升不
+降），HIGH+ 禁入无人值守车道、RESTRICTED 直接硬断。审批绑不可变哈希
+（INV-05）：计划采用在 L1 绑 planHash；对话里的人点头是 L0，exact-hash 人权门
+落地前不因模型跑一条 CLI 而升格。
+
 ## 目标循环命令
 
 ```
@@ -197,6 +204,7 @@ lzy loop status                         # 进度、下一步、证据新鲜度�
 lzy loop verify                         # 证据时效审计（退出码 1 = 过期/未绑定）；逐树头哈希/脏态行
 lzy evidence red <Fid> --evidence "…"   # 红半绑自己的面（waive-red --reason=一行豁免的机器形态）
 lzy dag dependents <id|surface>         # 「什么依赖 X」（中央账本，只读）
+lzy dag stale                           # 失效预览：对照现行复合指纹（只展示不进门）
 lzy attest comparator --file <json>     # 对照判决落 attestation（HEAVY finish 强制 MATCH）
 lzy loop finish                         # 终验门：全部 done+证据新鲜+全树 clean（HEAVY 另需 MATCH 对照）；落终验 attestation 并自动归档
 lzy loop export                         # 重导出证据包
@@ -281,6 +289,11 @@ deps: N1
 - **双证据（红绿两半）**。默认每条 F 项断言要两半证据：**红**半=改动前状态
   上断言失败的取证（动手改之前先取），**绿**半=改动后通过的取证。表面确实
   构造不出反态的，在证据文本里写一行豁免说明——豁免要讲理由，不是静默跳过。
+  0.1.0 起红半可声明 **harness**（取证程序串，`--harness "<命令>"`）：哈希入
+  账本，红绿两半程序不同源会被标记——HEAVY 目标在 finish 直接拒（INV-08）。
+  HEAVY finish 还拒「锚定绿半无任何红半或豁免」的 F 项（INV-09）：缺红不得以
+  补绿收口——把红半补录上（事后补也行，账本会把它反向配对到现行锚定绿），
+  或诚实豁免。
 - 代码一变，旧证据*按构造*过期。终验门重查新鲜度，拒绝过期与未绑定证据。
 - 取证产物（截图/响应转储）用 `--evidence-file` 随证据入账：`lzy` 复制进
   `.lazyzcode/evidence/` 并绑定 sha256（每 F 项 ≤4 个）；`lzy loop finish`
@@ -409,6 +422,7 @@ lzy doctor                      深度本地诊断（零遥测）
 lzy uninstall                   删缓存 + 注册表条目
 lzy loop register <slug> --title <标题> [--tier heavy]   建目标（planning；HEAVY 无 PASS 评审机器拒）
 lzy loop plan <文件> [--review <判决>] [--force]   采纳 N/F 清单（快照+绑 planHash）
+lzy loop supersede <文件> [--review <判决>]   执行中改计划的 forward-only 出口（旧 attempt 置 superseded、开新代次，采纳门重走）
 lzy loop start                  planning → executing；记录基线 tree hash + 打印实测并发纪律行
 lzy loop subject add <路径>     声明兄弟仓根（仅 executing；校验+去重）
 lzy loop subject remove <路径>  移除 subject（missing 死锁出口）
@@ -423,6 +437,7 @@ lzy loop export                 重导出证据包（<slug>.report.md）
 lzy loop cost                   积分成本报表（常设系数+促销 overlay，只读）
 lzy loop list [--root <目录>]   跨仓目标循环清单（只读）
 lzy loop history                目标谱系（证据包∪存根∪尾注，只读）
+lzy loop attempts               attempt 世系（attempt.json ∪ 中央账本派生，只读）
 lzy loop abandon                放弃，留档
 lzy loop reset                  清循环状态（含会话计数、孤儿临时文件）
 lzy agents-md                   AGENTS.md 分层审计（退出码 1 = 缺口/超限）

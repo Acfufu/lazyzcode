@@ -34,6 +34,13 @@ Then run the tier triage below and follow the workflow. No preamble before it.
   downgrade.**
   Quota pressure may inform the initial triage choice (see Rate-limit
   discipline) — it never lowers the risk bar.
+- **risk_class axis (0.1.0, L0 protocol text)** — orthogonal to LIGHT/HEAVY
+  (which measure effort): LOW / MED / HIGH / RESTRICTED, upgrade-only, judged
+  at triage and re-judged on material change. HIGH+ must never enter
+  unattended lanes (scheduled wake-ups, idle runs); RESTRICTED is a
+  HARD_BLOCK — only a human narrowing the scope re-opens it. There is no
+  machine-enforced risk register; the executor self-assesses and errs toward
+  upgrading.
 - **Mention ≠ invocation.** If the user message only mentions zw/ulw in passing
   (meta-discussion about this project — its hooks, status, docs, trigger design),
   do not engage the loop: answer the question directly.
@@ -347,6 +354,12 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
   you are padding: stop working the loop and close cleanly.
 - Budget exhausted with steps remaining? State plainly which steps remain and
   stop cleanly; the next session's SessionStart hook re-injects the loop state.
+- **Risk suspension (SUSPENDED_RISK, 0.1.0).** If risk_class rises to HIGH+
+  mid-flight (blast radius grew, a new subject repo entered, credentials or a
+  destructive surface got involved), suspend instead of pushing on: write the
+  handoff snapshot, end the turn, resume only after a human nod. Suspending on
+  risk does not burn the pull-back budget and is not a failure — pushing a
+  HIGH-risk change unattended is.
 - **Tool fire-loop escape (misfire attractor):** if the same tool fires 3+ times
   in a row with failures/timeouts, or with queries whose results are unrelated
   to the step (wrong index, sibling-repo symbols) — stop calling it, even if
@@ -490,15 +503,37 @@ zw 继续（无人值守：只推进 executing 目标；无目标或 planning �
 
 ## Red lines
 
-1. Never write the user's `config.json`; plugin enabling flows only through the
-   engine's official CLI (`lzy install` handles this).
-2. Evidence is bound to the composite fingerprint (per-subject tree hashes;
-   legacy evidence stays single-tree). Tests alone ≠ evidence.
-3. `.lazyzcode/` is the loop's single source of truth — if speech and state
-   disagree, trust the state, then fix the speech.
-4. Never `reset`/`abandon` a goal slot another session is actively running —
-   one writer per tree; hitting an occupied slot means move to a worktree
-   (outside the host tree), not clear the slot.
+Enforcement levels (0.1.0): **L0** = protocol text (this skill — conventions,
+not machine law); **L1** = CLI machine gates (lzy enforces, no bypass flag);
+**L2** = trusted host events (engine-injected, the model cannot fake them);
+**L3** = external effects beyond lzy's reach. Never describe an L0 convention
+as a machine gate — a rule the model can only promise is L0, and saying
+otherwise is a lie about who enforces it.
+
+1. **[L0+L1]** Never write the user's `config.json`; plugin enabling flows only
+   through the engine's official CLI (`lzy install` handles this — the CLI's
+   own write face stays on the registry/cache, not session-driven).
+2. **[L1]** Evidence is bound to the composite fingerprint (per-subject tree
+   hashes; legacy evidence stays single-tree). Tests alone ≠ evidence. HEAVY
+   finish additionally enforces dual-evidence presence (INV-09: a missing red
+   half is not repairable by more green — recover via `lzy evidence red` /
+   `waive-red`) and harness match (INV-08: red/green recorded with `--harness`
+   must name the same procedure).
+3. **[L0]** `.lazyzcode/` is the loop's single source of truth — if speech and
+   state disagree, trust the state, then fix the speech.
+4. **[L0]** Never `reset`/`abandon` a goal slot another session is actively
+   running — one writer per tree; hitting an occupied slot means move to a
+   worktree (outside the host tree), not clear the slot.
+
+**Approvals bind immutable hashes (INV-05).** Plan adoption already binds the
+review to planHash and the snapshot (L1, machine-true); a human nod in
+conversation is L0 — it cannot be upgraded by the model running a CLI. The
+UPS exact-hash human gate (L2) is scheduled for 0.1.1 and is deliberately not
+here. **Audit ring:** a material change after review invalidates the review —
+plan re-adoption requires a fresh PASS review (L1 for HEAVY; mid-execution
+plan changes go through `lzy loop supersede`, which opens a new attempt and
+re-runs every adoption gate), and the HEAVY finish comparator is the terminal
+audit ring before LOOP_COMPLETE.
 
 ## Roles (plugin agents)
 
@@ -525,6 +560,8 @@ tool). Aliases are equal — `zw` is the primary.
 | Command | Purpose |
 |---|---|
 | `lzy loop register <slug> --title … [--tier heavy]` | create goal (planning; HEAVY adoption without PASS review is machine-rejected) |
+| `lzy loop supersede <plan> [--review …]` | forward-only plan change mid-execution (0.1.0): old attempt → superseded, opens attempt+1, full adoption gates re-run |
+| `lzy loop attempts` | attempt lineage read face (attempt.json ∪ central-ledger derivation; read-only) |
 | `lzy loop plan <file> [--force]` | adopt checklist (rejects TBD; snapshots the plan + binds planHash) |
 | `lzy loop start` | planning → executing; prints the measured 并发纪律 advisory |
 | `lzy loop subject add/remove <path> · subject list` | declare/remove sibling repo roots (executing-only; any set change invalidates all F evidence) |
@@ -534,6 +571,7 @@ tool). Aliases are equal — `zw` is the primary.
 | `lzy loop verify` | evidence freshness report (exit 1 when stale/unbound evidence **or no goal exists**) |
 | `lzy evidence red <Fid> · waive-red <Fid> --reason · list` | dual-evidence ledger: record the red half (own surface), the one-line exemption's machine form, and the per-F manifest view |
 | `lzy dag dependents <id|surface>` | "what depends on X" against the central invalidation DAG (read-only) |
+| `lzy dag stale` | invalidation preview: which evidence nodes are stale against the current composite fingerprint (display-only; gates still judge by direct fingerprint comparison) |
 | `lzy attest comparator --file <json>` | record comparator verdicts (schema `{slug, items:[{fid, verdict, basis}]}`; HEAVY finish enforces current MATCH) |
 | `lzy loop finish` | final gate: all done + fresh evidence + all {host}∪subjects trees clean (+ HEAVY: MATCH attestation); auto-archives the evidence bundle and writes the final attestation |
 | `lzy loop export` | re-export the evidence bundle to `.lazyzcode/evidence/<slug>.report.md` |

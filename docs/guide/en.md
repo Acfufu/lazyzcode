@@ -215,6 +215,15 @@ model follows:
 The protocol also carries behavioral red lines (no fake evidence, no silent
 scope abandonment) and the rate-limit rules below.
 
+Since 0.1.0 the protocol text also annotates **enforcement levels** — L0
+protocol convention, L1 CLI machine gate, L2 trusted host event, L3 external
+effect — so a reader always knows whether a rule is kept by promise or by
+machine, and carries a second axis next to tier: **risk_class** (LOW / MED /
+HIGH / RESTRICTED, upgrade-only), with HIGH+ barred from unattended lanes and
+RESTRICTED a hard block. Approvals bind immutable hashes (INV-05): plan
+adoption binds planHash at L1; a conversational nod stays L0 until the
+exact-hash human gate lands.
+
 ## Goal loop commands
 
 ```
@@ -231,6 +240,7 @@ lzy loop status                         # progress, next step, evidence freshnes
 lzy loop verify                         # evidence freshness audit (exit 1 = stale/unbound); prints per-tree head/dirty lines
 lzy evidence red <Fid> --evidence "…"   # red half on its own surface (waive-red --reason = machine exemption)
 lzy dag dependents <id|surface>         # "what depends on X" (central ledger, read-only)
+lzy dag stale                           # invalidation preview vs current fingerprint (display-only)
 lzy attest comparator --file <json>     # comparator verdicts as attestation (HEAVY finish enforces MATCH)
 lzy loop finish                         # the final gate: all done + fresh evidence + all trees clean (+ HEAVY: MATCH attestation); writes the final attestation and auto-archives
 lzy loop export                         # re-export the evidence bundle
@@ -356,7 +366,14 @@ falsifiable, and is a "none" credible?
   state (taken before you edit) and a **green** capture of it passing after.
   If no counter-state can be constructed for the surface, say so in a one-line
   exemption inside the evidence text — an exemption explains, it does not
-  silently skip.
+  silently skip. Since 0.1.0 a red half may declare its **harness** (the
+  verification procedure, `--harness "<command>"`): the hash lands in the
+  ledger and a red/green pair naming different procedures is flagged — and on
+  HEAVY goals refused at finish (INV-08). HEAVY finish also refuses an F item
+  whose anchored green has no red or waiver at all (INV-09): a missing red
+  half cannot be repaired by capturing more green — record the red (even
+  after the fact; the ledger pairs it to the anchored green) or waive it
+  honestly.
 - The moment the code changes, old evidence is stale *by construction*. The
   finish gate re-checks freshness and rejects stale or unbound evidence.
 - Captured material can be archived under `.lazyzcode/evidence/`.
@@ -517,6 +534,7 @@ lzy doctor                      deep local diagnostics (zero telemetry)
 lzy uninstall                   remove cache + registry entry
 lzy loop register <slug> --title <t> [--tier heavy]   create the goal (planning; HEAVY adoption without PASS review is machine-rejected)
 lzy loop plan <file> [--review <v>] [--force]   adopt the N/F checklist (snapshots plan + binds planHash)
+lzy loop supersede <file> [--review <v>]   forward-only plan change mid-execution (supersedes the attempt, opens attempt+1, gates re-run)
 lzy loop start                  planning → executing; records base tree hash + 并发纪律 advisory
 lzy loop subject add <path>     declare sibling repo root (executing-only; validated, dedup'd)
 lzy loop subject remove <path>  remove a subject (missing-deadlock escape)
@@ -531,6 +549,7 @@ lzy loop export                 re-export the evidence bundle (<slug>.report.md)
 lzy loop cost                   points report (coefficients + promo overlay, read-only)
 lzy loop list [--root <dir>]    cross-repo goal-loop sweep (read-only)
 lzy loop history                goal lineage (evidence ∪ stubs ∪ trailers, read-only)
+lzy loop attempts               attempt lineage (attempt.json ∪ central ledger derivation, read-only)
 lzy loop abandon                give up, keep the record
 lzy loop reset                  clear loop state (incl. session counters, orphan tmp)
 lzy agents-md                   layered AGENTS.md audit (exit 1 = gaps/overcaps)

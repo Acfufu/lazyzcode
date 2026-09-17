@@ -3,6 +3,57 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+Protocol upgrade baton (0.1.0, ADR-0016/0017): forward-only attempt lineage,
+invalidation propagation as a query surface, HEAVY exemption tightening, the
+protocol text layer, and the headless drive primitive.
+
+### Added
+
+- **Attempt lineage (supersede, forward-only)** (ADR-0016): `core/attempt.js`
+  keeps `loop/attempt.json` (checksummed, atomic write, errno fail-closed;
+  absent ledger falls back to a derived view from the central DAG's attempt
+  stamps). Changing the plan mid-execution no longer dead-ends: `lzy loop
+  supersede <plan> [--review …]` marks the old attempt superseded and opens
+  attempt+1 with the full adoption gates re-run (same-hash refusal, previous
+  snapshot archived as `.attempt<n>.md`, base tree re-captured). `lzy loop
+  attempts` is the read-only lineage face; re-registering the same slug after
+  a reset appends, preserving the supersede chain.
+- **`lzy dag stale`** (ADR-0016): the invalidation preview is now a real
+  query command — per-evidence-node status against the current composite
+  fingerprint (fresh/stale/superseded/external/unknown), display-only; the
+  gates still judge by direct fingerprint comparison. Planning-time finding
+  recorded: passive comparison at verify/finish already covers the
+  propagation semantics (lzy observes no commits), so write-time invalidation
+  is deliberately not built.
+- **Harness freeze (INV-08, minimal form)**: `lzy evidence red` and `lzy
+  step done` accept `--harness "<procedure>"` (≤300 chars); its sha256 lands
+  on the evidence node and a red/green pair naming different procedures is
+  flagged in `evidence list` and refused at HEAVY finish. `waive-red` takes
+  no harness (an exemption has no procedure).
+- **Headless drive primitive** (ADR-0017): `core/headless.js`
+  `spawnHeadless` — one-shot engine drive in the headless first-class form
+  (literal argv + `shell:false`, node-runs-engine, explicit-required
+  `--mode`, wall-clock budget with SIGKILL, HOME isolation swap with auth-env
+  passthrough, `--json` summary parsing, recovery-pointer error families,
+  injectable `deps.run`). `scripts/headless/e2e-loop.mjs` is the full-chain
+  self-drive acceptance (scratch loop register→finish→attestation;
+  credential-gated SKIP, never touched by CI). `lzy doctor` gains a
+  `headless` line (engine absent = skip; credential two-state = ok/warn-only).
+
+### Changed
+
+- **HEAVY exemption tightening (INV-09)** (ADR-0016): HEAVY finish now checks
+  every F item for a paired red or waived half — a missing red half cannot be
+  repaired by capturing more green. Recovery: record the red (post-green
+  recording reverse-pairs to the anchored green via the same
+  `findGreenByGeneration` primitive the gate uses) or waive honestly. The
+  check runs after the comparator binding checks and shares the
+  `LZY_ABLATE_ATTEST` guard (ablation variant-D composition changes
+  accordingly). LIGHT goals keep protocol-text-only enforcement; red-after-
+  green rebind remains legal.
+
 ## [0.0.10] - 2026-09-17
 
 Fix release closing all 44 unique findings from the five-round dual review of

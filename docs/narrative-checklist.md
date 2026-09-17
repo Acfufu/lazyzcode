@@ -62,12 +62,12 @@
 | guide 锚点 | en 21 + zh 21 | `grep -c '^## ' docs/guide/en.md docs/guide/zh.md` + docs-preview 锚点检查 |
 | 首页特性卡 | 6 | `grep -c 'class="feature"' docs/_layouts/home.html` |
 | 技能数 | 2 | `ls plugin/skills/`；对双语 README 自述句 |
-| CLI 表行 | guide 快起栅栏 18/语言 · README 表 16/语言 · 帮助枚举 15 loop 族（handoff 豁免，canonical 16；安装管理块 6 条含 update） | 三面分记（2026-09-14 R4 订正：旧「14/语言」指代不明；R6 订正帮助枚举字面值）；2026-09-16 v008 刷新：guide 快起栅栏 14→18（subject add/remove/list+tier）、README 表 14→16（证据主体 subject+Tier 两行）、帮助枚举 13→15/canonical 14→16（subject/tier 入列）；guide 双语快起栅栏互等、README 双语表互等；handoff 文档面在场而帮助枚举无（豁免记账，基线前已存在）；2026-09-17 v009 刷新：guide 快起栅栏 18→21（evidence red/dag dependents/attest comparator 三行）、README 表 16→19（红绿 manifest/失效 DAG/机器证明三行）、帮助枚举 loop 族 15→17/canonical 16→18+新增证据账本块 4 条与对照 attestation 块 1 条（三面分记仍互等） |
+| CLI 表行 | guide CLI 栅栏 lzy 行 53/语言（双语互等） · README 表 20/语言（双语互等） · 帮助枚举 loop 族 19 + 证据账本块 5（含 dag stale）+ 对照 attestation 块 1 · 对比表 11/11（0.1.0 未动） | 三面分记（2026-09-14 R4 订正：旧「14/语言」指代不明；R6 订正帮助枚举字面值）；2026-09-16 v008 刷新：guide 快起栅栏 14→18（subject add/remove/list+tier）、README 表 14→16（证据主体 subject+Tier 两行）、帮助枚举 13→15/canonical 14→16（subject/tier 入列）；2026-09-17 v009 刷新：guide 快起栅栏 18→21（evidence red/dag dependents/attest comparator 三行）、README 表 16→19（红绿 manifest/失效 DAG/机器证明三行）、帮助枚举 loop 族 15→17+证据账本块 4+对照块 1；2026-09-18 v0.1.0 棒B 刷新：guide CLI 栅栏 lzy 行 53/语言（supersede/attempts/dag stale 三行入列；口径=guide 全部 ``` 围栏内 `^lzy ` 行，en/zh awk 对等）、README 表 19→20（attempt 世系行；失效 DAG 行就地扩 dag stale 不加行）、帮助枚举 loop 族 17→19（supersede/attempts）+证据账本块 4→5（dag stale）；对比表 11/11 不变（协议升级未加对比行，发布弧再议） |
 | doctor 检查清单 | 见 README doctor 段 | `lzy doctor` 实跑逐行对描述 |
 
 ## 收尾验证链（必跑）
 
-1. `npm test` —— 基线以收窄发现面为准（2026-09-14 起 `node --test "test/**/*.test.js"`，幻影 pass 结构性根治——裸 cwd 发现已废；Node ≥22 对 `--test` 位置参数按 glob 解释，目录字面量形态不可用）。快照 **140/140**（2026-09-14，v005-core 收官实跑刷新）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
+1. `npm test` —— 基线以收窄发现面为准（2026-09-14 起 `node --test "test/**/*.test.js"`，幻影 pass 结构性根治——裸 cwd 发现已废；Node ≥22 对 `--test` 位置参数按 glob 解释，目录字面量形态不可用）。快照 **271/271**（2026-09-18，v0.1.0 棒B 收官实跑刷新）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
 2. `node scripts/docs-preview/build.mjs && node scripts/docs-preview/check-anchors.mjs && node scripts/docs-preview/check-links.mjs` —— 断链 0、锚点双语对齐、页面数稳定。
 3. 动了 `plugin/` 时：`lzy sync` + grep 安装缓存。
 4. 提交带尾注 `Goal: <slug>#<步号>`（ADR-0005）。

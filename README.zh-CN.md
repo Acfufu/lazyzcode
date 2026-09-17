@@ -134,12 +134,13 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | `status` | `lzy status` | 快速体检；退出码 0 = 无 fail 级检查（warn/skip 不影响） |
 | `doctor` | `lzy doctor` | 全量诊断——见下 |
 | 目标循环 | `lzy loop register <slug> --title "…" [--tier heavy]` → `lzy loop plan <计划.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | 状态机：注册 → 计划门 → 执行 → 证据 → 终验门（证据绑 host+声明 subjects 的复合指纹；finish 要求全树 clean） |
+| attempt 世系 | `lzy loop supersede <计划.md> [--review …] · lzy loop attempts` | 执行中改计划的 forward-only 出口（0.1.0）：旧 attempt 置 superseded、开新代次且完整采纳门重走——不做 in-place 改计划；世系是跨 reset 常驻的校验和账本 |
 | 证据主体 | `lzy loop subject add <路径> · remove · list` | 多树目标声明兄弟仓根（仅 executing；校验 git 仓/无包含关系）——集合变化使已录 F 证据全体过期 |
 | Tier | `lzy loop tier heavy` | LIGHT→HEAVY 单向升级；HEAVY 无 PASS 评审采纳被机器拒（采纳时点门） |
 | 步级认领 | `lzy loop claim [<id>] [--release]` | 同目标多工人的匿名步级认领：48h 互斥、按计划 `deps:` 依赖边做阻塞校验、`step done` 自动释放；无参列可认领集 |
 | 证据包 | `lzy loop export` | 重导出证据包（`<slug>.report.md`）；`finish` 时亦自动归档 |
 | 红绿 manifest | `lzy evidence red <Fid> --evidence … · waive-red <Fid> --reason · list` | 双证据机器账本：红半绑自己的面（缺省复合指纹、`--surface` 外部表面）；waive=一行豁免的机器形态；绿半 `step done` 即镜像；`list` 读按 F manifest |
-| 失效 DAG | `lzy dag dependents <id|surface>` | 跨 reset 中央账本：「什么依赖 X」；verify/finish 从它判证据时效——损坏即 fail-closed 拒（ADR-0014） |
+| 失效 DAG | `lzy dag dependents <id|surface> · lzy dag stale` | 跨 reset 中央账本：「什么依赖 X」+对照现行指纹的失效预览（只展示）；verify/finish 从它判证据时效——损坏即 fail-closed 拒（ADR-0014） |
 | 机器证明 | `lzy attest comparator --file <json>` | 对照判决落机器 attestation（HEAVY finish 强制现行 MATCH）；每次 finish 落 LOOP_COMPLETE 终验证明 |
 | 交接 | `lzy loop handoff --snapshot <文件>` | 登记干净交接——下个 Stop 放行一次，不消耗续跑预算 |
 | 跨仓清单 | `lzy loop list [--root <目录>]` | 只读扫同级仓的目标循环（状态/进度/认领/新鲜度/存根）；匿名放行计数跨 reset 永续 |
@@ -168,7 +169,7 @@ stuck 停拉标记、零认领孤儿提示——warn-only），
 近 5h 滚动积分对比自参照警戒线，sqlite3 缺席时如实报降级原因）与本仓 unbound wake 的
 空转巡逻（`orphan-wake`，无挂载即 skip），以及
 无人值守的错峰窗口建议（`schedule`，实测集中段反推并对照声明式计价高峰表核对
-重叠——数据沉默时 skip，绝不拍脑袋）。全程本地、零遥测、
+重叠——数据沉默时 skip，绝不拍脑袋）与 headless 驱动行（`headless`：引擎探针+凭据两态〔oauth credentials 文件或桌面注入 env〕——引擎缺席=skip、凭据缺席=warn-only，0.1.0）。全程本地、零遥测、
 零新增配置面。
 
 ## 使用内置工作流

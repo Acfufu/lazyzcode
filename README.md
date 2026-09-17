@@ -152,12 +152,13 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | `status` | `lzy status` | Quick health check; exit 0 = no fail-level findings (warn/skip do not flip it) |
 | `doctor` | `lzy doctor` | Full diagnostics — see below |
 | Goal loop | `lzy loop register <slug> --title "…" [--tier heavy]` → `lzy loop plan <plan.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | The state machine: register → plan gate → execute → evidence → finish gate (evidence binds the composite fingerprint over the host + declared subjects; finish requires every tree clean) |
+| Attempt lineage | `lzy loop supersede <plan.md> [--review …] · lzy loop attempts` | Forward-only plan change mid-execution (0.1.0): the old attempt is marked superseded and a new one opens with every adoption gate re-run — no in-place re-planning; lineage is a checksummed ledger surviving reset |
 | Subjects | `lzy loop subject add <path> · remove · list` | Declare sibling repo roots for multi-tree goals (executing-only; validated git repos, no host containment) — any set change invalidates captured F evidence |
 | Tier | `lzy loop tier heavy` | One-way LIGHT→HEAVY upgrade; HEAVY adoption without a PASS review is machine-rejected (adoption-time gate) |
 | Step claims | `lzy loop claim [<id>] [--release]` | Anonymous per-step claiming for same-goal multi-worker runs: 48h mutex, blocked-step checks against plan `deps:` edges, `step done` auto-releases; bare form lists claimable steps |
 | Evidence bundle | `lzy loop export` | Re-export the evidence bundle (`<slug>.report.md`); also auto-archived at `finish` |
 | Red-green manifest | `lzy evidence red <Fid> --evidence … · waive-red <Fid> --reason · list` | Dual-evidence machine ledger: the red half binds its own surface (composite fingerprint by default, `--surface` for external); waive is the one-line exemption's machine form; greens mirror at `step done`; `list` reads the per-F manifest |
-| Invalidation DAG | `lzy dag dependents <id|surface>` | The central cross-reset ledger: "what depends on X"; verify/finish judge evidence freshness from it — fail-closed on corruption (ADR-0014) |
+| Invalidation DAG | `lzy dag dependents <id|surface> · lzy dag stale` | The central cross-reset ledger: "what depends on X" plus an invalidation preview against the current fingerprint (display-only); verify/finish judge evidence freshness from it — fail-closed on corruption (ADR-0014) |
 | Attestations | `lzy attest comparator --file <json>` | Comparator verdicts as machine attestations (HEAVY finish enforces a current MATCH); every finish writes the LOOP_COMPLETE final attestation |
 | Handoff | `lzy loop handoff --snapshot <file>` | Register a clean handoff — the next Stop releases once, without spending the continue budget |
 | Cross-repo list | `lzy loop list [--root <dir>]` | Read-only sweep of sibling repos' goal loops (status, progress, claims, staleness, salvage stubs); anonymous release counters survive reset |
@@ -188,7 +189,9 @@ zero-429 window with a low rolling waterline suggests trying a lighter tier
 for routine goals — advisory text only, never predicate math), a project-memory
 adoption audit (`agents-md`, warn-only, with a staleness hint: ≥50 covered-dir
 commits since the map's last commit suggests re-running init-deep), a claim
-patrol for the open goal loop
+patrol for the open goal loop, and a headless-drive line (`headless`: engine
+probe plus credential two-state — oauth credentials file or desktop-injected
+config env; absent engine = skip, missing credentials = warn-only, 0.1.0)
 (`claims`: who claimed it, stuck markers, zero-claim orphan notice — warn-only),
 commit-ledger coverage (`ledger`: goal-era commits missing the `Goal:` trailer — warn-only),
 a `waterline` line (rolling 5-hour point burn vs the self-calibrated nudge threshold, plus

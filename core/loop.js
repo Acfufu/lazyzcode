@@ -36,6 +36,11 @@ export const EVIDENCE_HISTORY_MAX = 5;
 
 export class LoopError extends Error {}
 
+// 真消融 kill-switch（ADR-0015）：LZY_ABLATE_* 值恰为 "1" 时消融对应闸门块，其余任何取值
+// （含缺席/空串/"0"）= 关 = 行为与无开关逐字段同（契约测试钉两半）。只围闸门块本身
+// （五处皆 throw-before-write 或只读分类，不碰状态文件一致性）；清单见 docs/research-ablation-design.md。
+const ablated = (name) => process.env[name] === "1";
+
 function loopDir(cwd) {
   return join(cwd, ".lazyzcode", "loop");
 }
@@ -532,7 +537,8 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
   // ── HEAVY 机器门（v008#N8，拍板②「无 PASS 机器拒」）：HEAVY 目标采纳必须带 PASS 评审，
   // 任意非空非 PASS 串（含 UNVERIFIED）同拒，--force 不越过；LIGHT 无评审行为不变。
   // 判据=当次 --review 的 parseVerdict（采纳时点归一），不重解析盘上 500 截断的 summary。
-  if ((goal.tier ?? "light") === "heavy") {
+  // LZY_ABLATE_TIER_GATE（ADR-0015）：开关开=此门消融（HEAVY 无 PASS 也可采纳）。
+  if ((goal.tier ?? "light") === "heavy" && !ablated("LZY_ABLATE_TIER_GATE")) {
     const verdict = review ? parseVerdict(review) : null;
     if (verdict !== "PASS") {
       throw new LoopError(
@@ -547,7 +553,9 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
   } catch {
     throw new LoopError(`计划文件不可读：${planFile}`);
   }
-  if (!force) {
+  // LZY_ABLATE_PLAN_GATE（ADR-0015）：开关开=禁词扫描块消融（含 TBD 族词也放行采纳；
+  // 与 --force 分立——force 连同豁免提示一并跳过，开关只消融本块）。
+  if (!force && !ablated("LZY_ABLATE_PLAN_GATE")) {
     // 逐行报行号+摘录，并给行级豁免 <!--lzy:allow-->：正文提及（如「尚无定论」）不再逼人全有全无地 --force（评审 R2-7）。
     const hits = [];
     for (const [i, line] of body.split(/\r?\n/).entries()) {
@@ -1061,14 +1069,16 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
   }
   const { current, stale, unbound, fingerprint, dag } = verifyEvidence(cwd, git);
   // 过期（代码后变，重取证即可）与未绑定（git 缺失，重取证也无济于事）必须分诊，药方不同（评审 R2-4）。
-  if (stale.length > 0) {
+  // LZY_ABLATE_VERIFY（ADR-0015，范围钉死=本两处拒绝）：开关开=过期/未绑证据不再拦 finish；
+  // verifyEvidence 调用本身与 `lzy loop verify` 独立报告面不在消融内。
+  if (stale.length > 0 && !ablated("LZY_ABLATE_VERIFY")) {
     incMetrics(cwd, "finish_reject_stale");
     throw new LoopError(
       `证据已过期（代码在取证后变更，tree hash 对不上）：${stale.map((s) => s.id).join(" ")}。` +
         `在当前代码上重新取证后重跑 lzy step done <id> --evidence …（current=${current ?? "未知"}）`,
     );
   }
-  if (unbound.length > 0) {
+  if (unbound.length > 0 && !ablated("LZY_ABLATE_VERIFY")) {
     incMetrics(cwd, "finish_reject_unbound");
     throw new LoopError(
       `证据未绑定 tree hash：${unbound.map((s) => s.id).join(" ")}。` +
@@ -1081,8 +1091,10 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
   // 未过期；LIGHT 可 self-check 免录（协议层自查）。无逃生 flag（ADR-0013 家法）。
   // 零 F 豁免（ADJ-08 出口，0.0.10）：无终验项即无对照对象——与 attest comparator
   // 「无 F 项拒」同判据同文案，零 F+HEAVY 的三连拒死锁就此闭合（§⑪ Q5）。
+  // LZY_ABLATE_ATTEST（ADR-0015）：开关开=整门消融（comparator 保持 null，终验
+  // attestation 如 LIGHT 形态记 null，不为消融伪造记录）。
   let comparator = null;
-  if ((goal.tier ?? "light") === "heavy" && goal.steps.some((s) => s.kind === "F")) {
+  if ((goal.tier ?? "light") === "heavy" && goal.steps.some((s) => s.kind === "F") && !ablated("LZY_ABLATE_ATTEST")) {
     comparator = findLatestComparator(dag, goal.slug, goal.planHash);
     if (!comparator) {
       throw new LoopError(
@@ -1122,30 +1134,35 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
   // ── 第四拒：完整性闸门（P0-A 闭合，v008）——{host}∪subjects 任一根 dirty/missing/git
   // 错即拒，不提供任何绕过 flag（拍板③「无逃生门」）。git spawn 逐根顺序、共享 8s 墙钟
   // 预算（< LOCK_STALE_MS 10s 留余量；单根超时/预算耗尽按 fail-closed 拒）。
-  const GATE_BUDGET_MS = 8_000;
-  const gateStart = Date.now();
+  // LZY_ABLATE_INTEGRITY（ADR-0015）：开关开=整循环消融（脏树/缺根/git 错不再拦
+  // finish，≈0.0.7 形态的一半；variant-F 与 ATTEST 合成完整 0.0.7 形态）。
+  // headTrees 采集声明在开关外：消融态空 Map，attestation 侧走「缺值回退直读」防御分支。
   const gateHeadTrees = new Map();
-  for (const root of [cwd, ...(goal.subjects ?? [])]) {
-    const remaining = GATE_BUDGET_MS - (Date.now() - gateStart);
-    let check;
-    if (remaining <= 0) {
-      check = { state: "error", detail: `闸门墙钟预算 ${GATE_BUDGET_MS}ms 耗尽（根 ${root} 未检）` };
-    } else {
-      check = createGit(root).integrity(remaining);
+  if (!ablated("LZY_ABLATE_INTEGRITY")) {
+    const GATE_BUDGET_MS = 8_000;
+    const gateStart = Date.now();
+    for (const root of [cwd, ...(goal.subjects ?? [])]) {
+      const remaining = GATE_BUDGET_MS - (Date.now() - gateStart);
+      let check;
+      if (remaining <= 0) {
+        check = { state: "error", detail: `闸门墙钟预算 ${GATE_BUDGET_MS}ms 耗尽（根 ${root} 未检）` };
+      } else {
+        check = createGit(root).integrity(remaining);
+      }
+      if (check.headTree) gateHeadTrees.set(root, check.headTree);
+      if (check.state === "clean") continue;
+      incMetrics(cwd, "finish_reject_dirty");
+      const which = root === cwd ? "host" : "subject";
+      const advice =
+        check.state === "dirty"
+          ? `该根有未提交改动：commit 或 stash 后重跑 finish（.lazyzcode/ 账本不计该根脏；先提交再取证，未提交改动不进指纹）。${dirtyPathHint(check.paths)}杂物文件可写进 .gitignore 或移出仓库，不必为它提交；若这不是你的改动，可能是同一工作目录里另一个会话的未提交工作。`
+          : check.state === "missing"
+            ? `该根不存在/非 git 仓/HEAD 不可解析，不可验收：复原路径，或 lzy loop subject remove <path> 移出集合，或 lzy loop abandon。${check.detail ? `（${check.detail}）` : ""}`
+            : `git 调用失败（fail-closed 按拒处理）：修复 git 后重跑 finish。原始报错：${check.detail ?? "未知"}`;
+      throw new LoopError(
+        `finish 完整性闸门拒绝（${check.state}）：${which} ${root}。${advice}`,
+      );
     }
-    if (check.headTree) gateHeadTrees.set(root, check.headTree);
-    if (check.state === "clean") continue;
-    incMetrics(cwd, "finish_reject_dirty");
-    const which = root === cwd ? "host" : "subject";
-    const advice =
-      check.state === "dirty"
-        ? `该根有未提交改动：commit 或 stash 后重跑 finish（.lazyzcode/ 账本不计该根脏；先提交再取证，未提交改动不进指纹）。${dirtyPathHint(check.paths)}杂物文件可写进 .gitignore 或移出仓库，不必为它提交；若这不是你的改动，可能是同一工作目录里另一个会话的未提交工作。`
-        : check.state === "missing"
-          ? `该根不存在/非 git 仓/HEAD 不可解析，不可验收：复原路径，或 lzy loop subject remove <path> 移出集合，或 lzy loop abandon。${check.detail ? `（${check.detail}）` : ""}`
-          : `git 调用失败（fail-closed 按拒处理）：修复 git 后重跑 finish。原始报错：${check.detail ?? "未知"}`;
-    throw new LoopError(
-      `finish 完整性闸门拒绝（${check.state}）：${which} ${root}。${advice}`,
-    );
   }
   // ── 窗口竞态复采（ADJ-06，0.0.10）：finish 窗口曾三次采样（verify 指纹/闸门各根
   // 头树/attestation 再读），两次之间另有会话提交可产出自我矛盾的 LOOP_COMPLETE——

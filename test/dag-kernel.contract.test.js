@@ -30,7 +30,7 @@ import {
   saveDag,
   stalePreview,
 } from "../core/dag.js";
-import { adoptPlan, completeStep, readGoal, recordEvidenceHalf, registerGoal, resetLoop, startLoop } from "../core/loop.js";
+import { adoptPlan, completeStep, readGoal, recordEvidenceHalf, registerGoal, resetLoop, startLoop, verifyEvidence } from "../core/loop.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
@@ -297,20 +297,52 @@ test("dependents：节点 id 双向命中；表面值走 captured_on；多条 re
   assert.equal(deps.hits.length, 2, "plan 节点双向：reviews 入边+plans 出边");
 });
 
-test("stalePreview 五态：fresh/stale/superseded/external/null 指纹", () => {
+test("stalePreview 五态：fresh/stale/superseded/external/null 指纹（stale 分支真断言，ADJ-17）", () => {
   const dag = emptyDag();
   appendEvidenceNode(dag, { slug: "s", step: "F1", seq: 1, half: "green", surface: { kind: "fingerprint", value: "h1" }, text: "" });
   const g2 = appendEvidenceNode(dag, { slug: "s", step: "F1", seq: 2, half: "green", surface: { kind: "fingerprint", value: "h2" }, text: "" });
   appendEvidenceNode(dag, { slug: "s", step: "F2", seq: 1, half: "green", surface: { kind: "external", value: "pub@1" }, text: "" });
   const g4 = appendEvidenceNode(dag, { slug: "s", step: "F3", seq: 1, half: "green", surface: null, text: "" });
+  const g5 = appendEvidenceNode(dag, { slug: "s", step: "F4", seq: 1, half: "green", surface: { kind: "fingerprint", value: "h2" }, text: "" });
   addSupersedes(dag, dag.nodes[0].id, g2.id);
   const map = new Map(stalePreview(dag, "h2").map((x) => [x.node.id, x.status]));
   assert.equal(map.get(dag.nodes[0].id), "superseded");
   assert.equal(map.get(g2.id), "fresh");
   assert.equal(map.get(dag.nodes[2].id), "external");
   assert.equal(map.get(g4.id), "unknown");
+  // stale 分支（ADJ-17）：面值≠当前指纹的现行绿=stale（此前零断言、标题谎报五态）
+  const g6 = appendEvidenceNode(dag, { slug: "s", step: "F5", seq: 1, half: "green", surface: { kind: "fingerprint", value: "deadbeef" }, text: "" });
+  assert.equal(new Map(stalePreview(dag, "h2").map((x) => [x.node.id, x.status])).get(g6.id), "stale");
   assert.ok(findLatestGreen(dag, "s", "F1").id === g2.id);
   assert.equal(nextId(dag), `n${dag.nodes.length + 1}`);
+});
+
+// ADJ-16（0.0.10）：ghost 面值≠活指纹的变异钉——latest-wins 突变会误用 ghost 面值判过期，
+// 锚定语义必须仍按 gen1 活指纹判新鲜。
+test("孤儿 ghost 面值≠活指纹：锚定判定不随 ghost 面（latest-wins 突变不再全绿）", () => {
+  const d = repo();
+  registerGoal(d, "t", "title");
+  const p = join(d, ".lazyzcode", "plan.md");
+  mkdirSync(join(d, ".lazyzcode"), { recursive: true });
+  writeFileSync(p, "- [F1] v\n");
+  adoptPlan(d, p);
+  startLoop(d, createGit(d));
+  completeStep(d, createGit(d), "F1", { evidence: "真绿" });
+  const dag = loadDag(d);
+  const ghost = appendEvidenceNode(dag, {
+    slug: "t",
+    step: "F1",
+    seq: 2,
+    half: "green",
+    surface: { kind: "fingerprint", value: "deadbeef-not-live" },
+    text: "ghost with wrong face",
+    attempt: goalJson(d).attempt,
+  });
+  saveDag(d, dag);
+  const v = verifyEvidence(d, createGit(d));
+  assert.equal(v.fresh.map((s) => s.id).join(","), "F1", "锚定 gen1 判新鲜，不被 ghost 面值带偏");
+  assert.equal(v.stale.length, 0, "latest-wins 突变会用 ghost 面值误判 stale——此断言钉死");
+  assert.ok(ghost.seq === 2);
 });
 
 // ── 接线行为（核心直调） ────────────────────────────────────────────────────

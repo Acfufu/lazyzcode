@@ -259,6 +259,19 @@ test("attest CLI：MISMATCH 回执+警示；schema 拒（slug 不符/未知 fid/
   r = cli(["attest", "comparator", "--file", verdictFile(d, { slug: "t", items: [] })], d);
   assert.equal(r.code, 1);
   assert.match(r.out, /缺 items|未覆盖全部 F 项/);
+  // 负例族补全（ADJ-18，0.0.10）：缺 fid/重复 fid/verdict 词形/未覆盖全 F 各自真断言
+  r = cli(["attest", "comparator", "--file", verdictFile(d, { slug: "t", items: [{ verdict: "MATCH", generation: 1 }] })], d);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /未知\/非 F 项 fid/);
+  r = cli(["attest", "comparator", "--file", verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1 }, { fid: "F1", verdict: "MATCH", generation: 1 }] })], d);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /重复 fid/);
+  r = cli(["attest", "comparator", "--file", verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "match", generation: 1 }] })], d);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /verdict 非法/);
+  r = cli(["attest", "comparator", "--file", verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 9 }] })], d);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /无对应绿半节点/, "绑定不存在的代次（先对照后取证族）");
   r = cli(["attest", "comparator", "--file", verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MISMATCH", generation: 1, basis: "x" }] })], d);
   assert.equal(r.code, 0);
   assert.match(r.out, /对照 attestation 已入账：n\d+ · MISMATCH/);
@@ -292,6 +305,12 @@ test("终验 attestation：字段齐/锚定 nodeId/report sha256 吻合/HEAVY �
   assert.equal(doc.evidence[0].fid, "F1");
   assert.equal(doc.evidence[0].generation, (goalF1.evidenceSeq ?? 1) - 1);
   assert.match(doc.evidence[0].nodeId, /^n\d+$/, "锚定账本节点");
+  // ADJ-19（0.0.10）：锚定 nodeId 的同一性断言（绑错节点不再全套存活）
+  assert.equal(
+    doc.evidence[0].nodeId,
+    findGreenByGeneration(loadDag(d), "t", "F1", (goalF1.evidenceSeq ?? 1) - 1).id,
+    "锚定 nodeId=该 F 项当前代次的真实绿节点",
+  );
   assert.equal(doc.comparator.verdict, "MATCH");
   assert.match(doc.comparator.nodeId, /^n\d+$/);
   assert.ok(Number.isInteger(doc.at), "终验 attestation 带 at 时点字段（ADJ-02）");
@@ -367,6 +386,13 @@ test("fail-fast：无 goal 目录 evidence red/claim 拒且不留 .lazyzcode 空
   const r2 = cli(["loop", "claim", "N1"], d);
   assert.equal(r2.code, 1);
   assert.ok(!existsSync(join(d, ".lazyzcode")), "pre-lock 拦截：目录未建");
+  // ADJ-20（0.0.10）：attest 路径同守卫（删守卫即在无 goal 目录留疤）
+  const vf = join(mkdtempSync(join(tmpdir(), "lzy-v009-verdict-")), "v.json");
+  writeFileSync(vf, JSON.stringify({ slug: "x", items: [{ fid: "F1", verdict: "MATCH", generation: 1 }] }));
+  const r3 = cli(["attest", "comparator", "--file", vf], d);
+  assert.equal(r3.code, 1);
+  assert.match(r3.out, /本目录没有目标/);
+  assert.ok(!existsSync(join(d, ".lazyzcode")), "attest pre-lock 拦截：目录未建");
 });
 
 // ── ⑩ comparator 节点查询面 ─────────────────────────────────────────────────

@@ -13,7 +13,7 @@
 
 ## 天然消融（被动事件补录）
 
-现实把部件拿掉的事件（环境事故、引擎行为变化、误删）按同表补录：事件、实际缺位面、后果、产出物。边界：Stop 拉回等干预型部件无法影子化，只能靠天然事件或真消融（真消融 = 受控跳过部件跑真目标，须 ADR 特赦窗口，当前无此窗口）。
+现实把部件拿掉的事件（环境事故、引擎行为变化、误删）按同表补录：事件、实际缺位面、后果、产出物。边界：Stop 拉回等干预型部件无法影子化，只能靠天然事件或真消融（真消融 = 受控跳过部件跑真目标，特赦窗口已由 ADR-0015 开启，2026-09-17）。
 
 ## 账本
 
@@ -28,6 +28,7 @@
 | 6 | 2026-09-13 | 计划评审门 | 影子（goal plan-v2-phase2） | 自查 0 P1/P2（计划初稿自评决策完备）vs 评审独有 MUST-FIX×2：①F1 断言绑活库内容（未计价模型行）不可控，若表覆盖即 finish 不可满足[P2]；②7 字段快照 lint 落地而教学面未同步，活体交接会全数被拒[P1 候选，在交接最需要的退化场景引爆]——两条均修订后 PASS。**门连续再次挣得成本**（判据样本：#1,#6 独有 P1/P2>0，连续 5≈0 未触达） | 本行 + `.lazyzcode/evidence/plan-v2-phase2.report.md`（评审记录与修复轮） |
 | 7 | 2026-09-13 | 计划评审门 | 影子（goal pisper-absorption） | 自查=计划内预验三处实核（AGENTS 行预算算术/formatRepoList 形态/salvage 与报告格式解析前提）+cli 无 --json 先例查证；评审单轮 PASS，0 MUST-FIX，WARN×3 全部非阻断且执行中吸收（双跑须每轮重置状态→已入测试注释；git.js goalLedger --since 有界不可复用→新写 trailersBySlug；子命令枚举行号漂移→订正）。评审独有 P1/P2 = 0 → **≈0 样本（#6 破断后连续计数第 1 个；判据=连续 5≈0 未触达）**。诚实注记：执行侧自查发现 git 夹具无 diff 提交静默失败（三轮红测），属执行期发现不属计划差集，记 memory 不记本表 | 本行 + `.lazyzcode/evidence/pisper-absorption.report.md`（收尾归档） |
 | 8 | 2026-09-13 | 计划评审门 | 影子（goal engine-3121-sync） | 自查=真表面预核三点（doctor 基线先行/npm test 实跑/全仓 grep 位点枚举进计划）但未逐项走门清单；评审 2 轮累计 MUST-FIX×4 全为评审独有且全 P2：①F2 断言自相矛盾（117/117 同文件两行，按 N2 授权集必挂）②F1 staleness 断言不可绑（提示仅 mapLag≥50 渲染，N1 提交重锚后恒 0）③F3 TAP/spec reporter 形态错配 ④ledger 行基线对照不可满足（planning skip→executing ok 恒跃迁）；修订后 PASS。独有 P1/P2 = 4 > 0 → **门连续再次挣得成本（#7 的 ≈0 连续计数清零）**。环境盲区注记：评审员独立实跑 npm test 复核「123 真实」时同样被污染（本目标侦察语料 asar 解包的 test-tube-*.js 图标资源被 node --test 裸 cwd 发现按 test-*.js 模式误捕 3 幻影 pass）——门可复核断言形态、不可免疫共享环境，证据面隔离（语料出仓）才是根治；幻影由 F3 终验在净树上抓获，123→120 订正（attempt 注记在计划 F3） | 本行 + `.lazyzcode/evidence/engine-3121-sync.report.md` + `.lazyzcode/plans/engine-3121-sync.md`（F3 attempt 注记） |
+| 9 | 2026-09-17 | 全件（真消融 batch 1：A-F 六臂 × 四陷阱题 × 30 trials，ADR-0015 特赦） | 真消融（goal true-ablation-full-flow） | **假完成全 30 例=0**：消融臂要么诚实完成要么公开失败，无「finish 达成而 verdict 挂」；唯一 verdict 级分化=delta 提交纪律（B 0/3、C 1/3 挂 vs A 3/3、D/E/F 全过）→ **提交纪律载体=技能文本非机器闸门**（D 五闸门全灭仍提交；C 闸门全在而无文本即退化 B 形态 finish 1/6）；E 臂复现 #0「钩子非存亡件」；影子法校准净结论：影子默认「在场即被用」，真消融显示参与度本身是文本层的函数 | `docs/reviews/2026-true-ablation-report.md` + `artifacts/ablation/`（30 trial 工件与 ledger，本地产物） |
 
 ## 维护
 

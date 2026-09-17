@@ -29,9 +29,30 @@
 | 7 | 2026-09-13 | 计划评审门 | 影子（goal pisper-absorption） | 自查=计划内预验三处实核（AGENTS 行预算算术/formatRepoList 形态/salvage 与报告格式解析前提）+cli 无 --json 先例查证；评审单轮 PASS，0 MUST-FIX，WARN×3 全部非阻断且执行中吸收（双跑须每轮重置状态→已入测试注释；git.js goalLedger --since 有界不可复用→新写 trailersBySlug；子命令枚举行号漂移→订正）。评审独有 P1/P2 = 0 → **≈0 样本（#6 破断后连续计数第 1 个；判据=连续 5≈0 未触达）**。诚实注记：执行侧自查发现 git 夹具无 diff 提交静默失败（三轮红测），属执行期发现不属计划差集，记 memory 不记本表 | 本行 + `.lazyzcode/evidence/pisper-absorption.report.md`（收尾归档） |
 | 8 | 2026-09-13 | 计划评审门 | 影子（goal engine-3121-sync） | 自查=真表面预核三点（doctor 基线先行/npm test 实跑/全仓 grep 位点枚举进计划）但未逐项走门清单；评审 2 轮累计 MUST-FIX×4 全为评审独有且全 P2：①F2 断言自相矛盾（117/117 同文件两行，按 N2 授权集必挂）②F1 staleness 断言不可绑（提示仅 mapLag≥50 渲染，N1 提交重锚后恒 0）③F3 TAP/spec reporter 形态错配 ④ledger 行基线对照不可满足（planning skip→executing ok 恒跃迁）；修订后 PASS。独有 P1/P2 = 4 > 0 → **门连续再次挣得成本（#7 的 ≈0 连续计数清零）**。环境盲区注记：评审员独立实跑 npm test 复核「123 真实」时同样被污染（本目标侦察语料 asar 解包的 test-tube-*.js 图标资源被 node --test 裸 cwd 发现按 test-*.js 模式误捕 3 幻影 pass）——门可复核断言形态、不可免疫共享环境，证据面隔离（语料出仓）才是根治；幻影由 F3 终验在净树上抓获，123→120 订正（attempt 注记在计划 F3） | 本行 + `.lazyzcode/evidence/engine-3121-sync.report.md` + `.lazyzcode/plans/engine-3121-sync.md`（F3 attempt 注记） |
 | 9 | 2026-09-17 | 全件（真消融 batch 1：A-F 六臂 × 四陷阱题 × 30 trials，ADR-0015 特赦） | 真消融（goal true-ablation-full-flow） | **假完成全 30 例=0**：消融臂要么诚实完成要么公开失败，无「finish 达成而 verdict 挂」；唯一 verdict 级分化=delta 提交纪律（B 0/3、C 1/3 挂 vs A 3/3、D/E/F 全过）→ **提交纪律载体=技能文本非机器闸门**（D 五闸门全灭仍提交；C 闸门全在而无文本即退化 B 形态 finish 1/6）；E 臂复现 #0「钩子非存亡件」；影子法校准净结论：影子默认「在场即被用」，真消融显示参与度本身是文本层的函数 | `docs/reviews/2026-true-ablation-report.md` + `artifacts/ablation/`（30 trial 工件与 ledger，本地产物） |
+| 10 | 2026-09-13 | 计划评审门 | 影子（goal content-kill-family） | tier=PASS 行推断（决策 #15 家法：0.0.8 前无 tier 落盘）；评审判决 PASS（report 评审行）；轮次与评审独有计数不可考（事后补账：快照 attempt 注记=执行换路账非评审账、计划/memory/dag review 节点均无轮次账，自查侧随 reset 灭失）→ 按 #4 先例证据不足不计入判据样本（连续计数不变） | 本行 + recovery.md §0/§2（artifacts/shadow-backfill-2026-09/，本地产物）+ report 评审行 |
+| 11 | 2026-09-13 | 计划评审门 | 影子（goal idle-lane-sync） | 同 #10 形态：PASS 行在案，轮次/独有计数不可考，不计入判据样本 | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 12 | 2026-09-13 | 计划评审门 | 影子（goal competitor-diff-matrix） | 同 #10 形态：PASS 行在案，不可考，不计入判据样本 | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 13 | 2026-09-13 | 计划评审门 | 影子（goal gap-roadmap-grill） | 同 #10 形态：PASS 行在案，不可考，不计入判据样本 | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 14 | 2026-09-14 | 计划评审门 | 影子（goal v005-core） | 评审 R1-R5+R6 六轮 40+7 发现全处置（AGENTS §2 v005-core 行）；P2×3 具名（Node 20 CI 腿/guide deps 缺教/CHANGELOG 漏 floor bump）；独有性不可分解（自查侧灭失）但评审侧 ≥3 P2 具名 → **独有 P1/P2 > 0 → 门挣得成本**（连续样本=0 维持）；tier=PASS 行+AGENTS 六轮双审记载 | 本行 + AGENTS §2 v005-core 行 + recovery.md §1（本地产物）+ report 评审行 |
+| 15 | 2026-09-14 | 计划评审门 | 影子（goal v006-quality-batch1） | 同 #10 形态：PASS 行在案，不可考，不计入判据样本 | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 16 | 2026-09-14 | 计划评审门 | 影子（goal crossplatform-recon） | 同 #10 形态：PASS 行在案，不可考，不计入判据样本 | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 17 | 2026-09-14 | 计划评审门 | 影子（goal crossplatform-support） | 同 #10 形态：PASS 行在案，不可考，不计入判据样本 | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 18 | 2026-09-15 | 计划评审门 | 影子（goal v006-release-mechanics） | 同 #10 形态：PASS 行在案，不可考，不计入判据样本 | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 19 | 2026-09-15 | 计划评审门 | 影子（goal v006-closeout） | 同 #10 形态：PASS 行在案，不可考，不计入判据样本 | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 20 | 2026-09-15 | 计划评审门 | 影子（goal v007-lzy-update） | 同 #10 形态：PASS 行在案，不可考，不计入判据样本 | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 21 | 2026-09-15 | 计划评审门 | 影子（goal gpt-v3-feedback-triage） | 同 #10 形态：PASS 行在案，不可考，不计入判据样本；N2 考证分支按计划预锁落定（tier 证据=PASS 行推断→入行） | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 22 | 2026-09-16 | 计划评审门 | 影子（goal v008-integrity-kernel） | 5+1 轮硬管线（5 轮高精度双审核逐轮修计划+1 轮轻量放行门），9 P1+约 46 P2/P3 全修（AGENTS §2 v008 行）→ **独有 P1/P2 > 0 → 门挣得成本**（连续样本=0 维持）；tier=PASS 行+AGENTS 硬管线记载 | 本行 + AGENTS §2 v008-integrity-kernel 行 + recovery.md §1（本地产物）+ report 评审行 |
+| 23 | 2026-09-16 | 计划评审门 | 影子（goal v009-bat1-dag-kernel） | 评审退回两 P1+7 警示全修、3 非阻断折入终稿后 PASS（AGENTS §2 bat1 行）→ **独有 P1/P2 > 0 → 门挣得成本**（连续样本=0 维持）；tier=PASS 行+AGENTS 硬管线记载 | 本行 + AGENTS §2 v009-bat1-dag-kernel 行 + recovery.md §1（本地产物）+ report 评审行 |
+| 24 | 2026-09-16 | 计划评审门 | 影子（goal v009-bat2-unified-authority） | 评审三必修二建议全收后 PASS（AGENTS §2 bat2 行）→ **独有 P1/P2 > 0 → 门挣得成本**（连续样本=0 维持）；tier=attestation tier 字段 heavy（comparator MATCH） | 本行 + AGENTS §2 v009-bat2-unified-authority 行 + recovery.md §1（本地产物）+ report 评审行 |
+| 25 | 2026-09-16 | 计划评审门 | 影子（goal v009-five-round-dual-review） | 仅 PASS 行在案（快照在 `loop/snapshots/` 但 attempt 注记=执行换路账）；诚实注记：该 goal 的 79→44 条发现是其工作对象（产品评审），非其计划评审门计数，不得混入 → 不可考不计入判据样本；tier=attestation heavy | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 26 | 2026-09-17 | 计划评审门 | 影子（goal v010-fix-round） | 同 #25 形态：仅 PASS 行在案，不可考不计入判据样本（其修复的 0.0.9 双审 44 条=工作对象非计划评审计数）；tier=attestation heavy | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 27 | 2026-09-17 | 计划评审门 | 影子（goal true-ablation-full-flow） | 本行为其计划评审门影子行，与 #9 真消融行并存不互斥（#9 记实验结论，本行记该 goal 自身计划门样本）；仅 PASS 行在案，attempt 注记两条（--max-turns 死亡/鉴别门返工）为执行换路账 → 不可考不计入判据样本；tier=attestation heavy | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
+| 28 | 2026-09-17 | 计划评审门 | 影子（goal v010-batb-protocol-headless） | 评审门三轮收敛：两 P1（裸 deps 行炸门/恢复路径与账本机制矛盾）+门序/AGENTS 算术/审计环/夹具重钉全收（AGENTS §2 batb 行）→ **独有 P1/P2 > 0 → 门挣得成本**（连续样本=0 终态）；tier=attestation heavy（comparator MATCH） | 本行 + AGENTS §2 v010-batb-protocol-headless 行 + recovery.md §1（本地产物）+ report 评审行 |
 
 ## 维护
 
 - 每个 HEAVY 目标评审门通过后回填一行；LIGHT 目标不强制。
 - 回填须随目标收尾即时完成：评审正文只存 `goal.json`，reset 即灭（#4 incident-guardrails 实证——存根与证据包仅留痕迹级引用，定级不可考）；事后补账时自查侧缺失一律如实注记，不得臆造计数。
 - 判据触达（连续 5 目标 ≈0）时升格拍板：维持现状，或立真消融特赦 ADR。
+- 判据状态（2026-09-18 重放收口，goal ablation-shadow-backfill）：#8 破断后窗口内可考 >0 锚五枚（#14/#22/#23/#24/#28）首尾锚定，**连续 5 ≈0 未触达、当前连续样本=0**——影子法未达「测不出」阈值，计划评审门维持现状；计划评审门的 H 臂真消融仍是终审（batch 2 预注册位，对照基准即本行）。
+- 2026-09-18 事后补账批注：#10–#28 为 #8→#9 窗口期 19 个 HEAVY 目标的影子行补齐（goal ablation-shadow-backfill，HEAVY 三轮评审门 PASS），取证底稿 `artifacts/shadow-backfill-2026-09/recovery.md`（本地产物）；#4 先例（证据不足不计入样本）沿用；tier 证据三源链与「PASS 行=0.0.8 前 HEAVY 推断标记」（决策 #15）口径见 recovery.md §0；影子/真消融/天然三形态同表编排，天然行本次为零（multisession-discipline 落不可考支，未记）。

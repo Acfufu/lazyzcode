@@ -67,6 +67,7 @@
 | 22 | 交接放行 | **目录级匿名标记+原子消费**：模型收尾前 `lzy loop handoff --snapshot <file>` 落 `loop/handoff.json`，Stop 一次性 unlink 消费（恰一赢家）后显式 `continue:false` 放行——不入 3 池不耗预算；消费清本会话振数/stuck；匿名=模型在 Bash 拿不到自己 sessionId，拒绝一切转抄身份设计；滥用对冲=快照必填（存在+mtime≤24h）；多认领撞窗记已知边界（ADR-0009，2026-09-10） |
 | 23 | 完整性内核 | finish 完整性闸门（{host}∪subjects 任一根 dirty/missing/fail-closed 即拒、无逃生 flag）；证据=复合指纹（subject 集每根头树哈希 sha256 复合，legacy treeHash 回退单树）；plan snapshot+planHash（采纳即快照、review 绑哈希、复采纳换哈希须重评审）；tier 落盘+HEAVY 机器门（采纳时点无 PASS 拒、--force 不越过、只升不降）（ADR-0013，2026-09-16） |
 | 24 | 失效 DAG 与红绿 manifest | **中央 DAG 存储**：`loop/dag.json` 跨 reset 常驻、JSON 原子写+校验和 fail-closed（node:sqlite 否决：无旗标仅 22.13+/23.4+ 与 engines >=22 冲突）、节点不可变/边追加、取证与评审时注册边、dag-first（账本写失败整命令拒）；**红绿各绑各面**（E-01 调和：red 缺省绑复合指纹/`--surface` 外部面、waive-red=一行豁免机器形态、机器只记账不裁决、rebind=supersedes 链+red_of 最新现行）；**统一权威=棒2** 切 verify/finish（届时图不可读即拒、无逃生 flag 沿 ADR-0013；legacy 双轨与 0.0.8 全同）（ADR-0014，2026-09-17） |
+| 25 | 真消融实验 | **受控跳部件跑真目标**：`LZY_ABLATE_*` env kill-switch（机器五闸门+钩子五短路，默认关=行为逐字段同、契约测试钉红绿；dag.js 不设开关）×陷阱任务集×headless 隔离-HOME 试跑；batch1=六臂×4 题×1 rep=24 trials 串行、batch2 预注册扩展；判据=方向性签名、不裸奔 p 值；结果只作拍板输入绝不自动降档（沿 #20）（ADR-0015 特赦窗口，2026-09-17） |
 
 ## 5. 设计宪法与红线
 

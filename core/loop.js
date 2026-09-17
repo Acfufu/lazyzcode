@@ -961,6 +961,14 @@ function dirtyPathHint(paths) {
 }
 
 // ── 6. 完成：全部步骤 done + F 项证据全部新鲜 ──────────────────────────────
+// F 项当前代次的锚定绿节点（evidenceSeq-1 家法，与 verifyEvidence/终验 attestation 同源）。
+function anchoredGreenFor(dag, goal, fid) {
+  const s = goal.steps.find((x) => x.id === fid);
+  if (!s) return null;
+  const gen = s.evidenceSeq ? s.evidenceSeq - 1 : 1;
+  return findGreenByGeneration(dag, goal.slug, fid, gen);
+}
+
 export function finishLoop(cwd, git, opts = {}) {
   requireGoalPreLock(cwd);
   return withLock(cwd, () => doFinishLoop(cwd, git, opts));
@@ -1017,6 +1025,23 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
       throw new LoopError(
         `对照 attestation 已过期（记录 ${comparator.id} 的指纹与当前树不符——对照后代码又变了）：重新对照并重录`,
       );
+    }
+    // ── 对照绑证据（ADJ-02，0.0.10）：item 须绑定该 F 项当前代次的锚定绿节点，且对照
+    // 时点晚于所锚节点取证时点——「先对照后取证」「rebind 后复用旧对照」「跨 reset 复用」
+    // 三类绕行在机器门闭合。
+    for (const it of comparator.items ?? []) {
+      const anchor = anchoredGreenFor(dag, goal, it.fid);
+      if (!anchor || it.evidenceNodeId !== anchor.id) {
+        throw new LoopError(
+          `对照 attestation 未绑定 ${it.fid} 的现行锚定证据（绑 ${it.evidenceNodeId ?? "无"}，现行锚 ${anchor?.id ?? "无"}）：` +
+            `rebind 后复用旧对照/跨 reset 复用不可过门——重新对照并重录（lzy attest comparator --file …）`,
+        );
+      }
+      if ((comparator.at ?? 0) < (anchor.at ?? 0)) {
+        throw new LoopError(
+          `对照 attestation（${comparator.id}）时点早于所锚证据取证时点（先对照后取证）：重新对照并重录`,
+        );
+      }
     }
   }
   // ── 第四拒：完整性闸门（P0-A 闭合，v008）——{host}∪subjects 任一根 dirty/missing/git
@@ -1099,6 +1124,7 @@ function writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, r
     });
   const doc = {
     attemptId,
+    at: Date.now(),
     slug: goal.slug,
     title: goal.title,
     tier: goal.tier ?? "light",
@@ -1111,7 +1137,7 @@ function writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, r
     fingerprint: fingerprint ?? null,
     evidence,
     comparator: comparator
-      ? { nodeId: comparator.id, verdict: comparator.verdict, fingerprint: comparator.fingerprint }
+      ? { nodeId: comparator.id, verdict: comparator.verdict, fingerprint: comparator.fingerprint, at: comparator.at ?? null }
       : null,
     report: { path: reportRel, sha256: reportSha },
     finishedAt: goal.finishedAt,

@@ -217,10 +217,10 @@ test("HEAVY finish 机器门：缺席拒→MISMATCH 拒→MATCH 过；指纹过�
   // 缺席
   assert.throws(() => finishWithReport(d), /HEAVY finish 需对照 attestation 且 MATCH/);
   // MISMATCH 如实入账、门拒
-  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MISMATCH", basis: "证据对不上" }] }));
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MISMATCH", generation: 1, basis: "证据对不上" }] }));
   assert.throws(() => finishWithReport(d), /MISMATCH.*重新对照并重录/s);
   // MATCH 入账→过门完成
-  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", basis: "逐对吻合" }] }));
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1, basis: "逐对吻合" }] }));
   const { goal } = finishWithReport(d);
   assert.equal(goal.status, "done");
 });
@@ -228,12 +228,12 @@ test("HEAVY finish 机器门：缺席拒→MISMATCH 拒→MATCH 过；指纹过�
 test("指纹过期门：对照后代码又变（rebind 后绿半新鲜）→旧对照拒→重录过", () => {
   const d = repo();
   cycle(d, { heavy: true });
-  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", basis: "x" }] }));
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1, basis: "x" }] }));
   writeFileSync(join(d, "a.txt"), "b\n");
   commitAll(d, "c2");
   completeStep(d, createGit(d), "F1", { evidence: "绿半重取" }); // rebind gen2=新鲜
   assert.throws(() => finishWithReport(d), /对照 attestation 已过期/);
-  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", basis: "重对照" }] }));
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 2, basis: "重对照" }] }));
   const { goal } = finishWithReport(d);
   assert.equal(goal.status, "done");
 });
@@ -257,7 +257,7 @@ test("attest CLI：MISMATCH 回执+警示；schema 拒（slug 不符/未知 fid/
   r = cli(["attest", "comparator", "--file", verdictFile(d, { slug: "t", items: [] })], d);
   assert.equal(r.code, 1);
   assert.match(r.out, /缺 items|未覆盖全部 F 项/);
-  r = cli(["attest", "comparator", "--file", verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MISMATCH", basis: "x" }] })], d);
+  r = cli(["attest", "comparator", "--file", verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MISMATCH", generation: 1, basis: "x" }] })], d);
   assert.equal(r.code, 0);
   assert.match(r.out, /对照 attestation 已入账：n\d+ · MISMATCH/);
   assert.match(r.out, /机器只记账不裁决/);
@@ -271,7 +271,7 @@ test("attest CLI：MISMATCH 回执+警示；schema 拒（slug 不符/未知 fid/
 test("终验 attestation：字段齐/锚定 nodeId/report sha256 吻合/HEAVY 含 comparator/LIGHT 为 null", () => {
   const d = repo();
   cycle(d, { heavy: true });
-  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", basis: "x" }] }));
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1, basis: "x" }] }));
   finishWithReport(d);
   const files = attestationFiles(d);
   assert.equal(files.length, 1);
@@ -292,6 +292,8 @@ test("终验 attestation：字段齐/锚定 nodeId/report sha256 吻合/HEAVY �
   assert.match(doc.evidence[0].nodeId, /^n\d+$/, "锚定账本节点");
   assert.equal(doc.comparator.verdict, "MATCH");
   assert.match(doc.comparator.nodeId, /^n\d+$/);
+  assert.ok(Number.isInteger(doc.at), "终验 attestation 带 at 时点字段（ADJ-02）");
+  assert.ok(doc.comparator.at === null || Number.isInteger(doc.comparator.at));
   const report = readFileSync(join(d, ".lazyzcode", "evidence", "t.report.md"));
   assert.equal(doc.report.sha256, sha256(report), "report sha256 与实文件一致");
   assert.equal(doc.finishedAt, readGoal(d).finishedAt);
@@ -307,7 +309,7 @@ test("终验 attestation：字段齐/锚定 nodeId/report sha256 吻合/HEAVY �
 test("终验 attestation：report 写失败=finish 拒且无残留；reset 存活；doctor 无疤痕误警", () => {
   const d = repo();
   cycle(d, { heavy: true });
-  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", basis: "x" }] }));
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1, basis: "x" }] }));
   assert.throws(
     () => finishLoop(d, createGit(d), { writeReport: () => { throw new Error("disk full"); } }),
     /证据包归档失败.*executing/s,
@@ -369,7 +371,7 @@ test("fail-fast：无 goal 目录 evidence red/claim 拒且不留 .lazyzcode 空
 test("comparator 节点：attests 边→plan 节点，dependents 命中；stalePreview 不可见", () => {
   const d = repo();
   cycle(d, { heavy: true });
-  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", basis: "x" }] }));
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1, basis: "x" }] }));
   const dag = loadDag(d);
   const comp = dag.nodes.find((n) => n.kind === "comparator");
   const plan = dag.nodes.find((n) => n.kind === "plan");
@@ -398,4 +400,71 @@ test("CLI verify：正常链新鲜判定照常（权威切换零回归）", () =
   const r = cli(["loop", "verify"], d);
   assert.equal(r.code, 0);
   assert.match(r.out, /新鲜 1：F1/);
+});
+
+// ── ⑫ 对照绑证据（ADJ-02，0.0.10）───────────────────────────────────────────
+test("对照绑证据：缺绑定/悬空 nodeId/先对照后取证都在入账处拒；绑定后存实际节点 id 与代次", () => {
+  const d = repo();
+  registerGoal(d, "t", "title", { tier: "heavy" });
+  const p = join(d, ".lazyzcode", "plan.md");
+  mkdirSync(join(d, ".lazyzcode"), { recursive: true });
+  writeFileSync(p, "- [F1] v\n");
+  adoptPlan(d, p, { review: "plan-reviewer: PASS — t" });
+  startLoop(d, createGit(d));
+  // 缺绑定（schema 层）
+  assert.throws(
+    () => recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", basis: "x" }] })),
+    /缺证据绑定/,
+  );
+  // 悬空 nodeId（解析层）
+  assert.throws(
+    () =>
+      recordComparatorAttestation(
+        d,
+        verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", evidenceNodeId: "n99", generation: 1 }] }),
+      ),
+    /不可解析/,
+  );
+  // 先对照后取证（generation 无对应绿半）
+  assert.throws(
+    () => recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1 }] })),
+    /无对应绿半节点.*取证/s,
+  );
+  completeStep(d, createGit(d), "F1", { evidence: "绿半" });
+  // 取证后绑定成功，入账存实际节点 id 与代次
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1 }] }));
+  const dag = loadDag(d);
+  const comp = dag.nodes.find((n) => n.kind === "comparator");
+  const green = findGreenByGeneration(dag, "t", "F1", 1);
+  assert.equal(comp.items[0].evidenceNodeId, green.id);
+  assert.equal(comp.items[0].generation, 1);
+});
+
+test("finish 门绑定：rebind 后复用旧对照（指纹已同步）→未绑现行锚拒；对照早于取证时点拒", () => {
+  const d = repo();
+  cycle(d, { heavy: true });
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1 }] }));
+  // rebind 到 gen2
+  writeFileSync(join(d, "a.txt"), "b\n");
+  commitAll(d, "c2");
+  completeStep(d, createGit(d), "F1", { evidence: "绿半重取" });
+  // 同步旧对照指纹到当前树（绕开指纹过期门，隔离绑定检查）
+  const fp = verifyEvidence(d, createGit(d)).fingerprint;
+  tamperLedger(d, (obj) => {
+    for (const n of obj.nodes) {
+      if (n.kind === "comparator") n.fingerprint = fp;
+    }
+  });
+  assert.throws(() => finishWithReport(d), /未绑定 F1 的现行锚定证据.*rebind/s);
+  // 绑定改到现行锚但 at 早于取证时点（先对照后取证变体）
+  const anchor2 = findGreenByGeneration(loadDag(d), "t", "F1", 2);
+  tamperLedger(d, (obj) => {
+    for (const n of obj.nodes) {
+      if (n.kind === "comparator") {
+        n.items = [{ fid: "F1", verdict: "MATCH", evidenceNodeId: anchor2.id, generation: 2, basis: "x" }];
+        n.at = 1;
+      }
+    }
+  });
+  assert.throws(() => finishWithReport(d), /早于所锚证据取证时点/s);
 });

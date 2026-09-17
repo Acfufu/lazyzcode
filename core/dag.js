@@ -169,6 +169,8 @@ export function appendReviewNode(dag, { planHash, verdict }) {
 // comparator attestation 节点（v009 棒2，§⑪ N3）：对照结论的机器记录。fingerprint
 // 必填非空（非 git 宿主无可绑面，记录即拒——与 evidence red 缺省面同款语义）；
 // 机器只记账不裁决：MISMATCH 也如实入账，裁决在 finish 门（HEAVY 强制 MATCH）。
+// item 须绑证据（ADJ-02，0.0.10）：{fid, verdict, evidenceNodeId, generation, basis?}——
+// 对照必须锚到已落账的绿半节点，先对照后取证/复用旧对照在入账处即拒。
 export const COMPARATOR_VERDICTS = new Set(["MATCH", "MISMATCH"]);
 
 export function appendComparatorNode(dag, { slug, planHash, verdict, fingerprint, fileSha256, itemsCount, items = [] }) {
@@ -176,6 +178,23 @@ export function appendComparatorNode(dag, { slug, planHash, verdict, fingerprint
   if (!COMPARATOR_VERDICTS.has(verdict)) throw new DagError(`comparator verdict 非法：${verdict}（MATCH|MISMATCH）`);
   if (typeof fingerprint !== "string" || !fingerprint) throw new DagError("comparator 节点缺可绑复合指纹（宿主非 git 仓无可对照面）");
   if (typeof fileSha256 !== "string" || !fileSha256) throw new DagError("comparator 节点缺对照文件 sha256");
+  const normalized = items.map((it) => {
+    if (
+      !it ||
+      typeof it !== "object" ||
+      typeof it.fid !== "string" ||
+      !it.fid ||
+      !COMPARATOR_VERDICTS.has(it.verdict) ||
+      typeof it.evidenceNodeId !== "string" ||
+      !it.evidenceNodeId ||
+      !Number.isInteger(it.generation)
+    ) {
+      throw new DagError(
+        `comparator item 形状非法（须 {fid, verdict, evidenceNodeId, generation, basis?}，对照必须绑定已落账绿半）：${JSON.stringify(it)?.slice(0, 200)}`,
+      );
+    }
+    return { fid: it.fid, verdict: it.verdict, evidenceNodeId: it.evidenceNodeId, generation: it.generation, basis: String(it.basis ?? "").slice(0, 300) };
+  });
   const node = {
     id: nextId(dag),
     kind: "comparator",
@@ -185,7 +204,7 @@ export function appendComparatorNode(dag, { slug, planHash, verdict, fingerprint
     fingerprint,
     fileSha256,
     itemsCount: Number(itemsCount) || 0,
-    items,
+    items: normalized,
     at: Date.now(),
   };
   dag.nodes.push(node);

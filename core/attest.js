@@ -16,6 +16,7 @@ import {
 import {
   addEdge,
   appendComparatorNode,
+  findGreenByGeneration,
   findNodes,
   loadDag,
   saveDag,
@@ -35,7 +36,7 @@ function doRecordComparatorAttestation(cwd, file) {
   }
   if (!file) {
     throw new LoopError(
-      `用法：lzy attest comparator --file <结论.json>（schema：{"slug","items":[{"fid","verdict":"MATCH|MISMATCH","basis"}],"note"?}）`,
+      `用法：lzy attest comparator --file <结论.json>（schema：{"slug","items":[{"fid","verdict":"MATCH|MISMATCH","evidenceNodeId"|"generation","basis?"}],"note"?}——每条对照必须绑定该 F 项已落账的绿半（节点 id 或取证代次））`,
     );
   }
   let raw;
@@ -49,7 +50,7 @@ function doRecordComparatorAttestation(cwd, file) {
     doc = JSON.parse(raw);
   } catch {
     throw new LoopError(
-      `对照结论文件不是合法 JSON：${file}。schema：{"slug","items":[{"fid","verdict":"MATCH|MISMATCH","basis"}],"note"?}`,
+      `对照结论文件不是合法 JSON：${file}。schema：{"slug","items":[{"fid","verdict":"MATCH|MISMATCH","evidenceNodeId"|"generation","basis?"}],"note"?}`,
     );
   }
   validateAttestationDoc(doc, goal);
@@ -58,6 +59,7 @@ function doRecordComparatorAttestation(cwd, file) {
     throw new LoopError(`无可绑对照面（宿主非 git 仓，复合指纹不可算）——对照 attestation 依赖指纹新鲜性`);
   }
   const dag = loadDag(cwd);
+  const resolved = doc.items.map((it) => resolveItemBinding(dag, goal, it));
   const node = appendComparatorNode(dag, {
     slug: goal.slug,
     planHash: goal.planHash,
@@ -65,7 +67,7 @@ function doRecordComparatorAttestation(cwd, file) {
     fingerprint,
     fileSha256: createHash("sha256").update(raw).digest("hex"),
     itemsCount: doc.items.length,
-    items: doc.items.map((it) => ({ fid: it.fid, verdict: it.verdict, basis: String(it.basis ?? "").slice(0, 300) })),
+    items: resolved,
   });
   const planNode = findNodes(
     dag,
@@ -74,6 +76,43 @@ function doRecordComparatorAttestation(cwd, file) {
   if (planNode) addEdge(dag, { type: "attests", from: node.id, to: planNode.id });
   saveDag(cwd, dag);
   return { node, fingerprint, verdict: node.verdict };
+}
+
+// 对照绑证据（ADJ-02，0.0.10）：把 item 的 evidenceNodeId|generation 解析成账本绿半
+// 节点——解析失败=对照先于证据/绑错目标，入账处即拒（不留给 finish 门放行的口子）。
+function resolveItemBinding(dag, goal, it) {
+  if (typeof it.evidenceNodeId === "string" && it.evidenceNodeId) {
+    const node =
+      dag.nodes.find(
+        (n) =>
+          n.id === it.evidenceNodeId &&
+          n.kind === "evidence" &&
+          n.half === "green" &&
+          n.slug === goal.slug &&
+          n.step === it.fid,
+      ) ?? null;
+    if (!node) {
+      throw new LoopError(
+        `item ${it.fid} 绑定的 evidenceNodeId 不可解析（${it.evidenceNodeId} 须为本目标 ${it.fid} 的绿半节点）——先 lzy step done ${it.fid} --evidence … 取证，再对照`,
+      );
+    }
+    if (Number.isInteger(it.generation) && it.generation !== node.seq) {
+      throw new LoopError(`item ${it.fid} 的 generation ${it.generation} 与节点 ${node.id} 实际代次 ${node.seq} 不符`);
+    }
+    return { fid: it.fid, verdict: it.verdict, evidenceNodeId: node.id, generation: node.seq, basis: String(it.basis ?? "").slice(0, 300) };
+  }
+  if (Number.isInteger(it.generation)) {
+    const node = findGreenByGeneration(dag, goal.slug, it.fid, it.generation);
+    if (!node) {
+      throw new LoopError(
+        `item ${it.fid} 的 generation ${it.generation} 无对应绿半节点——先 lzy step done ${it.fid} --evidence … 取证，再对照（对照先于证据不可入账）`,
+      );
+    }
+    return { fid: it.fid, verdict: it.verdict, evidenceNodeId: node.id, generation: node.seq, basis: String(it.basis ?? "").slice(0, 300) };
+  }
+  throw new LoopError(
+    `item ${it.fid} 缺证据绑定（evidenceNodeId 或 generation 二选一）——对照必须锚到已落账的绿半节点（ADJ-02）`,
+  );
 }
 
 function validateAttestationDoc(doc, goal) {
@@ -94,7 +133,7 @@ function validateAttestationDoc(doc, goal) {
   const seen = new Set();
   for (const it of items) {
     if (!it || typeof it !== "object") {
-      throw new LoopError(`items 元素须为对象 {fid, verdict, basis?}：${JSON.stringify(it)}`);
+      throw new LoopError(`items 元素须为对象 {fid, verdict, evidenceNodeId|generation, basis?}：${JSON.stringify(it)}`);
     }
     if (!fIds.includes(it.fid)) {
       throw new LoopError(`对照结论含未知/非 F 项 fid：${it.fid}（计划的 F 项：${fIds.join(" ")}）`);
@@ -104,6 +143,12 @@ function validateAttestationDoc(doc, goal) {
     }
     if (seen.has(it.fid)) {
       throw new LoopError(`对照结论重复 fid：${it.fid}（每项一条；更正请重录新记录，最新为现行）`);
+    }
+    const hasBinding = (typeof it.evidenceNodeId === "string" && it.evidenceNodeId) || Number.isInteger(it.generation);
+    if (!hasBinding) {
+      throw new LoopError(
+        `item ${it.fid} 缺证据绑定（evidenceNodeId 或 generation 二选一）——对照必须锚到该 F 项已落账的绿半节点（先取证再对照）`,
+      );
     }
     seen.add(it.fid);
   }

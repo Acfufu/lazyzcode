@@ -1,0 +1,6 @@
+{
+  "legs": [
+    { "timeoutMs": 480000 },
+    { "promptFile": "leg2-change.md", "timeoutMs": 900000 }
+  ]
+}

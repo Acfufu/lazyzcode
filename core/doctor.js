@@ -4,8 +4,10 @@
 // 单项异常 fail-soft=warn，诊断自身故障不翻转退出码。
 import { readdirSync, readFileSync, existsSync, realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
+import { createEngineCli } from "./engine.js";
 import { readRepoManifest, readRegistry, sha256File } from "./installer.js";
 import {
   MARKETPLACE,
@@ -471,6 +473,39 @@ export function checkLedger(push, cwd) {
   }
 }
 
+// headless 驱动诊断（0.1.0 棒B，ADR-0017）：引擎可否 headless 一等驱动 + 认证链两态
+// （login OAuth credentials.json 或桌面注入 env）。warn-only/skip 家法：驱动可用性是
+// 运行形态不是故障，缺席=skip、凭据缺席=warn，绝不翻转退出码（零遥测，本地只读探测）。
+function checkHeadless(push) {
+  const engine = findEngine();
+  if (!engine) {
+    push("headless", "skip", "引擎缺席——headless 驱动不可用（装 ZCode 桌面端或设 LZY_ZCODE_ENGINE）");
+    return;
+  }
+  const version = createEngineCli(engine).version();
+  if (!version) {
+    push("headless", "warn", `引擎 --version 探针失败（${engine}）——headless 驱动不可用`);
+    return;
+  }
+  const oauth = existsSync(join(homedir(), ".zcode", "v2", "credentials.json"));
+  const envAuth = Boolean(
+    process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE || process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE,
+  );
+  if (oauth || envAuth) {
+    push(
+      "headless",
+      "ok",
+      `引擎 ${version} 可 headless 驱动 · 凭据=${oauth ? "oauth(~/.zcode/v2/credentials.json)" : "env(ZCODE_*_PROVIDER_CONFIG_FILE)"}`,
+    );
+  } else {
+    push(
+      "headless",
+      "warn",
+      `引擎 ${version} 在场但 headless 凭据缺席（无 ~/.zcode/v2/credentials.json 且无 ZCODE_*_PROVIDER_CONFIG_FILE env）——headless 调用会停在认证门（干净机配方见 docs/spikes/headless.md）`,
+    );
+  }
+}
+
 function checkPlatform(push) {
   // 平台感知（ADR-0011 三平台支持）：报引擎候选命中态，而非 darwin 二分立场。
   const found = findEngine();
@@ -679,6 +714,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkOrphanWake(p, cwd),
     (p) => checkLedger(p, cwd),
     checkPlatform,
+    checkHeadless,
     (p) => checkAgentsMd(p, cwd),
     (p) => checkRateLimit(p),
   ];

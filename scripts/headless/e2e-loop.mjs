@@ -1,0 +1,121 @@
+// 全链 E2E 自驱动验收（0.1.0 棒B，ADR-0017）：headless 原语（core/headless.js）驱动
+// 真引擎执行一个 scratch goal loop 的 注册→finish 全链。仅限有凭据开发机手动实弹——
+// 不在 npm test glob 内、CI 永不触网（认证门见下）；干净机配方=login 一次+随包 builtin
+// 配置（docs/spikes/headless.md §5）。
+// 认证链：桌面注入的 ZCODE_*_PROVIDER_CONFIG_FILE env 或 ~/.zcode/v2/credentials.json
+// （login OAuth）二有其一即过认证门；都缺席时本脚本 skip（exit 0）不 fail。
+// 每发 ≈12k input tokens（spike §6）——目标刻意 trivial，1-2 turn 内收口。
+// 用法：node scripts/headless/e2e-loop.mjs [--mode yolo] [--timeout-minutes 15] [--keep]
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawnHeadless, HEADLESS_MODES } from "../../core/headless.js";
+
+const REPO = join(fileURLToPath(import.meta.url), "..", "..", "..");
+const CLI = join(REPO, "cli", "lzy.js");
+const MARK = "hi-from-headless-e2e";
+
+function arg(flag, fallback) {
+  const i = process.argv.indexOf(flag);
+  return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+}
+
+const mode = arg("--mode", "yolo");
+if (!HEADLESS_MODES.has(mode)) {
+  console.error(`[e2e] --mode 非法：${mode}（${[...HEADLESS_MODES].join("|")}）`);
+  process.exit(1);
+}
+const timeoutMs = Number(arg("--timeout-minutes", "15")) * 60_000;
+const keep = process.argv.includes("--keep");
+
+// ── 认证门（缺席=skip 不 fail：本机没凭据不是产品缺陷）────────────────────────
+const oauth = existsSync(join(homedir(), ".zcode", "v2", "credentials.json"));
+const envAuth = Boolean(process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE || process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE);
+if (!oauth && !envAuth) {
+  console.log("[e2e] SKIP：无 headless 凭据（无 ~/.zcode/v2/credentials.json 且无 ZCODE_*_PROVIDER_CONFIG_FILE env）——有凭据开发机手动跑，CI 不碰");
+  process.exit(0);
+}
+
+// ── scratch 仓 + loop 注册→plan→start（宿主 CLI 直调，防全局 lzy 旧版影子）──────
+const scratch = mkdtempSync(join(tmpdir(), "lzy-headless-e2e-"));
+const git = (args) => execFileSync("git", args, { cwd: scratch, encoding: "utf8" });
+git(["init", "-q"]);
+git(["config", "user.email", "e2e@lazyzcode.local"]);
+git(["config", "user.name", "e2e"]);
+writeFileSync(join(scratch, "seed.txt"), "seed\n");
+git(["add", "seed.txt"]);
+git(["commit", "-qm", "init"]);
+
+const lzy = (args) => {
+  const r = spawnSync(process.execPath, [CLI, ...args], { cwd: scratch, encoding: "utf8" });
+  return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+};
+const slug = "headless-e2e";
+console.log(`[e2e] SCRATCH ${scratch}`);
+console.log(`[e2e] AUTH ${oauth ? "oauth(credentials.json)" : "env(桌面注入)"}`);
+
+let r = lzy(["loop", "register", slug, "--title", "headless E2E self-drive"]);
+if (r.code !== 0) fail(`register 失败：${r.out}`);
+const planPath = join(scratch, "plan.md");
+writeFileSync(
+  planPath,
+  [
+    "- [N1] 用 Bash 把标记行写入 response.txt（内容恰好一行：" + MARK + "）",
+    `- [F1] cat response.txt 的 stdout 含标记 ${MARK}`,
+  ].join("\n") + "\n",
+);
+r = lzy(["loop", "plan", "plan.md"]);
+if (r.code !== 0) fail(`plan 失败：${r.out}`);
+r = lzy(["loop", "start"]);
+if (r.code !== 0) fail(`start 失败：${r.out}`);
+console.log("[e2e] loop registered/plan/start ✔（基线就绪，交 headless 驱动）");
+
+// ── headless 驱动（自包含 prompt：不依赖对话史——交接状态全在盘面， zw 协议同款）──
+const prompt = [
+  `你在 ${scratch} 目录驱动 LazyZCode 目标循环（slug=${slug}，状态已 executing）。`,
+  `lzy CLI 必须用仓内路径调用：node ${CLI} <args>（全局 lzy 可能是旧版影子，勿用）。`,
+  `现在执行：`,
+  `1. 运行 node ${CLI} loop status 核实状态。`,
+  `2. 用 Bash 写 response.txt：内容恰好一行 ${MARK}。`,
+  `3. node ${CLI} step done N1 --note "wrote marker"。`,
+  `4. node ${CLI} step done F1 --evidence "$(cat response.txt)"。`,
+  `5. node ${CLI} loop finish（应打印 ✔✔ 目标完成）。`,
+  `全部用工具真实执行，不要问询；结束前打印一行 FINAL: <finish 命令的退出码>。`,
+].join("\n");
+
+const started = Date.now();
+const res = await spawnHeadless({ prompt, mode, timeoutMs, cwd: scratch });
+console.log(`[e2e] headless ok=${res.ok} exit=${res.exitCode} ${Math.round((Date.now() - started) / 1000)}s sessionId=${res.sessionId ?? "—"}`);
+if (res.response) console.log(`[e2e] response 尾部：${res.response.slice(-200).replace(/\n+/g, " ⏎ ")}`);
+if (!res.ok) {
+  console.error(`[e2e] headless 调用失败：${res.error}`);
+  if (!keep) cleanup();
+  process.exit(1);
+}
+
+// ── 终验：loop done + attestation 在场（LOOP_COMPLETE 机器证明）────────────────
+r = lzy(["loop", "status"]);
+const done = r.code === 0 && /状态 done/.test(r.out);
+console.log(`[e2e] loop status done=${done}`);
+const attestDir = join(scratch, ".lazyzcode", "attestations");
+const attests = existsSync(attestDir) ? readdirSync(attestDir).filter((f) => f.endsWith(".json")) : [];
+const attested = attests.length > 0;
+console.log(`[e2e] attestation ${attested ? attests.join(", ") : "缺席"}`);
+const verdict = done && attested;
+console.log(verdict ? "[e2e] VERDICT PASS（headless 自驱动全链：注册→执行→finish→attestation）" : "[e2e] VERDICT FAIL");
+if (keep) console.log(`[e2e] scratch 保留：${scratch}`);
+else cleanup();
+process.exit(verdict ? 0 : 1);
+
+function fail(msg) {
+  console.error(`[e2e] ${msg}`);
+  if (!keep) cleanup();
+  process.exit(1);
+}
+function cleanup() {
+  try {
+    rmSync(scratch, { recursive: true, force: true });
+  } catch {}
+}

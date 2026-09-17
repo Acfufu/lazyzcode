@@ -5,8 +5,8 @@
 // metrics.json。trial 循环 tier=heavy 由 brief 措辞承载（全纪律面在役，闸门消融才有意义）。
 // 全程串行（并发上限 1，冻结决策）；工件只写 artifacts/ablation/<trialId>/（gitignored）。
 //
-// CLI：node scripts/ablation/run-trial.mjs --variant <A-F> --task <id> [--rep 1] [--batch b1]
-//        [--timeout-ms <n>] [--force]
+// CLI：node scripts/ablation/run-trial.mjs --variant <A-J> --task <id> [--rep 1] [--batch b1]
+//        [--timeout-ms <n>] [--tier-hint <heavy|light>] [--force]
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { argv, exit } from "node:process";
@@ -23,10 +23,25 @@ function git(cwd, args) {
   return spawnSync("git", args, { cwd, encoding: "utf8", shell: false, timeout: 30_000 });
 }
 
-function composePrompt(taskDir, legDef) {
+// tier 指令行（b2 J 臂，L0 文本层强制——预注册文本，改动须留 attempt note）：
+export const TIER_HINT_LINES = {
+  heavy: "Tier directive: treat this goal as HEAVY — register with --tier heavy and run the full review/comparator/attestation protocol.",
+  light: "Tier directive: treat this goal as LIGHT — register with the default tier and keep the process minimal.",
+};
+
+function composePrompt(taskDir, legDef, tierLine = null, legIndex = 0) {
   if (legDef?.wake) return WAKE_PROMPT;
-  const brief = readFileSync(join(taskDir, "brief.md"), "utf8").trimEnd();
-  return /^zw(\s|$)/.test(brief) ? brief : `zw ${brief}`;
+  let prompt;
+  if (legDef?.promptFile) {
+    // γ leg2 需求变更注入：任务目录内的独立提示词文件（相对路径）。
+    prompt = readFileSync(join(taskDir, legDef.promptFile), "utf8").trimEnd();
+  } else {
+    const brief = readFileSync(join(taskDir, "brief.md"), "utf8").trimEnd();
+    prompt = /^zw(\s|$)/.test(brief) ? brief : `zw ${brief}`;
+  }
+  // tier 指令只挂首 leg（后续 leg 是 resume 续跑，不是新目标）。
+  if (tierLine && legIndex === 0) prompt = `${prompt}\n${tierLine}`;
+  return prompt;
 }
 
 // 五类工件归档：缺席面留显式标记（B 变体无 .lazyzcode 属预期形态，标记而非静默缺席）。
@@ -97,11 +112,15 @@ export async function runTrial({
   batch = "b1",
   timeoutMs = null,
   force = false,
+  tierHint = null,
 }) {
   const def = VARIANTS[variant];
   const taskDir = join(TASKS_DIR, task);
   if (!def) throw new Error(`未知变体：${variant}`);
   if (!existsSync(taskDir)) throw new Error(`任务目录不存在：${taskDir}（N5 落任务集）`);
+  const effHint = tierHint ?? def.tierHint ?? null;
+  if (effHint && !TIER_HINT_LINES[effHint]) throw new Error(`tier-hint 非法：${effHint}（heavy|light）`);
+  const tierLine = effHint ? TIER_HINT_LINES[effHint] : null;
   const trialId = `${batch}-${variant}-${task}-r${rep}`;
   const p = trialPaths(trialId);
   if (existsSync(p.dir) && !force) throw new Error(`trial 目录已存在：${p.dir}（重跑加 --force）`);
@@ -133,7 +152,7 @@ export async function runTrial({
   let engineExit = null;
   let engineKilled = false;
   for (const [i, legDef] of legs.entries()) {
-    const prompt = composePrompt(taskDir, legDef);
+    const prompt = composePrompt(taskDir, legDef, tierLine, i);
     const r = await spawnEngine({
       home: p.home,
       cwd: p.scratch,
@@ -158,7 +177,7 @@ export async function runTrial({
 
   writeFileSync(
     join(p.dir, "trial-meta.json"),
-    `${JSON.stringify({ trialId, batch, variant, task, rep, install: install.installed, engineExit, engineKilled, legs: legs.length, at: new Date().toISOString() }, null, 2)}\n`,
+    `${JSON.stringify({ trialId, batch, variant, task, rep, tierHint: effHint, install: install.installed, engineExit, engineKilled, legs: legs.length, at: new Date().toISOString() }, null, 2)}\n`,
   );
   const metrics = extractMetrics(trialId);
   return { trialId, verdictExit, metrics };
@@ -173,11 +192,12 @@ if (import.meta.url === `file://${argv[1]}`) {
       else if (argv[i] === "--rep") a.rep = Number(argv[++i]);
       else if (argv[i] === "--batch") a.batch = argv[++i];
       else if (argv[i] === "--timeout-ms") a.timeoutMs = Number(argv[++i]);
+      else if (argv[i] === "--tier-hint") a.tierHint = argv[++i];
       else if (argv[i] === "--force") a.force = true;
       else throw new Error(`未知参数：${argv[i]}`);
     }
     if (!a.variant || !a.task) {
-      console.error("用法：--variant <A-F> --task <id> [--rep n] [--batch b] [--timeout-ms n] [--force]");
+      console.error("用法：--variant <A-J> --task <id> [--rep n] [--batch b] [--timeout-ms n] [--tier-hint heavy|light] [--force]");
       exit(2);
     }
     const r = await runTrial(a);

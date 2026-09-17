@@ -30,6 +30,7 @@ export const OUT_ROOT = process.env.LZY_ABLATION_OUT_ROOT || join(REPO_ROOT, "ar
 // install=是否装插件（B 裸引擎不装）；prune=装前从包拷贝里剪掉的 plugin/ 子目录
 // （C −文本层：去 skills+agents 留 hooks 与 CLI）；switches=引擎会话 env（恰 "1" 才消融，
 // 下沉到 trial 内一切 lzy/钩子 子进程）。
+// b2 扩展臂 G/H/I/J（设计 §3 预注册，2026-09-18 增补）——本行即 attempt note。
 export const VARIANTS = {
   A: { name: "full-control", install: true, prune: [], switches: {} },
   B: { name: "bare-engine", install: false, prune: [], switches: {} },
@@ -64,6 +65,20 @@ export const VARIANTS = {
     prune: [],
     switches: { LZY_ABLATE_INTEGRITY: "1", LZY_ABLATE_ATTEST: "1" },
   },
+  G: {
+    name: "no-verify-gate",
+    install: true,
+    prune: [],
+    switches: { LZY_ABLATE_VERIFY: "1" },
+  },
+  H: {
+    name: "no-plan-tier-gates",
+    install: true,
+    prune: [],
+    switches: { LZY_ABLATE_PLAN_GATE: "1", LZY_ABLATE_TIER_GATE: "1" },
+  },
+  I: { name: "no-roles", install: true, prune: ["agents"], switches: {} },
+  J: { name: "tier-heavy-forced", install: true, prune: [], switches: {}, tierHint: "heavy" },
 };
 
 // 整包树拷贝排除集（N4 冻结）：防宿主循环态/构建产物泄入 trial 会话。

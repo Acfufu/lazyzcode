@@ -11,6 +11,9 @@ import {
 
 try {
   const input = readStdinJson();
+  // LZY_ABLATE_HOOK_SESSION_START（ADR-0015）：恰 "1" = 开场广播全灭——stdin 已吃净后
+  // 短路（emit {} + exit 0，failOpen 同款）；其余取值行为逐字段同。
+  if (process.env.LZY_ABLATE_HOOK_SESSION_START === "1") failOpen();
   if (!input) failOpen(); // 无/坏 stdin：静默（评审 R1-2，对齐 stop.js）
   const cwd = inputCwd(input);
   const goal = readGoal(cwd);

@@ -71,6 +71,9 @@ function waterlineNudge() {
 
 try {
   const input = readStdinJson();
+  // LZY_ABLATE_HOOK_STOP（ADR-0015）：恰 "1" = 拉回全灭——stdin 已吃净后短路
+  // （emit {} + exit 0，failOpen 同款），续跑/振数/水位全不动；其余取值行为逐字段同。
+  if (process.env.LZY_ABLATE_HOOK_STOP === "1") failOpen();
   if (!input) failOpen(); // 无/坏 stdin = 没有可靠输入，宁可放手也不凭空续跑（评审 R1-2）
   const cwd = inputCwd(input);
   const sessionId = inputSessionId(input);

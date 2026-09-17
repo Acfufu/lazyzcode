@@ -27,6 +27,9 @@ const MAX_DETAIL = 300;
 
 try {
   const input = readStdinJson();
+  // LZY_ABLATE_HOOK_TRIPWIRE（ADR-0015）：恰 "1" = 空转绊线全灭——stdin 已吃净后短路
+  // （emit {} + exit 0，failOpen 同款），连击计数不动；其余取值行为逐字段同。
+  if (process.env.LZY_ABLATE_HOOK_TRIPWIRE === "1") failOpen();
   if (!input) failOpen();
   const cwd = inputCwd(input);
   const sessionId = inputSessionId(input);

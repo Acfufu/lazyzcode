@@ -26,6 +26,9 @@ const ALIAS_INITIAL_RE = /^\s*(ulw|ultrawork)(?![a-z0-9_-])/i;
 
 try {
   const input = readStdinJson();
+  // LZY_ABLATE_HOOK_TRIGGER（ADR-0015）：恰 "1" = 触发词层全灭——stdin 已吃净后短路
+  // （emit {} + exit 0，failOpen 同款），注入/认领/哨兵旗标全不动；其余取值行为逐字段同。
+  if (process.env.LZY_ABLATE_HOOK_TRIGGER === "1") failOpen();
   const prompt = typeof input?.prompt === "string" ? input.prompt : "";
   if (!BARE_ZW_RE.test(prompt) && !EXPLICIT_RE.test(prompt) && !ALIAS_RE.test(prompt)) failOpen();
 

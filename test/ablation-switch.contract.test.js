@@ -1,12 +1,13 @@
-// ablation-switch 契约测试（ADR-0015，goal true-ablation-full-flow#N2）：机器层 kill-switch
-// 每开关两半——开（恰 "1"）=闸门确被绕过（fixture CLI stdout 为证）、关=与改动前 fixture
-// 结果一致（同一 fixture 上拒辞逐字段同，先关后开串行复用一仓）。取值语义钉：缺席/空串/
-// "0"/"true" 皆关——开关判定严格 === "1"，防半开半关的脏配置静默混入消融样本。
+// ablation-switch 契约测试（ADR-0015，goal true-ablation-full-flow#N2/N3）：全部 10 个
+// kill-switch（机器层 5 + 钩子层 5）每开关两半——开（恰 "1"）=闸门确被绕过/钩子确被静默
+// （fixture CLI stdout 为证）、关=与改动前 fixture 结果一致（同一 fixture 上拒辞/注入逐字段
+// 同，先关后开串行复用一仓）。取值语义钉：缺席/空串/"0"/"true" 皆关——开关判定严格 === "1"，
+// 防半开半关的脏配置静默混入消融样本。
 // 红半约定（N1 钉死）：开关态无法先于改动存在，红半=开关开的 fixture 表面捕获。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -156,6 +157,134 @@ test("取值语义钉：恰 \"1\" 消融，缺席/空串/\"0\"/\"true\" 皆关�
     }
     const on = lzy(["loop", "plan", ".lazyzcode/plan.md"], d, { LZY_ABLATE_PLAN_GATE: "1" });
     assert.equal(on.code, 0, on.out); // 恰 "1" 才是开
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ── 钩子层（N3）：五脚本 readStdinJson() 后短路，emit {} + exit 0 ───────────────
+// 开半的「stdin 吃净」由 spawnSync 带 input 不 EPIPE + exit 0 共同证明（子进程不读 stdin
+// 即早退，父端写侧必断）。写面死透（计数/认领/旗标零写）是消融语义的一部分，一并钉。
+
+const HOOKS = join(ROOT, "plugin", "hooks");
+
+function hookRun(name, input, env = {}) {
+  const r = spawnSync(process.execPath, [join(HOOKS, name)], {
+    input: typeof input === "string" ? input : JSON.stringify(input),
+    encoding: "utf8",
+    timeout: 20_000,
+    env: { ...process.env, HOME, USERPROFILE: HOME, ...env },
+  });
+  return { code: r.status, out: (r.stdout ?? "").trim() };
+}
+
+function goalAt(dir, status = "executing", steps = [{ id: "N1", kind: "N", status: "pending" }]) {
+  mkdirSync(join(dir, ".lazyzcode", "loop"), { recursive: true });
+  writeFileSync(
+    join(dir, ".lazyzcode", "loop", "goal.json"),
+    JSON.stringify({ slug: "t", title: "t", status, steps }),
+  );
+}
+
+function scratch(prefix) {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  goalAt(d);
+  return d;
+}
+
+test("HOOK_STOP：关=未完成目标拉回且计数；开={}放手零写面", () => {
+  const d = scratch("lzy-abl-hs-");
+  try {
+    mkdirSync(join(d, ".lazyzcode", "loop", "sessions"), { recursive: true });
+    writeFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), JSON.stringify({ continues: 0 }));
+    const inp = { sessionId: "s", cwd: d };
+    const off = JSON.parse(hookRun("stop.js", inp).out);
+    assert.equal(off.continue, true); // 拉回在役
+    writeFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), JSON.stringify({ continues: 0 }));
+    const on = hookRun("stop.js", inp, { LZY_ABLATE_HOOK_STOP: "1" });
+    assert.equal(on.code, 0);
+    assert.equal(on.out, "{}"); // 拉回全灭
+    const counter = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), "utf8"));
+    assert.equal(counter.continues, 0); // 计数零写=预算面也没动
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("HOOK_TRIGGER：关=触发词注入+认领落账；开={}零注入零认领", () => {
+  const d = scratch("lzy-abl-ht-");
+  try {
+    const inp = { prompt: "zw fix the login bug", sessionId: "s", cwd: d };
+    const off = JSON.parse(hookRun("trigger.js", inp).out);
+    assert.match(off.additionalContext, /Trigger word detected/); // 注入在役
+    assert.ok(existsSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"))); // 认领落账
+    const d2 = scratch("lzy-abl-ht2-");
+    try {
+      const on = hookRun("trigger.js", { ...inp, cwd: d2 }, { LZY_ABLATE_HOOK_TRIGGER: "1" });
+      assert.equal(on.code, 0);
+      assert.equal(on.out, "{}"); // 触发词层全灭
+      assert.ok(!existsSync(join(d2, ".lazyzcode", "loop", "sessions", "s.json"))); // 认领零写
+    } finally {
+      rmSync(d2, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("HOOK_SESSION_START：关=开场广播循环态；开={}静默", () => {
+  const d = scratch("lzy-abl-hss-");
+  try {
+    const inp = { cwd: d };
+    const off = JSON.parse(hookRun("session-start.js", inp).out);
+    assert.match(off.additionalContext, /目标循环/); // 广播在役
+    const on = hookRun("session-start.js", inp, { LZY_ABLATE_HOOK_SESSION_START: "1" });
+    assert.equal(on.code, 0);
+    assert.equal(on.out, "{}"); // 广播全灭
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("HOOK_TRIPWIRE：关=两连败告警；开={}连击计数零写", () => {
+  const failIn = (d) => ({
+    session_id: "s",
+    cwd: d,
+    tool_name: "mcp__codegraph__codegraph_explore",
+    tool_input: { projectPath: "/x", query: "q" },
+    error: "Tool execution timed out after 30000ms",
+    is_interrupt: false,
+  });
+  const d = scratch("lzy-abl-htr-");
+  try {
+    assert.equal(hookRun("tripwire.js", failIn(d)).out, "{}"); // 首败只计数
+    const off = JSON.parse(hookRun("tripwire.js", failIn(d)).out); // 二败达阈值
+    assert.match(off.additionalContext, /连续失败 2 次/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+  const d2 = scratch("lzy-abl-htr2-");
+  try {
+    for (const _ of [1, 2]) {
+      const on = hookRun("tripwire.js", failIn(d2), { LZY_ABLATE_HOOK_TRIPWIRE: "1" });
+      assert.equal(on.code, 0);
+      assert.equal(on.out, "{}"); // 绊线全灭
+    }
+    assert.ok(!existsSync(join(d2, ".lazyzcode", "loop", "sessions", "s.json"))); // 计数零写
+  } finally {
+    rmSync(d2, { recursive: true, force: true });
+  }
+});
+
+test("HOOK_COMMENT_CHECKER：关=TODO 注入提示；开={}静默", () => {
+  const d = scratch("lzy-abl-hcc-");
+  try {
+    const inp = { cwd: d, tool_name: "Write", tool_input: { content: "// TODO fix me\n" } };
+    const off = JSON.parse(hookRun("comment-checker.js", inp).out);
+    assert.match(off.additionalContext, /comment-checker/); // 巡逻在役
+    const on = hookRun("comment-checker.js", inp, { LZY_ABLATE_HOOK_COMMENT_CHECKER: "1" });
+    assert.equal(on.code, 0);
+    assert.equal(on.out, "{}"); // 巡逻全灭
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

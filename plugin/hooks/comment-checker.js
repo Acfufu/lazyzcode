@@ -39,6 +39,9 @@ function composeMessage(hits) {
 
 try {
   const input = readStdinJson();
+  // LZY_ABLATE_HOOK_COMMENT_CHECKER（ADR-0015）：恰 "1" = 注释巡逻全灭——stdin 已吃净后
+  // 短路（emit {} + exit 0，failOpen 同款）；其余取值行为逐字段同。
+  if (process.env.LZY_ABLATE_HOOK_COMMENT_CHECKER === "1") failOpen();
   if (!input) failOpen(); // 无/坏 stdin：静默（评审 R1-2）
   const cwd = inputCwd(input);
   const goal = readGoal(cwd);

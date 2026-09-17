@@ -1,0 +1,6 @@
+{
+  "legs": [
+    { "maxTurns": 5 },
+    { "maxTurns": 30, "wake": true }
+  ]
+}

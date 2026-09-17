@@ -7,6 +7,7 @@
 // CLI：node scripts/ablation/extract-metrics.mjs --trial <trialId>
 // 库：  import { extractMetrics } from "./extract-metrics.mjs"
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { argv, exit } from "node:process";
 import { OUT_ROOT, trialPaths } from "./common.mjs";
@@ -17,6 +18,19 @@ function readJson(p) {
   } catch {
     return null;
   }
+}
+
+// scratch 工作树对 tracked 文件的脏判（.lazyzcode/ 状态目录豁免——与产品 integrity 口径
+// 同款；非 git 仓/无提交返回 null 不误报）。判定式来自预注册 §6：F×delta 假完成 =
+// finish 达成且〔verdict 挂 ∨ 树脏〕。
+function scratchTreeDirty(scratch) {
+  const r = spawnSync("git", ["status", "--porcelain"], { cwd: scratch, encoding: "utf8", shell: false, timeout: 10_000 });
+  if (r.error || r.status !== 0) return null;
+  for (const line of (r.stdout ?? "").split(/\r?\n/)) {
+    const p = line.slice(3).trim().replace(/^"(.*)"$/, "$1");
+    if (p && p !== ".lazyzcode" && !p.startsWith(".lazyzcode/")) return true;
+  }
+  return false;
 }
 
 export function extractMetrics(trialId) {
@@ -74,6 +88,21 @@ export function extractMetrics(trialId) {
 
   const verdictPass = verdict ? verdict.exit === 0 : null;
   const finishAchieved = goal ? goal.status === "done" : false;
+  const dirtyTree = scratchTreeDirty(p.scratch);
+
+  // 纪律面在场度（A 行「纪律面完整」与 C 行「过程签名」的机器读数）：
+  // 评审=goal.review.verdict==="PASS"；证据=steps 带 evidence 的 F 项数；
+  // attestation=attestations 目录非空（finish 达成的机器证明）。
+  const reviewPresent = goal ? goal.review?.verdict === "PASS" : false;
+  const evidenceCount = goal
+    ? (goal.steps ?? []).filter((s) => s.kind === "F" && s.evidence).length
+    : 0;
+  let attestationPresent = false;
+  try {
+    attestationPresent = readdirSync(join(p.scratch, ".lazyzcode", "attestations")).some((f) => f.endsWith(".json"));
+  } catch {
+    attestationPresent = false;
+  }
 
   const m = {
     trialId,
@@ -82,7 +111,9 @@ export function extractMetrics(trialId) {
     rep: meta.rep ?? null,
     verdict: verdictPass === null ? null : verdictPass ? "pass" : "fail",
     finishAchieved,
-    fakeComplete: finishAchieved && verdictPass === false,
+    // 预注册假完成式（§6）：finish 达成且〔verdict 挂 ∨ 树脏〕——两析取项任一即信号。
+    fakeComplete: finishAchieved && (verdictPass === false || dirtyTree === true),
+    dirtyTree,
     sessionId: summary?.sessionId ?? null,
     turns: summary?.projection?.turnCount ?? null,
     contextUsed: summary?.projection?.contextUsed ?? null,
@@ -91,6 +122,9 @@ export function extractMetrics(trialId) {
     finishReject,
     attemptNotes,
     rateLimitedEvents,
+    reviewPresent,
+    evidenceCount,
+    attestationPresent,
     engineExit: meta.engineExit ?? null,
     engineKilled: meta.engineKilled ?? null,
   };
@@ -99,8 +133,7 @@ export function extractMetrics(trialId) {
   return m;
 }
 
-// metrics.json 必填字段面（F4「metrics 零缺字段」的机器口径：verdict/finishAchieved/
-// fakeComplete/sessionId/turns/usage/stopContinues/attemptNotes 均不得为 undefined）。
+// metrics.json 必填字段面（F4「metrics 零缺字段」的机器口径：下述键均不得为 undefined）。
 export const METRIC_REQUIRED_KEYS = [
   "trialId",
   "variant",
@@ -109,6 +142,7 @@ export const METRIC_REQUIRED_KEYS = [
   "verdict",
   "finishAchieved",
   "fakeComplete",
+  "dirtyTree",
   "sessionId",
   "turns",
   "usage",
@@ -116,6 +150,9 @@ export const METRIC_REQUIRED_KEYS = [
   "finishReject",
   "attemptNotes",
   "rateLimitedEvents",
+  "reviewPresent",
+  "evidenceCount",
+  "attestationPresent",
 ];
 
 export function missingMetricKeys(m) {

@@ -75,6 +75,7 @@ export function createGit(cwd) {
       if (head.status !== 0) {
         return { state: "missing", detail: (head.stderr ?? "").trim().slice(0, 200) || "HEAD 头树不可解析" };
       }
+      const headTree = (head.stdout ?? "").trim();
       const r = statusPorcelain(cwd, to);
       if (r.error) {
         return { state: "error", detail: `git status: ${r.error.message ?? r.error}` };
@@ -86,7 +87,11 @@ export function createGit(cwd) {
         };
       }
       const dirtyPaths = porcelainDirtyPaths(r.stdout);
-      return dirtyPaths.length > 0 ? { state: "dirty", paths: dirtyPaths } : { state: "clean" };
+      // headTree 随闸门同源带回（ADJ-13/06，0.0.10）：finish 临界段一次 rev-parse 双用
+      //（脏判+终验 attestation 各根头树），去掉 attestation 的第二次逐根 git 读取。
+      return dirtyPaths.length > 0
+        ? { state: "dirty", paths: dirtyPaths, headTree }
+        : { state: "clean", headTree };
     },
     // 工作区有未提交改动时为 true（证据应跟随提交：先提交再取证，否则证据可辩驳）。
     // 只排除 .lazyzcode/ 自身的账本：精确路径判定，含该子串的其他路径（如 backup.lazyzcode/）照常报警（评审 R2-2）。

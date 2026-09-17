@@ -1102,6 +1102,7 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
   // 预算（< LOCK_STALE_MS 10s 留余量；单根超时/预算耗尽按 fail-closed 拒）。
   const GATE_BUDGET_MS = 8_000;
   const gateStart = Date.now();
+  const gateHeadTrees = new Map();
   for (const root of [cwd, ...(goal.subjects ?? [])]) {
     const remaining = GATE_BUDGET_MS - (Date.now() - gateStart);
     let check;
@@ -1110,6 +1111,7 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
     } else {
       check = createGit(root).integrity(remaining);
     }
+    if (check.headTree) gateHeadTrees.set(root, check.headTree);
     if (check.state === "clean") continue;
     incMetrics(cwd, "finish_reject_dirty");
     const which = root === cwd ? "host" : "subject";
@@ -1121,6 +1123,17 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
           : `git 调用失败（fail-closed 按拒处理）：修复 git 后重跑 finish。原始报错：${check.detail ?? "未知"}`;
     throw new LoopError(
       `finish 完整性闸门拒绝（${check.state}）：${which} ${root}。${advice}`,
+    );
+  }
+  // ── 窗口竞态复采（ADJ-06，0.0.10）：finish 窗口曾三次采样（verify 指纹/闸门各根
+  // 头树/attestation 再读），两次之间另有会话提交可产出自我矛盾的 LOOP_COMPLETE——
+  // 闸门后复采复合指纹断言一致，不等=窗口内树变更，拒。
+  const fingerprintNow = fingerprintSubjects(cwd, goal.subjects);
+  if (fingerprintNow !== fingerprint) {
+    incMetrics(cwd, "finish_reject_race");
+    throw new LoopError(
+      `finish 窗口内工作树变更（闸门时点复采复合指纹与取证时点不一致——另有会话提交）：` +
+        `重新核验（lzy loop verify）后重跑 finish`,
     );
   }
   // ── 原子收尾（v008#N6）：先在内存置 done/finishedAt（writer 渲染完成态，报告状态行
@@ -1141,7 +1154,7 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
   // 契约（LoopError、状态保持 executing、goal.json 不落 done）。
   let attestation;
   try {
-    attestation = writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, reportWritten: typeof writeReport === "function" });
+    attestation = writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, headTrees: gateHeadTrees, reportWritten: typeof writeReport === "function" });
   } catch (e) {
     throw new LoopError(
       `终验 attestation 写失败（finish 未置 done，状态保持 executing）：修复写入失败原因后重跑 finish。原始错误：${e?.message ?? e}`,
@@ -1155,7 +1168,7 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
 // tmp+rename 原子写。attemptId=<slug>-<finish 时刻 UTC 紧凑串（秒粒度）>——追加不覆写
 // （同 slug 重注册再 finish 天然新 id）；目录在 loop/ 之外=doctor 疤痕巡逻零接触、
 // reset 不清（历史证明，同 evidence/ 语义）。
-function writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, reportWritten }) {
+function writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, headTrees = null, reportWritten }) {
   const dir = join(cwd, ".lazyzcode", "attestations");
   mkdirSync(dir, { recursive: true });
   let attemptId = `${goal.slug}-${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`;
@@ -1188,9 +1201,11 @@ function writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, r
     tier: goal.tier ?? "light",
     lzyVersion: readLzyVersion(),
     planHash: goal.planHash ?? null,
+    // 各根头树复用完整性闸门同源采样（ADJ-13/06：临界段少一轮逐根 git 读取，
+    // 且头树与指纹判定同点，机器证明不再自相矛盾）；缺值时回退直读（防御）。
     subjects: [resolve(cwd), ...(goal.subjects ?? [])].map((root) => ({
       root,
-      headTreeHash: createGit(root).headTreeHash(),
+      headTreeHash: headTrees?.get(root) ?? createGit(root).headTreeHash(),
     })),
     fingerprint: fingerprint ?? null,
     evidence,

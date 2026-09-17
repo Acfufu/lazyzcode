@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -534,4 +534,33 @@ test("无 planHash 存量：升档前移拒；executing 重采纳补快照后升
   cycle(d2);
   writeFileSync(join(d2, ".lazyzcode", "plan.md"), "- [N1] x\n- [F1] v2\n");
   assert.throws(() => adoptPlan(d2, join(d2, ".lazyzcode", "plan.md")), /已有计划快照/);
+});
+
+// ── ⑭ 窗口竞态复采（ADJ-06/13，0.0.10）──────────────────────────────────────
+test("窗口竞态：闸门后 writeReport 内提交，attestation 指纹与头树仍同源自洽（闸门同点采样）", () => {
+  const d = repo();
+  cycle(d, { heavy: true });
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1 }] }));
+  const { goal } = finishLoop(d, createGit(d), {
+    writeReport: (o) => {
+      writeGoalReport(o.cwd, o.git, o.goal);
+      // 模拟窗口内另一会话提交（闸门与 attestation 落盘之间——旧实现此处重读头树）
+      writeFileSync(join(d, "late.txt"), "late\n");
+      spawnSync("git", ["add", "-A"], { cwd: d });
+      spawnSync("git", ["commit", "-qm", "late"], { cwd: d });
+    },
+  });
+  assert.equal(goal.status, "done");
+  const files = attestationFiles(d);
+  const doc = JSON.parse(readFileSync(join(d, ".lazyzcode", "attestations", files[0]), "utf8"));
+  const recompute = createHash("sha256")
+    .update(
+      doc.subjects
+        .slice()
+        .sort((a, b) => (a.root < b.root ? -1 : a.root > b.root ? 1 : 0))
+        .map((s) => `${realpathSync(s.root)}\0${s.headTreeHash}\n`)
+        .join(""),
+    )
+    .digest("hex");
+  assert.equal(doc.fingerprint, recompute, "机器证明内指纹与各根头树同点采样、不自相矛盾");
 });

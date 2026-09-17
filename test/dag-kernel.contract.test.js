@@ -467,6 +467,8 @@ test("跨实例隔离：旧实例红不配新实例绿、supersedes 不跨实例
   assert.equal(g2b.length, 2, "实例2 两代绿");
   const red2 = dag2.nodes.find((n) => n.kind === "evidence" && n.half === "red" && n.text === "实例2红半");
   const red2Edges = dag2.edges.filter((e) => e.type === "red_of" && e.from === red2.id);
-  assert.equal(red2Edges.length, 1, "实例2 红半只配其落地后的现行绿（g2b）；重配对语义由 dependents 单测钉");
-  assert.equal(red2Edges[0].to, g2b[1].id);
+  // 重钉（0.1.0 棒B INV-09 反向配对，ADR-0016）：录时绿已在场（g2=锚定现行）→ 反向边；
+  // 落地时 pairReds 再补现行绿 g2b——两条 red_of 合法、最新为现行（dag.js 多条语义）。
+  assert.equal(red2Edges.length, 2, "实例2 红半两条 red_of：录时反向边指锚定绿 g2 + 落地时 pairReds 指现行绿 g2b");
+  assert.deepEqual(red2Edges.map((e) => e.to), [g2.id, g2b[1].id]);
 });

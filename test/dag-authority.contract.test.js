@@ -31,6 +31,7 @@ import {
   completeStep,
   finishLoop,
   readGoal,
+  recordEvidenceHalf,
   registerGoal,
   resetLoop,
   setTier,
@@ -85,8 +86,9 @@ function commitAll(d, msg) {
   spawnSync("git", ["commit", "-qm", msg], { cwd: d });
 }
 
-// 造一个已取证的 executing goal（F1 绿半已入账本），heavy=true 时走 HEAVY 采纳门。
-function cycle(d, { heavy = false } = {}) {
+// 造一个已取证的 executing goal（F1 红半+绿半已入账本），heavy=true 时走 HEAVY 采纳门。
+// red=false 造缺红夹具（0.1.0 棒B INV-09 拒面测试专用；默认红半在场=0.0.10 行为基线）。
+function cycle(d, { heavy = false, red = true } = {}) {
   registerGoal(d, "t", "title", { tier: heavy ? "heavy" : "light" });
   const p = join(d, ".lazyzcode", "plan.md");
   mkdirSync(join(d, ".lazyzcode"), { recursive: true });
@@ -94,6 +96,7 @@ function cycle(d, { heavy = false } = {}) {
   adoptPlan(d, p, heavy ? { review: "plan-reviewer: PASS — t" } : undefined);
   startLoop(d, createGit(d));
   completeStep(d, createGit(d), "N1", { note: "x" });
+  if (red) recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "改前态失败取证" });
   completeStep(d, createGit(d), "F1", { evidence: "绿半" });
 }
 

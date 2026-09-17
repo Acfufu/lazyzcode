@@ -135,7 +135,7 @@ function assertSurface(surface) {
   }
 }
 
-export function appendEvidenceNode(dag, { slug, step, seq, half, surface = null, text = "", files = [], attempt = null }) {
+export function appendEvidenceNode(dag, { slug, step, seq, half, surface = null, text = "", files = [], attempt = null, harnessHash = null, harnessSpec = null }) {
   if (!slug || !step) throw new DagError("evidence 节点缺 slug/step");
   if (!EVIDENCE_HALVES.has(half)) throw new DagError(`evidence half 非法：${half}（red|green|waived）`);
   // surface 可空：waived=豁免本无红表面；green 指纹 null=宿主非 git 仓的未绑定证据
@@ -154,6 +154,13 @@ export function appendEvidenceNode(dag, { slug, step, seq, half, surface = null,
     at: Date.now(),
   };
   if (Number.isInteger(attempt)) node.attempt = attempt;
+  // harness 冻结（0.1.0 棒B，INV-08 最小形，ADR-0016）：取证程序身份可选绑定——缺省
+  // 不写字段=零语义变化；同半对红绿 harnessHash 俱在且不等=程序不同源（HEAVY finish
+  // 拒，LIGHT 展示 ⚠）。
+  if (harnessHash) {
+    node.harnessHash = harnessHash;
+    node.harnessSpec = harnessSpec ?? null;
+  }
   dag.nodes.push(node);
   return node;
 }

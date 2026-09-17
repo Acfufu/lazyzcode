@@ -34,6 +34,8 @@ const ACTIVE_STATES = new Set(["planning", "executing"]);
 // --note / --evidence 入账上限（评审 R2-9）
 export const NOTE_MAX = 300;
 export const EVIDENCE_MAX = 4000;
+// --harness 取证程序串上限（0.1.0 棒B INV-08）：一句可复跑的程序描述
+export const HARNESS_MAX = 300;
 // 证据附件上限：单 F 项 ≤4 个文件、单个 ≤20MB（截图/响应转储足够；防手滑塞巨物）
 export const EVIDENCE_FILES_MAX = 4;
 export const EVIDENCE_FILE_MAX_BYTES = 20 * 1024 * 1024;
@@ -754,7 +756,7 @@ function attachEvidenceFiles(cwd, goal, step, files, seq = 1) {
   });
 }
 
-function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = null } = {}) {
+function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = null, harness = null } = {}) {
   // done 态恢复白名单（ADJ-10 出口，0.0.10）：done 目标的账本分歧曾把报错给的恢复命令
   // （step done rebind）反拒成死端——rebind 类命令放行，重 finish 落新 attestation。
   const goal = requireActive(cwd, "executing", "done");
@@ -772,6 +774,15 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
     throw new LoopError(`--note 超上限 ${NOTE_MAX} 字符（当前 ${trimmedNote.length}）；请凝成一两句`);
   }
   const trimmedEvidence = evidence?.trim() ?? null;
+  // harness 冻结（0.1.0 棒B，INV-08）：--harness 声明取证程序串（≤300 字符），sha256
+  // 入证据节点——同半对红绿程序不同源在 HEAVY finish 拒（INV-08 执法在 finish 闸块）。
+  const trimmedHarness = harness?.trim() || null;
+  if (trimmedHarness && trimmedHarness.length > HARNESS_MAX) {
+    throw new LoopError(`--harness 超上限 ${HARNESS_MAX} 字符（当前 ${trimmedHarness.length}）；凝成一句可复跑的程序描述`);
+  }
+  if (trimmedHarness && step.kind !== "F") {
+    throw new LoopError(`--harness 仅 F 项支持（${id} 是 ${step.kind} 项；红绿取证程序身份是终验项的纪律）`);
+  }
   if (step.kind === "F") {
     if (!trimmedEvidence) {
       throw new LoopError(
@@ -828,6 +839,7 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
         : null,
       text: trimmedEvidence ?? "",
       files: attached ?? [],
+      ...(trimmedHarness ? { harnessHash: sha256Hex(trimmedHarness), harnessSpec: trimmedHarness } : {}),
     });
     if (step.evidence.fingerprint) {
       addCapturedOn(dag, greenNode.id, { kind: "fingerprint", value: step.evidence.fingerprint });
@@ -844,12 +856,12 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
 // 红半/waive 边只存在中央 DAG（goal.json 零改动——机器只记账不裁决，缺半不拦任何门，
 // 执法仍在协议文本+comparator）。E-01 调和：red 各绑各面——--surface 显式外部表面
 // （已发布版版本号等自由串），缺省=当前复合指纹（改前取证时点即 base 树）。
-export function recordEvidenceHalf(cwd, git, id, { half, text = null, files = null, surfaceExternal = null } = {}) {
+export function recordEvidenceHalf(cwd, git, id, { half, text = null, files = null, surfaceExternal = null, harness = null } = {}) {
   requireGoalPreLock(cwd); // fail-fast 补口（v009 棒2#N6，ADR-0006 家法）：无 goal 不留空壳
-  return withLock(cwd, () => doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal }));
+  return withLock(cwd, () => doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal, harness }));
 }
 
-function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal }) {
+function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal, harness }) {
   const goal = requireActive(cwd, "executing");
   const step = goal.steps.find((s) => s.id === id);
   if (!step) {
@@ -876,6 +888,13 @@ function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal
     throw new LoopError(
       `waive-red 不绑表面（豁免本无面）——--surface 不适用；红半面请用 lzy evidence red --surface`,
     );
+  }
+  if (isWaive && harness != null) {
+    throw new LoopError(`waive-red 不收 harness（豁免面无程序可绑，INV-08）——--harness 不适用`);
+  }
+  const trimmedHarness = harness?.trim() || null;
+  if (trimmedHarness && trimmedHarness.length > HARNESS_MAX) {
+    throw new LoopError(`--harness 超上限 ${HARNESS_MAX} 字符（当前 ${trimmedHarness.length}）；凝成一句可复跑的程序描述`);
   }
   if (surfaceExternal !== null && typeof surfaceExternal === "string" && !surfaceExternal.trim()) {
     throw new LoopError(`--surface 值为空：外部表面须为非空描述（如 "npm registry@0.0.9"）；去掉该旗标则缺省绑复合指纹`);
@@ -908,8 +927,17 @@ function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal
     text: trimmed,
     files: [],
     attempt: goal.attempt,
+    ...(trimmedHarness ? { harnessHash: sha256Hex(trimmedHarness), harnessSpec: trimmedHarness } : {}),
   });
   if (surface) addCapturedOn(dag, node.id, surface);
+  // 反向配对（0.1.0 棒B INV-09 恢复路径，ADR-0016）：绿落地后补录红/waive——若该步已有
+  // 现行锚定绿（findGreenByGeneration 代次语义=goal.json evidenceSeq-1，与 finish 检查
+  // 同源同一查找原语，孤儿 ghost 角两处自然收敛），当场加 red_of 指向它。pairReds 本体
+  // 不动：绿前录=原语义下次绿落地时配对；绿后录=反向配对立即成对（多条 red_of 合法、
+  // 最新为现行）。
+  const anchorGen = (step.evidenceSeq ?? 1) - 1;
+  const anchored = anchorGen >= 1 ? findGreenByGeneration(dag, goal.slug, id, anchorGen, goal.attempt) : null;
+  if (anchored) addEdge(dag, { type: "red_of", from: node.id, to: anchored.id });
   node.files = attachHalfFiles(cwd, goal, step, files, seq, half, node.id) ?? [];
   saveDag(cwd, dag);
   return { node, dirty: git ? git.dirty() : false };
@@ -1102,6 +1130,10 @@ function anchoredGreenFor(dag, goal, fid) {
   return findGreenByGeneration(dag, goal.slug, fid, gen, goal.attempt);
 }
 
+function sha256Hex(s) {
+  return createHash("sha256").update(s).digest("hex");
+}
+
 export function finishLoop(cwd, git, opts = {}) {
   requireGoalPreLock(cwd);
   return withLock(cwd, () => doFinishLoop(cwd, git, opts));
@@ -1182,6 +1214,36 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
         throw new LoopError(
           `对照 attestation（${comparator.id}）时点早于所锚证据取证时点（先对照后取证）：重新对照并重录`,
         );
+      }
+    }
+    // ── 豁免收紧（0.1.0 棒B，ADR-0016）：红绿两半是同一断言在改前/改后两态的成对取证。
+    // INV-09 缺红不得以补绿收口：锚定绿须有 red_of 配对红或 waived（绿后补录=反向配对
+    // 即过，恢复指路在报文）；INV-08 harness 冻结：配对红与绿的 harnessHash 俱在且不等
+    // =取证程序不同源，两半不可互证。执法点在对照/锚定/时点检查之后，同受
+    // LZY_ABLATE_ATTEST 守卫（ablation 变体 D 五闸门组成随之变化，ADR-0016 记账）。
+    const halfById = new Map(dag.nodes.filter((n) => n.kind === "evidence").map((n) => [n.id, n]));
+    for (const s of goal.steps) {
+      if (s.kind !== "F") continue;
+      const anchor = anchoredGreenFor(dag, goal, s.id);
+      if (!anchor) continue; // legacy 轨：对照绑定循环已拒，此处不重复执法
+      const halves = dag.edges
+        .filter((e) => e.type === "red_of" && e.to === anchor.id)
+        .map((e) => halfById.get(e.from))
+        .filter((n) => n && (n.half === "red" || n.half === "waived"));
+      if (halves.length === 0) {
+        throw new LoopError(
+          `HEAVY 豁免收紧（INV-09）：F 项 ${s.id} 缺红半且无豁免——缺红不得以补绿收口（红绿两半是同一断言在改前/改后两态的成对取证）。` +
+            `恢复：lzy evidence red ${s.id} --evidence <改前态失败取证>（绿后补录=反向配对即过）或 lzy evidence waive-red ${s.id} --reason <一行豁免>`,
+        );
+      }
+      for (const h of halves) {
+        if (h.half === "red" && h.harnessHash && anchor.harnessHash && h.harnessHash !== anchor.harnessHash) {
+          throw new LoopError(
+            `HEAVY harness 冻结（INV-08）：F 项 ${s.id} 红绿两半 harness 错配` +
+              `（红 ${h.harnessHash.slice(0, 8)}… ≠ 绿 ${anchor.harnessHash.slice(0, 8)}…）——取证程序不同源，两半不可互证。` +
+              `恢复：红或绿按同一程序重录（--harness 统一声明）`,
+          );
+        }
       }
     }
   }

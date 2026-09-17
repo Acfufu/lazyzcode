@@ -55,7 +55,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -410,7 +410,7 @@ async function cmdStep(args) {
   const { _, f } = parseArgs(args);
   const action = _[0];
   if (action !== "done") {
-    throw new LoopError("用法：lzy step done <ID> [--note …] [--evidence …]（F 项必须带证据）");
+    throw new LoopError("用法：lzy step done <ID> [--note …] [--evidence …] [--harness …]（F 项必须带证据）");
   }
   if (!_[1]) throw new LoopError("缺少步骤 ID：lzy step done <ID> …");
   const cwd = process.cwd();
@@ -424,6 +424,7 @@ async function cmdStep(args) {
     note: typeof f.note === "string" ? f.note : null,
     evidence: typeof f.evidence === "string" ? f.evidence : null,
     files,
+    harness: typeof f.harness === "string" ? f.harness : null,
   });
   console.log(`${rebinding ? "↻" : "✔"} 步骤${rebinding ? "重取证" : "完成"}：${step.id} [${step.kind}] ${step.title}（${goal.steps.filter((s) => s.status === "done").length}/${goal.steps.length}）`);
   if (dirty) {
@@ -532,7 +533,7 @@ async function cmdEvidence(args) {
           ? findGreenByGeneration(dag, slug, fid, (st.evidenceSeq ?? 1) - 1, myAttempt)
           : (findGreenByGeneration(dag, slug, fid, (st?.evidenceSeq ?? 1) - 1) ?? greens[greens.length - 1] ?? null);
       const greenPart = anchor
-        ? `绿 ✓ gen${anchor.seq}（${surfShort(anchor.surface)} · ${staleLabel(staleMap.get(anchor.id))}）`
+        ? `绿 ✓ gen${anchor.seq}（${surfShort(anchor.surface)} · ${staleLabel(staleMap.get(anchor.id))}${anchor.harnessHash ? ` · 🔧${anchor.harnessHash.slice(0, 8)}` : ""}）`
         : st?.evidence?.treeHash
           ? "绿 ◌（legacy 轨：goal.json 单树证据，账本外）"
           : "绿 ✗（未录）";
@@ -541,12 +542,18 @@ async function cmdEvidence(args) {
         ? [
             ...reds.map((r) => {
               const att = (r.files?.length ?? 0) > 0 ? ` 📎${r.files.length}` : "";
-              return `红 ✓ ${r.id} gen${r.seq}（${surfShort(r.surface)}）${att}`;
+              const har = r.harnessHash ? ` 🔧${r.harnessHash.slice(0, 8)}` : "";
+              return `红 ✓ ${r.id} gen${r.seq}（${surfShort(r.surface)}）${att}${har}`;
             }),
             ...waives.map((w) => `红 ➖ waived（「${String(w.text).slice(0, 40)}」）`),
           ].join(" ")
         : "红 ✗（未录）";
       console.log(`  ${fid} · ${greenPart} · ${redPart}`);
+      // INV-08 展示面（LIGHT 也 ⚠ 不拦）：配对红与绿 harnessHash 俱在且不等
+      const mismatch =
+        anchor?.harnessHash &&
+        reds.some((r) => r.harnessHash && r.harnessHash !== anchor.harnessHash);
+      if (mismatch) console.log(`    ⚠ harness 错配（红绿取证程序不同源；HEAVY finish 拒，LIGHT 仅展示）`);
       if (greens.length > 1 && (!anchor || greens.some((g) => g.id !== anchor.id))) {
         console.log(`    rebind 链 ${greens.length} 代（gen${greens[0].seq}→gen${greens[greens.length - 1].seq}，现行 ${anchor ? `gen${anchor.seq}` : "未锚定"}）`);
       }
@@ -573,7 +580,7 @@ async function cmdEvidence(args) {
   if (!_[1]) {
     throw new LoopError(
       action === "red"
-        ? "用法：lzy evidence red <Fid> --evidence <改前态失败取证> [--evidence-file <文件>]… [--surface <外部表面描述>]"
+        ? "用法：lzy evidence red <Fid> --evidence <改前态失败取证> [--evidence-file <文件>]… [--surface <外部表面描述>] [--harness <程序串>]"
         : "用法：lzy evidence waive-red <Fid> --reason <一行豁免理由>",
     );
   }
@@ -583,10 +590,14 @@ async function cmdEvidence(args) {
     text: typeof textFlag === "string" ? textFlag : null,
     files: evidenceFileArgs(cwd, f),
     surfaceExternal: typeof f.surface === "string" ? f.surface : null,
+    harness: typeof f.harness === "string" ? f.harness : null,
   });
   console.log(`${ICON.ok} 红半账本已记：${node.id} · ${node.half} · ${node.slug}/${node.step} gen${node.seq}`);
   if (node.surface) {
     console.log(`  表面（各绑各面）${node.surface.kind}:${node.surface.kind === "fingerprint" ? node.surface.value.slice(0, 10) : node.surface.value}`);
+  }
+  if (node.harnessHash) {
+    console.log(`  harness ${node.harnessHash.slice(0, 10)}…（${String(node.harnessSpec).slice(0, 60)}）`);
   }
   for (const file of node.files ?? []) {
     console.log(`  附件 ${file.path}（sha256 ${file.sha256.slice(0, 12)}… · ${file.bytes} bytes）`);
@@ -726,18 +737,20 @@ function printHelp() {
                                             尾注三源并集，按最近活动排序
   lzy loop cost                             积分成本报表（只读计费账本折算：常设系数+促销
                                             overlay 自动回落；目标归因为简化 OR+人工复核口径）
-  lzy step done <ID> [--note …] [--evidence …] [--evidence-file <文件>]…
+  lzy step done <ID> [--note …] [--evidence …] [--evidence-file <文件>]… [--harness <程序串>]
                                             收口一步（F 项必须带真实表面证据；附件复制入
-                                            .lazyzcode/evidence/ 并绑 sha256，≤4 个/项）
+                                            .lazyzcode/evidence/ 并绑 sha256，≤4 个/项；
+                                            --harness 声明取证程序串，INV-08 红绿同源核对）
   lzy loop verify                           证据时效核对（退出码 0=全部新鲜，1=有过期/未绑定）
   lzy loop finish                           终验完成（全部 done + F 证据新鲜才放行；自动归档证据包）
   lzy loop export                           重导出证据包到 .lazyzcode/evidence/<slug>.report.md
   lzy loop abandon / reset                  放弃 / 清除状态
 
 证据账本（中央失效 DAG，跨目标常驻——机器只记账不裁决，ADR-0014）：
-  lzy evidence red <Fid> --evidence <text> [--evidence-file <文件>]… [--surface <描述>]
+  lzy evidence red <Fid> --evidence <text> [--evidence-file <文件>]… [--surface <描述>] [--harness <程序串>]
                                             登记红半（改前态失败取证；缺省绑当前复合指纹，
-                                            --surface 声明外部表面如已发布版版本号）
+                                            --surface 声明外部表面如已发布版版本号；
+                                            --harness 声明取证程序串，与绿半同源核对）
   lzy evidence waive-red <Fid> --reason <理由>
                                             登记红半豁免（真构造不出反态的面；一行豁免的
                                             机器形态）

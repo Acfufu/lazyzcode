@@ -2,7 +2,7 @@
 // 证据验证（F 项绑定 tree hash，代码一变旧证据作废）→ 完成。
 // 状态落工作区 .lazyzcode/loop/goal.json（与宿主 .zcode/ 划清边界，宪法 §4 决策 #6）。
 // 本模块零 spawn（tree hash 经 core/git.js 取），全部同步语义。
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { createGit } from "./git.js";
@@ -774,9 +774,9 @@ function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal
   // 代数对齐绿半：红半瞄准的取证代数=绿半即将落地的同一代数（completeStep 的 captureGen
   // 同源取 step.evidenceSeq ?? 1），配对真值由 red_of 边承载、seq 只作展示。
   const seq = step.evidenceSeq ?? 1;
-  const attached = attachHalfFiles(cwd, goal, step, files, seq, half);
-  // dag-first：账本写失败=整命令拒（goal.json 本就不动）；附件已拷贝的残留属既有
-  // 部分失败家族（与 completeStep 的 writeGoal 失败同语义，无害孤儿）。
+  // dag-first + 先账本后落盘（ADJ-24，0.0.10）：节点先入内存账本取 id（附件名带节点
+  // 身份），附件拷贝失败即整命令拒、账本未落盘（不留半截附件）；saveDag 失败的残留
+  // 附件属既有部分失败家族（无害孤儿，与 completeStep 的 writeGoal 失败同语义）。
   const dag = loadDag(cwd);
   const node = appendEvidenceNode(dag, {
     slug: goal.slug,
@@ -785,16 +785,19 @@ function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal
     half,
     surface,
     text: trimmed,
-    files: attached ?? [],
+    files: [],
   });
   if (surface) addCapturedOn(dag, node.id, surface);
+  node.files = attachHalfFiles(cwd, goal, step, files, seq, half, node.id) ?? [];
   saveDag(cwd, dag);
   return { node, dirty: git ? git.dirty() : false };
 }
 
-// 红半附件：与 attachEvidenceFiles 同约束，命名带 half 段（<slug>.<F>.<half>.<seq>.<n><ext>）
-// ——红半与绿半瞄准同一代数，不带 half 段会互相覆写。
-function attachHalfFiles(cwd, goal, step, files, seq, half) {
+// 红半附件：与 attachEvidenceFiles 同约束，命名带 half+代数+节点身份段
+// （<slug>.<F>.<half>.gen<seq>.<nodeId>.<n><ext>）——红半与绿半瞄准同一代数，不带 half
+// 段会互相覆写；同代次第二条红半落新节点 id 新文件、永不覆写（ADJ-24，0.0.10），
+// 目标名意外在场即拒（防碰撞退化为静默覆盖与假 sha256 声明）。
+function attachHalfFiles(cwd, goal, step, files, seq, half, nodeId) {
   if (!files || files.length === 0) return undefined;
   if (files.length > EVIDENCE_FILES_MAX) {
     throw new LoopError(`附件超上限：最多 ${EVIDENCE_FILES_MAX} 个/项（当前 ${files.length}）`);
@@ -813,7 +816,10 @@ function attachHalfFiles(cwd, goal, step, files, seq, half) {
       throw new LoopError(`证据文件超上限 ${EVIDENCE_FILE_MAX_BYTES} bytes：${src}（${st.size}）`);
     }
     const ext = (/(\.[a-z0-9]{1,9})$/i.exec(basename(src))?.[1] ?? ".bin").toLowerCase();
-    const dest = join(outDir, `${goal.slug}.${step.id}.${half}.${seq}.${i + 1}${ext}`);
+    const dest = join(outDir, `${goal.slug}.${step.id}.${half}.gen${seq}.${nodeId}.${i + 1}${ext}`);
+    if (existsSync(dest)) {
+      throw new LoopError(`红半附件目标已存在（文件名含节点身份 ${nodeId}，不应碰撞）：${dest}——拒绝覆写（ADJ-24）`);
+    }
     copyFileSync(src, dest);
     return {
       path: relative(cwd, dest),

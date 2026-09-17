@@ -158,6 +158,47 @@ test("缺席账本=空库（首次使用零误差）", () => {
   assert.deepEqual(dag, { dagVersion: DAG_VERSION, nodes: [], edges: [] });
 });
 
+// ADJ-24（0.0.10）：同代次第二条红半附件曾静默覆写第一条（账本 sha256 成假声明）；
+// 附件名现带节点身份永不碰撞，账本写失败不留半截附件。
+test("红半附件带节点身份：同代次两条红半共存不覆写且 sha256 属真；账本写失败不留附件", () => {
+  const d = repo();
+  registerGoal(d, "t", "title");
+  const p = join(d, ".lazyzcode", "plan.md");
+  mkdirSync(join(d, ".lazyzcode"), { recursive: true });
+  writeFileSync(p, "- [F1] v\n");
+  adoptPlan(d, p);
+  startLoop(d, createGit(d));
+  const shot = join(d, "shot.png");
+  writeFileSync(shot, "PNGDATA-A");
+  const r1 = recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "第一条红半", files: [shot] });
+  writeFileSync(shot, "PNGDATA-B");
+  const r2 = recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "第二条红半", files: [shot] });
+  assert.notEqual(r1.node.id, r2.node.id, "同代次两条红半=两个节点");
+  assert.notEqual(r1.node.files[0].path, r2.node.files[0].path, "附件落两个文件");
+  assert.match(r2.node.files[0].path, /\.gen1\.n\d+\.1\.png$/);
+  for (const rec of [r1, r2]) {
+    const content = readFileSync(join(d, rec.node.files[0].path));
+    assert.equal(createHash("sha256").update(content).digest("hex"), rec.node.files[0].sha256, "账本 sha256 与盘面一致");
+  }
+  // 失败路径：账本不可读（写护栏拒）→ 整命令拒且不留半截附件
+  const dagFile = dagFileOf(d);
+  const before = readFileSync(dagFile, "utf8");
+  if (process.platform !== "win32") {
+    chmodSync(dagFile, 0o000);
+    try {
+      assert.throws(
+        () => recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "第三条", files: [shot] }),
+        /不可读/,
+      );
+    } finally {
+      chmodSync(dagFile, 0o644);
+    }
+    assert.equal(readFileSync(dagFile, "utf8"), before, "账本字节未动");
+    const leftovers = readdirSync(join(d, ".lazyzcode", "evidence")).filter((f) => f.endsWith(".png"));
+    assert.equal(leftovers.length, 2, "失败命令不落第三份附件");
+  }
+});
+
 // ADJ-01 P0（0.0.10）：不可读曾被裸 catch 当空库，下一写命令整库覆写毁红/waive 唯一
 // 副本（红半探针 adj01-chmod-destroy.txt 活体）。回归钉：仅 ENOENT 当缺席。
 test("不可读三态：EACCES（POSIX 腿）/EISDIR/形状畸形（缺 edges 键、nodes:[null]、坏边）都 DagError 拒且带恢复指路", () => {

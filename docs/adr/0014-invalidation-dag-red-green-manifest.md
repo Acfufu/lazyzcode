@@ -72,3 +72,28 @@ done 前原子写 `.lazyzcode/attestations/<attemptId>.json`——LOOP_COMPLETE 
 （generation/nodeId/surface）+comparator 记录（LIGHT=null）+report sha256+
 finishedAt。写失败=LoopError、状态保持 executing（沿 0.0.8 原子收口家法）；
 目录在 loop/ 之外=疤痕巡逻零接触、reset 不清（历史证明）。
+
+## 增补节 · 三族死锁的状态感知出口（0.0.10，goal v010-fix-round N5；§⑪ Q5 拍板）
+
+v009 五轮双审（ADJ-08/09/10）实锤三族「机器门互相咬死」的死锁：零 F+HEAVY
+三连拒、无 planHash 存量升 HEAVY 后三连拒、done 态账本分歧把报错给的恢复命
+令反拒成死端。拍板=**状态感知出口：机器门语义细化，不放松**——每族给一条
+在当前态真实可执行的恢复路径，fail-closed 判定本体不动：
+
+1. **零 F+HEAVY**：finish 对照门对零 F 目标豁免（无终验项即无对照对象，与
+   `attest comparator` 的「无 F 项拒」同判据同文案）；升档前移校验=HEAVY 计
+   划采纳时须 ≥1 F 项（新计划不再制造此族）。存量零 F HEAVY 走豁免出口。
+2. **done 态账本分歧**：恢复白名单——`step done`（rebind）、`attest comparator`、
+   `loop finish` 三个 rebind 类命令在 done 态放行；重 finish 落新 attestation
+   （旧文件 reset 不清照旧留存）。其余写命令仍 executing-only；status/verify
+   对分歧照旧 fail-closed 拒（分歧是真实故障，读面不降级）。
+3. **无 planHash 存量**：升档前移拒（`loop tier heavy` 对无 planHash 的 goal
+   拒，指路先补快照）；存量出口=executing 态且无 planHash 的 goal 允许重采纳
+   计划（补快照+重评审门）；有 planHash 的 executing 重采纳仍拒（改计划走
+   supersede 面=0.1.0 棒B 范围）。
+
+同时入账（ADJ-02）：comparator item 须绑定已落账绿半
+（`{fid, verdict, evidenceNodeId, generation, basis?}`，入账处解析、解析失败
+即拒）；finish 门加两查——item 绑定节点=该 F 项当前代次锚定绿节点、对照时点
+晚于所锚节点取证时点。「先对照后取证/rebind 后复用旧对照/跨 reset 复用」三
+类绕行在机器门闭合。

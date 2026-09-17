@@ -215,6 +215,15 @@ export function setTier(cwd, value) {
     if (norm === current) {
       return { goal, changed: false, warn: null };
     }
+    // 升档前移拒（ADJ-09，§⑪ Q5）：无 planHash 的 goal 升 heavy 会撞三连拒死锁
+    //（finish 门要对照、对照要 planHash）——先补快照重评审（executing 无 planHash
+    // 可重采纳计划）再升档。
+    if (norm === "heavy" && !goal.planHash) {
+      throw new LoopError(
+        `升档前移拒：目标 ${goal.slug} 无计划快照（planHash 缺席，0.0.7 在途/手写旧形），升 HEAVY 后 finish/对照三连拒死锁——` +
+          `先重采纳计划补快照（lzy loop plan <文件> --review "…"，附 HEAVY 须 ≥1 F 项）再 lzy loop tier heavy（ADJ-09 出口口径）`,
+      );
+    }
     goal.tier = norm;
     let warn = null;
     if (norm === "heavy") {
@@ -481,7 +490,15 @@ export function adoptPlan(cwd, planFile, opts = {}) {
 }
 
 function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
-  const goal = requireActive(cwd, "planning");
+  // 存量出口（ADJ-09，§⑪ Q5）：executing 态仅当无 planHash（0.0.7 在途/手写旧形，
+  // HEAVY 三连拒死锁人群）允许重采纳=补快照重走评审；有 planHash 的 executing 目标
+  // 改计划不走此门（supersede attempt 面=棒B 范围）。
+  const goal = requireActive(cwd, "planning", "executing");
+  if (goal.status === "executing" && goal.planHash) {
+    throw new LoopError(
+      `目标 ${goal.slug} 在执行且已有计划快照（planHash 在场）——重采纳仅服务无快照存量（恢复出口）；执行中改计划等 supersede 面`,
+    );
+  }
   // 评审门（宪法 §4 #15）：判决 REVISE = 拒绝采纳，--force 不越过（修计划重审才是正道）。
   if (review && parseVerdict(review) === "REVISE") {
     throw new LoopError(
@@ -525,6 +542,13 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null } = {}) {
   const items = parsePlanItems(body);
   if (items.length === 0) {
     throw new LoopError("计划里没有清单项（语法：- [N1] … / - [F1] …，F 项需真实表面证据）");
+  }
+  // 升档前移校验（ADJ-08 配套，§⑪ Q5）：HEAVY 计划须 ≥1 F 项——零 F 无对照对象、
+  // 对照门无处着力（存量零 F HEAVY 目标走 finish 的零 F 豁免出口）。
+  if ((goal.tier ?? "light") === "heavy" && !items.some((it) => /^F/.test(it.id))) {
+    throw new LoopError(
+      `HEAVY 目标计划须含 ≥1 个 F 项（终验项）：零 F 计划无对照对象，对照门无处着力——补 F 项或用 LIGHT（ADJ-08 出口口径）`,
+    );
   }
   validateDeps(items);
   const subjects = parseSubjectsHeader(cwd, body);
@@ -645,7 +669,9 @@ function attachEvidenceFiles(cwd, goal, step, files, seq = 1) {
 }
 
 function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = null } = {}) {
-  const goal = requireActive(cwd, "executing");
+  // done 态恢复白名单（ADJ-10 出口，0.0.10）：done 目标的账本分歧曾把报错给的恢复命令
+  // （step done rebind）反拒成死端——rebind 类命令放行，重 finish 落新 attestation。
+  const goal = requireActive(cwd, "executing", "done");
   const step = goal.steps.find((s) => s.id === id);
   if (!step) {
     throw new LoopError(
@@ -981,7 +1007,9 @@ export function finishLoop(cwd, git, opts = {}) {
 }
 
 function doFinishLoop(cwd, git, { writeReport = null } = {}) {
-  const goal = requireActive(cwd, "executing");
+  // done 态重入（ADJ-10 出口，0.0.10）：恢复链 rebind 后重 finish 落新 attestation
+  //（旧 attestation reset 不清照旧留存，新文件按 attemptId 时间戳另立）。
+  const goal = requireActive(cwd, "executing", "done");
   // 埋点（plan-v2 Phase 2-1）：finish 尝试与三分拒绝计数——veto 判定式①「finish 首过率」
   // 的数据面；incMetrics 契约永不抛，计数失败不影响拒绝/放行语义。
   incMetrics(cwd, "finish_attempts");
@@ -1012,8 +1040,10 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
   }
   // ── 对照 attestation 机器门（v009 棒2，§⑪ N3）：HEAVY 强制现行记录且 MATCH 且指纹
   // 未过期；LIGHT 可 self-check 免录（协议层自查）。无逃生 flag（ADR-0013 家法）。
+  // 零 F 豁免（ADJ-08 出口，0.0.10）：无终验项即无对照对象——与 attest comparator
+  // 「无 F 项拒」同判据同文案，零 F+HEAVY 的三连拒死锁就此闭合（§⑪ Q5）。
   let comparator = null;
-  if ((goal.tier ?? "light") === "heavy") {
+  if ((goal.tier ?? "light") === "heavy" && goal.steps.some((s) => s.kind === "F")) {
     comparator = findLatestComparator(dag, goal.slug, goal.planHash);
     if (!comparator) {
       throw new LoopError(
@@ -1111,7 +1141,12 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
 function writeFinalAttestation(cwd, git, goal, { comparator, fingerprint, dag, reportWritten }) {
   const dir = join(cwd, ".lazyzcode", "attestations");
   mkdirSync(dir, { recursive: true });
-  const attemptId = `${goal.slug}-${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`;
+  let attemptId = `${goal.slug}-${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`;
+  // ADJ-07（0.0.10）：同秒二次 finish（done 态重 finish 恢复链）曾静默覆写上一份
+  // 机器证明——存在即追加毫秒后缀，追加不覆写。
+  if (existsSync(join(dir, `${attemptId}.json`))) {
+    attemptId = `${attemptId}-${Date.now()}`;
+  }
   const reportRel = `.lazyzcode/evidence/${goal.slug}.report.md`;
   let reportSha = null;
   if (reportWritten) {

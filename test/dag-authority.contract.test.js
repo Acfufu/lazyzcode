@@ -32,6 +32,7 @@ import {
   readGoal,
   registerGoal,
   resetLoop,
+  setTier,
   startLoop,
   verifyEvidence,
   writeGoalReport,
@@ -467,4 +468,69 @@ test("finish 门绑定：rebind 后复用旧对照（指纹已同步）→未绑
     }
   });
   assert.throws(() => finishWithReport(d), /早于所锚证据取证时点/s);
+});
+
+// ── ⑬ 三族死锁状态感知出口（ADJ-08/09/10，0.0.10，§⑪ Q5 拍板）───────────────
+test("零 F HEAVY：采纳时拒零 F 计划；存量（light 采纳后升 heavy）finish 零 F 豁免过门", () => {
+  const d = repo();
+  registerGoal(d, "t", "title", { tier: "heavy" });
+  const p = join(d, ".lazyzcode", "plan.md");
+  mkdirSync(join(d, ".lazyzcode"), { recursive: true });
+  writeFileSync(p, "- [N1] x\n");
+  assert.throws(() => adoptPlan(d, p, { review: "plan-reviewer: PASS — t" }), /须含 ≥1 个 F 项/);
+  // 存量形态：light 采纳零 F 计划→升 heavy→finish 豁免（无对照可录）
+  const d2 = repo();
+  registerGoal(d2, "t", "title");
+  const p2 = join(d2, ".lazyzcode", "plan.md");
+  mkdirSync(join(d2, ".lazyzcode"), { recursive: true });
+  writeFileSync(p2, "- [N1] x\n");
+  adoptPlan(d2, p2);
+  startLoop(d2, createGit(d2));
+  completeStep(d2, createGit(d2), "N1", { note: "x" });
+  setTier(d2, "heavy");
+  const { goal } = finishWithReport(d2);
+  assert.equal(goal.status, "done");
+});
+
+test("done 态恢复白名单：rebind→重对照→重 finish 全链可执行，落第二份 attestation", () => {
+  const d = repo();
+  cycle(d, { heavy: true });
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1 }] }));
+  finishWithReport(d);
+  assert.equal(attestationFiles(d).length, 1);
+  completeStep(d, createGit(d), "F1", { evidence: "done 态 rebind" });
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 2 }] }));
+  const { goal } = finishWithReport(d);
+  assert.equal(goal.status, "done");
+  assert.equal(attestationFiles(d).length, 2, "重 finish 落新 attestation");
+});
+
+test("无 planHash 存量：升档前移拒；executing 重采纳补快照后升档走通；有 planHash 重采纳仍拒", () => {
+  const d = repo();
+  cycle(d);
+  // 造存量（模拟 0.0.7 在途）：删 planHash
+  const g = goalJson(d);
+  delete g.planHash;
+  writeFileSync(join(d, ".lazyzcode", "loop", "goal.json"), `${JSON.stringify(g, null, 2)}\n`);
+  assert.throws(() => setTier(d, "heavy"), /升档前移拒/);
+  assert.throws(
+    () => recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1 }] })),
+    /无 planHash/,
+  );
+  // 存量出口：executing 态无 planHash 重采纳（补快照重评审）——清单重置为未完成，
+  // 逐步重验后走通升档+finish
+  const p = join(d, ".lazyzcode", "plan.md");
+  adoptPlan(d, p, { review: "plan-reviewer: PASS — re-snapshot" });
+  assert.ok(goalJson(d).planHash);
+  completeStep(d, createGit(d), "N1", { note: "重快照后重验" });
+  completeStep(d, createGit(d), "F1", { evidence: "重快照后重取证" });
+  setTier(d, "heavy");
+  recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1 }] }));
+  const { goal } = finishWithReport(d);
+  assert.equal(goal.status, "done");
+  // 有 planHash 的 executing 重采纳仍拒
+  const d2 = repo();
+  cycle(d2);
+  writeFileSync(join(d2, ".lazyzcode", "plan.md"), "- [N1] x\n- [F1] v2\n");
+  assert.throws(() => adoptPlan(d2, join(d2, ".lazyzcode", "plan.md")), /已有计划快照/);
 });

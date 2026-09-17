@@ -30,7 +30,8 @@ export function recordComparatorAttestation(cwd, file) {
 }
 
 function doRecordComparatorAttestation(cwd, file) {
-  const goal = requireActive(cwd, "executing");
+  // done 态恢复白名单（ADJ-10 出口，0.0.10）：rebind 后需重对照再重 finish。
+  const goal = requireActive(cwd, "executing", "done");
   if (!goal.planHash) {
     throw new LoopError(`活跃目标无 planHash（计划未快照）——对照 attestation 绑定现行计划，先重新采纳计划`);
   }

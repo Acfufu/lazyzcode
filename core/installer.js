@@ -29,7 +29,7 @@ export function sha256File(p) {
   return createHash("sha256").update(readFileSync(p)).digest("hex");
 }
 
-function readRegistry() {
+export function readRegistry() {
   let raw;
   try {
     raw = readFileSync(registryPath(), "utf8");

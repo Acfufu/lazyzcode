@@ -564,3 +564,42 @@ test("窗口竞态：闸门后 writeReport 内提交，attestation 指纹与头�
     .digest("hex");
   assert.equal(doc.fingerprint, recompute, "机器证明内指纹与各根头树同点采样、不自相矛盾");
 });
+
+// ── ⑮ payload-ver 深对照（ADJ-38/15/37，0.0.10）──────────────────────────────
+test("payload-ver 深对照：注册表钉旧版/内容漂移=warn；市场 B 名候选枚举=ok", () => {
+  const pkgSkill = join(ROOT, "plugin", "skills", "zw", "SKILL.md");
+  const homeWith = (market, version, skillContent) => {
+    const h = mkdtempSync(join(tmpdir(), "lzy-v009-docver2-"));
+    const dir = join(h, ".zcode", "cli", "plugins", "cache", market, "lazyzcode", version);
+    mkdirSync(join(dir, "skills", "zw"), { recursive: true });
+    writeFileSync(join(dir, "skills", "zw", "SKILL.md"), skillContent);
+    return h;
+  };
+  const run = (home, d) =>
+    spawnSync(process.execPath, [CLI, "doctor"], {
+      cwd: d,
+      encoding: "utf8",
+      timeout: 120_000,
+      env: { ...process.env, HOME: home, USERPROFILE: home, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+    });
+  const line = (r) => `${r.stdout ?? ""}${r.stderr ?? ""}`.split("\n").find((l) => l.includes("payload-ver")) ?? "";
+  const d = repo();
+  const pkg = readFileSync(pkgSkill, "utf8");
+  // 市场 B 名（非 lazyzcode-local）候选枚举：照常 ok
+  const okB = line(run(homeWith("my-market-b", CLI_VERSION, pkg), d));
+  assert.match(okB, new RegExp("✔ payload-ver\\s+缓存 \\[" + CLI_VERSION.replace(/\./g, "\\.") + "\\]"), "市场 B 名不误报未安装");
+  // 注册表钉旧版 → warn（会话实际加载旧载荷）
+  const h2 = homeWith("lazyzcode-local", CLI_VERSION, pkg);
+  const regDir = join(h2, ".zcode", "cli", "plugins");
+  mkdirSync(regDir, { recursive: true });
+  writeFileSync(
+    join(regDir, "installed_plugins.json"),
+    JSON.stringify({ version: 1, plugins: [{ id: `lazyzcode@lazyzcode-local`, name: "lazyzcode", marketplace: "lazyzcode-local", version: "0.0.1", installPath: "/x" }] }),
+  );
+  const warnReg = line(run(h2, d));
+  assert.match(warnReg, /注册表仍钉 0\.0\.1.*sync/s);
+  // 内容漂移（缓存与包 payload 不同）→ warn
+  const h3 = homeWith("lazyzcode-local", CLI_VERSION, pkg + "\n<!-- drift -->");
+  const warnDrift = line(run(h3, d));
+  assert.match(warnDrift, /内容级对照不符.*sync/s);
+});

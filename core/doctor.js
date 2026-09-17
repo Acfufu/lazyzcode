@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, existsSync, realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
-import { readRepoManifest } from "./installer.js";
+import { readRepoManifest, readRegistry, sha256File } from "./installer.js";
 import {
   MARKETPLACE,
   PLUGIN_NAME,
@@ -48,11 +48,20 @@ function checkPayloadVersion(push) {
   try {
     cliVersion = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).version ?? null;
   } catch {}
-  const cacheBase = join(pluginsRoot(), "cache", MARKETPLACE, PLUGIN_NAME);
-  let versions = [];
+  // 候选市场枚举（ADJ-37，0.0.10）：市场 B 路安装的注册表市场名不是 lazyzcode-local，
+  // 扫 cache/<市场>/<插件> 全候选，不再硬编码单一市场名。
+  const cacheRoot = join(pluginsRoot(), "cache");
+  const marketVersions = new Map();
   try {
-    versions = readdirSync(cacheBase).filter((d) => /^\d+\.\d+\.\d+$/.test(d));
+    for (const market of readdirSync(cacheRoot)) {
+      let vs = [];
+      try {
+        vs = readdirSync(join(cacheRoot, market, PLUGIN_NAME)).filter((d) => /^\d+\.\d+\.\d+$/.test(d));
+      } catch {}
+      if (vs.length > 0) marketVersions.set(market, vs);
+    }
   } catch {}
+  const versions = [...new Set([...marketVersions.values()].flat())];
   if (versions.length === 0) {
     push("payload-ver", "skip", `载荷缓存缺席（未安装）——安装后真实会话才读得到载荷${cliVersion ? `（CLI ${cliVersion}）` : ""}`);
     return;
@@ -64,6 +73,35 @@ function checkPayloadVersion(push) {
     return 0;
   });
   if (cliVersion && versions.includes(cliVersion)) {
+    // 注册表对照 + 内容级抽样（ADJ-38/15，0.0.10）：目录枚举一致 ≠ 会话加载一致——
+    // registry 钉旧版时真实会话仍读旧载荷；缓存与包载荷内容漂移同属 ADR-0012 中间态。
+    const problems = [];
+    let regEntry = null;
+    try {
+      regEntry =
+        readRegistry().plugins.find(
+          (e) => e.name === PLUGIN_NAME || String(e.id ?? "").startsWith(PLUGIN_NAME),
+        ) ?? null;
+    } catch {}
+    if (regEntry?.version && regEntry.version !== cliVersion) {
+      problems.push(`注册表仍钉 ${regEntry.version}（会话实际加载旧载荷）——重跑 lzy sync 更新注册表`);
+    }
+    const market =
+      (regEntry?.marketplace && marketVersions.has(regEntry.marketplace) && regEntry.marketplace) ||
+      [...marketVersions.keys()].find((m) => marketVersions.get(m).includes(cliVersion));
+    if (market) {
+      try {
+        const cacheSkill = join(cacheRoot, market, PLUGIN_NAME, cliVersion, "skills", "zw", "SKILL.md");
+        const pkgSkill = join(packageRoot, "plugin", "skills", "zw", "SKILL.md");
+        if (sha256File(cacheSkill) !== sha256File(pkgSkill)) {
+          problems.push("内容级对照不符（缓存载荷与包 payload 漂移，样本 skills/zw/SKILL.md）——重跑 lzy sync");
+        }
+      } catch {}
+    }
+    if (problems.length > 0) {
+      push("payload-ver", "warn", `缓存 [${versions.join(", ")}] · CLI ${cliVersion} 目录在，但 ${problems.join("；")}`);
+      return;
+    }
     push("payload-ver", "ok", `缓存 [${versions.join(", ")}] · CLI ${cliVersion} 一致`);
   } else {
     push(

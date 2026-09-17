@@ -35,6 +35,21 @@
 
 ## 版本流转纪律
 
+## 发布载荷冻结纪律（ADJ-15，0.0.10）
+
+**tag 之后、publish 之前，随包文件一律禁改。** payload（`plugin/` 全部）、双语
+README、CHANGELOG、`package.json` 的 files 清单——任何一项在 tag 后又改动，都会
+造成「registry 载荷/文档 ≠ 仓库 tag 内容」：已装用户读到的纪律文本与 npm 包内容
+分叉，doctor 的 payload-ver 内容级对照（0.0.10 起）也会把这种漂移报成 warn。
+
+- 发现漏改：不补丁 tag——按版本流转纪律 bump 后重走定版（新 tag 替换旧 tag 仅在
+  尚未 publish 时允许；已 publish 一律进下一版）。
+- 定版提交（三体 bump+市场 manifest 钉+CHANGELOG 定版）必须是 tag 前最后一次触碰
+  随包文件的提交；tag 切在该提交上（runbook 既有订单）。
+- 发布后核对：`npm pack --dry-run` 清单 vs tag 树逐文件一致；doctor payload-ver
+  内容级对照（样本 skills/zw/SKILL.md）双 ✔。
+
+
 12. 改版本号必须三方同步：`package.json` / `plugin/.zcode-plugin/plugin.json` / `CHANGELOG.md`——不一致会被 `test/package.surface.test.js` 拦下。**外加两处文档站同步（无测试拦截，靠人）**：`docs/_layouts/home.html` 的 SoftwareApplication JSON-LD `softwareVersion`、`docs/sitemap.xml` 相关页的 `lastmod`。
 
 ## GitHub Pages（文档站）

@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, openSync, ftruncateSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvisory, transportAdvisory } from "../core/ratelimit.js";
+import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvisory, providerMixNote, transportAdvisory } from "../core/ratelimit.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const LOG_DIR = ["2026-09-06", "2026-09-07"]; // 两个扫描日的文件名（.jsonl 前缀）
@@ -169,7 +169,9 @@ test("provider 分桶：A 带连贯（完成侧净3桶×2会话/脏3桶×4会话
     // 纯函数读面：三分标签（连贯/归因漂移/无脏面样本，评审 R3-A 拆分）
     const adv = providerBandAdvisory(s);
     assert.equal(adv.level, "ok");
-    assert.match(adv.text, /bigmodel-coding-plan：带 ≤2 净\/4 撞（连贯）/);
+    assert.match(adv.text, /bigmodel-coding-plan：带 ≤2 净\/4 撞（连贯）→ 该 provider 独立会话可 ≤2 并行/);
+    // 债6：混算口径注句（只加行不动主行）
+    assert.equal(providerMixNote(s), "混算口径 · 账号级建议含 3 家 provider 的 429 数据——一家撞线不代表他 provider 同压；逐 provider 经验带见 band-by-provider 行");
     assert.match(adv.text, /zzz-plan：带不连贯（归因漂移，净桶 3\/脏桶 3）/);
     assert.match(adv.text, /other-provider：无脏面样本（净桶 1）/);
   } finally {
@@ -191,6 +193,7 @@ test("provider 分桶：单 provider=现状字节稳定（不出行、不成表�
     assert.equal(s.providersSeen, 1);
     assert.equal(s.providerBands, undefined);
     assert.equal(providerBandAdvisory(s), null);
+    assert.equal(providerMixNote(s), null, "单 provider 无混算注句（字节稳定护栏）");
     assert.equal(s.band.coherent, false); // 账号带照常工作（单净桶+单脏桶不足 3）
   } finally {
     cleanup(d);

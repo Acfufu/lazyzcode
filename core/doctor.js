@@ -19,7 +19,7 @@ import {
   tasksIndexPath,
   userCliLogDir,
 } from "./paths.js";
-import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvisory, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
+import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvisory, providerMixNote, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
 import { WATERLINE_POINTS, rollingWaterlinePoints } from "./cost.js";
 import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
@@ -636,6 +636,9 @@ async function checkRateLimit(push) {
   // provider 分桶带行（决策 #21 前置件）：≥2 provider 才出行；同源同扫描零重复读
   const pb = providerBandAdvisory(stats);
   if (pb) push("band-by-provider", pb.level, pb.text);
+  // 混算口径注句（债6，0.0.10）：只加行不动主行，账号级 429 谓词零语义变化
+  const mix = providerMixNote(stats);
+  if (mix) push("provider-mix", "ok", mix);
   // 成本档位建议行（成本两件套②「成功即降档」）：纯建议，不进任何谓词/数学
   const cst = costAdvisory(
     stats,

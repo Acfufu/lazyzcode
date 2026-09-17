@@ -462,7 +462,10 @@ export function providerBandAdvisory(stats) {
   const shown = rows
     .slice(0, 4)
     .map((r) => {
-      if (r.coherent) return `${short(r.provider)}：带 ≤${r.maxClean} 净/${r.minDirty} 撞（连贯）`;
+      // 债6（0.0.10）：连贯带升格带行动建议（复用账号级 bandAdvisory 措辞，按 provider 取行）——
+      // GLM 撞线不再连累他 provider 会话的并发判断；仍是纯建议文本，不进任何谓词/数学。
+      if (r.coherent)
+        return `${short(r.provider)}：带 ≤${r.maxClean} 净/${r.minDirty} 撞（连贯）→ 该 provider 独立会话可 ≤${r.maxClean} 并行`;
       if (r.dirtyBuckets === 0) return `${short(r.provider)}：无脏面样本（净桶 ${r.cleanBuckets}）`;
       return `${short(r.provider)}：带不连贯（归因漂移，净桶 ${r.cleanBuckets}/脏桶 ${r.dirtyBuckets}）`;
     });
@@ -471,6 +474,14 @@ export function providerBandAdvisory(stats) {
     level: "ok",
     text: `按 provider 分桶（完成侧净面×429 脏面）：${shown.join(" · ")}${more}`,
   };
+}
+
+// 混算口径注句（债6，0.0.10）：账号级建议行全 provider 混算——GLM 撞线时账号级建议行
+// 对他 provider 会话过保守（09-17 五并发狗粮实证：纯窗口零限流、账号级行仍报撞线）。
+// 只加行不动主行：返回 null 或独立一行文本，429 谓词与账号级主行字节零变化。纯函数。
+export function providerMixNote(stats) {
+  if (!stats?.available || !(stats.providersSeen >= 2)) return null;
+  return `混算口径 · 账号级建议含 ${stats.providersSeen} 家 provider 的 429 数据——一家撞线不代表他 provider 同压；逐 provider 经验带见 band-by-provider 行`;
 }
 
 // ── 成本档位建议（成本两件套②「成功即降档」，2026-09-14；差距 F1 抄 ouroboros/PAL 两件）──

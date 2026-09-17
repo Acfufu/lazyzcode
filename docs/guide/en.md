@@ -232,7 +232,7 @@ lzy loop verify                         # evidence freshness audit (exit 1 = sta
 lzy evidence red <Fid> --evidence "…"   # red half on its own surface (waive-red --reason = machine exemption)
 lzy dag dependents <id|surface>         # "what depends on X" (central ledger, read-only)
 lzy attest comparator --file <json>     # comparator verdicts as attestation (HEAVY finish enforces MATCH)
-lzy loop finish                         # the final gate: fresh composite fingerprint + all trees clean; auto-archives
+lzy loop finish                         # the final gate: all done + fresh evidence + all trees clean (+ HEAVY: MATCH attestation); writes the final attestation and auto-archives
 lzy loop export                         # re-export the evidence bundle
 lzy loop handoff --snapshot <file>      # register a clean handoff; next Stop releases once
 lzy loop cost                           # points report (standing coefficients + promo overlay, read-only)

@@ -116,12 +116,17 @@ export function emptyDag() {
 
 // id=n<序号> 单调：现有最大序号 +1（追加式账本只增不减，序号不回收）。
 export function nextId(dag) {
-  let max = 0;
+  // BigInt 序号比较（ADJ-27，0.0.10）：Number 在超长数字串上丢精度（n9007199254740993
+  // 之类被吞成重复 id）；loadDag 形状校验已挡非 n<数字> 形，这里只管排序正确。
+  let max = 0n;
   for (const n of dag.nodes) {
     const m = /^n(\d+)$/.exec(n.id);
-    if (m) max = Math.max(max, Number(m[1]));
+    if (m) {
+      const v = BigInt(m[1]);
+      if (v > max) max = v;
+    }
   }
-  return `n${max + 1}`;
+  return `n${max + 1n}`;
 }
 
 function assertSurface(surface) {

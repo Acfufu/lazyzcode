@@ -198,7 +198,7 @@ lzy loop verify                         # 证据时效审计（退出码 1 = 过
 lzy evidence red <Fid> --evidence "…"   # 红半绑自己的面（waive-red --reason=一行豁免的机器形态）
 lzy dag dependents <id|surface>         # 「什么依赖 X」（中央账本，只读）
 lzy attest comparator --file <json>     # 对照判决落 attestation（HEAVY finish 强制 MATCH）
-lzy loop finish                         # 终验门：复合指纹新鲜+全树 clean；自动归档
+lzy loop finish                         # 终验门：全部 done+证据新鲜+全树 clean（HEAVY 另需 MATCH 对照）；落终验 attestation 并自动归档
 lzy loop export                         # 重导出证据包
 lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次
 lzy loop cost                           # 积分成本报表（常设系数+促销 overlay，只读）
@@ -418,7 +418,7 @@ lzy loop claim [<id>] [--release]  步级认领（多工人；阻塞校验；48h
 lzy loop status                 进度、下一步、证据新鲜度、tier/subjects/快照
 lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑定/无目标）；逐树头哈希/脏态行
 lzy step done <ID> [--note <注记>] [--evidence <证据>] [--evidence-file <文件>]…
-lzy loop finish                 终验门：全部 done + 复合指纹新鲜 + {host}∪subjects 全树 clean；原子归档
+lzy loop finish                 终验门：全部 done + 证据新鲜 + {host}∪subjects 全树 clean（HEAVY 另需 MATCH 对照）；落终验 attestation+原子归档
 lzy loop export                 重导出证据包（<slug>.report.md）
 lzy loop cost                   积分成本报表（常设系数+促销 overlay，只读）
 lzy loop list [--root <目录>]   跨仓目标循环清单（只读）

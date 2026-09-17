@@ -2,7 +2,8 @@
 // PostToolUseFailure 空转绊线（ADR-0009 同批，incident-guardrails#N5）：同一 MCP 工具
 // 在 TTL 窗口内连续失败时经 additionalContext 轻提示一次——指路窄查询精确激活
 // （search_tools，pisper-absorption#N2），或上下文已退化时走交接收尾（lzy loop handoff）。
-// 事故背景：sess_95421d3d 同工具空转 79 连调 47 分钟。
+// 事故背景：一次真实会话的同工具空转（79 连调 47 分钟，2026-09-10 记档）——
+// 随包内容不携带会话标识（ADJ-41，0.0.10：发布残留检查内容级化）。
 // 纪律：goal.json 不在场即 {} 静默（对齐 comment-checker）；is_interrupt（用户手动取消）
 // 不计数；「连续」=TTL 失败连击——成功事件不经过本钩子（PostToolUse 与 Failure 互斥，
 // 引擎实锤 Z:427504/427557），计数只被 TTL 归零，绝不能被穿插的成功重置（事故中 44 次

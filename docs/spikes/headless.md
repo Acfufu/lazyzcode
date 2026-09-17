@@ -39,7 +39,7 @@
 
 - 桌面注入 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` → `~/.zcode/v2/runtime/provider/<platform>/<壳版>/endpoint-<hash>/zcode-builtin.json`（builtin 模板规则：zai-api 等 template、baseUrl、builtinModelIds）
 - 桌面注入 `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` → `~/.zcode/v2/provider_config.json`（个人 provider 规则，含 `access:{type:"api-key", apiKey:…}` 条目）
-- 引擎包内对这两个 env 名各实读一次（`grep -c` 均 = 1；zcode.cjs 11.4MB 单行，计数法沿 minified-grep 家规）
+- 引擎包内对这两个 env 名各实读一次（`grep -c` 均 = 1；zcode.cjs 11.4MB／3583 行——早期「单行」表述有误，2026-09-17 勘误 ADJ-34；单行 bundle 上 grep -c 恒 1 的家规仍适用其真正的单行 chunk）
 - 另见凭据读取路径 `join(baseDir ?? env ?? homedir(), ".zcode", "v2", "credentials.json")`——`login`（OAuth）写此文件，是**脱离桌面宿主的干净机自足路径**；本机桌面注入使该文件非必需（未走此路径）
 - 包内 38 处 `keychain` 命中全为捆绑的第三方 CLI 补全表（cosign/k8s），非本引擎认证面——排除钥匙串假设
 

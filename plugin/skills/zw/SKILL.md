@@ -210,11 +210,13 @@ suggested command; it returns verbatim observed output and a MATCH verdict.
   `verify`/`finish` judge evidence freshness from the ledger's green node for the
   goal.json-recorded generation (orphan ghosts never count as current), and an
   unreadable ledger or a fingerprint-form record with no ledger node fails closed
-  (recovery = re-record via `step done`). The ledger only records — it adjudicates
-  nothing; the
-  comparator's pairing/existence check reads `lzy evidence list` as its first
-  source, while assertion-vs-evidence matching is still judged per pair by
-  qa-executor, unchanged.
+  (recovery = re-record via `step done`). "Authority" here means validity
+  judgments only: the ledger is the single source those verdicts read from, while
+  it still records without adjudicating — a MATCH/MISMATCH verdict is a judgment
+  about comparator claims, never a fact the ledger invents; the comparator's
+  pairing/existence check reads `lzy evidence list` as its first source, and
+  assertion-vs-evidence matching is still judged per pair by qa-executor,
+  unchanged.
 - **Mechanical $0 checks first (成本两件套)**: exhaust zero-cost mechanical
   verification before any semantic/model-judged check — CLI stdout, file
   existence and content assertions, `grep`/`diff`. Never spend a model call on

@@ -25,7 +25,12 @@
 - **不依赖 npmjs 的安装**：`npm i -g --allow-git=root github:Acfufu/lazyzcode`。npm ≥12 的 `allow-git` 默认 `none`（供应链加固），不是仓库白名单而是三档策略 `all|root|none`——`root` 档允许「显式指定的根安装目标」走 git 源，传递依赖仍禁。git 源同样尊重 `files` 白名单（实测装载面 = cli/core/plugin + 4 元数据，test/docs 不夹带）。
 - 转公开：Settings → General → Danger Zone → Change repository visibility；随后按上方 npm 节 1→5 执行（npmjs 包名 `lazyzcode` 在私测期未被占用，公开发布即锁名）。
 
-## 本地残留外带检查（评审 R5-6）
+## 本地残留外带检查（评审 R5-6；ADJ-41 内容级化，0.0.10）
+
+- 文件名层：确认随包清单无本机路径/探针文件（`npm pack --dry-run` 对单）。
+- 内容层（0.0.10 起）：`grep -rn "sess_" plugin/ docs/ --include="*.js" --include="*.md"` ——
+  随包内容不得携带会话标识（tripwire 注释内的 `sess_` 形态曾漏过文件名层检查）；
+  命中即确认属设计内注释或改写后再发。
 
 10. 三处 gitignored 的 `.mimosa/`（`plugin/hooks/`、`test/spike/four-styles/`、`docs/reports/`）是守卫运行态：**绝不整目录拷贝**进任何发布载体。tarball 已验证不含；zip/网盘分发前 `find . -name ".mimosa"` 复查。
 

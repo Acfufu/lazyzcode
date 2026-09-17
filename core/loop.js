@@ -490,7 +490,15 @@ export function removeSubject(cwd, path) {
     } catch {
       rp = resolve(cwd, path); // 根已消失：按入参归一参与匹配
     }
-    const idx = subjects.indexOf(rp);
+    let idx = subjects.indexOf(rp);
+    if (idx === -1) {
+      // ADJ-39（0.0.10）：报错文案给的入参形态与存储 realpath 形态可分叉（/tmp→/private/tmp），
+      // 根消失时 realpath 又不可得——带分隔符边界的后缀匹配兜底，药方自洽。
+      idx = subjects.findIndex((e) => {
+        if (e === rp || rp.endsWith(e)) return true;
+        return e.endsWith(rp) && (rp.endsWith("/") || e.charAt(e.length - rp.length - 1) === "/");
+      });
+    }
     if (idx === -1) {
       throw new LoopError(`该路径不在 subject 集合：${rp}（当前集合 ${subjects.length} 项）`);
     }
@@ -801,6 +809,14 @@ function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal
   }
   if (trimmed.length > cap) {
     throw new LoopError(`${label} 超上限 ${cap} 字符（当前 ${trimmed.length}）；请凝成一两句`);
+  }
+  if (isWaive && surfaceExternal != null) {
+    throw new LoopError(
+      `waive-red 不绑表面（豁免本无面）——--surface 不适用；红半面请用 lzy evidence red --surface`,
+    );
+  }
+  if (surfaceExternal !== null && typeof surfaceExternal === "string" && !surfaceExternal.trim()) {
+    throw new LoopError(`--surface 值为空：外部表面须为非空描述（如 "npm registry@0.0.9"）；去掉该旗标则缺省绑复合指纹`);
   }
   let surface = null;
   if (!isWaive) {
@@ -1456,6 +1472,16 @@ function cleanupLoopResidue(cwd) {
     }
   } catch {}
   try {
+    // 终验 attestation 的孤儿 tmp（ADJ-14，0.0.10）：写失败窗口的 .<attemptId>.<pid>.<ts>.tmp
+    // 落在 loop/ 外的 attestations/，同样登记进清扫家族。
+    for (const f of readdirSync(join(cwd, ".lazyzcode", "attestations"))) {
+      if (f.endsWith(".tmp")) {
+        rmSync(join(cwd, ".lazyzcode", "attestations", f), { force: true });
+        cleaned++;
+      }
+    }
+  } catch {}
+  try {
     for (const f of readdirSync(join(dir, "sessions"))) {
       rmSync(join(dir, "sessions", f), { recursive: true, force: true });
       cleaned++;
@@ -1604,6 +1630,17 @@ export function formatStatus(cwd, git) {
   }
   // tier/subjects 读面（v008#N8）：缺键容忍（0.0.8 前 goal 无 tier/subjects 键按 light/空集）。
   lines.push(`  tier ${goal.tier ?? "light"} · subjects ${(goal.subjects ?? []).length} 项`);
+  // 工作树脏净读数（ADJ-42，0.0.10）：SKILL 教「先读 status 的 dirt 再领 finish」——
+  // 把该读面做真：脏列前 3 路径+药方（finish 完整性闸门会拦）。
+  if (git) {
+    const it = createGit(cwd).integrity(8_000);
+    if (it.state === "clean") lines.push(`  工作树 清洁（tree ${(it.headTree ?? "").slice(0, 10)}）`);
+    else if (it.state === "dirty") {
+      const sample = (it.paths ?? []).slice(0, 3).join(" ");
+      const more = (it.paths?.length ?? 0) > 3 ? ` 等 ${it.paths.length} 处` : "";
+      lines.push(`  工作树 脏（${sample}${more}）——finish 完整性闸门会拦：commit 或 stash 后再 finish`);
+    } else lines.push(`  工作树 ${it.state}（${it.detail ?? "git 不可用"}）`);
+  }
   const next = nextStep(goal);
   if (next) {
     // 下一步标注（评审 R1-A4）：指向的 pending 步被认领/阻塞时如实点名，不再裸指。

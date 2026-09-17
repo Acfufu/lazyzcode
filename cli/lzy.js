@@ -468,6 +468,17 @@ async function cmdEvidence(args) {
     if (latestPlan) {
       const rev = reviewNodes.filter((r) => r.planHash === latestPlan.planHash);
       console.log(`  计划 ${latestPlan.id} · planHash ${String(latestPlan.planHash).slice(0, 10)} · 评审 ${rev.length ? rev.map((r) => r.id).join("/") : "无节点"}`);
+      // ADJ-28/29（0.0.10）：comparator 节点曾计入总数却不渲染（或被渲染成 review）——
+      // 现行对照一行如实可达。
+      const comps = nodes
+        .filter((n) => n.kind === "comparator" && n.slug === slug && n.planHash === latestPlan.planHash)
+        .sort((a, b) => a.at - b.at);
+      const curComp = comps[comps.length - 1];
+      if (curComp) {
+        console.log(
+          `  对照 ${curComp.id} · ${curComp.verdict} · ${curComp.itemsCount} 项 · 指纹 ${String(curComp.fingerprint).slice(0, 10)}${comps.length > 1 ? `（历史 ${comps.length - 1} 条）` : ""}`,
+        );
+      }
     }
     // goal.json 在场才做孤儿判定（历史账本无基准，不妄判）
     const stepsById = goal && goal.slug === slug ? new Map(goal.steps.map((s) => [s.id, s])) : null;
@@ -505,11 +516,16 @@ async function cmdEvidence(args) {
         : st?.evidence?.treeHash
           ? "绿 ◌（legacy 轨：goal.json 单树证据，账本外）"
           : "绿 ✗（未录）";
-      const redPart = reds.length
-        ? `红 ✓ ${reds.map((r) => `${r.id} gen${r.seq}（${surfShort(r.surface)}）`).join(" ")}`
-        : waives.length
-          ? `红 ➖ waived（${waives.map((w) => `「${String(w.text).slice(0, 40)}」`).join(" ")}）`
-          : "红 ✗（未录）";
+      // ADJ-30（0.0.10）：红半与 waiver 同代并存时 waiver 不再被红半遮蔽；红半附件计数可达。
+      const redPart = reds.length || waives.length
+        ? [
+            ...reds.map((r) => {
+              const att = (r.files?.length ?? 0) > 0 ? ` 📎${r.files.length}` : "";
+              return `红 ✓ ${r.id} gen${r.seq}（${surfShort(r.surface)}）${att}`;
+            }),
+            ...waives.map((w) => `红 ➖ waived（「${String(w.text).slice(0, 40)}」）`),
+          ].join(" ")
+        : "红 ✗（未录）";
       console.log(`  ${fid} · ${greenPart} · ${redPart}`);
       if (greens.length > 1 && (!anchor || greens.some((g) => g.id !== anchor.id))) {
         console.log(`    rebind 链 ${greens.length} 代（gen${greens[0].seq}→gen${greens[greens.length - 1].seq}，现行 ${anchor ? `gen${anchor.seq}` : "未锚定"}）`);
@@ -593,6 +609,11 @@ function cmdDag(args) {
   }
   const dag = loadDag(process.cwd());
   const res = dagDependents(dag, _[1]);
+  // ADJ-26（0.0.10）：节点 id 不存在与「存在但无依赖」显式分——不再同答「命中 0」。
+  if (res.kind === "node" && res.hits.length === 0 && !dag.nodes.some((n) => n.id === _[1])) {
+    console.log(`依赖查询 · 节点 ${_[1]} 不存在（账本无此 id；查历史实例可加 --goal <slug> 后用 evidence list）`);
+    return;
+  }
   console.log(`依赖查询 · ${res.kind} ${res.id} · 命中 ${res.hits.length}`);
   for (const h of res.hits) {
     if (res.kind === "surface") {

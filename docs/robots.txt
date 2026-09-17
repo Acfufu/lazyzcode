@@ -1,5 +1,8 @@
 # LazyZCode docs site robots.txt
 # 若仓库改名或换组织，与 docs/_config.yml 的 url/baseurl 一起改下方 Sitemap 行。
+# 边界如实声明（ADJ-33，2026-09-17）：Pages 项目站从 /docs 发布，本文件服务在
+# /lazyzcode/robots.txt 子路径——按 RFC 9309 仅站点根 robots.txt 生效，传统爬虫读不到它；
+# 保留本文件作 GEO 立场声明与 sitemap 指引（github.io 用户级根路径不可控）。
 
 # 传统搜索引擎：全站放行（内部工程记录页自带 noindex 头，无需在此屏蔽）
 User-agent: *

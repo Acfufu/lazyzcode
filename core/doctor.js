@@ -257,6 +257,10 @@ function checkLoopState(push, cwd) {
   } catch {
     orphanTmp = 0;
   }
+  try {
+    // attestation tmp 家族（ADJ-14，0.0.10）：attestations/ 与 loop/ 同属清扫登记面
+    orphanTmp += readdirSync(join(cwd, ".lazyzcode", "attestations")).filter((f) => f.endsWith(".tmp")).length;
+  } catch {}
   if (goalMissing) {
     if (sessions > 0 || orphanTmp > 0) {
       push(

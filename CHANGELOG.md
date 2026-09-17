@@ -3,6 +3,87 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [0.0.10] - 2026-09-17
+
+Fix release closing all 44 unique findings from the five-round dual review of
+0.0.9 (`docs/reviews/2026-09-17-v009-five-round-dual-review.md`), plus
+per-provider rate-limit advice (roadmap debt 6). No new features; every
+P0/P1/P2 fix carries live red-green evidence (red half captured on published
+0.0.9). 224/224 tests green (baseline 211).
+
+### Fixed
+
+- **Unreadable ledger can no longer be silently wiped** (ADJ-01, P0):
+  `loadDag` treated EACCES/EISDIR like a missing file, so the next write
+  command overwrote `dag.json` and destroyed the sole red/waive halves
+  (live-probed). Only ENOENT means absent now; `saveDag` additionally refuses
+  to write an empty ledger over a non-empty file, or at all when the on-disk
+  ledger is unreadable.
+- **Malformed-but-checksummed ledgers fail closed with recovery pointers**
+  (ADJ-05): shape validation for nodes/edges (was: bare TypeError or silent
+  false answers).
+- **Comparator attestations must bind captured evidence** (ADJ-02, P1): items
+  carry `{fid, verdict, evidenceNodeId, generation, basis}`; unresolvable
+  bindings are refused at record time, and the HEAVY finish gate additionally
+  requires each item to point at the step's currently-anchored green node with
+  the comparison recorded after the capture (kills compare-before-evidence,
+  reuse-after-rebind, and cross-reset reuse). The final attestation records
+  `at` timestamps.
+- **Three deadlock families got state-aware exits** (ADJ-08/09/10; doctrine in
+  the ADR-0014 addendum): zero-F HEAVY goals are exempt from the comparator
+  gate and zero-F plans are rejected at HEAVY adoption up front; done-state
+  ledger divergence recovers via a rebind whitelist (`step done`, `attest
+  comparator`, `loop finish` work in done state; re-finish writes a fresh
+  attestation — same-second attempts get a millisecond suffix instead of
+  overwriting, ADJ-07); tier-heavy upgrades of goals without a plan snapshot
+  are rejected up front, and executing goals without a planHash may re-adopt
+  their plan (fresh snapshot + review) as the recovery exit.
+- **Red-half attachments carry node identity** (ADJ-24, P1): same-generation
+  red halves land in distinct files instead of silently overwriting each other
+  (the ledger's sha256 was a false claim); a failed ledger write leaves no
+  half-captured attachment behind.
+- **red_of re-pairs on rebind** (ADJ-04): implementation now matches the
+  documented "latest red_of is current" semantics.
+- **Attempt-stamped instance isolation** (ADJ-44/03): cross-reset
+  re-registration derives an attempt number from the ledger; pairing,
+  supersedes, anchoring, and the evidence-list view are scoped per instance.
+  The manifest view anchors the current green via the same lookup the
+  authority uses, marks legacy-track steps honestly, and summarizes
+  other-instance nodes instead of mixing them into per-step rows.
+- **Finish critical section: half the git rounds + race recheck** (ADJ-13/06):
+  the integrity gate returns the head trees it already fetched and the final
+  attestation reuses them; a post-gate composite-fingerprint recheck rejects
+  when the tree moved mid-finish (no self-contradictory LOOP_COMPLETE).
+- **payload-ver deep checks** (ADJ-38/15/37): doctor compares the registry pin
+  (what sessions actually load), samples payload content (skills/zw/SKILL.md
+  sha256, cache vs package), and enumerates all marketplaces; the release
+  checklist gains a payload-freeze rule (no packaged file changes after
+  tagging).
+- **Legacy escape hatch closed** (ADJ-11): legacy single-tree evidence on
+  multi-subject goals reads as stale (subject commits were invisible to it);
+  slot-occupied errors no longer suggest abandon/reset (ADJ-36); evidence list
+  node filtering is O(N+E) via indexes (ADJ-23); the finish banner labels
+  planHash=null for legacy goals (ADJ-12).
+- **Five test gaps closed** (ADJ-16..20) and **all 21 P3 findings swept**
+  (ADJ-07..43): orphan-ghost wrong-face fixture, real stale-branch assertion,
+  comparator schema negatives, anchored-nodeId identity, attest pre-lock
+  guard; attestation same-second suffix, attestation tmp sweeps, BigInt id
+  allocator, manifest renders the current comparator verdict / waivers /
+  attachment counts, single Added section for 0.0.9 in this changelog, AGENTS
+  ADR map through 0014, robots sub-path boundary note, headless spike
+  line-count correction, SKILL ledger-sentence rewrite, subject-remove
+  path-form matching, guide finish fences at 0.0.9 semantics, content-level
+  residue scan (session identifiers no longer shipped in payload comments),
+  status dirt readout, checksum/recovery documentation.
+
+### Added
+
+- **Per-provider rate-limit advice** (roadmap debt 6): the band-by-provider
+  line carries cap advice for coherent bands, and a mix-note line states how
+  many providers the account-level numbers blend. Additive lines only — the
+  main rate-limit line, 429 predicates, and concentration/band math are
+  byte-identical.
+
 ## [0.0.9] - 2026-09-17
 
 ### Added

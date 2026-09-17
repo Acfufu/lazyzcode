@@ -106,7 +106,8 @@ test("绿半落地配对 red_of；rebind 追加 supersedes、旧 red_of 保留�
   const bySeq = greens().sort((a, b) => a.seq - b.seq);
   assert.ok(dag.edges.some((e) => e.type === "supersedes" && e.from === bySeq[1].id && e.to === bySeq[0].id));
   const redOfs = dag.edges.filter((e) => e.type === "red_of" && e.from === red.id);
-  assert.equal(redOfs.length, 1, "已配对 red 不重复配（历史经 supersedes 链可见）");
+  assert.equal(redOfs.length, 2, "rebind 重配现行绿（ADJ-04 实现追文档：多条 red_of 最新为现行）");
+  assert.ok(redOfs.some((e) => e.to === bySeq[1].id), "现行绿在配对集内");
 });
 
 test("manifest 视图：halves 行+rebind 链+waive 理由+口径句；ghost 落账本后孤儿行如实标注", () => {
@@ -127,7 +128,7 @@ test("manifest 视图：halves 行+rebind 链+waive 理由+口径句；ghost 落
   assert.doesNotMatch(r.out, /孤儿节点/);
   // dag-first 部分失败残留形态：账本 green 代数超前 goal.json → 视图如实标注不隐藏
   const dag = loadDag(d);
-  appendEvidenceNode(dag, { slug: "t", step: "F1", seq: 9, half: "green", surface: null, text: "residue" });
+  appendEvidenceNode(dag, { slug: "t", step: "F1", seq: 9, half: "green", surface: null, text: "residue", attempt: JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8")).attempt });
   saveDag(d, dag);
   const r2 = cli(["evidence", "list"], d);
   assert.equal(r2.code, 0);

@@ -525,6 +525,27 @@ export function removeSubject(cwd, path) {
   });
 }
 
+// 人权门批准记录谓词（0.1.1 goal1，ADR-0018）：`.lazyzcode/loop/approvals/` 下 slug+planHash
+// 双键精确匹配；目录缺席=无记录；不可解析文件忽略（记录面是 create-only 附加族，单文件
+// 损坏不扩大局）。写入面在钩子（trigger.js，真实用户消息唯一通道），本侧只读。
+export function findApproval(cwd, slug, planHash) {
+  const dir = join(loopDir(cwd), "approvals");
+  let entries;
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return false;
+  }
+  for (const f of entries) {
+    if (!f.endsWith(".json") || f.endsWith(".tmp")) continue;
+    try {
+      const rec = JSON.parse(readFileSync(join(dir, f), "utf8"));
+      if (rec && rec.slug === slug && rec.planHash === planHash) return true;
+    } catch {}
+  }
+  return false;
+}
+
 export function adoptPlan(cwd, planFile, opts = {}) {
   requireGoalPreLock(cwd);
   return withLock(cwd, () => doAdoptPlan(cwd, planFile, opts));
@@ -634,9 +655,25 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
       );
     }
   }
+  // ── 人权门（0.1.1 goal1，ADR-0018）：计划采纳须经 UPS 批准记录（exact-hash）。
+  // 位置=planHash 计算后、goal 变更前；--force 不越过（无逃生 flag）；plan/supersede/
+  // 存量重采纳同一门；双档全适用（V3 表4 H1）。无记录→落 approvalPending 后拒（报文
+  // 带短码+恢复指引）；重拒幂等刷新。批准记录只能由 UserPromptSubmit 钩子在真实用户
+  // 消息上写入——CLI 侧无 approve 命令（自跑即假人权门，前提已证伪）。
+  if (!ablated("LZY_ABLATE_HUMAN_GATE") && !findApproval(cwd, goal.slug, planHash)) {
+    goal.approvalPending = { planHash, requestedAt: new Date().toISOString() };
+    writeGoal(cwd, goal);
+    const short = planHash.slice(0, 8);
+    throw new LoopError(
+      `人权门未过（UPS exact-hash，ADR-0018）：计划 ${goal.slug}（短码 ${short}）等待人类批准。` +
+        `把「批准 ${short}」原样转给用户，用户消息到达后重跑本命令；` +
+        `模型不可自跑命令或手写记录冒充批准（批准记录只能由 UserPromptSubmit 钩子在真实用户消息上写入）。`,
+    );
+  }
   goal.planPath = relative(cwd, planFile) || planFile;
   goal.subjects = subjects;
   goal.planHash = planHash;
+  goal.approvalPending = null; // 人权门放行即清 pending（ADR-0018：不留陈旧批准请求）
   const verdict = review ? parseVerdict(review) : null;
   goal.review = review
     ? { by: "plan-reviewer", verdict: verdict === "PASS" ? "PASS" : "UNVERIFIED", summary: review.slice(0, 500), at: new Date().toISOString(), planHash }
@@ -1615,6 +1652,16 @@ function cleanupLoopResidue(cwd) {
     for (const f of readdirSync(join(cwd, ".lazyzcode", "attestations"))) {
       if (f.endsWith(".tmp")) {
         rmSync(join(cwd, ".lazyzcode", "attestations", f), { force: true });
+        cleaned++;
+      }
+    }
+  } catch {}
+  try {
+    // 人权门批准记录的孤儿 tmp（0.1.1 goal1，ADR-0018）：钩子 tmp+rename 写窗口的
+    // .<name>.<pid>.<ts>.tmp 落在 loop/approvals/，同样登记进清扫家族（记录本体 reset 不清）。
+    for (const f of readdirSync(join(dir, "approvals"))) {
+      if (f.endsWith(".tmp")) {
+        rmSync(join(dir, "approvals", f), { force: true });
         cleaned++;
       }
     }

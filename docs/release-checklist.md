@@ -282,3 +282,52 @@ Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 - 定版：5fc15d1（三体 bump 漏了第三体 plugin/.zcode-plugin/plugin.json——package.surface 版本三方测试当场抓：223/224 红，教训与 0.0.8 win32 夹具同族=**发布提交链必须在 npm test 全绿闸后**）→ 补 e404829 → push → CI 四腿绿（run 35170974099，node 22/24 × ubuntu/windows）→ tag v0.0.10 最后切（=origin 尖 e404829）→ GitHub Release（Highlights/Coverage boundary 体例）。npm publish 归用户 2FA（待办）。
 - 载荷冻结纪律（ADJ-15）首版生效：tag 后仅 docs/release-checklist.md（未随包）动过；样本内容级对照（skills/zw/SKILL.md）已入 doctor payload-ver。
 - 随 0.0.10 沿用 0.0.9 补记两条 npm 雷：npm 12 EALLOWREMOTE（remote tarball 直装默认禁，绕法 `lazyzcode@0.0.10 --prefer-online`）+ npm view 元数据缓存滞后数分钟（registry HTTP 端点为真相源）。
+
+## 执行记录（0.1.0，协议升级列车——机械件已备，publish 留用户）
+
+> 机械件（2026-09-18，维护者指令直发，未走 goal loop）：版本三体 0.1.0（package.json / plugin/.zcode-plugin/plugin.json / CHANGELOG 定版）、市场 manifest `version`/`ref` 钉 v0.1.0（第 11 步每发布同步）、home.html `softwareVersion` 0.0.9→0.1.0（**补 0.0.10 漏账**：该面无测试拦截靠人，0.0.10 弧漏更，本次随发布补齐记档）、sitemap 首页+guide 双语 lastmod→2026-09-18、SKILL 活体面排序句随载荷首发（e083808，zpigeon 重采雪崩复盘；zpigeon 侧 preflight+INFRA-FAIL 归因=c7934a1 不随本包）。本节提交不带 `Goal:` 尾注（沿先例，账本 warn 预期）。⚠ 本批含 19 个首推提交（棒A 修复轮+棒B+batch-2 报告+SKILL 句），CI 首见这些树——windows 腿是新夹具雷高危面，绿判后再 tag。
+
+### Runbook（按序）
+
+1. push main（20 提交上远端）→ CI 四腿绿（node 22/24 × ubuntu/windows；红则 test-only 修复重走，tag 恒切绿判树）。
+2. `git tag v0.1.0 && git push origin v0.1.0`（tag 最后切，落 CI 绿判的定版提交）。
+3. GitHub Release：以下方草稿为 notes 创建 `v0.1.0`。
+4. **publish（用户 2FA）**：`npm publish`；发后隔离 prefix 冒烟 `npm i -g lazyzcode && lzy --version`（应 0.1.0）+ `lzy doctor`。
+5. 发后核验：registry `dist-tag latest=0.1.0`、发布 shasum 与 dry-run 逐字一致、真机 `lzy update` 0.0.10→0.1.0 全链 EXIT=0、`lzy doctor` `payload-ver` 深对照双 ✔。
+
+### GitHub Release notes 草稿（v0.1.0）
+
+```markdown
+## Highlights
+
+- **Attempt lineage (`lzy loop supersede`)** (ADR-0016): changing the plan
+  mid-execution is no longer a dead end — the old attempt is marked superseded
+  and attempt+1 opens with every adoption gate re-run (same-hash refusal,
+  previous snapshot archived, base tree re-captured). `lzy loop attempts`
+  reads the lineage; the chain survives resets.
+- **Invalidation preview as a real command**: `lzy dag stale` reports
+  per-evidence freshness (fresh / stale / superseded / external / unknown)
+  against the current composite fingerprint. Display-only by design — the
+  gates keep judging by direct comparison.
+- **HEAVY exemption tightening (INV-09)**: HEAVY finish refuses to close an
+  F item with green-only when its red half is missing; recover by honest
+  reverse-pairing or waive. **Harness freeze (INV-08)**: red/green halves can
+  bind a procedure string (`--harness`, ≤300 chars); mismatched pairs are
+  flagged in `lzy evidence list` and refused at HEAVY finish.
+- **Headless drive primitive** (ADR-0017): `spawnHeadless` (literal argv,
+  shell off, explicit `--mode`, wall-clock SIGKILL budget, HOME isolation
+  with auth passthrough, `--json` summary) + a full-chain self-drive E2E
+  script + a `doctor headless` line.
+- **Protocol text layer**: zw SKILL now marks each red line with its
+  enforcement tier (L0–L3), adds risk-class to tier triage, and — new in
+  this train — the live-surface evidence ordering rule: iterate the test
+  harness before banking any green, capture greens in one final batch after
+  the freeze, and `INFRA-FAIL:`-attributed failures do not retire an
+  approach.
+
+## Upgrade
+
+From 0.0.10: `lzy update` (spawns a fresh child process to deploy the new
+plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
+&& lzy install`). Requires the ZCode desktop app (logged in), Node ≥ 22, git.
+```

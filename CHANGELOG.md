@@ -3,7 +3,7 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
-## [Unreleased]
+## [0.1.0] - 2026-09-18
 
 Protocol upgrade baton (0.1.0, ADR-0016/0017): forward-only attempt lineage,
 invalidation propagation as a query surface, HEAVY exemption tightening, the

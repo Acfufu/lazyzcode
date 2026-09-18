@@ -337,9 +337,27 @@ function checkClaims(push, cwd) {
     push(
       "claims",
       "warn",
-      "待认领（孤儿）：零认领，Stop 拉回维持目录级现状；任一会话发「zw 继续」即认领接管" +
+      "零认领：资格制下无人会被拉回（ADR-0004 修正案四）；参与会话发 invocational 触发（如「zw 继续」）即认领接管" +
         `${stuckNote}${expiredNote}`,
     );
+  }
+}
+
+// 宿主 git 仓检查（ADR-0019，0.1.1）：证据绑定 git 树的产品根基面——非 git 宿主的循环
+// 不可验收（register 已硬拒新目标；本行覆盖存量 goal 与 git 中途消失形态）。warn-only
+// fail-soft：警示面绝不翻转退出码（与 claims 同纪律）。
+function checkHostGit(push, cwd) {
+  const it = createGit(cwd).integrity(8_000);
+  if (it.state === "missing") {
+    push(
+      "host-git",
+      "warn",
+      `宿主无法解析为 git 仓库（${it.detail ?? "git 不可用"}）——目标循环证据绑定 git 树，finish 不可达；先 git init 并完成首次提交（ADR-0019）`,
+    );
+  } else if (it.state === "error") {
+    push("host-git", "warn", `git 探测异常（fail-closed 域，finish 完整性闸门会拦）：${it.detail ?? "未知"}`);
+  } else {
+    push("host-git", "ok", `git 仓在位（tree ${(it.headTree ?? "").slice(0, 10) || "…"}）`);
   }
 }
 
@@ -711,6 +729,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     checkPayloadVersion,
     (p) => checkLoopState(p, cwd),
     (p) => checkClaims(p, cwd),
+    (p) => checkHostGit(p, cwd),
     (p) => checkWaterline(p),
     (p) => checkOrphanWake(p, cwd),
     (p) => checkLedger(p, cwd),

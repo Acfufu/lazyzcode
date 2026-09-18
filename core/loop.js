@@ -176,6 +176,15 @@ export function registerGoal(cwd, slug, title, { tier = "light" } = {}) {
   if (tierNorm !== "light" && tierNorm !== "heavy") {
     throw new LoopError(`tier 不合法：${tier}（light | heavy，默认 light）`);
   }
+  // 非 git 宿主前置硬拒（ADR-0019，0.1.1）：证据绑定 git 树，非 git 宿主的 finish 不可达
+  //（unbound 拒+完整性闸门 host 根 missing 拒）——把不可达性从 finish 期提前到注册期，
+  // 零工作量损失时点最早。headTreeHash null=目录非 git 仓或 git 不可用，同族同拒，无逃生 flag。
+  if (!createGit(cwd).headTreeHash()) {
+    throw new LoopError(
+      `宿主无法解析为 git 仓库（未初始化或 git 不可用）：${cwd}——目标循环证据绑定 git 树，` +
+        `非 git 宿主的 finish 不可达。先 git init 并完成首次提交，再重新注册（ADR-0019）`,
+    );
+  }
   // 查重+写入同一临界区（评审 R6A-1）：并发 register 双方 readGoal 均 null 时
   // 各自 writeGoal 原子覆盖，先注册的目标无痕丢失——唯一漏网的 goal.json 变更操作补齐入锁。
   return withLock(cwd, () => {
@@ -1755,7 +1764,7 @@ function writeSalvageStub(cwd, goal, git, reason) {
 // 会话旗标扫描（ADR-0004 读面）：认领谓词=文件含 claimedAt（纯振数文件不算认领）；
 // stuck=显式 true（原地无进展两振停拉标记）。目录缺失/文件损坏一律静默跳过。
 // 认领 TTL（plan-v2 Phase 2-5）：引擎无 SessionEnd 事件，死亡会话的认领以 48h 时效退役——
-// 过期不计入认领集（Stop 空集=目录级现状，单调收紧不破），文件原地保留（重认领自然覆写，
+// 过期不计入认领集（Stop 资格制：空集=无人可拉，ADR-0004 修正案四），文件原地保留（重认领自然覆写，
 // doctor 过期计数可见）。canonical 常量；plugin/hooks/hook-lib.js 持自包含同形副本。
 export const CLAIM_TTL_MS = 48 * 60 * 60 * 1000;
 
@@ -1830,6 +1839,10 @@ export function formatStatus(cwd, git) {
       const sample = (it.paths ?? []).slice(0, 3).join(" ");
       const more = (it.paths?.length ?? 0) > 3 ? ` 等 ${it.paths.length} 处` : "";
       lines.push(`  工作树 脏（${sample}${more}）——finish 完整性闸门会拦：commit 或 stash 后再 finish`);
+    } else if (it.state === "missing") {
+      lines.push(
+        `  工作树 missing（${it.detail ?? "git 不可用"}）——宿主须为 git 仓：git init 并完成首次提交后证据时效方可生效（ADR-0019）`,
+      );
     } else lines.push(`  工作树 ${it.state}（${it.detail ?? "git 不可用"}）`);
   }
   const next = nextStep(goal);
@@ -1870,7 +1883,7 @@ export function formatStatus(cwd, git) {
     if (flags.claims.length > 0) {
       lines.push(`  认领 ${flags.claims.length}：${flags.claims.join(" ")}（仅认领会话会被 Stop 拉回）`);
     } else {
-      lines.push("  认领 0（待认领：任一会话发「zw 继续」即接管）");
+      lines.push("  认领 0（资格制：无人会被拉回；参与会话发「zw 继续」即认领接管）");
     }
     const claimable = claimableSteps(goal);
     if (claimable.length > 0) {

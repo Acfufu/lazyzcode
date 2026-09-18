@@ -141,7 +141,7 @@ export function listClaims(cwd) {
   try {
     names = readdirSync(dir);
   } catch {
-    return []; // 目录不存在 = 空认领集（现状目录级行为）
+    return []; // 目录不存在 = 空认领集（资格制下=无人可拉，ADR-0004 修正案四）
   }
   const claims = [];
   for (const name of names) {

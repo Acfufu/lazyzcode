@@ -331,3 +331,9 @@ From 0.0.10: `lzy update` (spawns a fresh child process to deploy the new
 plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 && lzy install`). Requires the ZCode desktop app (logged in), Node ≥ 22, git.
 ```
+
+### 补记（2026-09-18，发布日实弹）
+
+- **CI 首跑（a55833d）windows 双腿红**：extract-metrics×2+aggregate×1——根因=六个 `scripts/ablation/*.mjs` 入口守卫 `` `file://${argv[1]}` `` 在 win32 永假（反斜杠盘符路径 ≠ `file:///` URL）→ CLI 块静默零输出退出 0。f6fc29d 统一改 `pathToFileURL`（argv[1] 空值安全）；scripts/ 不在 npm 包内，**payload 冻结点不变**。复跑 run 35379002725 四腿全绿。
+- **流程瑕疵自记账**：首跑未出判时 v0.1.0 已被切出（`gh run watch --exit-status` 对失败 run 伪报 exit 0，且切 tag 与判决查看串在同一条命令未独立核验）→ 按「未 publish 的 tag 可替换」纪律删除重切 `v0.1.0=f6fc29d`。lesson：CI 判决**永远**以 `gh run view --json conclusion` 为准；tag 命令永不与未核验判决同串。
+- GitHub Release 已建（notes=本节草稿逐字）；tag 即发布树。publish 留用户 2FA。

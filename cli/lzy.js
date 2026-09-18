@@ -3,10 +3,10 @@
 // loop = 目标循环状态机（注册→计划门→逐步派发→证据验证→完成），状态在 .lazyzcode/。
 import { resolve } from "node:path";
 import { watch } from "node:fs";
-import { install, sync, uninstall, readRepoManifest } from "../core/installer.js";
+import { assertNodeFloor, install, sync, uninstall, readRepoManifest } from "../core/installer.js";
 import { createUpdater } from "../core/update.js";
 import { collectStatus } from "../core/status.js";
-import { collectDoctor } from "../core/doctor.js";
+import { collectDoctor, NODE_MAJOR_FLOOR } from "../core/doctor.js";
 import { createEngineCli } from "../core/engine.js";
 import { createGit } from "../core/git.js";
 import {
@@ -112,6 +112,7 @@ async function cmdDoctor() {
 }
 
 async function cmdInstall() {
+  assertNodeFloor(NODE_MAJOR_FLOOR); // 债六：低版本 Node 在安装时撞错，不在运行时
   const r = await install();
   console.log("lzy install");
   console.log(`  ✔ 载荷已部署   ${r.installPath}`);
@@ -132,6 +133,7 @@ async function cmdSyncOnce() {
 }
 
 async function cmdSync(args) {
+  assertNodeFloor(NODE_MAJOR_FLOOR); // 债六：预检在 watch 循环前，每事件回调不重复报
   const watchArg = args.find((a) => a === "--watch" || a.startsWith("--watch="));
   if (watchArg && watchArg !== "--watch") {
     // 不再静默退化（评审 R3-13a）：显式告知按一次性执行。

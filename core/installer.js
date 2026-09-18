@@ -25,6 +25,20 @@ export function readRepoManifest() {
   return JSON.parse(readFileSync(repoManifestPath(), "utf8"));
 }
 
+// Node 下限前置探测（债六，0.1.1）：install/sync 入口先行调用，低版本 Node 的首次撞错点
+// 从运行时提前到安装时，报错带当前版本与升级指路。floor 由调用方传 core/doctor.js 的
+// NODE_MAJOR_FLOOR（常量单源不复制——doctor↔installer 已有 import 关系，本文件反向
+// import 会成环，故参数化；参数化兼供契约测试注入）。
+export function assertNodeFloor(floor) {
+  const major = Number(String(process.versions.node).split(".")[0]);
+  if (!(major >= floor)) {
+    throw new Error(
+      `Node >= ${floor} required（当前 ${process.versions.node}）——请先升级 Node 再重试` +
+        `（如 nvm install ${floor} && nvm use ${floor}）`,
+    );
+  }
+}
+
 export function sha256File(p) {
   return createHash("sha256").update(readFileSync(p)).digest("hex");
 }

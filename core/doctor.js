@@ -28,7 +28,7 @@ import { auditAgentsMd } from "./agentsmd.js";
 import { scanSessionFlags } from "./loop.js";
 import { createGit } from "./git.js";
 
-const NODE_MAJOR_FLOOR = 22;
+export const NODE_MAJOR_FLOOR = 22; // 单源（债六，0.1.1）：install/sync 前置探测同用此常量
 
 // 项目记忆过期提示阈值（memory-staleness-fingerprint）：地图基点后覆盖域提交数达到该值，
 // doctor agents-md 的 ok 行尾追加「地图落后 N 个提交」提示。写死+人工维护口径（无 env、

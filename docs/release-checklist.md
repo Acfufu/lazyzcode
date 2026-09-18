@@ -337,3 +337,9 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - **CI 首跑（a55833d）windows 双腿红**：extract-metrics×2+aggregate×1——根因=六个 `scripts/ablation/*.mjs` 入口守卫 `` `file://${argv[1]}` `` 在 win32 永假（反斜杠盘符路径 ≠ `file:///` URL）→ CLI 块静默零输出退出 0。f6fc29d 统一改 `pathToFileURL`（argv[1] 空值安全）；scripts/ 不在 npm 包内，**payload 冻结点不变**。复跑 run 35379002725 四腿全绿。
 - **流程瑕疵自记账**：首跑未出判时 v0.1.0 已被切出（`gh run watch --exit-status` 对失败 run 伪报 exit 0，且切 tag 与判决查看串在同一条命令未独立核验）→ 按「未 publish 的 tag 可替换」纪律删除重切 `v0.1.0=f6fc29d`。lesson：CI 判决**永远**以 `gh run view --json conclusion` 为准；tag 命令永不与未核验判决同串。
 - GitHub Release 已建（notes=本节草稿逐字）；tag 即发布树。publish 留用户 2FA。
+
+### 发后核验（2026-09-18，publish 用户 2FA 后）
+
+- registry `latest=0.1.0`（curl 直证）；发布 tarball 与 tag 树打包 sha512 逐字节一致（54e5942b…，双向 cmp 同）。
+- 隔离 prefix 冒烟：`--prefix` 装 @0.1.0 → `lzy --version` 0.1.0（插件载荷同版本）EXIT=0。
+- 真机 `lzy update` 0.0.10→0.1.0 全链 EXIT=0（「sync 已由新装子进程执行」=ADR-0012 活体）；缓存 0.1.0 目录在案（历史版本目录 0.0.1…0.0.10 并存）、新 SKILL「Live-surface ordering」句随载荷首发 grep 实证；doctor `payload`/`install`/`payload-ver` 三 ✔（缓存 11 版本目录 · CLI 一致）。

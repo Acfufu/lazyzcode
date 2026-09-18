@@ -30,6 +30,9 @@ const ALIAS_INITIAL_RE = /^\s*(ulw|ultrawork)(?![a-z0-9_-])/i;
 // 人权门批准形态（0.1.1 goal1，ADR-0018）：恰「批准/approve + 8 位 hex 短码」；负向
 // 后行断言屏蔽中文否定前置字（不/别）。多条命中取首个（钉死）。
 const APPROVE_RE = /(?<![不别])(?:批准|approve)\s*([0-9a-f]{8})\b/i;
+// standdown 声明形态（0.1.1 goal2，ADR-0009 修订节）：句首「zw standdown」——本会话
+// 退出当前目标参与（Stop 不再拉回）；参与触发（invocational）写认领时同步清旗标。
+const STANDDOWN_RE = /^\s*zw\s+standdown(?![a-z0-9_-])/i;
 
 // 返回 null=落回既有触发词逻辑（零输出零 exit）；返回对象=恰一次 emit 后 exit 0
 // （由调用方执行）。emit 文案零时间戳零文件名（双跑确定性不变量）；全分支异常
@@ -102,6 +105,37 @@ try {
   const prompt = typeof input?.prompt === "string" ? input.prompt : "";
   if (!BARE_ZW_RE.test(prompt) && !EXPLICIT_RE.test(prompt) && !ALIAS_RE.test(prompt)) failOpen();
 
+  // standdown 声明（ADR-0009 修订节，0.1.1）：「zw standdown」=本会话退出本目标参与。
+  // 置于正则门后、sentinel/认领前——命中即整支接管，绝不落回注入/认领流程。归
+  // LZY_ABLATE_HOOK_TRIGGER 轴（短路点在上方：触发面全灭=本分支同灭，与认领写同轴；
+  // 对比人权门的独立消融轴——那是消融臂 D/E 必须过采纳门的特例）。写旗标常驻、幂等
+  // 同文；参与（认领写）即清；reset 清 sessions/ 即清。emit 文案全静态零时间戳零文件名
+  //（双跑字节确定契约）。
+  if (STANDDOWN_RE.test(prompt)) {
+    const cwd = inputCwd(input);
+    const sessionId = inputSessionId(input);
+    if (!sessionId) failOpen(); // 缺 sessionId 无法绑定会话旗标（引擎恒供，缺=异常输入）
+    if (readGoal(cwd)) {
+      withSessionLock(cwd, sessionId, () => {
+        writeSessionState(cwd, sessionId, { standdown: true });
+      });
+      emit({
+        additionalContext:
+          "[lzy] standdown recorded: this session has opted out of the current goal loop. " +
+          "The Stop hook will no longer pull this session back (pull-back budget untouched). " +
+          "To rejoin, send an invocational trigger such as \"zw 继续\" — claiming clears the " +
+          "standdown flag. The flag is also cleared when the goal loop is reset.",
+      });
+      process.exit(0);
+    }
+    emit({
+      additionalContext:
+        "[lzy] standdown: no goal loop in this directory — nothing to opt out of. " +
+        "No flag written.",
+    });
+    process.exit(0);
+  }
+
   // 哨兵旗标（plan-v2 Phase 2-6）：wake prompt 含「无人值守」→ 记 unattended 入会话状态。
   // 写在 executing 闸门之外——无目标/planning 的空转 wake 也要记（wake_noop 遥测与 A'
   // 复活前置④依赖它）；认领块不动（claimedAt 仍限 executing）。宿主 wake 模板含
@@ -130,7 +164,12 @@ try {
       BARE_ZW_RE.test(prompt) || EXPLICIT_RE.test(prompt) || ALIAS_INITIAL_RE.test(prompt);
     if (sessionId && invocational && readGoal(cwd)?.status === "executing") {
       withSessionLock(cwd, sessionId, () => {
-        writeSessionState(cwd, sessionId, { claimedAt: new Date().toISOString() });
+        // 参与即恢复（ADR-0009 修订节）：认领写同步清 standdown 旗标——「zw 继续」重新
+        // 加入拉回，与「退出须显式声明」对偶。
+        writeSessionState(cwd, sessionId, {
+          claimedAt: new Date().toISOString(),
+          standdown: null,
+        });
       });
     }
   } catch {

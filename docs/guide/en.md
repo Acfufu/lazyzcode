@@ -254,7 +254,14 @@ lzy loop abandon | lzy loop reset       # give up / clear state
 - `lzy loop plan` parses the N/F checklist and rejects undecided (TBD) items.
   Pass the plan-reviewer verdict with `--review "plan-reviewer: PASS …"`;
   a `REVISE` verdict is refused even with `--force`, and for HEAVY goals
-  (persisted tier) adoption without a PASS verdict is machine-rejected. Adoption
+  (persisted tier) adoption without a PASS verdict is machine-rejected.
+  Adoption must also pass the **human gate** (0.1.1, ADR-0018): the first run
+  is rejected with a short code (first 8 hex of the planHash) — relay the exact
+  sentence 「批准 <短码>」 to the user and wait for their reply (the approval
+  record is written only by the UserPromptSubmit hook on a genuine user
+  message; the model running commands or hand-writing files never counts),
+  then re-run adoption. Editing the plan file after approval voids it — the
+  next adoption issues a fresh code. Both tiers are gated. Adoption
   snapshots the plan into `.lazyzcode/loop/snapshots/<slug>.md` and binds
   `goal.planHash` (review records carry it too — the review binds the reviewed
   artifact; re-adopting an amended plan requires a fresh review). A

@@ -3,6 +3,22 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **UPS exact-hash human gate** (ADR-0018, 0.1.1 goal1): plan adoption —
+  `lzy loop plan` and `lzy loop supersede` alike, both tiers — now requires an
+  approval record written only by the UserPromptSubmit hook when a genuine user
+  message contains 「批准 <planHash 前 8 位>」. The first adoption run is
+  rejected with the pending short code and recovery guidance; `--force` does
+  not bypass (no escape flag). Approval records are append-only under
+  `.lazyzcode/loop/approvals/` and survive reset; editing the plan after
+  approval voids it and a fresh code is issued. Two ablation switches
+  (`LZY_ABLATE_HUMAN_GATE`, `LZY_ABLATE_HOOK_HUMAN_GATE`, value exactly "1")
+  keep the true-ablation harness and headless E2E drivable — the E2E now
+  drives a real two-turn approval through the engine.
+
 ## [0.1.0] - 2026-09-18
 
 Protocol upgrade baton (0.1.0, ADR-0016/0017): forward-only attempt lineage,

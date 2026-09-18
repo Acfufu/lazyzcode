@@ -133,7 +133,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | `update` | `lzy update` | 一键升级：npm 拉最新包，再由新装路径的全新子进程执行 `lzy sync`（已是最新则免装；任一环失败均给手动两步指路） |
 | `status` | `lzy status` | 快速体检；退出码 0 = 无 fail 级检查（warn/skip 不影响） |
 | `doctor` | `lzy doctor` | 全量诊断——见下 |
-| 目标循环 | `lzy loop register <slug> --title "…" [--tier heavy]` → `lzy loop plan <计划.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | 状态机：注册 → 计划门 → 执行 → 证据 → 终验门（证据绑 host+声明 subjects 的复合指纹；finish 要求全树 clean） |
+| 目标循环 | `lzy loop register <slug> --title "…" [--tier heavy]` → `lzy loop plan <计划.md>` → `lzy loop start` → `lzy step done <ID> --evidence …` → `lzy loop finish` | 状态机：注册 → 计划门 → 执行 → 证据 → 终验门（证据绑 host+声明 subjects 的复合指纹；finish 要求全树 clean）。计划采纳过人权门（0.1.1）：首次采纳拒并给短码——用户回「批准 <短码>」、UPS 钩子落批准记录；模型无法自行冒充批准 |
 | attempt 世系 | `lzy loop supersede <计划.md> [--review …] · lzy loop attempts` | 执行中改计划的 forward-only 出口（0.1.0）：旧 attempt 置 superseded、开新代次且完整采纳门重走——不做 in-place 改计划；世系是跨 reset 常驻的校验和账本 |
 | 证据主体 | `lzy loop subject add <路径> · remove · list` | 多树目标声明兄弟仓根（仅 executing；校验 git 仓/无包含关系）——集合变化使已录 F 证据全体过期 |
 | Tier | `lzy loop tier heavy` | LIGHT→HEAVY 单向升级；HEAVY 无 PASS 评审采纳被机器拒（采纳时点门） |

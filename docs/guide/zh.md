@@ -217,7 +217,11 @@ lzy loop abandon | lzy loop reset       # 放弃 / 清状态
 
 - `lzy loop plan` 解析 N/F 清单并拒绝待定（TBD）项。评审判决用
   `--review "plan-reviewer: PASS …"` 传入；`REVISE` 判决即使 `--force` 也不越过，
-  HEAVY 目标（落盘 tier）无 PASS 评审被机器拒。采纳即快照计划到
+  HEAVY 目标（落盘 tier）无 PASS 评审被机器拒。采纳还要过**人权门**（0.1.1，
+  ADR-0018）：首次采纳被拒并给出短码（planHash 前 8 位）——把「批准 <短码>」原句
+  转给用户，等用户消息到达（批准记录只能由 UserPromptSubmit 钩子在真实用户消息上
+  写入，模型自跑命令或手写文件都不算数）后重跑采纳即过；批准后改计划文件=批准作废，
+  重采纳出新高码。LIGHT/HEAVY 双档同门。采纳即快照计划到
   `.lazyzcode/loop/snapshots/<slug>.md` 并绑 `goal.planHash`（评审记录同带——
   评审绑被评审物；修订后复采纳必须重跑评审）。条目行下一行的 `deps: N1,N2` 声明前置
   依赖——引用必须存在，自指/成环/孤儿 `deps:` 行都会被响亮拒绝（正文要引用

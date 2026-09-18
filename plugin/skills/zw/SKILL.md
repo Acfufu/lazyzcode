@@ -125,18 +125,23 @@ Rules:
 - **HEAVY (mandatory)**: spawn the `lazyzcode:plan-reviewer` agent with the goal
   and plan path. On `VERDICT: PASS` adopt with the review record:
   `lzy loop plan .lazyzcode/plans/<slug>.md --review "plan-reviewer: PASS — <one-line summary>"`.
+  The first adopt run then hits the **human gate (L2, ADR-0018)**: the CLI
+  rejects with a pending short code — relay the exact sentence
+  「批准 <短码>」 to the user verbatim and wait for their reply (the
+  UserPromptSubmit hook records the approval only on a genuine user prompt),
+  then re-run the same adopt command.
   On `VERDICT: REVISE` the CLI rejects adoption — fix the plan per the review
   items and re-review; never bypass with `--force`. Amending an adopted plan and
   re-adopting requires a fresh review — a changed snapshot hash with an unchanged
   review string is a red line (the CLI warns; the record must not lie about what
   was reviewed).
 - **LIGHT**: run the reviewer's checklist yourself (decision-complete, F surfaces
-  named, scope tight). `--review` optional.
+  named, scope tight). `--review` optional. The human gate applies to LIGHT too.
 
 Then start:
 
 ```
-lzy loop plan .lazyzcode/plans/<slug>.md [--review "plan-reviewer: PASS …"]
+lzy loop plan .lazyzcode/plans/<slug>.md [--review "…"]   # 1st run rejects with 短码 → relay 「批准 <短码>」, wait, re-run
 lzy loop start
 ```
 
@@ -535,14 +540,19 @@ otherwise is a lie about who enforces it.
    worktree (outside the host tree), not clear the slot.
 
 **Approvals bind immutable hashes (INV-05).** Plan adoption already binds the
-review to planHash and the snapshot (L1, machine-true); a human nod in
-conversation is L0 — it cannot be upgraded by the model running a CLI. The
-UPS exact-hash human gate (L2) is scheduled for 0.1.1 and is deliberately not
-here. **Audit ring:** a material change after review invalidates the review —
+review to planHash and the snapshot (L1, machine-true). Since 0.1.1 the human
+nod is machine law too — the **UPS exact-hash human gate (L2, ADR-0018)**:
+adoption requires an approval record that only the UserPromptSubmit hook can
+write, on a genuine user message containing 「批准 <planHash 前 8 位>」.
+Never run commands or hand-write files to fake an approval (the CLI has no
+approve command by design — a model-run approval is the fake human gate), and
+never dodge the code by editing the plan file — the hash changes, the approval
+is void, and re-adoption issues a fresh code. **Audit ring:** a material
+change after review invalidates the review —
 plan re-adoption requires a fresh PASS review (L1 for HEAVY; mid-execution
 plan changes go through `lzy loop supersede`, which opens a new attempt and
-re-runs every adoption gate), and the HEAVY finish comparator is the terminal
-audit ring before LOOP_COMPLETE.
+re-runs every adoption gate, human gate included), and the HEAVY finish
+comparator is the terminal audit ring before LOOP_COMPLETE.
 
 ## Roles (plugin agents)
 
@@ -571,7 +581,7 @@ tool). Aliases are equal — `zw` is the primary.
 | `lzy loop register <slug> --title … [--tier heavy]` | create goal (planning; HEAVY adoption without PASS review is machine-rejected) |
 | `lzy loop supersede <plan> [--review …]` | forward-only plan change mid-execution (0.1.0): old attempt → superseded, opens attempt+1, full adoption gates re-run |
 | `lzy loop attempts` | attempt lineage read face (attempt.json ∪ central-ledger derivation; read-only) |
-| `lzy loop plan <file> [--force]` | adopt checklist (rejects TBD; snapshots the plan + binds planHash) |
+| `lzy loop plan <file> [--force]` | adopt checklist (rejects TBD; snapshots the plan + binds planHash; **human gate ADR-0018**: 1st run rejects with a short code → relay 「批准 <短码>」 verbatim, re-run after the user's reply) |
 | `lzy loop start` | planning → executing; prints the measured 并发纪律 advisory |
 | `lzy loop subject add/remove <path> · subject list` | declare/remove sibling repo roots (executing-only; any set change invalidates all F evidence) |
 | `lzy loop tier heavy` | tier upgrade, one-way (machine gate is adoption-time; ADR-0013) |

@@ -224,6 +224,15 @@ suggested command; it returns verbatim observed output and a MATCH verdict.
   pairing/existence check reads `lzy evidence list` as its first source, and
   assertion-vs-evidence matching is still judged per pair by qa-executor,
   unchanged.
+- **Live-surface ordering**: when an F-item's evidence surface is an expensive,
+  flaky live run (UI test, paired device, real session), iterate the test
+  harness to stability BEFORE banking any green half — capture all greens in
+  one final batch after the harness freezes. A test-only commit after greens
+  are banked invalidates every one of them (the composite fingerprint is
+  tree-wide), and re-capturing live waves is the costliest way to pay for
+  that. Preflight the environment before a formal capture; failures attributed
+  to infrastructure (mark `INFRA-FAIL:` in the attempt note) do not retire an
+  approach — only assertion failures do.
 - **Mechanical $0 checks first (成本两件套)**: exhaust zero-cost mechanical
   verification before any semantic/model-judged check — CLI stdout, file
   existence and content assertions, `grep`/`diff`. Never spend a model call on

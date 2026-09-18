@@ -11,6 +11,12 @@ protocol text layer, and the headless drive primitive.
 
 ### Added
 
+- **Live-surface evidence ordering** (zw SKILL): when an F-item's evidence
+  surface is an expensive, flaky live run, iterate the test harness to stability
+  before banking any green half — capture all greens in one final batch after
+  the harness freezes; `INFRA-FAIL:`-attributed failures do not retire an
+  approach (postmortem of the zpigeon render-granularity goal's re-capture
+  avalanche).
 - **Attempt lineage (supersede, forward-only)** (ADR-0016): `core/attempt.js`
   keeps `loop/attempt.json` (checksummed, atomic write, errno fail-closed;
   absent ledger falls back to a derived view from the central DAG's attempt

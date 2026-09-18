@@ -36,14 +36,27 @@ function startGoal(d) {
   mkdirSync(join(d, ".lazyzcode", "plans"), { recursive: true });
   const plan = join(d, ".lazyzcode", "plans", "p.md");
   writeFileSync(plan, "- [N1] 实现步骤一\n- [N2] 实现步骤二\n- [F1] · 终验：CLI stdout 显示 ok\n");
+  gitInit(d); // 非 git 宿主 register 硬拒（ADR-0019，0.1.1）：夹具补 git 初始化
   assert.equal(lzy(["loop", "register", "t1", "--title", "t"], d).status, 0);
   assert.equal(lzy(["loop", "plan", plan], d).status, 0);
   assert.equal(lzy(["loop", "start"], d).status, 0);
 }
 
+// 非 git 宿主 register 硬拒（ADR-0019）的夹具侧适配：注册类用例先落 git 仓
+function gitInit(d) {
+  const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+  g(["init", "-q"]);
+  g(["config", "user.email", "t@l"]);
+  g(["config", "user.name", "t"]);
+  writeFileSync(join(d, "a.txt"), "a\n");
+  g(["add", "a.txt"]);
+  g(["commit", "-qm", "init"]);
+}
+
 test("parseArgs：--force=true 布尔归一放行带未决标记计划；--force 前置不吞路径（R2-8）", () => {
   const d = scratch();
   try {
+    gitInit(d);
     mkdirSync(join(d, ".lazyzcode", "plans"), { recursive: true });
     const plan = join(d, ".lazyzcode", "plans", "p.md");
     writeFileSync(plan, "- [N1] 含未决字样：待定（--force 越过属设计内）\n");
@@ -52,6 +65,7 @@ test("parseArgs：--force=true 布尔归一放行带未决标记计划；--force
     assert.equal(r1.status, 0, r1.stderr || r1.stdout);
     const d2 = scratch();
     try {
+      gitInit(d2);
       assert.equal(lzy(["loop", "register", "t2", "--title", "t"], d2).status, 0);
       const r2 = lzy(["loop", "plan", "--force", plan], d2);
       assert.equal(r2.status, 0, r2.stderr || r2.stdout);

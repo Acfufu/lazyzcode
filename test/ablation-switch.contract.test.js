@@ -198,11 +198,13 @@ test("HOOK_STOP：关=未完成目标拉回且计数；开={}放手零写面", (
   const d = scratch("lzy-abl-hs-");
   try {
     mkdirSync(join(d, ".lazyzcode", "loop", "sessions"), { recursive: true });
-    writeFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), JSON.stringify({ continues: 0 }));
+    // 资格制（ADR-0004 修正案四）：被拉会话夹具带新鲜认领
+    const claimFile = () => JSON.stringify({ continues: 0, claimedAt: new Date().toISOString() });
+    writeFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), claimFile());
     const inp = { sessionId: "s", cwd: d };
     const off = JSON.parse(hookRun("stop.js", inp).out);
     assert.equal(off.continue, true); // 拉回在役
-    writeFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), JSON.stringify({ continues: 0 }));
+    writeFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), claimFile());
     const on = hookRun("stop.js", inp, { LZY_ABLATE_HOOK_STOP: "1" });
     assert.equal(on.code, 0);
     assert.equal(on.out, "{}"); // 拉回全灭

@@ -130,12 +130,12 @@ test("trigger 分级（ADR-0004 修正案）：句中别名只注入不认领，
 
 // ── 认领闸门（stop.js） ────────────────────────────────────────────────────
 
-test("stop：空集=现状（无 sessions 目录仍拉回）", () => {
+test("stop：资格制空集（无 sessions 目录=无人可拉，旁路结构性免拉）", () => {
   const d = scratch();
   try {
     goalAt(d);
-    const o = JSON.parse(hook("stop.js", { sessionId: "sX", cwd: d }).out);
-    assert.equal(o.continue, true);
+    // ADR-0004 修正案四（0.1.1）：空集回退废止——v0.1.0 前此处旁路会被拉（continue:true）
+    assert.equal(hook("stop.js", { sessionId: "sX", cwd: d }).out, "{}");
   } finally {
     cleanup(d);
   }
@@ -155,14 +155,15 @@ test("stop：认领集非空——旁路会话放手、认领会话被拉、多�
   }
 });
 
-test("stop：仅振数文件（无 claimedAt）不算认领 → 仍算空集=现状", () => {
+test("stop：仅振数文件（无 claimedAt）不算认领 → 空集=无人可拉", () => {
   const d = scratch();
   try {
     goalAt(d);
     mkdirSync(join(d, ".lazyzcode", "loop", "sessions"), { recursive: true });
     writeFileSync(sessFile(d, "sM"), JSON.stringify({ continues: 1, stallCount: 1, lastDoneCount: 0 }));
-    const o = JSON.parse(hook("stop.js", { sessionId: "sOther", cwd: d }).out);
-    assert.equal(o.continue, true); // 现状口径：任何会话仍可被拉
+    // 资格制（修正案四）：振数文件不构成认领 → 认领集为空 → 旁路（含会话本体）一律放手
+    assert.equal(hook("stop.js", { sessionId: "sOther", cwd: d }).out, "{}");
+    assert.equal(hook("stop.js", { sessionId: "sM", cwd: d }).out, "{}");
   } finally {
     cleanup(d);
   }
@@ -178,6 +179,7 @@ test("stop：首拉只记快照不计振；有推进 stall/stuck 自愈", () => 
       { id: "N2", kind: "N", status: "pending" },
     ]);
     const inp = { sessionId: "s", cwd: d };
+    claimAt(d, "s"); // 资格制（修正案四）：被拉会话先持认领
     JSON.parse(hook("stop.js", inp).out); // 首拉
     let st = JSON.parse(readFileSync(sessFile(d, "s"), "utf8"));
     assert.equal(st.lastDoneCount, 0);
@@ -242,16 +244,16 @@ test("兼容：旧格式 {continues} 文件经认领与预算写后字段双向�
   }
 });
 
-test("认领 TTL（plan-v2 Phase 2-5）：claimedAt 超 48h 不算认领——纯过期回落现状、混集旁路放手、scanSessionFlags 记过期", async () => {
+test("认领 TTL（plan-v2 Phase 2-5）：claimedAt 超 48h 不算认领——纯过期=无人可拉、混集旁路放手、scanSessionFlags 记过期", async () => {
   const { scanSessionFlags } = await import("../core/loop.js");
   const d = scratch();
   try {
     goalAt(d);
     const stale = new Date(Date.now() - 49 * 3_600_000).toISOString();
-    // 纯过期：空集回落目录级现状，过期会话本身照被拉
+    // 纯过期：资格制（修正案四）下空集=无人可拉，过期会话自身也放手（死亡认领不续命）
     claimAt(d, "sOld", { claimedAt: stale });
-    const o1 = JSON.parse(hook("stop.js", { sessionId: "sOld", cwd: d }).out);
-    assert.equal(o1.continue, true);
+    const o1 = hook("stop.js", { sessionId: "sOld", cwd: d }).out;
+    assert.equal(o1, "{}");
     // 混集：新鲜认领在场——过期会话成旁路放手，新鲜会话照拉
     claimAt(d, "sNew", { claimedAt: new Date().toISOString() });
     const o2 = hook("stop.js", { sessionId: "sOld", cwd: d }).out;
@@ -293,5 +295,117 @@ test("哨兵旗标（plan-v2 Phase 2-6）：无人值守写 unattended（无目�
     assert.equal(s3.unattended, undefined, "交互触发词不落哨兵");
   } finally {
     cleanup(d1, d2, d3);
+  }
+});
+
+// ── standdown（ADR-0009 修订节，0.1.1 goal2） ──────────────────────────────
+
+test("standdown：句首「zw standdown」+goal 在场 → 写旗标+确认注入；重复声明幂等且双跑 stdout 逐字节一致", () => {
+  const d = scratch();
+  try {
+    goalAt(d);
+    const inp = { prompt: "zw standdown", cwd: d, session_id: "sd1" };
+    const o1 = hook("trigger.js", inp);
+    assert.match(o1.out, /standdown recorded/);
+    assert.doesNotMatch(o1.out, /Trigger word detected/); // 整支接管，不落回 bootstrap
+    let st = JSON.parse(readFileSync(sessFile(d, "sd1"), "utf8"));
+    assert.equal(st.standdown, true);
+    const o2 = hook("trigger.js", inp); // 重复声明：幂等同文（字节确定性契约，emit 零时间戳）
+    assert.equal(o2.out, o1.out);
+    st = JSON.parse(readFileSync(sessFile(d, "sd1"), "utf8"));
+    assert.equal(st.standdown, true);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("standdown：无 goal → 静态提示零写盘（不建 .lazyzcode）", () => {
+  const d = scratch();
+  try {
+    const o = hook("trigger.js", { prompt: "zw standdown", cwd: d, session_id: "sd2" });
+    assert.match(o.out, /nothing to opt out of/);
+    assert.throws(() => readFileSync(join(d, ".lazyzcode", "loop", "sessions", "sd2.json"), "utf8"), {
+      code: "ENOENT",
+    });
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("standdown：旗标压过认领——Stop 只读放行、不耗预算、不清计数", () => {
+  const d = scratch();
+  try {
+    goalAt(d);
+    hook("trigger.js", { prompt: "zw standdown", cwd: d, session_id: "sd3" });
+    assert.equal(hook("stop.js", { sessionId: "sd3", cwd: d }).out, "{}"); // 放手
+    const st = JSON.parse(readFileSync(sessFile(d, "sd3"), "utf8"));
+    assert.equal(st.continues, 0); // 预算零耗
+    assert.equal(st.standdown, true); // 只读放行不写盘
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("standdown：参与即恢复——认领写清旗标，Stop 恢复拉回", () => {
+  const d = scratch();
+  try {
+    goalAt(d);
+    hook("trigger.js", { prompt: "zw standdown", cwd: d, session_id: "sd4" });
+    assert.equal(hook("stop.js", { sessionId: "sd4", cwd: d }).out, "{}");
+    hook("trigger.js", { prompt: "zw 继续", cwd: d, session_id: "sd4" }); // 参与触发
+    const st = JSON.parse(readFileSync(sessFile(d, "sd4"), "utf8"));
+    assert.equal(st.standdown, null); // 旗标清零（显式 null，非键删除）
+    assert.equal(typeof st.claimedAt === "string" && st.claimedAt.length > 0, true);
+    assert.equal(JSON.parse(hook("stop.js", { sessionId: "sd4", cwd: d }).out).continue, true);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("standdown：TRIGGER 消融=1 → 零输出零写（归触发轴，无独立开关）", () => {
+  const d = scratch();
+  try {
+    goalAt(d);
+    const r = spawnSync(process.execPath, [join(HOOKS, "trigger.js")], {
+      input: JSON.stringify({ prompt: "zw standdown", cwd: d, session_id: "sd5" }),
+      encoding: "utf8",
+      timeout: 20_000,
+      env: { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME, LZY_ABLATE_HOOK_TRIGGER: "1" },
+    });
+    assert.equal((r.stdout ?? "").trim(), "{}");
+    assert.throws(() => readFileSync(sessFile(d, "sd5"), "utf8"), { code: "ENOENT" });
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("standdown：负形态——standdownish 走常规触发、句中提及静默，均零旗标", () => {
+  const d = scratch();
+  try {
+    goalAt(d);
+    const o1 = JSON.parse(hook("trigger.js", { prompt: "zw standdownish", cwd: d, session_id: "n1" }).out);
+    assert.match(o1.additionalContext, /Trigger word detected/); // 词边界外=常规 zw 流程
+    assert.notEqual(JSON.parse(readFileSync(sessFile(d, "n1"), "utf8")).standdown, true);
+    assert.equal(hook("trigger.js", { prompt: "请 zw standdown 一下", cwd: d, session_id: "n2" }).out, "{}");
+    assert.throws(() => readFileSync(sessFile(d, "n2"), "utf8"), { code: "ENOENT" });
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("standdown：旧格式会话文件（无 standdown 键）读为 null（零迁移）", async () => {
+  const lib = await import(pathToFileURL(join(HOOKS, "hook-lib.js")).href);
+  const d = scratch();
+  try {
+    goalAt(d);
+    mkdirSync(join(d, ".lazyzcode", "loop", "sessions"), { recursive: true });
+    writeFileSync(sessFile(d, "old"), JSON.stringify({ continues: 1 }));
+    const st = lib.readSessionState(d, "old");
+    assert.equal(st.standdown, null); // 缺键=null，不误判退出
+    assert.equal(st.continues, 1); // 既有字段不受扰
+    writeFileSync(sessFile(d, "bad"), JSON.stringify({ standdown: "yes" })); // 他值不认
+    assert.equal(lib.readSessionState(d, "bad").standdown, null);
+  } finally {
+    cleanup(d);
   }
 });

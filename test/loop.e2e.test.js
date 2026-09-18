@@ -150,13 +150,33 @@ test("并发 step done：锁串行化，全部落账且 goal.json 合法（R2-5 
   }
 });
 
-test("git-less 目录：证据未绑定与 finish 的分诊文案（R2-4 回归）", () => {
+test("git-less 宿主：register 硬拒+读面警示（ADR-0019）；存量 goal 的 finish 分诊文案保持（R2-4 回归改写）", () => {
   const d = repo({ git: false });
   try {
-    assert.equal(lzy(["loop", "register", "ng", "--title", "t"], d).code, 0);
+    // 入口前置（0.1.1 ADR-0019）：非 git 宿主 register 即拒，报文带恢复指路，无逃生 flag
+    const reg = lzy(["loop", "register", "ng", "--title", "t"], d);
+    assert.equal(reg.code, 1);
+    assert.match(reg.out, /git init/);
+    assert.match(reg.out, /finish 不可达/);
+    assert.ok(!existsSync(join(d, ".lazyzcode", "loop", "goal.json"))); // 零壳疤痕
+    // 存量 goal（升级前注册形态）模拟：hand-write planning goal 走完原链——
+    // finish 的 unbound/不是 git 仓库 分诊文案与埋点不变
+    mkdirSync(join(d, ".lazyzcode", "loop"), { recursive: true });
+    writeFileSync(
+      join(d, ".lazyzcode", "loop", "goal.json"),
+      JSON.stringify({ version: 1, slug: "ng", title: "t", status: "planning", tier: "light", planPath: null, createdAt: new Date().toISOString(), startedAt: null, finishedAt: null, baseTreeHash: null, subjects: [], steps: [], attempt: 1 }),
+    );
     writeFileSync(join(d, "p.md"), "- [N1] x\n- [F1] v\n");
     assert.equal(lzy(["loop", "plan", "p.md"], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
+    // 读面警示：status 缺失态带指路句、认领零=资格制新文案；doctor host-git warn 行
+    const st = lzy(["loop", "status"], d);
+    assert.match(st.out, /工作树 missing/);
+    assert.match(st.out, /宿主须为 git 仓/);
+    assert.match(st.out, /资格制：无人会被拉回/);
+    const doc = lzy(["doctor"], d);
+    assert.match(doc.out, /host-git/);
+    assert.match(doc.out, /git init/);
     assert.equal(lzy(["step", "done", "N1", "--note", "n"], d).code, 0);
     assert.equal(lzy(["step", "done", "F1", "--evidence", "saw"], d).code, 0);
     const fin = lzy(["loop", "finish"], d);
@@ -165,6 +185,18 @@ test("git-less 目录：证据未绑定与 finish 的分诊文案（R2-4 回归�
     assert.match(fin.out, /不是 git 仓库/); // 药方可执行，不再误诊「过期」
     const m = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "metrics.json"), "utf8"));
     assert.equal(m.finish_reject_unbound, 1); // 埋点（plan-v2 Phase 2-1）
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("register：git 宿主照常注册（ADR-0019 门不误伤）+doctor host-git ok 态", () => {
+  const d = repo(); // git 仓夹具
+  try {
+    assert.equal(lzy(["loop", "register", "gk", "--title", "t"], d).code, 0);
+    const doc = lzy(["doctor"], d);
+    assert.match(doc.out, /host-git/);
+    assert.match(doc.out, /git 仓在位/);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

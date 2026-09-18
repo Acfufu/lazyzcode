@@ -27,7 +27,8 @@ function counterAt(dir, sid, continues) {
   mkdirSync(join(dir, ".lazyzcode", "loop", "sessions"), { recursive: true });
   writeFileSync(
     join(dir, ".lazyzcode", "loop", "sessions", `${sid}.json`),
-    JSON.stringify({ continues }),
+    // 资格制（ADR-0004 修正案四，0.1.1）：被拉会话必须持新鲜认领——夹具默认补 claimedAt
+    JSON.stringify({ continues, claimedAt: new Date().toISOString() }),
   );
 }
 
@@ -434,7 +435,7 @@ test("wake_noop 遥测（plan-v2 Phase 2-6）：零推进收场计数、有推�
     // 零推进三连 → stuck 收场计 1
     goalAt(d1, "executing", steps2);
     mkdirSync(join(d1, ".lazyzcode", "loop", "sessions"), { recursive: true });
-    writeFileSync(join(d1, ".lazyzcode", "loop", "sessions", "w.json"), JSON.stringify({ continues: 0, unattended: true }));
+    writeFileSync(join(d1, ".lazyzcode", "loop", "sessions", "w.json"), JSON.stringify({ continues: 0, unattended: true, claimedAt: new Date().toISOString() }));
     hook("stop.js", { sessionId: "w", cwd: d1 });
     hook("stop.js", { sessionId: "w", cwd: d1 });
     hook("stop.js", { sessionId: "w", cwd: d1 });
@@ -443,7 +444,7 @@ test("wake_noop 遥测（plan-v2 Phase 2-6）：零推进收场计数、有推�
     // 有推进到预算耗尽：不算（会话全程基线比较，非末段振数）
     goalAt(d2, "executing", steps2);
     mkdirSync(join(d2, ".lazyzcode", "loop", "sessions"), { recursive: true });
-    writeFileSync(join(d2, ".lazyzcode", "loop", "sessions", "w.json"), JSON.stringify({ continues: 0, unattended: true }));
+    writeFileSync(join(d2, ".lazyzcode", "loop", "sessions", "w.json"), JSON.stringify({ continues: 0, unattended: true, claimedAt: new Date().toISOString() }));
     hook("stop.js", { sessionId: "w", cwd: d2 });
     goalAt(d2, "executing", [{ id: "N1", kind: "N", status: "done" }, { id: "N2", kind: "N", status: "pending" }]);
     hook("stop.js", { sessionId: "w", cwd: d2 });
@@ -464,7 +465,7 @@ test("wake_noop 遥测（plan-v2 Phase 2-6）：零推进收场计数、有推�
     // 交接放行路径：不经过计数
     goalAt(d3, "executing", steps2);
     mkdirSync(join(d3, ".lazyzcode", "loop", "sessions"), { recursive: true });
-    writeFileSync(join(d3, ".lazyzcode", "loop", "sessions", "w.json"), JSON.stringify({ continues: 0, unattended: true }));
+    writeFileSync(join(d3, ".lazyzcode", "loop", "sessions", "w.json"), JSON.stringify({ continues: 0, unattended: true, claimedAt: new Date().toISOString() }));
     handoffMarkerAt(d3);
     hook("stop.js", { sessionId: "w", cwd: d3 });
     assert.equal(metricOr(d3, "wake_noop"), undefined);

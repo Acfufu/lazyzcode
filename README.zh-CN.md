@@ -43,7 +43,8 @@
 ## 🚀 安装（10 分钟）
 
 前置：macOS / Windows / Linux、ZCode 桌面端（已登录）、Node ≥ 22、git（证据绑定
-tree hash，必需）。三平台引擎布局均已适配探测（macOS 应用包、Linux deb
+tree hash，必需——`lzy loop register` 对非 git 宿主硬拒并给 `git init` 指路，
+ADR-0019）。三平台引擎布局均已适配探测（macOS 应用包、Linux deb
 `/opt/ZCode`、Windows 每用户 `%LOCALAPPDATA%\Programs\ZCode`）。
 
 ```bash
@@ -164,7 +165,8 @@ PATH shim、`.lazyzcode/` 状态卫生、平台提示、GLM
 纯建议文本，不进谓词数学）、项目记忆采纳审计
 （`agents-md`，warn-only，含地图落后提示：基点后覆盖域 ≥50 提交即提醒重跑
 init-deep）、进行中目标的认领巡逻（`claims`：谁认领了它、
-stuck 停拉标记、零认领孤儿提示——warn-only），
+stuck 停拉标记；零认领 = 资格制下无人会被拉回——warn-only）、宿主是否 git 仓
+（`host-git`：非 git 时 warn 带 `git init` 指路——证据绑定 git 树，ADR-0019），
 提交账本覆盖率（`ledger`：goal 起点后缺 `Goal:` 尾注的提交——warn-only）、水位行（`waterline`：
 近 5h 滚动积分对比自参照警戒线，sqlite3 缺席时如实报降级原因）与本仓 unbound wake 的
 空转巡逻（`orphan-wake`，无挂载即 skip），以及
@@ -340,6 +342,22 @@ lazyzcode/
   以官方下载矩阵文档声明。
 - headless（`--prompt`）驱动引擎需要桌面端注入的模型凭据；机制已由探针验证，
   活体 headless 验收顺延。
+
+## 🔒 安全与信任面
+
+它在你机器上跑什么、装在哪里、以及它刻意不防什么：
+
+- **钩子执行本地代码。** 五个生命周期事件运行本插件的本地 Node 脚本
+  （UserPromptSubmit、SessionStart、Stop、PostToolUse、PostToolUseFailure）；
+  其输出是对模型的注入上下文，不是沙箱边界。
+- **安装落点是引擎官方插件缓存**——启用走引擎官方 CLI，LazyZCode 绝不写你的
+  `config.json`。
+- **双分发链，用户可自验。** npm：把发布公示的 shasum 与
+  `npm view lazyzcode dist.integrity` 逐字核对。市场：manifest 钉 commit sha，
+  装载的载荷就是被钉的那棵树。
+- **威胁模型边界，明示：** LazyZCode 防的是偷懒（假完成、无声弃坑），不防恶意
+  agent——本地账本、批准记录、计数器对同权限进程全部可读写；完整性声明靠协议
+  文本加审计环执法，不靠防篡改硬件。
 
 ## 📄 License
 

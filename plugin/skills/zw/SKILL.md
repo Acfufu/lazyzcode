@@ -274,6 +274,11 @@ On success `finish` also writes the **final attestation**
 `.lazyzcode/attestations/<attemptId>.json` — the LOOP_COMPLETE machine proof
 (planHash, per-root head trees, composite fingerprint, ledger-anchored evidence
 refs, comparator record, report sha256); it survives `reset` as history.
+**Close-out trailer (text half, L0):** when the close-out commit lands after
+`finish`, append `Lzy-Attestation: <full sha256 of the attestation file>` to
+its message — a tamper-evident pointer from the machine proof into commit
+history (machine-side doctor verification is deliberately deferred; this is
+protocol convention, not an enforcement gate).
 
 **Evidence comparison (comparator, HEAVY mandatory).** Existence and freshness are the CLI's
 gates; relevance is not checked by any CLI — so before `finish`, dispatch `qa-executor` in
@@ -316,6 +321,11 @@ file per lesson (`type: project`). Future sessions pick them up automatically.
 Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
 (that repo is the **host workspace** — loop state registers there, ADR-0006):
 
+- The host workspace must be a **git repository**: evidence binds git trees, so
+  `register` hard-rejects a non-git host with recovery guidance (`git init` +
+  a first commit; ADR-0019, no bypass), and `status`/`doctor` carry standing
+  warnings if the host's git goes missing mid-goal.
+
 - The session stays rooted at the host. Run `lzy` only from the host root —
   prefix commands with `cd <host-root> &&` (Bash cwd persists across calls,
   and the engine's cwd reset is not guaranteed on failure/timeout paths).
@@ -356,6 +366,16 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
   2026-09-14: the designated history-only nonce was never quoted) — never rely
   on in-chat references; all handoff state must live on disk. A goal loop
   resumed by an idle run follows the Unattended red-line protocol in full.
+- **Pull-back eligibility (claim-gated, 0.1.1, ADR-0004 amendment 4).** Only a
+  session that has **claimed** the goal (an invocational trigger such as
+  「zw 继续」 writes `claimedAt`) is subject to pull-back; an empty claim set
+  means **nobody is pullable** — bystander sessions (Q&A at the host root,
+  never claimed) are structurally exempt, and a goal whose executing session
+  never claimed simply releases at its first Stop (that is decision semantics,
+  not a malfunction — claim first). To opt out explicitly, send
+  **「zw standdown」**: the session writes a standdown flag and the Stop hook
+  releases it read-only (pull-back budget untouched, no state writes) until it
+  rejoins (a claiming trigger clears the flag) or the loop is reset.
 - When you feel the `[lzy]` nudge: continue the **current step**. Do not replan,
   do not summarize, do not ask questions — work.
 - **No-op detection (pull-back integrity):** every pull-back must move the
@@ -578,7 +598,7 @@ tool). Aliases are equal — `zw` is the primary.
 
 | Command | Purpose |
 |---|---|
-| `lzy loop register <slug> --title … [--tier heavy]` | create goal (planning; HEAVY adoption without PASS review is machine-rejected) |
+| `lzy loop register <slug> --title … [--tier heavy]` | create goal (planning; HEAVY adoption without PASS review is machine-rejected; non-git host hard-rejected with git-init guidance, ADR-0019) |
 | `lzy loop supersede <plan> [--review …]` | forward-only plan change mid-execution (0.1.0): old attempt → superseded, opens attempt+1, full adoption gates re-run |
 | `lzy loop attempts` | attempt lineage read face (attempt.json ∪ central-ledger derivation; read-only) |
 | `lzy loop plan <file> [--force]` | adopt checklist (rejects TBD; snapshots the plan + binds planHash; **human gate ADR-0018**: 1st run rejects with a short code → relay 「批准 <短码>」 verbatim, re-run after the user's reply) |
@@ -595,4 +615,5 @@ tool). Aliases are equal — `zw` is the primary.
 | `lzy loop finish` | final gate: all done + fresh evidence + all {host}∪subjects trees clean (+ HEAVY: MATCH attestation); auto-archives the evidence bundle and writes the final attestation |
 | `lzy loop export` | re-export the evidence bundle to `.lazyzcode/evidence/<slug>.report.md` |
 | `lzy loop abandon` / `lzy loop reset` | give up / clear state |
+| 「zw standdown」 (UserPromptSubmit phrase, not a CLI command) | session-level opt-out: this session stops being pulled (read-only release, budget untouched) until a claiming trigger like 「zw 继续」 clears the flag or the goal is reset (ADR-0009 revision) |
 | `lzy doctor` | deep local diagnostics incl. rate-limit pressure (zero telemetry) |

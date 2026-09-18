@@ -21,7 +21,7 @@
 - [ ] tagline 与 NOTE 三节拍弧线在场。
 - [ ] 两技能自述（zw / init-deep）与 `plugin/skills/*/SKILL.md` frontmatter `description` 事实一致。
 - [ ] CLI 命令表齐全（快照 20 行，2026-09-18 v0.1.0 棒B 后；2026-09-19 0.1.1 goal1 目标循环行内容扩人权门句、行数不变，逐版计数账见下行「三面分记」；沿革 2026-09-16 增 update→又增 证据主体 subject/tier 两行）：install / sync / update / status / doctor / 目标循环 / 证据主体 subject / Tier / 步级认领 claim / 证据包 export / 交接 handoff / 跨仓清单 list / 目标谱系 history / 积分报表 cost / 证据账本 red·waive·list / 失效 DAG dependents·stale / 对照 attestation / attempt 世系 supersede·attempts / agents-md / uninstall——新命令进 `cli/lzy.js` 必须同批进双语表。
-- [ ] 「`lzy doctor` 都查什么」段与实跑输出一致（含 rate-limit / transport / content / band-by-provider / cost / schedule / agents-md / claims / ledger / waterline / orphan-wake / hook-node——核验：跑 `lzy doctor` 逐行对描述）。
+- [ ] 「`lzy doctor` 都查什么」段与实跑输出一致（含 rate-limit / transport / content / band-by-provider / cost / schedule / agents-md / claims / host-git / ledger / waterline / orphan-wake / hook-node——核验：跑 `lzy doctor` 逐行对描述）。
 - [ ] 「之后的路 / Your next moves」承载记住 + 接着走两拍的入口（快速上手只教循环）。
 - [ ] 架构树与实际一致（skills 2、hooks 5 经 run-hook 启动器[win32 走 run-hook.cmd 孪生]、agents 3、core 模块清单）。
 - [ ] schedule 措辞口径：「限流实测 ∩ 计价高峰对照」（2026-09-10 起，双语 8 处；不许退回纯限流表述）。
@@ -36,7 +36,7 @@
 
 ### guide 双语（`docs/guide/en.md` + `zh.md`）
 
-- [ ] 锚点双语对齐（快照 21/21）。
+- [ ] 锚点双语对齐（快照 22/22，2026-09-19 v011 goal2 增 Security & trust surface 节）。
 - [ ] 「项目记忆」「无人值守」保持独立概念节。
 - [ ] schedule 相关行为计价感知措辞 + 「UTC+8、人工维护、活动期」免责三件套。
 - [ ] 新概念先查 AGENTS.md §8 术语表——先有守门词条，再有文档节。
@@ -59,7 +59,7 @@
 | 位点 | 快照值 | 核验 |
 | --- | --- | --- |
 | 钩子数 | 5 | `python3 -c "import json;print(len(json.load(open('plugin/hooks/hooks.json'))['hooks']))"`；全文档面 `grep -rn '四个\|four\|（4 个\|(4,' README.md README.zh-CN.md docs/`（注意「其余四钩」类契约句的合法误中） |
-| guide 锚点 | en 21 + zh 21 | `grep -c '^## ' docs/guide/en.md docs/guide/zh.md` + docs-preview 锚点检查 |
+| guide 锚点 | en 22 + zh 22 | `grep -c '^## ' docs/guide/en.md docs/guide/zh.md` + docs-preview 锚点检查 |
 | 首页特性卡 | 6 | `grep -c 'class="feature"' docs/_layouts/home.html` |
 | 技能数 | 2 | `ls plugin/skills/`；对双语 README 自述句 |
 | CLI 表行 | guide CLI 栅栏 lzy 行 53/语言（双语互等） · README 表 20/语言（双语互等） · 帮助枚举 loop 族 19 + 证据账本块 5（含 dag stale）+ 对照 attestation 块 1 · 对比表 11/11（0.1.0 未动） | 三面分记（2026-09-14 R4 订正：旧「14/语言」指代不明；R6 订正帮助枚举字面值）；2026-09-16 v008 刷新：guide 快起栅栏 14→18（subject add/remove/list+tier）、README 表 14→16（证据主体 subject+Tier 两行）、帮助枚举 13→15/canonical 14→16（subject/tier 入列）；2026-09-17 v009 刷新：guide 快起栅栏 18→21（evidence red/dag dependents/attest comparator 三行）、README 表 16→19（红绿 manifest/失效 DAG/机器证明三行）、帮助枚举 loop 族 15→17+证据账本块 4+对照块 1；2026-09-18 v0.1.0 棒B 刷新：guide CLI 栅栏 lzy 行 53/语言（supersede/attempts/dag stale 三行入列；口径=guide 全部 ``` 围栏内 `^lzy ` 行，en/zh awk 对等）、README 表 19→20（attempt 世系行；失效 DAG 行就地扩 dag stale 不加行）、帮助枚举 loop 族 17→19（supersede/attempts）+证据账本块 4→5（dag stale）；对比表 11/11 不变（协议升级未加对比行，发布弧再议）；2026-09-19 v011：README 表 20/语言不变（目标循环行内容扩人权门句）、guide 栅栏 53/语言不变（人权门为散文 bullet 非栅栏行）、帮助枚举与对比表均不变 |
@@ -67,7 +67,7 @@
 
 ## 收尾验证链（必跑）
 
-1. `npm test` —— 基线以收窄发现面为准（2026-09-14 起 `node --test "test/**/*.test.js"`，幻影 pass 结构性根治——裸 cwd 发现已废；Node ≥22 对 `--test` 位置参数按 glob 解释，目录字面量形态不可用）。快照 **271/271**（2026-09-18，v0.1.0 棒B 收官实跑刷新）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
+1. `npm test` —— 基线以收窄发现面为准（2026-09-14 起 `node --test "test/**/*.test.js"`，幻影 pass 结构性根治——裸 cwd 发现已废；Node ≥22 对 `--test` 位置参数按 glob 解释，目录字面量形态不可用）。快照 **297/297**（2026-09-19，v011 goal2 N7 实跑刷新；前值 271/271 v0.1.0 棒B、287/271 后 0.1.1 goal1——此处曾漏刷）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
 2. `node scripts/docs-preview/build.mjs && node scripts/docs-preview/check-anchors.mjs && node scripts/docs-preview/check-links.mjs` —— 断链 0、锚点双语对齐、页面数稳定。
 3. 动了 `plugin/` 时：`lzy sync` + grep 安装缓存。
 4. 提交带尾注 `Goal: <slug>#<步号>`（ADR-0005）。

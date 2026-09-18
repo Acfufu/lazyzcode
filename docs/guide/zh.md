@@ -188,6 +188,13 @@ tier 之外立了第二根轴：**risk_class**（LOW / MED / HIGH / RESTRICTED�
 （INV-05）：计划采用在 L1 绑 planHash；对话里的人点头是 L0，exact-hash 人权门
 落地前不因模型跑一条 CLI 而升格。
 
+0.1.1 起拉回是**认领资格制**：只有认领了目标的会话（发 invocational 触发如
+「zw 继续」写 claimedAt）才会被 Stop 拉回；认领集为空=无人可拉，旁路会话
+结构性免拉。会话可显式退出——发「zw standdown」写 standdown 旗标，Stop 对
+该会话只读放行，直到参与触发清旗标或目标 reset。宿主工作区必须是 **git 仓**：
+`lzy loop register` 对非 git 宿主直接硬拒并给 `git init` 指路——证据绑定 git
+树，非 git 宿主的 finish 不可达（ADR-0019）。
+
 ## 目标循环命令
 
 ```
@@ -470,7 +477,8 @@ lzy version                     打印版本
 | `hook-node` | 钩子启动器从哪条路径解析 node |
 | `lzy-path` | `lzy` 能否在 PATH 上解析 |
 | `state` | `.lazyzcode/` 卫生（孤儿临时文件、goal 状态） |
-| `claims` | 认领巡逻：谁认领了进行中目标、stuck 停拉标记；零认领 = 「待认领」提示（warn，不翻退出码） |
+| `claims` | 认领巡逻：谁认领了进行中目标、stuck 停拉标记；零认领 = 资格制下无人会被拉回（warn，不翻退出码） |
+| `host-git` | 宿主工作区是否 git 仓（非 git 时 warn 带 `git init` 指路——证据绑定 git 树，ADR-0019） |
 | `handoff` | 交接标记在场提示（下个 Stop 消费即放行） |
 | `handoff-usage` | 匿名放行计数 registered/consumed（跨 reset 永续） |
 | `ledger` | 提交账本巡逻：goal 起点后提交缺 `Goal:` 尾注的比例（warn，不翻退出码） |
@@ -520,6 +528,22 @@ LazyZCode **没有配置文件**。一切皆推导：
   任何人提交都会让别人的 F 项证据过期，任何人的未提交改动都会拦住所有人的 `finish`
   （先 `lzy loop status` 看认领与脏面再动手）。
 - 触发匹配有意分层——想从句中进循环，用 `lazyzcode:zw` 或 `ultrawork`。
+
+## 安全与信任面
+
+LazyZCode 在你机器上跑什么、装在哪里、以及它刻意不防什么：
+
+- **钩子执行本地代码。** 五个生命周期事件会运行本插件的本地 Node 脚本
+  （UserPromptSubmit、SessionStart、Stop、PostToolUse、PostToolUseFailure）。
+  其输出是对模型的**注入上下文**——模型读到的引导，不是沙箱边界。
+- **安装落点是引擎官方插件缓存。** `lzy install` 把载荷落到那里，启用走引擎
+  官方 CLI；LazyZCode **绝不写你的 `config.json`**（红线 1）。
+- **双分发链，用户可自验。** npm：用 `npm view lazyzcode dist.integrity` 把
+  tarball 完整性哈希与发布时公示的 shasum 逐字核对。市场：manifest 钉 commit
+  sha（pin=sha），你装载的载荷就是被钉的那棵树。
+- **威胁模型边界（明示）：** LazyZCode 防的是*偷懒*——假完成、无声弃坑；
+  **不**防恶意 agent：本地账本、批准记录、续跑计数对同权限进程全部可读写。
+  完整性声明的执法点是协议文本加审计环，不是防篡改硬件。
 
 ---
 

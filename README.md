@@ -46,7 +46,8 @@
 ## 🚀 Install (10 minutes)
 
 Prerequisites: macOS, Windows, or Linux; the ZCode desktop app (logged in),
-Node ≥ 22, git (evidence binding uses tree hashes, so git is required). Engine
+Node ≥ 22, git (evidence binds tree hashes, so git is required — `lzy loop register`
+hard-rejects a non-git host with `git init` guidance, ADR-0019). Engine
 layouts are detected on all three platforms (macOS app bundle, Linux deb
 `/opt/ZCode`, Windows per-user `%LOCALAPPDATA%\Programs\ZCode`).
 
@@ -192,7 +193,8 @@ commits since the map's last commit suggests re-running init-deep), a claim
 patrol for the open goal loop, and a headless-drive line (`headless`: engine
 probe plus credential two-state — oauth credentials file or desktop-injected
 config env; absent engine = skip, missing credentials = warn-only, 0.1.0)
-(`claims`: who claimed it, stuck markers, zero-claim orphan notice — warn-only),
+(`claims`: who claimed it, stuck markers; zero claims = nobody is pullable under claim-gated pull-back — warn-only),
+whether the host is a git repository (`host-git`: warn with `git init` guidance when not — evidence binds git trees, ADR-0019),
 commit-ledger coverage (`ledger`: goal-era commits missing the `Goal:` trailer — warn-only),
 a `waterline` line (rolling 5-hour point burn vs the self-calibrated nudge threshold, plus
 its fail-open reason when sqlite3 is absent) and an `orphan-wake` idle-burn patrol for
@@ -398,6 +400,27 @@ installs plugins and nothing else — enabling goes through the engine's officia
 - Driving the engine headlessly (`--prompt`) requires the desktop's injected
   model credentials; the mechanism is validated by probes, live headless
   acceptance is deferred.
+
+## 🔒 Security & trust surface
+
+What runs on your machine, where it installs, and what it deliberately does not
+defend against:
+
+- **Hooks execute local code.** Five lifecycle events run this plugin's local
+  Node scripts (UserPromptSubmit, SessionStart, Stop, PostToolUse,
+  PostToolUseFailure); their output is injected context for the model, not a
+  sandbox boundary.
+- **Install footprint is the engine's official plugin cache** — enabling flows
+  through the engine's official CLI, and LazyZCode never writes your
+  `config.json`.
+- **Dual distribution chains, user-verifiable.** npm: compare the published
+  shasum with `npm view lazyzcode dist.integrity`. Marketplace: the manifest
+  pins a commit sha, so the loaded payload is the pinned tree.
+- **Threat-model boundary, stated plainly:** LazyZCode guards against laziness
+  (fake done, silent scope abandonment), not against a malicious agent — local
+  ledgers, approval records, and counters are readable/writable by any process
+  with your permissions; integrity claims are enforced by protocol text plus
+  the audit ring, not tamper-proof hardware.
 
 ## 📄 License
 

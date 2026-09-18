@@ -18,6 +18,44 @@ versioning is SemVer.
   (`LZY_ABLATE_HUMAN_GATE`, `LZY_ABLATE_HOOK_HUMAN_GATE`, value exactly "1")
   keep the true-ablation harness and headless E2E drivable — the E2E now
   drives a real two-turn approval through the engine.
+- **`zw standdown` — session-level opt-out** (ADR-0009 revision, 0.1.1 goal2):
+  the UserPromptSubmit phrase 「zw standdown」 writes a standdown flag for the
+  session; the Stop hook releases it read-only (no budget spend, no state
+  writes) until a claiming trigger like 「zw 继续」 clears the flag or the
+  goal is reset. Lives on the trigger ablation axis (no separate switch).
+- **`host-git` doctor line + non-git register hard-reject** (ADR-0019,
+  0.1.1 goal2): `lzy loop register` rejects a non-git host up front with
+  `git init` recovery guidance (no bypass flag) — the unreachability of
+  `finish` moves from close-out time to registration time; `doctor` carries a
+  standing `host-git` check (ok / warn-only) and `status` appends guidance on
+  the missing-state branch. A non-git **degraded form** (all-`--surface`
+  external evidence, LIGHT-only, no attestation) is chartered as an ADR
+  direction only — implementation and the LOOP_COMPLETE semantics redefinition
+  stay future decisions.
+- **Node floor pre-flight at install/sync** (debt-6 micro-widget): low Node
+  versions now fail at the entry with the current version and an upgrade
+  pointer instead of at runtime; `NODE_MAJOR_FLOOR` is exported as the single
+  source.
+- **Security & trust surface section** (README bilingual + guide bilingual,
+  debt-4): what the five hook events execute and inject, the official-cache
+  install footprint with zero `config.json` writes, user-verifiable recipes
+  for both distribution chains (npm shasum, marketplace pin), and the plainly
+  stated threat-model boundary (guards against laziness, not malicious agents).
+
+### Changed
+
+- **Pull-back is claim-gated** (ADR-0004 amendment 4, 0.1.1 goal2): the
+  empty-claim-set fallback ("empty set = directory-level status quo") is
+  abolished — pull-back eligibility requires a session-held unexpired claim;
+  bystander sessions are structurally exempt and no longer need per-turn
+  handoff mitigation. A fresh goal whose executing session never claimed
+  releases at its first Stop by design (claim first with an invocational
+  trigger). `status`/`doctor` claim wording follows the new semantics, and
+  decision #17's pre-registered fallback is retired in the decision table.
+- zw SKILL: pull-back eligibility and standdown contract sentences, the
+  `Lzy-Attestation:` close-out trailer convention (text half of debt-3,
+  L0; machine-side doctor verification deliberately deferred), and the
+  git-prerequisite sentence in the host-workspace section.
 
 ## [0.1.0] - 2026-09-18
 

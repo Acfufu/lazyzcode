@@ -224,6 +224,16 @@ RESTRICTED a hard block. Approvals bind immutable hashes (INV-05): plan
 adoption binds planHash at L1; a conversational nod stays L0 until the
 exact-hash human gate lands.
 
+Since 0.1.1 pull-back is **claim-gated**: only a session that claimed the goal
+(an invocational trigger like `zw 继续`) is subject to Stop pull-backs; an
+empty claim set means nobody is pullable, so bystander sessions are structurally
+exempt. A session can opt out explicitly with `zw standdown` — a standdown flag
+makes the Stop hook release that session read-only until a claiming trigger
+clears it or the goal is reset. And the host workspace must be a **git
+repository**: `lzy loop register` hard-rejects a non-git host with `git init`
+guidance, because evidence binds git trees and a non-git host cannot pass
+`finish` (ADR-0019).
+
 ## Goal loop commands
 
 ```
@@ -586,7 +596,8 @@ do.
 | `hook-node` | Which path the hook launcher resolves node from |
 | `lzy-path` | Whether `lzy` resolves on PATH |
 | `state` | `.lazyzcode/` hygiene (orphan temp files, goal state) |
-| `claims` | Claim patrol: who claimed the open goal loop, stuck markers; zero claims = "unclaimed" notice (warn, never flips the exit code) |
+| `claims` | Claim patrol: who claimed the open goal loop, stuck markers; zero claims = nobody is pullable under claim-gated pull-back (warn, never flips the exit code) |
+| `host-git` | Host workspace is a git repository (warn with `git init` guidance when not — evidence binds git trees, ADR-0019) |
 | `handoff` | Handoff marker present (the next Stop consumes it and releases) |
 | `handoff-usage` | Anonymous release counters, registered/consumed (survive reset) |
 | `ledger` | Commit-ledger patrol: share of goal-era commits missing the `Goal:` trailer (warn, never flips the exit code) |
@@ -644,6 +655,29 @@ Privacy: zero telemetry; diagnostics are computed locally and printed locally.
   claims and dirt first).
 - Trigger matching is deliberately stratified — if you want the loop from
   mid-sentence, say `lazyzcode:zw` or `ultrawork`.
+
+## Security & trust surface
+
+What LazyZCode runs on your machine, where it installs, and what it deliberately
+does not defend against:
+
+- **Hooks execute local code.** Five lifecycle events run this plugin's local
+  Node scripts (UserPromptSubmit, SessionStart, Stop, PostToolUse,
+  PostToolUseFailure). Their output is **injected context** for the model —
+  guidance the model reads, not a sandbox boundary.
+- **Install footprint is the engine's official plugin cache.** `lzy install`
+  places the payload there and enabling goes through the engine's official CLI;
+  LazyZCode **never writes your `config.json`** (red line 1).
+- **Dual distribution chains, user-verifiable.** npm: compare the tarball
+  integrity hash with `npm view lazyzcode dist.integrity` against the shasum
+  printed by the release. Marketplace: the manifest pins a commit sha
+  (`pin=sha`), so the payload you load is the pinned tree.
+- **Threat-model boundary (stated plainly):** LazyZCode guards against
+  *laziness* — fake done, silent scope abandonment. It does **not** defend
+  against a malicious agent: local ledgers, approval records, and continuation
+  counters are readable/writable by any process with your permissions. The
+  enforcement point for integrity claims is the protocol text plus the audit
+  ring, not tamper-proof hardware.
 
 ---
 

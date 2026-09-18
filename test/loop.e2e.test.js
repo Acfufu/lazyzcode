@@ -1,5 +1,7 @@
 // 目标循环 E2E：spawn 真实 CLI 于临时 git 仓，固化状态机与两道门的行为契约。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";

@@ -6,6 +6,8 @@
 // 校验和类篡改必须动 nodes/edges 载荷本体（无关新键会被归一丢弃——伪断言必失败）；
 // 对照结论文件写在仓外（untracked 杂物会触发 finish 完整性闸门 dirty 拒）。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";

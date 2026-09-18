@@ -4,6 +4,8 @@
 // CI 零触网零凭据；deps.run 注入轨沿 update.js 先例。
 // win32 雷回避：不 split("/")、路径断言用 join、无平台专属调用。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";

@@ -3,6 +3,8 @@
 // 不是未决事项——但段也不是法外之地：悬而未决的决策（TBD/待定…）在段内仍要被拦。
 // 钉 3 是黑名单语义回归钉：UNDECIDED_RE 永不得收「未知」二字，否则特性名自身都过不了门。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";

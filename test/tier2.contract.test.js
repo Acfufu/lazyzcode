@@ -3,6 +3,8 @@
 // 每个 E2E 用例的 HOME 都指向 scratch（lzy() 统一注入 env），绝不读真实 ~/.zcode/cli/log
 // ——测试不随宿主机日志量波动，也不被真实限流状态污染。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, openSync, ftruncateSync, closeSync, appendFileSync } from "node:fs";

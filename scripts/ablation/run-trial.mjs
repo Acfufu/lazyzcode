@@ -98,7 +98,14 @@ function runVerdict(p, taskDir) {
     encoding: "utf8",
     timeout: 120_000,
     shell: false,
-    env: { PATH: process.env.PATH, HOME: p.home, USERPROFILE: p.home },
+    // 闭式 env：verdict 机械检查不受人权门拦（trial 消融面一致，0.1.1 goal1）
+    env: {
+      PATH: process.env.PATH,
+      HOME: p.home,
+      USERPROFILE: p.home,
+      LZY_ABLATE_HUMAN_GATE: "1",
+      LZY_ABLATE_HOOK_HUMAN_GATE: "1",
+    },
   });
   const out = `exit=${r.status ?? "?"}\n${r.stdout ?? ""}${r.stderr ?? ""}`;
   writeFileSync(p.verdictStdout, out);

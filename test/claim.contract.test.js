@@ -2,6 +2,8 @@
 // fixture 模式与 hooks.contract.test.js 一致：合成 stdin 驱动真实钩子脚本，
 // 全部经 process.execPath 拉起，不触碰真实 $HOME 与仓库 .lazyzcode/。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";

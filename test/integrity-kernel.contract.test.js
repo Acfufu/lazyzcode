@@ -5,6 +5,8 @@
 // doctor spawn 沿 LZY_ZCODE_ENGINE 抑制家法（ratelimit.contract.test.js 先例）；
 // win32 雷回避：隔离 HOME/USERPROFILE 双 env、平台分支断言（memory windows-test-mines-families）。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";

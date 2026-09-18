@@ -1,5 +1,7 @@
 // cost 契约测试：聚合纯函数喂 canned sqlite3 -json 行（CI 零 sqlite 依赖）+ CLI 降级读面。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";

@@ -1,6 +1,8 @@
 // P3 清账契约测试：评审轮 R1-3/R1-4/R1-5②/R2-8/R2-9/R2-10/R2-11/R3-7 + 启动器 spawn 面。
 // 全部经 process.execPath（或 /bin/sh 字面量）拉起；不触碰真实 $HOME 与仓库 .lazyzcode/。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";

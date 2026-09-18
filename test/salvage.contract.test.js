@@ -1,6 +1,8 @@
 // 可回收工件契约测试（goal comparator-salvage N3）：reset/abandon 盘点入存根 + status 双分支读面。
 // 存根是跨会话面——事件打印会随销毁会话的转录一起死，落盘才是本体；五钉固化生成与显示两分支。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

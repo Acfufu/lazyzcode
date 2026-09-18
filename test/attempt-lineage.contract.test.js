@@ -5,6 +5,8 @@
 // 家法同 dag-kernel.contract.test.js：核心直调（快、确定）+CLI spawn（隔离 HOME 双 env、
 // LZY_ZCODE_ENGINE 抑制）；win32 雷回避：不 split("/")、EACCES 腿挂平台 skip。
 import { test } from "node:test";
+// 人权门非本文件被测面（门由 human-gate.contract.test.js 两面钉）——spawn 继承此 env 保采纳畅通
+process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";

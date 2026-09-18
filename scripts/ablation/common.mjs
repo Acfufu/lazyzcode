@@ -45,6 +45,7 @@ export const VARIANTS = {
       LZY_ABLATE_VERIFY: "1",
       LZY_ABLATE_INTEGRITY: "1",
       LZY_ABLATE_ATTEST: "1",
+      LZY_ABLATE_HUMAN_GATE: "1",
     },
   },
   E: {
@@ -57,6 +58,7 @@ export const VARIANTS = {
       LZY_ABLATE_HOOK_SESSION_START: "1",
       LZY_ABLATE_HOOK_TRIPWIRE: "1",
       LZY_ABLATE_HOOK_COMMENT_CHECKER: "1",
+      LZY_ABLATE_HOOK_HUMAN_GATE: "1",
     },
   },
   F: {

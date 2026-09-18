@@ -66,11 +66,29 @@ writeFileSync(
     `- [F1] cat response.txt 的 stdout 含标记 ${MARK}`,
   ].join("\n") + "\n",
 );
+// ── 人权门两回合（0.1.1 goal1，ADR-0018）：回合一=真用户批准消息过引擎 UPS ──────
 r = lzy(["loop", "plan", "plan.md"]);
-if (r.code !== 0) fail(`plan 失败：${r.out}`);
+if (r.code === 0) fail("人权门未生效：无批准采纳竟成功（ADR-0018 门缺席？）");
+const shortCode = (r.out.match(/短码 ([0-9a-f]{8})/) ?? [])[1];
+if (!shortCode) fail(`人权门拒报文无短码：${r.out}`);
+console.log(`[e2e] 人权门拒 ✔（pending 短码 ${shortCode}）——回合一：真用户批准消息`);
+const approve = await spawnHeadless({ prompt: `批准 ${shortCode}`, mode, timeoutMs, cwd: scratch });
+console.log(`[e2e] approve ok=${approve.ok} sessionId=${approve.sessionId ?? "—"}`);
+if (!approve.ok) fail(`批准回合失败：${approve.error}`);
+// L2 证据：批准记录必须在盘面（引擎注入的 UPS 写入，非模型转述）。
+const approvalFiles = existsSync(join(scratch, ".lazyzcode", "loop", "approvals"))
+  ? readdirSync(join(scratch, ".lazyzcode", "loop", "approvals")).filter((f) => f.endsWith(".json"))
+  : [];
+if (approvalFiles.length === 0) fail("批准回合后 approvals/ 无记录——引擎 UPS 路径未生效");
+console.log(`[e2e] approval record ✔ ${approvalFiles.join(", ")}`);
+// 状态归一（批准回合内模型可能已自行采纳/开跑）：无 planHash 则重采纳（记录在位应过），
+// 仍 planning 则 start；两者幂等容忍。
+r = lzy(["loop", "plan", "plan.md"]);
+const goalNow = JSON.parse(readFileSync(join(scratch, ".lazyzcode", "loop", "goal.json"), "utf8"));
+if (!goalNow.planHash) fail(`批准后采纳仍未过：${r.out}`);
 r = lzy(["loop", "start"]);
-if (r.code !== 0) fail(`start 失败：${r.out}`);
-console.log("[e2e] loop registered/plan/start ✔（基线就绪，交 headless 驱动）");
+if (r.code !== 0 && !/executing/.test(r.out)) fail(`start 失败：${r.out}`);
+console.log("[e2e] loop registered/plan(human-gated)/start ✔（基线就绪，交 headless 驱动）");
 
 // ── headless 驱动（自包含 prompt：不依赖对话史——交接状态全在盘面， zw 协议同款）──
 const prompt = [
@@ -103,8 +121,8 @@ const attestDir = join(scratch, ".lazyzcode", "attestations");
 const attests = existsSync(attestDir) ? readdirSync(attestDir).filter((f) => f.endsWith(".json")) : [];
 const attested = attests.length > 0;
 console.log(`[e2e] attestation ${attested ? attests.join(", ") : "缺席"}`);
-const verdict = done && attested;
-console.log(verdict ? "[e2e] VERDICT PASS（headless 自驱动全链：注册→执行→finish→attestation）" : "[e2e] VERDICT FAIL");
+const verdict = done && attested && approvalFiles.length > 0;
+console.log(verdict ? "[e2e] VERDICT PASS（headless 自驱动全链：注册→人权门批准→执行→finish→attestation）" : "[e2e] VERDICT FAIL");
 if (keep) console.log(`[e2e] scratch 保留：${scratch}`);
 else cleanup();
 process.exit(verdict ? 0 : 1);

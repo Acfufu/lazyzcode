@@ -7,7 +7,7 @@
 // 每发 ≈12k input tokens（spike §6）——目标刻意 trivial，1-2 turn 内收口。
 // 用法：node scripts/headless/e2e-loop.mjs [--mode yolo] [--timeout-minutes 15] [--keep]
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,14 +81,19 @@ const approvalFiles = existsSync(join(scratch, ".lazyzcode", "loop", "approvals"
   : [];
 if (approvalFiles.length === 0) fail("批准回合后 approvals/ 无记录——引擎 UPS 路径未生效");
 console.log(`[e2e] approval record ✔ ${approvalFiles.join(", ")}`);
-// 状态归一（批准回合内模型可能已自行采纳/开跑）：无 planHash 则重采纳（记录在位应过），
-// 仍 planning 则 start；两者幂等容忍。
+// 状态归一（批准回合内模型可能已自行采纳/开跑甚至一口气 finish——trivial 计划下
+// yolo 模型会照上下文把循环推到底）：done=直接进终验；否则无 planHash 重采纳（记录
+// 在位应过）、仍 planning 则 start；两者幂等容忍。
 r = lzy(["loop", "plan", "plan.md"]);
 const goalNow = JSON.parse(readFileSync(join(scratch, ".lazyzcode", "loop", "goal.json"), "utf8"));
-if (!goalNow.planHash) fail(`批准后采纳仍未过：${r.out}`);
-r = lzy(["loop", "start"]);
-if (r.code !== 0 && !/executing/.test(r.out)) fail(`start 失败：${r.out}`);
-console.log("[e2e] loop registered/plan(human-gated)/start ✔（基线就绪，交 headless 驱动）");
+if (goalNow.status === "done") {
+  console.log("[e2e] 批准回合模型已自行驱动至 done（trivial 计划+yolo 上下文），跳过归一与驱动回合");
+} else {
+  if (!goalNow.planHash) fail(`批准后采纳仍未过：${r.out}`);
+  r = lzy(["loop", "start"]);
+  if (r.code !== 0 && !/executing/.test(r.out)) fail(`start 失败：${r.out}`);
+  console.log("[e2e] loop registered/plan(human-gated)/start ✔（基线就绪，交 headless 驱动）");
+}
 
 // ── headless 驱动（自包含 prompt：不依赖对话史——交接状态全在盘面， zw 协议同款）──
 const prompt = [
@@ -103,14 +108,16 @@ const prompt = [
   `全部用工具真实执行，不要问询；结束前打印一行 FINAL: <finish 命令的退出码>。`,
 ].join("\n");
 
-const started = Date.now();
-const res = await spawnHeadless({ prompt, mode, timeoutMs, cwd: scratch });
-console.log(`[e2e] headless ok=${res.ok} exit=${res.exitCode} ${Math.round((Date.now() - started) / 1000)}s sessionId=${res.sessionId ?? "—"}`);
-if (res.response) console.log(`[e2e] response 尾部：${res.response.slice(-200).replace(/\n+/g, " ⏎ ")}`);
-if (!res.ok) {
-  console.error(`[e2e] headless 调用失败：${res.error}`);
-  if (!keep) cleanup();
-  process.exit(1);
+if (goalNow.status !== "done") {
+  const started = Date.now();
+  const res = await spawnHeadless({ prompt, mode, timeoutMs, cwd: scratch });
+  console.log(`[e2e] headless ok=${res.ok} exit=${res.exitCode} ${Math.round((Date.now() - started) / 1000)}s sessionId=${res.sessionId ?? "—"}`);
+  if (res.response) console.log(`[e2e] response 尾部：${res.response.slice(-200).replace(/\n+/g, " ⏎ ")}`);
+  if (!res.ok) {
+    console.error(`[e2e] headless 调用失败：${res.error}`);
+    if (!keep) cleanup();
+    process.exit(1);
+  }
 }
 
 // ── 终验：loop done + attestation 在场（LOOP_COMPLETE 机器证明）────────────────

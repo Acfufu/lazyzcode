@@ -343,3 +343,11 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - registry `latest=0.1.0`（curl 直证）；发布 tarball 与 tag 树打包 sha512 逐字节一致（54e5942b…，双向 cmp 同）。
 - 隔离 prefix 冒烟：`--prefix` 装 @0.1.0 → `lzy --version` 0.1.0（插件载荷同版本）EXIT=0。
 - 真机 `lzy update` 0.0.10→0.1.0 全链 EXIT=0（「sync 已由新装子进程执行」=ADR-0012 活体）；缓存 0.1.0 目录在案（历史版本目录 0.0.1…0.0.10 并存）、新 SKILL「Live-surface ordering」句随载荷首发 grep 实证；doctor `payload`/`install`/`payload-ver` 三 ✔（缓存 11 版本目录 · CLI 一致）。
+
+### win32 VM 复测（2026-09-18，0.1.0 发布后）
+
+- 台：Win11 ARM64（prlctl exec SYSTEM 上下文 + `set LOCALAPPDATA=<用户profile>` 指向——引擎候选在交互用户树下，SYSTEM 裸跑报「引擎 未找到」属上下文已知态非缺陷）。
+- update 全链：0.0.9→0.1.0 EXIT=0，「sync 已由新装子进程执行」=ADR-0012 win32 活体；`lzy --version` 0.1.0 · 引擎 0.16.5。
+- doctor：payload / files（15 文件逐字 sha256）/ install / payload-ver 深对照（缓存 [0.0.7..0.1.0] · CLI 一致）/ hook-node 启动器兜底（C:\Tools\node\node.exe）/ platform 候选命中全 ✔；headless 行 warn-only（凭据缺席两态文档化）；enabled 初 ✖ → `lzy install` 补启用（skills:2 hooks:5）✔。
+- scratch loop 全链（CLI 驱动零模型调用）：register --tier light → plan 门+快照+planHash → evidence red（--harness，INV-08 面）→ 改面提交 → F1 绿绑指纹 → **supersede 世系（#1 superseded→#2 active、planHash 换代、步骤重开）** → attempts 读面 → **dag stale 当场抓 gen1 绿过期（「只展示不进门」原文）** → 新代次补两步 → finish → LOOP_COMPLETE attestation 落盘 → reset 存活（dag.json/snapshots 常驻、attempts 派生视图读出 #2 completed）。
+- 结论：0.1.0 机器面在 win32 全部活体在案，复测闭环；0.0.9→0.1.0 跨两版 update 链顺带活体。

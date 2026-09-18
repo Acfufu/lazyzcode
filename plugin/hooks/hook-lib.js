@@ -72,6 +72,7 @@ export function readSessionState(cwd, sessionId) {
     stallCount: 0,
     lastDoneCount: null,
     stuck: false,
+    standdown: null, // 旁观声明旗标（ADR-0009 修订节）：true=会话已声明不参与本目标
   };
   try {
     const raw = JSON.parse(
@@ -93,6 +94,7 @@ export function readSessionState(cwd, sessionId) {
           ? raw.lastDoneCount
           : null;
       state.stuck = raw.stuck === true;
+      state.standdown = raw.standdown === true ? true : null; // 只认 true；缺键/他值=null（零迁移）
     }
   } catch {
     // 文件缺失/损坏 = 全缺省（损坏 JSON 记 0，与预算口径一致）

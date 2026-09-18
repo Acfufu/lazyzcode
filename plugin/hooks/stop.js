@@ -85,10 +85,16 @@ try {
     failOpen(); // 无目标 / planning / done / abandoned：引擎说了算
   }
 
-  // 认领闸门（ADR-0004）：认领谓词=会话文件含 claimedAt（纯振数文件不算认领）。
-  // 空集=现状（首个认领出现前人人可被拉）；非空且本会话不在集=旁路会话，放手。
+  // standdown 放行（ADR-0009 修订节，0.1.1）：会话旗标在场=本会话已声明不参与本目标，
+  // 只读放行——零写盘、不耗拉回预算、不动 stall/stuck 计数、不消费 handoff 标记
+  //（与 handoff 一次性交接通道相互独立）。置于认领闸门前：显式退出声明压过认领资格。
+  if (readSessionState(cwd, sessionId).standdown === true) failOpen();
+
+  // 认领闸门（ADR-0004 修正案四，0.1.1 资格制）：认领谓词=会话文件含 claimedAt（纯振数
+  // 文件不算认领）。空集=无人可拉（旁路结构性免拉，v0.1.0 前的「空集=现状」回退已废止）；
+  // 本会话不在集=旁路会话，放手。
   const claims = listClaims(cwd);
-  if (claims.length > 0 && !claims.includes(sanitizeSessionId(sessionId))) {
+  if (!claims.includes(sanitizeSessionId(sessionId))) {
     failOpen();
   }
 

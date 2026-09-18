@@ -26,3 +26,21 @@
 - SessionStart 注入 sessionId + `--session` 精确指向：归属严格但多一个注入面、模型转抄长 UUID 脆弱、锁移植破层——否决（可后加）。
 - 计划文件标记/钩子扫描 transcript：会话级语义写进 slug 级载体/格式耦合误报面大——否决。
 - 放行消耗预算：把正确收尾当拉回扣账，惩罚最优行为——否决。
+
+## 修订节（2026-09-19，goal v011-debt-clearing）：standdown 为第二放行通道
+
+ADR-0004 修正案四废止空集回退后，新增会话级放行通道 **standdown**：UPS 触发词
+「zw standdown」命中即在 `sessions/<id>.json` 写常驻旗标（withSessionLock，幂等重发
+同文）；Stop 钩子在 goal 闸门后、认领闸门前读到旗标即只读放行（显式 continue:false，
+零写盘、不耗拉回预算、不动 stall/stuck 计数、不消费 handoff 标记）；参与即恢复——认领
+写块同步清旗标（「zw 继续」重新加入拉回）；reset 即清（sessions/ 整目录本就被
+`cleanupLoopResidue` 清除，零 reset 改动）。写面归 UPS 钩子的理由与交接标记同源：模型
+在 Bash 拿不到自己的 sessionId，只有钩子能绑定「本会话」。
+
+与 handoff 的分工：handoff 是执行者的一次性精确交接（快照必填、消费即焚）；standdown
+是旁观/退出声明（常驻、只读、可逆）。两通道相互独立，不互耗预算。
+
+已知边界（本修订放宽）：旁路（未认领）会话登记的 handoff 标记在资格制下不再被自己
+消费（消费块位于认领闸门之后，stop.js:113-150）——陈旧标记窗口放宽，由该会话 standdown
+声明放弃拉回、或被认领会话按既有目录级语义交叉消费收尾；
+`hooks.contract.test.js:195-209`「旁路会话不消费交接标记」断言保持不变。

@@ -7,6 +7,7 @@
 // CLI：node scripts/ablation/extract-metrics.mjs --trial <trialId>
 // 库：  import { extractMetrics } from "./extract-metrics.mjs"
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { argv, exit } from "node:process";
@@ -159,7 +160,7 @@ export function missingMetricKeys(m) {
   return METRIC_REQUIRED_KEYS.filter((k) => m[k] === undefined);
 }
 
-if (import.meta.url === `file://${argv[1]}`) {
+if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
   try {
     const i = argv.indexOf("--trial");
     if (i === -1 || !argv[i + 1]) {

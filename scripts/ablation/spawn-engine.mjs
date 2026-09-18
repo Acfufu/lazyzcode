@@ -10,6 +10,7 @@
 //        [--resume <sessId>] [--mode <m>] [--timeout-ms <n>] [--switch K=V …]
 // 库：  import { spawnEngine } from "./spawn-engine.mjs"
 import { spawn } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 import { argv, exit } from "node:process";
 import { resolveEngine } from "./common.mjs";
@@ -78,7 +79,7 @@ function parseCliArgs(argv) {
   return out;
 }
 
-if (import.meta.url === `file://${argv[1]}`) {
+if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
   try {
     const a = parseCliArgs(argv);
     if (!a.home || !a.cwd || !a.promptFile) {

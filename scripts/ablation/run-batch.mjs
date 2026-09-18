@@ -10,6 +10,7 @@
 // b2 单元格模式（非全网格）：--cells <v:task[:hint],…>（与 --variants/--tasks 互斥；
 // hint=heavy|light 透传 run-trial tier-hint；账本行带 tierHint 字段供 tier 轴归因）。
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { argv, exit } from "node:process";
 import { join } from "node:path";
 import { mkdtempSync } from "node:fs";
@@ -119,7 +120,7 @@ export async function runBatch({
   return { ok: true, stage: "batch", pf, ran, ledgerPath };
 }
 
-if (import.meta.url === `file://${argv[1]}`) {
+if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
   try {
     const a = { batch: "b1", variants: "A,B,C,D,E,F", reps: 1 };
     for (let i = 2; i < argv.length; i++) {

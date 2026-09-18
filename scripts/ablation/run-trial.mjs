@@ -8,6 +8,7 @@
 // CLI：node scripts/ablation/run-trial.mjs --variant <A-J> --task <id> [--rep 1] [--batch b1]
 //        [--timeout-ms <n>] [--tier-hint <heavy|light>] [--force]
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { argv, exit } from "node:process";
 import { join } from "node:path";
@@ -183,7 +184,7 @@ export async function runTrial({
   return { trialId, verdictExit, metrics };
 }
 
-if (import.meta.url === `file://${argv[1]}`) {
+if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
   try {
     const a = { rep: 1, batch: "b1" };
     for (let i = 2; i < argv.length; i++) {

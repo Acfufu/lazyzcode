@@ -5,6 +5,7 @@
 //
 // CLI：node scripts/ablation/aggregate.mjs --batch b1
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { argv, exit } from "node:process";
 import { join } from "node:path";
 import { ARTIFACT_NAMES, OUT_ROOT } from "./common.mjs";
@@ -78,7 +79,7 @@ export function aggregate(batch) {
   return { lines, report: lines.join("\n"), trials, ledger, completeCount: complete.length };
 }
 
-if (import.meta.url === `file://${argv[1]}`) {
+if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
   try {
     const i = argv.indexOf("--batch");
     const batch = i !== -1 ? argv[i + 1] : "b1";

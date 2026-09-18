@@ -13,9 +13,13 @@ import {
   inputSessionId,
   readGoal,
   readStdinJson,
+  sanitizeSessionId,
   withSessionLock,
   writeSessionState,
 } from "./hook-lib.js";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { resolve, join } from "node:path";
 
 const BARE_ZW_RE = /^\s*zw(?![a-z0-9_-])/i;
 const EXPLICIT_RE = /lazyzcode[：:]zw/i;
@@ -23,9 +27,75 @@ const ALIAS_RE = /(^|[^a-z0-9_-])(ulw|ultrawork)([^a-z0-9_-]|$)/i;
 // 唤起级别名（ADR-0004 修正案）：句首 ulw/ultrawork 是发起形态；句中「/ulw」是提及
 // （ specimen：「对比 /ulw 的写法」曾误认领，致盲真主会话）。通知注入维持全谱 ALIAS_RE 不变。
 const ALIAS_INITIAL_RE = /^\s*(ulw|ultrawork)(?![a-z0-9_-])/i;
+// 人权门批准形态（0.1.1 goal1，ADR-0018）：恰「批准/approve + 8 位 hex 短码」；负向
+// 后行断言屏蔽中文否定前置字（不/别）。多条命中取首个（钉死）。
+const APPROVE_RE = /(?<![不别])(?:批准|approve)\s*([0-9a-f]{8})\b/i;
+
+// 返回 null=落回既有触发词逻辑（零输出零 exit）；返回对象=恰一次 emit 后 exit 0
+// （由调用方执行）。emit 文案零时间戳零文件名（双跑确定性不变量）；全分支异常
+// fail-open——批准面绝不劫持会话，门保持关闭由 CLI 侧重试。
+function approvalVerdict(input) {
+  const prompt = typeof input?.prompt === "string" ? input.prompt : "";
+  const m = prompt.match(APPROVE_RE);
+  if (!m) return null;
+  try {
+    const cwd = inputCwd(input);
+    const goal = readGoal(cwd);
+    const pending = goal?.approvalPending;
+    if (!pending?.planHash) return null;
+    const short = String(pending.planHash).slice(0, 8).toLowerCase();
+    if (m[1].toLowerCase() !== short) {
+      return {
+        additionalContext:
+          `[lzy] Approval code mismatch — the pending plan short code is ${short}. ` +
+          `Ask the model for the exact approval sentence (「批准 <短码>」) and send it again. Nothing was recorded.`,
+      };
+    }
+    // exact-hash 复核：计划文件现内容必须仍哈希到 pending 值（批准后改计划=批准作废）。
+    // planPath 取 pending 内（首次采纳时 goal.planPath 尚空、复采纳时指向旧计划）。
+    let current = null;
+    try {
+      current = createHash("sha256").update(readFileSync(resolve(cwd, pending.planPath ?? goal.planPath))).digest("hex");
+    } catch {}
+    if (current !== pending.planHash) {
+      return {
+        additionalContext:
+          `[lzy] Plan changed since this approval was requested — the short code is void. ` +
+          `Ask the model to re-run the adoption command for a fresh code. Nothing was recorded.`,
+      };
+    }
+    const dir = join(cwd, ".lazyzcode", "loop", "approvals");
+    mkdirSync(dir, { recursive: true });
+    const sid = String(inputSessionId(input) ?? "unknown");
+    const name = `${short}-${sanitizeSessionId(sid).slice(0, 24)}-${Date.now()}.json`;
+    const tmp = join(dir, `.${name}.${process.pid}.tmp`);
+    writeFileSync(
+      tmp,
+      `${JSON.stringify({ version: 1, slug: goal.slug, planHash: pending.planHash, at: new Date().toISOString(), sessionId: sid }, null, 2)}\n`,
+    );
+    renameSync(tmp, join(dir, name));
+    return {
+      additionalContext:
+        `[lzy] Human approval recorded for plan ${goal.slug} (short code ${short}). ` +
+        `The model may now re-run the adoption command (lzy loop plan <file>) to pass the human gate.`,
+    };
+  } catch {
+    return null;
+  }
+}
 
 try {
   const input = readStdinJson();
+  // LZY_ABLATE_HOOK_HUMAN_GATE（0.1.1 goal1，ADR-0015 形态）：恰 "1" 才消融；短路=径直
+  // 落回既有触发词逻辑。批准分支整体置于 TRIGGER 消融短路之前——消融轴独立（TRIGGER
+  // 臂不连带灭人权门）。
+  if (process.env.LZY_ABLATE_HOOK_HUMAN_GATE !== "1") {
+    const verdict = approvalVerdict(input);
+    if (verdict) {
+      emit(verdict);
+      process.exit(0);
+    }
+  }
   // LZY_ABLATE_HOOK_TRIGGER（ADR-0015）：恰 "1" = 触发词层全灭——stdin 已吃净后短路
   // （emit {} + exit 0，failOpen 同款），注入/认领/哨兵旗标全不动；其余取值行为逐字段同。
   if (process.env.LZY_ABLATE_HOOK_TRIGGER === "1") failOpen();

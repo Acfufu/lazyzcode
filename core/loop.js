@@ -661,7 +661,13 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
   // 带短码+恢复指引）；重拒幂等刷新。批准记录只能由 UserPromptSubmit 钩子在真实用户
   // 消息上写入——CLI 侧无 approve 命令（自跑即假人权门，前提已证伪）。
   if (!ablated("LZY_ABLATE_HUMAN_GATE") && !findApproval(cwd, goal.slug, planHash)) {
-    goal.approvalPending = { planHash, requestedAt: new Date().toISOString() };
+    // planPath 进 pending：首次采纳时 goal.planPath 尚为空、复采纳时指向旧计划——
+    // 钩子的 exact-hash 复核必须哈希到「本门所验的这份文件」。
+    goal.approvalPending = {
+      planHash,
+      planPath: relative(cwd, planFile) || planFile,
+      requestedAt: new Date().toISOString(),
+    };
     writeGoal(cwd, goal);
     const short = planHash.slice(0, 8);
     throw new LoopError(

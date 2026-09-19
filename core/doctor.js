@@ -285,8 +285,9 @@ function checkLoopState(push, cwd) {
       // （v008#N7 采纳即快照，reset 不清——照证据报告先例）、dag.json 中央失效 DAG
       // 账本（v009-bat1#N2，跨 reset 常驻，照 metrics.json 先例）、attempt.json 世系
       // 账本（0.1.0 棒B，跨 reset 常驻，同 dag.json 先例）、approvals/ 人权门批准
-      // 记录族（0.1.1 goal1 ADR-0018，钩子写入 reset 不清，同 attempt.json 先例）
-      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals"]);
+      // 记录族（0.1.1 goal1 ADR-0018，钩子写入 reset 不清，同 attempt.json 先例）、
+      // runtime.json 运行时账本（0.2.0 棒1 ADR-0020，跨 reset 常驻，同 dag.json 先例）
+      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json"]);
       emptyScar = entries.length === 0 || entries.some((e) => !EXEMPT.has(e));
     } catch {
       emptyScar = false; // 目录缺席 = 真干净

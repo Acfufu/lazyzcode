@@ -1651,7 +1651,7 @@ export function resetLoop(cwd, git) {
 function cleanupLoopResidue(cwd) {
   const dir = loopDir(cwd);
   const goalName = basename(goalPath(cwd));
-  const tmpFamilies = [`.${goalName}.`, ".dag.json.", ".attempt.json."];
+  const tmpFamilies = [`.${goalName}.`, ".dag.json.", ".attempt.json.", ".runtime.json."];
   let cleaned = 0;
   try {
     for (const f of readdirSync(dir)) {

@@ -34,9 +34,19 @@ import {
   startLoop,
   supersedePlan,
   verifyEvidence,
+  withLock,
   writeGoalReport,
 } from "../core/loop.js";
 import { formatAttempts } from "../core/attempt.js";
+import {
+  acquireLease,
+  assertFenceIfPresent,
+  formatBudget,
+  heartbeatLease,
+  initBudget,
+  recordSpend,
+  releaseLease,
+} from "../core/runtime.js";
 import {
   dependents as dagDependents,
   findGreenByGeneration,
@@ -47,7 +57,7 @@ import { recordComparatorAttestation } from "../core/attest.js";
 import { findEngine, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
 import { auditAgentsMd, formatAgentsMd } from "../core/agentsmd.js";
-import { formatCost } from "../core/cost.js";
+import { formatCost, rollingWaterlinePoints } from "../core/cost.js";
 
 const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 
@@ -55,7 +65,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -403,8 +413,58 @@ async function cmdLoop(args) {
       // 积分成本报表（plan-v2 Phase 2-2，只读）：账本缺席/sqlite3 缺席均降级输出不翻码。
       console.log(formatCost(cwd, readGoal(cwd)));
       return;
+    case "lease": {
+      // 运行级认领（0.2.0 棒1，ADR-0020）：acquire/heartbeat/release——分钟级互斥，
+      // 匿名 handle=fence 令牌（ADR-0009 立场，不存 sessionId）。
+      const action = _[1];
+      const fence = f.fence != null && f.fence !== "" ? Number.parseInt(f.fence, 10) : null;
+      if (action === "acquire") {
+        const ttl = f["ttl-ms"] != null && f["ttl-ms"] !== "" ? Number.parseInt(f["ttl-ms"], 10) : undefined;
+        const lease = withLock(cwd, () => acquireLease(cwd, { ttlMs: ttl }));
+        console.log(`✔ 租约已获：fence ${lease.fence}（至 ${new Date(lease.expiresAtMs).toISOString()}）——写路径申报用 --fence ${lease.fence} 或 env LZY_RUNTIME_FENCE`);
+        return;
+      }
+      if (action === "heartbeat") {
+        if (!Number.isInteger(fence)) throw new LoopError("用法：lzy loop lease heartbeat --fence <n> [--ttl-ms N]");
+        const ttl = f["ttl-ms"] != null && f["ttl-ms"] !== "" ? Number.parseInt(f["ttl-ms"], 10) : undefined;
+        const lease = withLock(cwd, () => heartbeatLease(cwd, fence, { ttlMs: ttl }));
+        console.log(`✔ 心跳已记：fence ${lease.fence}（续至 ${new Date(lease.expiresAtMs).toISOString()}）`);
+        return;
+      }
+      if (action === "release") {
+        if (!Number.isInteger(fence)) throw new LoopError("用法：lzy loop lease release --fence <n>");
+        const r = withLock(cwd, () => releaseLease(cwd, fence));
+        console.log(r.released ? `✔ 租约已释放（fence ${fence}）` : "无活跃租约（幂等，无需释放）");
+        return;
+      }
+      throw new LoopError("用法：lzy loop lease acquire [--ttl-ms N] | heartbeat --fence <n> | release --fence <n>");
+    }
+    case "budget": {
+      // 运行预算（0.2.0 棒1，ADR-0020）：init/spend/remaining——墙钟+积分双硬顶，
+      // 超顶拒=drive 须干净收束的机器信号；runtime.json 自身写者不带 fence（ADR-0020 边界）。
+      const action = _[1];
+      if (action === "init") {
+        const wall = f["wall-ms"] != null && f["wall-ms"] !== "" ? Number.parseInt(f["wall-ms"], 10) : undefined;
+        const pts = f.points != null && f.points !== "" ? Number.parseFloat(f.points) : undefined;
+        const b = withLock(cwd, () => initBudget(cwd, { wallClockBudgetMs: wall, pointsBudget: pts }));
+        console.log(`✔ 预算已初始化：墙钟 ${b.wallClockBudgetMs}ms · 积分 ${b.pointsBudget}（env LZY_DRIVE_WALLCLOCK_BUDGET_MS / LZY_DRIVE_POINTS_BUDGET 可覆盖缺省）`);
+        return;
+      }
+      if (action === "spend") {
+        const ms = f.ms != null && f.ms !== "" ? Number.parseInt(f.ms, 10) : 0;
+        const pts = f.points != null && f.points !== "" ? Number.parseFloat(f.points) : 0;
+        const b = withLock(cwd, () => recordSpend(cwd, { ms, points: pts }));
+        console.log(`✔ 已记账：墙钟 ${b.spentMs}/${b.wallClockBudgetMs}ms · 积分 ${Math.round(b.spentPoints * 100) / 100}/${b.pointsBudget}`);
+        return;
+      }
+      if (action === "remaining") {
+        console.log(formatBudget(cwd, { rollingPoints: rollingWaterlinePoints() }));
+        return;
+      }
+      throw new LoopError("用法：lzy loop budget init [--wall-ms N --points N] | spend [--ms N --points N] | remaining");
+    }
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/supersede/attempts/start/subject/tier/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/supersede/attempts/start/subject/tier/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff/lease/budget）`);
   }
 }
 
@@ -726,6 +786,10 @@ function printHelp() {
   lzy loop attempts                         attempt 世系读面（只读：attempt.json ∪ 中央账本派生）
   lzy loop start                            开跑（planning → executing，打印实测并发纪律行）
   lzy loop tier heavy                       tier 升级（只升不降；机器门=采纳时点，ADR-0013）
+  lzy loop lease acquire|heartbeat|release  运行级认领（0.2.0，ADR-0020）：分钟级互斥+心跳续期；
+                                            fence 令牌申报写路径（--fence / LZY_RUNTIME_FENCE）
+  lzy loop budget init|spend|remaining      运行预算（0.2.0，ADR-0020）：墙钟+积分双硬顶，
+                                            超顶拒=drive 须干净收束的机器信号
   lzy loop subject add <path>               声明兄弟仓根入 subject 集（仅 executing；校验 git 仓/
                                             与宿主无包含；集合变化=全体 F 证据过期须重取）
   lzy loop subject remove <path>            移除 subject（missing 死锁出口；证据过期语义照走）

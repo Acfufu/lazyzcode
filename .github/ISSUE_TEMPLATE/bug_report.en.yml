@@ -1,7 +1,16 @@
-name: Bug report
+name: Bug report (English)
 description: Something in lazyzcode is broken or behaves contrary to its documented contract.
 labels: [bug]
 body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have searched existing issues and found no duplicate
+          required: true
+        - label: I understand only 0.1.x is supported (see SECURITY.md); older lines are not getting fixes
+          required: true
   - type: textarea
     id: what-happened
     attributes:

@@ -1,7 +1,14 @@
-name: Feature request
+name: Feature request (English)
 description: Propose a change or addition to the discipline layer.
 labels: [enhancement]
 body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have searched existing issues and discussions for a similar proposal
+          required: true
   - type: textarea
     id: problem
     attributes:

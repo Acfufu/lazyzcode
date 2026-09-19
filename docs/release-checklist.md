@@ -285,7 +285,7 @@ Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 
 ## 执行记录（0.1.1，人权门+债清账双 goal 列车——已发布收官 2026-09-19）
 
-> **发后核验（用户 2FA publish 后）**：registry `dist-tags.latest=0.1.1`（curl HTTP 端点直证；首查撞 CDN 传播窗 0.1.1 未现+一次空响应，10s 轮询后稳定）；registry shasum `02b357b8…` 与 dry-run **逐字一致**；隔离 prefix 冒烟 `lzy --version`=0.1.1（CLI+载荷同版本，`--prefer-online` 绕 npm12 EALLOWREMOTE）；真机 `lzy update` 0.1.0→0.1.1 全链 EXIT=0（新装子进程 sync 落缓存 0.1.1，ADR-0012 再证）；`lzy doctor` install ✔+`payload-ver` 深对照 ✔（缓存 12 版本目录枚举·CLI 0.1.1 一致）；载荷冻结纪律内容级样本 6 文件 sha256 全一致（skills/zw/SKILL.md、hooks stop/trigger/hook-lib、agents/qa-executor.md、cli/lzy.js——缓存布局=plugin/ 内容在缓存根，比对须按此映射）。win32 VM 复测待约。
+> **发后核验（用户 2FA publish 后）**：registry `dist-tags.latest=0.1.1`（curl HTTP 端点直证；首查撞 CDN 传播窗 0.1.1 未现+一次空响应，10s 轮询后稳定）；registry shasum `02b357b8…` 与 dry-run **逐字一致**；隔离 prefix 冒烟 `lzy --version`=0.1.1（CLI+载荷同版本，`--prefer-online` 绕 npm12 EALLOWREMOTE）；真机 `lzy update` 0.1.0→0.1.1 全链 EXIT=0（新装子进程 sync 落缓存 0.1.1，ADR-0012 再证）；`lzy doctor` install ✔+`payload-ver` 深对照 ✔（缓存 12 版本目录枚举·CLI 0.1.1 一致）；载荷冻结纪律内容级样本 6 文件 sha256 全一致（skills/zw/SKILL.md、hooks stop/trigger/hook-lib、agents/qa-executor.md、cli/lzy.js——缓存布局=plugin/ 内容在缓存根，比对须按此映射）。win32 VM 复测**已闭环（2026-09-19，Win11 ARM64）**：registry 新装 0.1.1（npm prefix=C:\Tools\node 机器级；doctor 活体抓 ADR-0012 中间态〔CLI 0.1.1·缓存无 0.1.1 目录〕→sync 收口 install/payload-ver 双 ✔）→降戳 0.0.10→`lzy update` 全链 EXIT=0（ComSpec spawn+新装子进程 sync）→0.1.1 全新面驱动 7/7 PASS〔A 非 git 硬拒带 ADR-0019 指路/B git 宿主注册不误伤/C 人权门首采纳拒出短码 9b694633/D UPS 钩子真批准短语写记录/E 重采纳过/F standdown 链〔旗标写→stop 放行→参与清→stop 恢复拉〕/G LIGHT 零 F finish ✔✔〕；驱动=node 直跑钩子+CLI 子进程脚本经宿主 http.server+客户机 curl 通道（SYSTEM exec env 双指用户 profile：LOCALAPPDATA+APPDATA）。
 
 ## 执行记录（0.1.1，人权门+债清账双 goal 列车——机械件已备，publish 留用户）
 

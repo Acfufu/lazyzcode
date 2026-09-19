@@ -21,6 +21,8 @@
 | `LZY_ABLATE_VERIFY` | core/loop.js `doFinishLoop` stale/unbound 两处拒绝（约 :1040-1057） | 过期/未绑证据不拦 finish。**范围钉死**：`lzy loop verify` 独立报告面不在消融内 |
 | `LZY_ABLATE_INTEGRITY` | core/loop.js `doFinishLoop` integrity 循环（约 :1100-1125） | 脏树/缺根不拦 finish（≈0.0.7 形态的一半） |
 | `LZY_ABLATE_ATTEST` | core/loop.js `doFinishLoop` comparator attestation 门（约 :1062-1099） | HEAVY finish 无现行 MATCH 证明也放行 |
+| `LZY_ABLATE_FENCE` | core/loop.js `guardFence`（0.2.0 棒1 ADR-0020） | fence 写路径守卫关：错误 fence 也可写（租约申报失真不拦） |
+| `LZY_ABLATE_RISK_GATE` | core/loop.js `assertDriveEligible`（0.2.0 棒1 ADR-0020） | risk 门关：HIGH/RESTRICTED 也可入无人值守车道（棒2 drive 接线后=H3R 实验臂 B/C 的目标级门） |
 | `LZY_ABLATE_HOOK_STOP` | plugin/hooks/stop.js try 顶部、`readStdinJson()` 之后（约 :72-74） | Stop 拉回全灭（短路=emit `{}` + exit 0，failOpen 同款） |
 | `LZY_ABLATE_HOOK_TRIGGER` | plugin/hooks/trigger.js（约 :27-30） | 触发词注入与 claimedAt 写入全灭 |
 | `LZY_ABLATE_HOOK_SESSION_START` | plugin/hooks/session-start.js（约 :12-14） | 循环态广播 CTA 全灭 |

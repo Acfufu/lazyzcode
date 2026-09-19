@@ -339,6 +339,30 @@ export function setRisk(cwd, value) {
   });
 }
 
+// risk 门谓词（0.2.0 棒1，ADR-0020；§⑮ Q5 拍板）：drive 入口机器门的数据面+谓词。
+// 本棒无调用方（drive 子命令棒2 接线）——由契约测试承载（kernel-first 沿 0.0.9 棒1
+// DAG 先例）。HIGH=人工会话推进；RESTRICTED=硬禁，唯一出口=人工收窄范围后 reset 重
+// 注册（风险轴随新目标重评——risk 只升不降无降级命令，出口经重建而非降档）。
+// 消融开关 LZY_ABLATE_RISK_GATE 恰 "1" 绕过（棒2 H3R 三臂实验的 B/C 臂即本门，
+// roadmap §⑮ 预注册协议）。
+export function assertDriveEligible(goal) {
+  if (ablated("LZY_ABLATE_RISK_GATE")) return { eligible: true };
+  const risk = goal?.risk ?? "low";
+  if (risk === "high") {
+    throw new LoopError(
+      `HIGH 风险目标禁入无人值守车道：${goal.slug}（risk=high，ADR-0020）——` +
+        `请在人工会话推进（drive/无人值守唤起均被本门拒）`,
+    );
+  }
+  if (risk === "restricted") {
+    throw new LoopError(
+      `RESTRICTED 硬禁：${goal.slug}（risk=restricted）——仅人工收窄计划范围后 reset 并重注册可解` +
+        `（风险轴随新目标重评；本门无逃生 flag，ADR-0020）`,
+    );
+  }
+  return { eligible: true, risk };
+}
+
 // ── 2. 计划门：解析 N/F 清单，决策完备（无待定）才放行 ────────────────────
 const ITEM_RE = /^-\s*\[([NF])(\d+)\]\s*(.+)$/;
 const UNDECIDED_RE = /(TBD|待定|待确认|未定|待讨论)/i;

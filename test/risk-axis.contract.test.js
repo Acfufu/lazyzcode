@@ -10,7 +10,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readGoal, registerGoal, setRisk } from "../core/loop.js";
+import { assertDriveEligible, readGoal, registerGoal, setRisk } from "../core/loop.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
@@ -100,5 +100,31 @@ test("CLI 面：register --risk 落盘/status 读面 risk 行/lzy loop risk 拒�
     assert.match(r.out, /risk 不合法/);
   } finally {
     rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// risk 门谓词三态+开关两半（0.2.0 棒1 N6）：本棒无 drive 调用方，谓词由契约承载
+//（kernel-first 先例）；棒2 drive 入口接线后此面即机器执法点。
+test("assertDriveEligible：low/med 放行、HIGH 拒（指路人工会话）、RESTRICTED 硬禁（指路重建）、开关恰 \"1\" 绕过", () => {
+  const mk = (risk) => ({ slug: "t", risk });
+  assert.deepEqual(assertDriveEligible(mk("low")), { eligible: true, risk: "low" });
+  assert.deepEqual(assertDriveEligible(mk("med")), { eligible: true, risk: "med" });
+  assert.deepEqual(assertDriveEligible(mk(undefined)), { eligible: true, risk: "low" }); // 缺键容忍
+  assert.throws(() => assertDriveEligible(mk("high")), /HIGH 风险目标禁入无人值守车道/);
+  assert.throws(() => assertDriveEligible(mk("restricted")), /RESTRICTED 硬禁/);
+  assert.match((() => { try { assertDriveEligible(mk("high")); } catch (e) { return e.message; } })(), /人工会话推进/);
+  assert.match((() => { try { assertDriveEligible(mk("restricted")); } catch (e) { return e.message; } })(), /reset 并重注册/);
+  process.env.LZY_ABLATE_RISK_GATE = "1";
+  try {
+    assert.deepEqual(assertDriveEligible(mk("restricted")), { eligible: true });
+  } finally {
+    delete process.env.LZY_ABLATE_RISK_GATE;
+  }
+  // 取值语义钉：非 "1" 皆关
+  process.env.LZY_ABLATE_RISK_GATE = "true";
+  try {
+    assert.throws(() => assertDriveEligible(mk("high")), /禁入无人值守车道/);
+  } finally {
+    delete process.env.LZY_ABLATE_RISK_GATE;
   }
 });

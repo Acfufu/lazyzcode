@@ -1,5 +1,5 @@
-// ablation-switch 契约测试（ADR-0015，goal true-ablation-full-flow#N2/N3）：全部 10 个
-// kill-switch（机器层 5 + 钩子层 5）每开关两半——开（恰 "1"）=闸门确被绕过/钩子确被静默
+// ablation-switch 契约测试（ADR-0015，goal true-ablation-full-flow#N2/N3）：全部 12 个
+// kill-switch（机器层 7 + 钩子层 5；0.2.0 棒1 增 FENCE/RISK_GATE，两面钉在 runtime-kernel/risk-axis 契约）每开关两半——开（恰 "1"）=闸门确被绕过/钩子确被静默
 // （fixture CLI stdout 为证）、关=与改动前 fixture 结果一致（同一 fixture 上拒辞/注入逐字段
 // 同，先关后开串行复用一仓）。取值语义钉：缺席/空串/"0"/"true" 皆关——开关判定严格 === "1"，
 // 防半开半关的脏配置静默混入消融样本。

@@ -44,3 +44,19 @@ UTC+8、人工维护、注明官方源与活动期属性），候选窗逐小时
 `now` 注入沿 `bandAdvisory` 先例；UTC+8 换算走纯 UTC 路径与运行机器时区无关。
 ADR-0008 不变量重申：transport 族数据仍不进任何 schedule 数学。首版落地依据
 （限流反推不拍脑袋）保持有效，本修正案是加维度不是推翻。
+
+## 修正案（2026-09-20 无人值守执行通道，ADR-0020 并存）
+
+本决策的否决依据之一——「`lzy step` 只记账不干活，脱离宿主跑 CLI 没有执行面」——已被
+0.1.0 的 `core/headless.js spawnHeadless` 原语掘掉：lzy 现在能 spawn 引擎干活（headless
+spike 解锁 + 0.16.9 活体复核，docs/spikes/headless.md §10）。§⑮ 拍板**并存**：
+
+- 宿主自动化仍是唯一**定时唤起面**（ADR-0010 unbound 语义、≥1h 间隔、App-UI 管理面
+  全部不动）；lzy 依旧**零定时调度代码、零写入宿主配置**（红线不变）。
+- 0.2.0 新增**唤起内执行通道**：`lzy loop drive`（棒2）在一次唤起内用 spawnHeadless
+  编排多段 headless 会话推进当前 executing 目标，段间查 budget/lease/risk_class 三门
+  （ADR-0020），收束=步完成/预算尽/门拒/需人权，收束形态=handoff 快照干净交回。
+- 无人值守红线全文继承：只推进 executing 目标、绝不立新计划（人权门 L2 与决策完备门
+  不可代）、HIGH+ 风险禁入（risk 机器门 0.2.0 棒1 落数据面，棒2 接线执法）。
+- lzy 不接管「何时醒」（宿主）与「准不准入」（risk 门/人权门），只优化「醒着怎么干」
+  （执行通道与预算执法）——三层各归其位。

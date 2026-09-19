@@ -247,6 +247,13 @@ lzy loop abandon | lzy loop reset       # 放弃 / 清状态
   每次登记与消费会在 `.lazyzcode/loop/metrics.json` 累加匿名计数
   （`registered`/`consumed`，无会话身份）；计数跨 reset 永续，
   在 `lzy status`/`lzy loop status` 可见。
+- `lzy loop risk <level>` 登记目标 risk_class（0.2.0，ADR-0020）：`low|med|high|
+  restricted` 只升不降。HIGH/RESTRICTED 禁入无人值守车道（drive 入口机器门执法；
+  triage 自评仍是协议文本）——执行中升到 HIGH+ 即 SUSPENDED_RISK 信号：收束交回人工。
+- 多树并行（各 worktree 独立槽位各立目标）0.2.0 起为受支持形态：各树账本互盲
+  （各自 `.lazyzcode/` 持自己的证据包与 attestation——用 `lzy loop list --root`
+  旁视兄弟仓），而未合并旁支上的 `Goal:` 尾注提交已计入 history/salvage/doctor
+  账本（`git log --all`）。
 - `lzy loop list` 是只读诊断：扫一级同级目录（默认锚=当前目录的父目录，含自身；
   `--root` 可覆盖），打印各仓的目标 slug、状态、步骤进度、认领、新鲜度与存根。
   单个仓状态文件读不出不炸全局——该行显示「版本不符」。
@@ -440,6 +447,9 @@ lzy loop subject remove <路径>  移除 subject（missing 死锁出口）
 lzy loop subject list           列 subject 集
 lzy loop tier heavy             tier 升级，只升不降（机器门=采纳时点）
 lzy loop claim [<id>] [--release]  步级认领（多工人；阻塞校验；48h 互斥）
+lzy loop risk <level>              risk_class 升级（low|med|high|restricted；只升不降；ADR-0020）
+lzy loop lease acquire|heartbeat|release  运行级认领（分钟级互斥；fence 令牌；ADR-0020）
+lzy loop budget init|spend|remaining  运行预算（墙钟+积分双硬顶；ADR-0020）
 lzy loop status                 进度、下一步、证据新鲜度、tier/subjects/快照
 lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑定/无目标）；逐树头哈希/脏态行
 lzy step done <ID> [--note <注记>] [--evidence <证据>] [--evidence-file <文件>]…

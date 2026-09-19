@@ -3,6 +3,36 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Runtime kernel — unattended machine foundations** (ADR-0020, 0.2.0 baton 1,
+  roadmap §⑮): a durable `loop/runtime.json` ledger (attempt-lineage family
+  law: payload sha256 checksum, atomic 0o600 write, fail-closed reads, monotonic
+  fence-counter write guard) carries three pieces. *Run-level lease*:
+  `lzy loop lease acquire|heartbeat|release` — minutes-scale mutual exclusion
+  (default TTL 15 min) distinct from the 48h per-step claim; anonymous handle =
+  fence token, no session identity (ADR-0009 stance). *Fencing*: every
+  goal/dag/attest/handoff write entry passes a fence guard — declaring a stale
+  or wrong fence (`--fence` or `LZY_RUNTIME_FENCE`) rejects the write with
+  "you have been superseded, stop writing"; undeclared (interactive) calls are
+  untouched, and `LZY_ABLATE_FENCE` ablates the guard. *Drive budget*:
+  `lzy loop budget init|spend|remaining` — wall-clock + points double cap
+  (defaults 30 min / 400 pts, env-overridable), over-cap reject is the machine
+  signal to wind a drive down cleanly. Plus a machine-registered risk_class:
+  `lzy loop register --risk` and `lzy loop risk <level>` (upgrade-only);
+  `assertDriveEligible` is the drive-entry gate data face (HIGH rejects with
+  "advance in a human session", RESTRICTED hard-blocks with a rebuild exit;
+  `LZY_ABLATE_RISK_GATE` ablates) — drive wiring itself lands in 0.2.0 baton 2.
+  Ledger patrol and lineage reads now see unmerged side-branch trailer commits
+  (`git log --all` on three query faces): multi-worktree independent slots
+  (Lane B×N) no longer blind the audit face before merge. Known boundaries —
+  hook-side writes, reset, runtime-ledger's own writers, undeclared machine
+  writes — are enumerated in ADR-0020. Docs: ADR-0020, ADR-0003 amendment
+  (coexistence: host stays the only timed wake face; lzy still writes zero
+  scheduler code), zw SKILL/guide/README updates.
+
 ## [0.1.2] - 2026-09-20
 
 ### Changed

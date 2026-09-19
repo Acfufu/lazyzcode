@@ -38,9 +38,13 @@ Then run the tier triage below and follow the workflow. No preamble before it.
   (which measure effort): LOW / MED / HIGH / RESTRICTED, upgrade-only, judged
   at triage and re-judged on material change. HIGH+ must never enter
   unattended lanes (scheduled wake-ups, idle runs); RESTRICTED is a
-  HARD_BLOCK — only a human narrowing the scope re-opens it. There is no
-  machine-enforced risk register; the executor self-assesses and errs toward
-  upgrading.
+  HARD_BLOCK — only a human narrowing the scope re-opens it. Since 0.2.0 the
+  risk_class is machine-registered (L1 data): `lzy loop register --risk …` /
+  `lzy loop risk <level>` (upgrade-only), and the drive-entry gate
+  (`assertDriveEligible`, ADR-0020) rejects HIGH/RESTRICTED at the unattended
+  lane entry (drive wiring lands in 0.2.0 baton 2). Triage self-assessment
+  itself remains L0 — err toward upgrading; the machine enforces the value you
+  declared.
 - **Mention ≠ invocation.** If the user message only mentions zw/ulw in passing
   (meta-discussion about this project — its hooks, status, docs, trigger design),
   do not engage the loop: answer the question directly.
@@ -188,7 +192,13 @@ lzy step done N1 --note "<what was done, one line>"
   coordinate per step via `lzy loop claim` with one writer committing at a time:
   any commit advances the tree hash and invalidates the other sessions' captured F
   evidence, and anyone's uncommitted work blocks everyone's finish — read
-  `lzy loop status` (claims, dirt) before you claim the finish.
+  `lzy loop status` (claims, dirt) before you claim the finish. Multi-tree
+  parallelism (each worktree its own slot and goal, N at once) is a supported
+  form since 0.2.0: per-tree ledgers are mutually blind (each `.lazyzcode/`
+  keeps its own evidence bundles and attestations — survey siblings with
+  `lzy loop list --root`), and the ledger no longer goes blind on unmerged
+  branches: `Goal:`-trailer commits on side branches count in history/salvage/
+  doctor ledger (`git log --all`, ADR-0020).
 
 ### 4 · Evidence (F items)
 
@@ -342,7 +352,8 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
   non-host root.
 - Parallel workers on a cross-repo goal: claim steps (`lzy loop claim`) and
   edit code in your own worktrees, but all `lzy` traffic — claim, step done,
-  status — stays at the host root (see "Parallel dispatch" in §3 · Execute).
+  status — stays at the host root (see "Parallel dispatch" in §3 · Execute;
+  multi-tree slot isolation is covered in "Same-workspace multi-session").
 - A worktree root works as a subject too (`lzy loop subject add <worktree-path>`):
   per-root dirt and HEAD are tracked independently (its uncommitted work shows as
   DIRTY on that root only). An undeclared worktree stays invisible to the gate —
@@ -396,7 +407,9 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
   destructive surface got involved), suspend instead of pushing on: write the
   handoff snapshot, end the turn, resume only after a human nod. Suspending on
   risk does not burn the pull-back budget and is not a failure — pushing a
-  HIGH-risk change unattended is.
+  HIGH-risk change unattended is. Since 0.2.0 this is machine-backed: record
+  the upgrade with `lzy loop risk <level>` (ADR-0020) and the drive-entry gate
+  keeps HIGH+/RESTRICTED out of unattended lanes.
 - **Tool fire-loop escape (misfire attractor):** if the same tool fires 3+ times
   in a row with failures/timeouts, or with queries whose results are unrelated
   to the step (wrong index, sibling-repo symbols) — stop calling it, even if
@@ -608,6 +621,9 @@ tool). Aliases are equal — `zw` is the primary.
 | `lzy loop start` | planning → executing; prints the measured 并发纪律 advisory |
 | `lzy loop subject add/remove <path> · subject list` | declare/remove sibling repo roots (executing-only; any set change invalidates all F evidence) |
 | `lzy loop tier heavy` | tier upgrade, one-way (machine gate is adoption-time; ADR-0013) |
+| `lzy loop risk <level>` | risk_class upgrade, one-way (low|med|high|restricted; drive-entry gate rejects HIGH+; ADR-0020) |
+| `lzy loop lease acquire/heartbeat/release` | run-level lease: minutes-scale mutual exclusion, fence token for write-path declaration (ADR-0020) |
+| `lzy loop budget init/spend/remaining` | drive budget: wall-clock + points double cap, over-cap reject = clean wind-down signal (ADR-0020) |
 | `lzy loop status` | progress, next step, evidence freshness |
 | `lzy step done <ID> [--note] [--evidence] [--evidence-file …]` | complete a step (F requires evidence; files bound by sha256) |
 | `lzy loop verify` | evidence freshness report (exit 1 when stale/unbound evidence **or no goal exists**) |

@@ -312,6 +312,16 @@ lzy loop abandon | lzy loop reset       # give up / clear state
   registration and consumption increments anonymous counters in
   `.lazyzcode/loop/metrics.json` (`registered`/`consumed`, no session
   identity); they survive reset and surface in `lzy status`/`lzy loop status`.
+- `lzy loop risk <level>` records the goal's risk_class (0.2.0, ADR-0020):
+  `low|med|high|restricted`, upgrade-only. HIGH/RESTRICTED are barred from
+  unattended lanes (the drive-entry gate enforces; triage self-assessment is
+  still protocol text) — a HIGH+ upgrade mid-flight is the SUSPENDED_RISK
+  signal: wind down and hand back to a human.
+- Multi-tree parallelism (each worktree its own slot and goal) is a supported
+  form since 0.2.0: per-tree ledgers are mutually blind (each `.lazyzcode/`
+  keeps its own evidence bundles and attestations — survey siblings with
+  `lzy loop list --root`), while `Goal:`-trailer commits on unmerged side
+  branches now count in history/salvage/doctor ledger (`git log --all`).
 - `lzy loop list` is a read-only diagnostic: it scans one level of sibling
   directories (default anchor: the parent of the current directory, itself
   included; `--root` overrides) and prints each repo's goal slug, status,
@@ -558,6 +568,9 @@ lzy loop subject remove <path>  remove a subject (missing-deadlock escape)
 lzy loop subject list           list the subject set
 lzy loop tier heavy             tier upgrade, one-way (adoption-time machine gate)
 lzy loop claim [<id>] [--release]  per-step claim (multi-worker; blocked-step checks; 48h mutex)
+lzy loop risk <level>              risk_class upgrade (low|med|high|restricted; one-way; ADR-0020)
+lzy loop lease acquire|heartbeat|release  run-level lease (minutes-scale mutex; fence token; ADR-0020)
+lzy loop budget init|spend|remaining  drive budget (wall-clock + points double cap; ADR-0020)
 lzy loop status                 progress, next step, evidence freshness, tier/subjects/snapshot
 lzy loop verify                 evidence freshness audit (exit 1 = stale/unbound/no goal); per-tree head/dirty lines
 lzy step done <ID> [--note <t>] [--evidence <t>] [--evidence-file <f>]…

@@ -101,6 +101,11 @@ function parseArgs(args) {
       _.push(a);
     }
   }
+  // --fence→env 桥（0.2.0 棒1 ADR-0020）：fence 写路径守卫单源读 LZY_RUNTIME_FENCE，
+  // 命令级 --fence 旗标在解析完成后桥接（旗标=显式逐命令意图，覆盖继承 env）。
+  if (typeof f.fence === "string" && f.fence !== "") {
+    process.env.LZY_RUNTIME_FENCE = String(Number.parseInt(f.fence, 10));
+  }
   return { _, f };
 }
 

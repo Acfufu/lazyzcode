@@ -13,6 +13,7 @@ import {
   initLineageAtRegister,
   supersedeAttempt,
 } from "./attempt.js";
+import { assertFenceIfPresent } from "./runtime.js";
 import {
   addCapturedOn,
   addEdge,
@@ -50,6 +51,20 @@ export class LoopError extends Error {}
 // （含缺席/空串/"0"）= 关 = 行为与无开关逐字段同（契约测试钉两半）。只围闸门块本身
 // （五处皆 throw-before-write 或只读分类，不碰状态文件一致性）；清单见 docs/research-ablation-design.md。
 const ablated = (name) => process.env[name] === "1";
+
+// fence 写路径守卫（0.2.0 棒1，ADR-0020）：goal/dag/attest/handoff 写入口统一在
+// withLock 临界区内先过此守卫。fence 申报双通道=--fence 旗标（cli 解析桥接 env）与
+// LZY_RUNTIME_FENCE env；申报制语义见 runtime.js assertFenceIfPresent（缺席=交互
+// 直通不读账本，在场=必须与现行活跃租约相符，失效=已被接管→停手不写）。
+// 消融开关 LZY_ABLATE_FENCE 恰 "1" 绕过（两半契约 ablation-switch 同款）。
+// 已知边界（ADR-0020 并列四项）：钩子侧写面、resetLoop（删 runtime.json 本体）、
+// runtime.json 自身写者、未申报的机器写——均不在本守卫面。
+export function guardFence(cwd) {
+  if (ablated("LZY_ABLATE_FENCE")) return;
+  const raw = process.env.LZY_RUNTIME_FENCE;
+  if (raw == null || raw === "") return;
+  assertFenceIfPresent(cwd, Number.parseInt(raw, 10));
+}
 
 function loopDir(cwd) {
   return join(cwd, ".lazyzcode", "loop");
@@ -255,6 +270,7 @@ function deriveAttempt(cwd, slug) {
 export function setTier(cwd, value) {
   requireGoalPreLock(cwd);
   return withLock(cwd, () => {
+    guardFence(cwd);
     const goal = requireActive(cwd, "planning", "executing");
     const norm = typeof value === "string" ? value.toLowerCase() : value;
     if (norm !== "light" && norm !== "heavy") {
@@ -297,6 +313,7 @@ export function setTier(cwd, value) {
 export function setRisk(cwd, value) {
   requireGoalPreLock(cwd);
   return withLock(cwd, () => {
+    guardFence(cwd);
     const goal = requireActive(cwd, "planning", "executing");
     const norm = typeof value === "string" ? value.toLowerCase() : value;
     if (!RISK_ORDER.includes(norm)) {
@@ -535,6 +552,7 @@ export function fingerprintSubjects(cwd, roots) {
 export function addSubject(cwd, path) {
   requireGoalPreLock(cwd);
   return withLock(cwd, () => {
+    guardFence(cwd);
     const goal = requireActive(cwd, "executing");
     const root = validateSubjectRoot(cwd, path);
     const subjects = goal.subjects ?? [];
@@ -551,6 +569,7 @@ export function addSubject(cwd, path) {
 export function removeSubject(cwd, path) {
   requireGoalPreLock(cwd);
   return withLock(cwd, () => {
+    guardFence(cwd);
     const goal = requireActive(cwd, "executing");
     const subjects = goal.subjects ?? [];
     let rp;
@@ -611,6 +630,7 @@ export function supersedePlan(cwd, planFile, opts = {}) {
 }
 
 function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = false, git = null } = {}) {
+  guardFence(cwd);
   // 存量出口（ADJ-09，§⑪ Q5）：executing 态仅当无 planHash（0.0.7 在途/手写旧形，
   // HEAVY 三连拒死锁人群）允许重采纳=补快照重走评审；有 planHash 的 executing 目标
   // 改计划走 lzy loop supersede（forward-only 世系面，0.1.0 棒B）。
@@ -798,6 +818,7 @@ export function startLoop(cwd, git) {
 }
 
 function doStartLoop(cwd, git) {
+  guardFence(cwd);
   const goal = requireActive(cwd, "planning");
   if (goal.steps.length === 0) {
     throw new LoopError("计划门未过：先 lzy loop plan <文件> 采纳清单");
@@ -852,6 +873,7 @@ function attachEvidenceFiles(cwd, goal, step, files, seq = 1) {
 }
 
 function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = null, harness = null } = {}) {
+  guardFence(cwd);
   // done 态恢复白名单（ADJ-10 出口，0.0.10）：done 目标的账本分歧曾把报错给的恢复命令
   // （step done rebind）反拒成死端——rebind 类命令放行，重 finish 落新 attestation。
   const goal = requireActive(cwd, "executing", "done");
@@ -957,6 +979,7 @@ export function recordEvidenceHalf(cwd, git, id, { half, text = null, files = nu
 }
 
 function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal, harness }) {
+  guardFence(cwd);
   const goal = requireActive(cwd, "executing");
   const step = goal.steps.find((s) => s.id === id);
   if (!step) {
@@ -1099,6 +1122,7 @@ function blockedBy(step, goal) {
 export function claimStep(cwd, id, { release = false } = {}) {
   requireGoalPreLock(cwd);
   return withLock(cwd, () => {
+    guardFence(cwd);
     const goal = requireActive(cwd, "executing");
     const step = goal.steps.find((s) => s.id === id);
     if (!step) {
@@ -1235,6 +1259,7 @@ export function finishLoop(cwd, git, opts = {}) {
 }
 
 function doFinishLoop(cwd, git, { writeReport = null } = {}) {
+  guardFence(cwd);
   // done 态重入（ADJ-10 出口，0.0.10）：恢复链 rebind 后重 finish 落新 attestation
   //（旧 attestation reset 不清照旧留存，新文件按 attemptId 时间戳另立）。
   const goal = requireActive(cwd, "executing", "done");
@@ -1549,6 +1574,7 @@ export function abandonLoop(cwd, git) {
 }
 
 function doAbandonLoop(cwd, git) {
+  guardFence(cwd);
   const goal = requireActive(cwd);
   const salvage = writeSalvageStub(cwd, goal, git, "abandon 放弃");
   goal.status = "abandoned";
@@ -1666,6 +1692,7 @@ export function handoffGoal(cwd, snapshot, treeHash) {
   // 交错会留孤儿标记——下一目标首个 Stop 被误放行。锁内重查 executing 保证「goal 在场」
   // 与「标记落盘」同一临界区（对 Stop 侧 unlink 消费的原子性不受影响）。
   return withLock(cwd, () => {
+    guardFence(cwd);
     requireActive(cwd, "executing");
     const marker = {
       snapshot: snapAbs,

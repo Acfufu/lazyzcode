@@ -171,6 +171,36 @@ test("budget：缺省定标（env 覆盖）+ 记账递减 + 墙钟/积分超顶�
   }
 });
 
+test("fence 写路径守卫（CLI 集成面）：申报制三态+开关两半——僵尸持旧 fence 写被拒", () => {
+  const d = repo("lzy-runtime-guard-cli-");
+  try {
+    assert.equal(lzy(["loop", "register", "t", "--title", "t"], d).code, 0);
+    writeFileSync(join(d, ".lazyzcode", "plan.md"), "- [N1] x\n- [F1] v\n");
+    assert.equal(lzy(["loop", "plan", ".lazyzcode/plan.md"], d).code, 0);
+    assert.equal(lzy(["loop", "start"], d).code, 0);
+    assert.equal(lzy(["loop", "lease", "acquire", "--ttl-ms", "60000"], d).code, 0);
+    // 未申报（交互直通）→ 放行
+    let r = lzy(["step", "done", "N1", "--note", "x"], d);
+    assert.equal(r.code, 0, r.out);
+    // 申报错误 fence（僵尸形态）→ 拒、写不落
+    r = lzy(["step", "done", "N1", "--note", "zombie"], d, { LZY_RUNTIME_FENCE: "99" });
+    assert.notEqual(r.code, 0);
+    assert.match(r.out, /立即停手不写/);
+    // --fence 旗标通道同效（解析桥接 env）
+    r = lzy(["step", "done", "N1", "--note", "zombie2", "--fence", "98"], d);
+    assert.notEqual(r.code, 0);
+    assert.match(r.out, /立即停手不写/);
+    // 申报现行 fence → 放行
+    r = lzy(["step", "done", "N1", "--note", "ok", "--fence", "1"], d);
+    assert.equal(r.code, 0, r.out);
+    // 开关开（恰 "1"）→ 错误 fence 也放行（闸门被绕过）
+    r = lzy(["step", "done", "F1", "--evidence", "v"], d, { LZY_RUNTIME_FENCE: "99", LZY_ABLATE_FENCE: "1" });
+    assert.equal(r.code, 0, r.out);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
 test("CLI 生命周期面（真实表面=stdout）：lease acquire/heartbeat/release + budget init/spend/remaining", () => {
   const d = repo("lzy-runtime-cli-");
   try {

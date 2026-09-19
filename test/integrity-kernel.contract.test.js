@@ -623,7 +623,7 @@ test("缺键容忍：无 tier/subjects 键按 light/空集显示与计算（0.0.
     delete g.subjects;
     writeFileSync(gp, JSON.stringify(g));
     const out = cli(["loop", "status"], d).out;
-    assert.match(out, /tier light · subjects 0 项/);
+    assert.match(out, /tier light · risk low · subjects 0 项/);
     startLoop(d, createGit(d));
     completeStep(d, createGit(d), "N1", { note: "n" });
     completeStep(d, createGit(d), "F1", { evidence: "ev" }); // 缺键归一：指纹按 [] 计算不炸
@@ -647,7 +647,7 @@ test("未知子命令清单含 subject/tier；status 正向 tier/subjects/快照
     adoptPlan(d, writePlan(d), {});
     const st = cli(["loop", "status"], d).out;
     assert.match(st, /快照 [0-9a-f]{10} · 复核一致/);
-    assert.match(st, /tier light · subjects 0 项/);
+    assert.match(st, /tier light · risk low · subjects 0 项/);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

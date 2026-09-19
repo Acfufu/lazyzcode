@@ -11,7 +11,7 @@ import {
   fingerprintSubjects,
   requireActive,
   requireGoalPreLock,
-  withLock,
+  withLock,  guardFence,
 } from "./loop.js";
 import {
   addEdge,
@@ -30,6 +30,7 @@ export function recordComparatorAttestation(cwd, file) {
 }
 
 function doRecordComparatorAttestation(cwd, file) {
+  guardFence(cwd); // fence 写路径守卫（0.2.0 棒1 ADR-0020；done 态放行语义不变，本守卫在前）
   // done 态恢复白名单（ADJ-10 出口，0.0.10）：rebind 后需重对照再重 finish。
   const goal = requireActive(cwd, "executing", "done");
   if (!goal.planHash) {

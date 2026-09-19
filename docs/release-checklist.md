@@ -283,6 +283,10 @@ Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 - 载荷冻结纪律（ADJ-15）首版生效：tag 后仅 docs/release-checklist.md（未随包）动过；样本内容级对照（skills/zw/SKILL.md）已入 doctor payload-ver。
 - 随 0.0.10 沿用 0.0.9 补记两条 npm 雷：npm 12 EALLOWREMOTE（remote tarball 直装默认禁，绕法 `lazyzcode@0.0.10 --prefer-online`）+ npm view 元数据缓存滞后数分钟（registry HTTP 端点为真相源）。
 
+## 执行记录（0.1.1，人权门+债清账双 goal 列车——已发布收官 2026-09-19）
+
+> **发后核验（用户 2FA publish 后）**：registry `dist-tags.latest=0.1.1`（curl HTTP 端点直证；首查撞 CDN 传播窗 0.1.1 未现+一次空响应，10s 轮询后稳定）；registry shasum `02b357b8…` 与 dry-run **逐字一致**；隔离 prefix 冒烟 `lzy --version`=0.1.1（CLI+载荷同版本，`--prefer-online` 绕 npm12 EALLOWREMOTE）；真机 `lzy update` 0.1.0→0.1.1 全链 EXIT=0（新装子进程 sync 落缓存 0.1.1，ADR-0012 再证）；`lzy doctor` install ✔+`payload-ver` 深对照 ✔（缓存 12 版本目录枚举·CLI 0.1.1 一致）；载荷冻结纪律内容级样本 6 文件 sha256 全一致（skills/zw/SKILL.md、hooks stop/trigger/hook-lib、agents/qa-executor.md、cli/lzy.js——缓存布局=plugin/ 内容在缓存根，比对须按此映射）。win32 VM 复测待约。
+
 ## 执行记录（0.1.1，人权门+债清账双 goal 列车——机械件已备，publish 留用户）
 
 > 机械件（2026-09-19，维护者指令直发，未走 goal loop）：版本三体 0.1.1（package.json / plugin/.zcode-plugin/plugin.json / CHANGELOG 定版 [Unreleased]→[0.1.1]）、市场 manifest `version`/`ref` 钉 v0.1.1（第 11 步每发布同步）、home.html `softwareVersion` 0.1.0→0.1.1（0.0.10 漏账教训后已入机械件清单）、sitemap 首页+guide 双语 lastmod→2026-09-19。本节提交不带 `Goal:` 尾注（沿先例，槽位被 done 态 v011-debt-clearing 占用，账本 warn 预期）。载荷=goal1（v011-ups-human-gate，8 提交 13c5633→8686fe3）+goal2（v011-debt-clearing，9 提交 b80c5c3→8d91e2d）已推 main 且 CI 各自跑过；本发布提交为其上单一定版提交，windows 新夹具雷风险低（无新测试夹具引入）。

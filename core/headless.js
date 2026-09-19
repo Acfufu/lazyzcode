@@ -5,7 +5,7 @@
 // 进程契约，不做任何循环编排。
 // 安全形态沿 core/engine.js 与 core/update.js 家法：字面量 argv 数组 + shell:false；
 // --mode 显式必填不设默认（spike 实测 --prompt 缺省 yolo——自驱动必须显式选模式）；
-// --max-turns 已从引擎 CLI 面移除（0.16.5 help 列出但解析器拒收一切形态；0.16.9
+// --max-turns 已从引擎 CLI 面移除（旧代 help 列出但解析器拒收一切形态；0.16.9
 // 字面量×0，spike §6 + 0.16.9 复核增注），墙钟预算
 // 是唯一兜底（超时 SIGKILL；null/0 守卫沿 scripts/ablation/spawn-engine.mjs b1 事故
 // 教训）。认证链（spike §3）：HOME 隔离换绑时认证 env（ZCODE_BUILTIN/PERSONAL_PROVIDER_

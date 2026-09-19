@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in lazyzcode is broken or behaves contrary to its documented contract.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps, starting from a fresh terminal.
+      placeholder: |
+        1. In repo …
+        2. Run `lzy …`
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`lzy doctor` output"
+      description: The project's local, telemetry-free diagnostic. Paste the full output — it answers most environment questions in one shot. If the CLI cannot run at all, say so here.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        - OS and arch (macOS / Windows / Linux; arm64 or x64)
+        - `lazyzcode` version (`lzy --version`)
+        - Node version (`node --version`)
+        - ZCode desktop version
+        - Install method (npm, `lzy update`, or marketplace)
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context

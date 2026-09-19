@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a change or addition to the discipline layer.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to achieve, and what does the current behavior make hard?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should happen instead? Keep the project's expression hierarchy in mind — Skill > MCP > Tool > Hook — and the two red lines in AGENTS.md §5 (never write the user's `config.json`; Stop-hook budget coexistence).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: constitution
+    attributes:
+      label: Constitution check
+      description: AGENTS.md is the single source of truth for design decisions in this repository.
+      options:
+        - label: I have read AGENTS.md and believe this fits the project's design rules (§5 red lines, §8 vocabulary)
+          required: true

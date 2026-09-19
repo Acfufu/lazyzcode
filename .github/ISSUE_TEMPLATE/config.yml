@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation site
+    url: https://acfufu.github.io/lazyzcode/
+    about: Guides (English & 中文), CLI reference, and developer deep-dives.
+  - name: 中文说明
+    url: https://github.com/Acfufu/lazyzcode/blob/main/README.zh-CN.md
+    about: 中文版项目说明与快速上手；提问可用中文。

@@ -421,3 +421,28 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - doctor：payload / files（15 文件逐字 sha256）/ install / payload-ver 深对照（缓存 [0.0.7..0.1.0] · CLI 一致）/ hook-node 启动器兜底（C:\Tools\node\node.exe）/ platform 候选命中全 ✔；headless 行 warn-only（凭据缺席两态文档化）；enabled 初 ✖ → `lzy install` 补启用（skills:2 hooks:5）✔。
 - scratch loop 全链（CLI 驱动零模型调用）：register --tier light → plan 门+快照+planHash → evidence red（--harness，INV-08 面）→ 改面提交 → F1 绿绑指纹 → **supersede 世系（#1 superseded→#2 active、planHash 换代、步骤重开）** → attempts 读面 → **dag stale 当场抓 gen1 绿过期（「只展示不进门」原文）** → 新代次补两步 → finish → LOOP_COMPLETE attestation 落盘 → reset 存活（dag.json/snapshots 常驻、attempts 派生视图读出 #2 completed）。
 - 结论：0.1.0 机器面在 win32 全部活体在案，复测闭环；0.0.9→0.1.0 跨两版 update 链顺带活体。
+
+## 执行记录（0.1.2，知识面 patch——机械件已备，publish 留用户）
+
+### 内容与定位
+
+- 纯文档/文案/报文口径 patch（零行为变化）：ZCode 3.14.0 引擎基线知识面跟齐（goal engine-3140-sync，HEAVY）+ headless 契约 0.16.9 活体复测（goal headless-respike，LIGHT）。`[Unreleased]` 两条目定版，无新增功能面。
+
+### Runbook（按序）
+
+1. **push main**：9 提交（两 goal 全部尾注提交 8 + 发布提交 5f6f821）随行上远端。
+2. **版本五处同步**（同批提交）：`package.json` / `plugin/.zcode-plugin/plugin.json` / `.claude-plugin/marketplace.json`（version+ref→v0.1.2）/ `docs/_layouts/home.html` softwareVersion / `docs/sitemap.xml` homepage lastmod；CHANGELOG `[0.1.2] - 2026-09-20` 定版。
+3. **发布前验证**：`npm test` 297/297（297 pass/0 fail，发布树实跑）；`npm publish --dry-run` 38 文件/195.9 kB/shasum `cbd139d7bf203809de7d891f9e47e1a68b7a7bd9`；tarball 零 `.mimosa`（pack --dry-run grep=0）。
+4. **CI 四腿绿**（run 35466477345，node 22/24 × ubuntu/windows 全 success，判决=gh run view conclusion）→ **tag v0.1.2 最后切**（=5f6f821）→ GitHub Release（notes 三节：Highlights/Coverage boundary/Upgrade）。
+5. **publish（用户 2FA）**——见下行发后验证。
+
+### 与 0.1.0/0.1.1 的差异：win32 VM 矩阵降档
+
+0.1.2 零行为变化（docs/copy-only），win32 VM 7/7 活体矩阵不成比例——**降档为 CI windows 腿 + 真机 update 链**，发布记录如实注明。若用户要求保守可补 VM update 单项。
+
+### 发后验证（publish 后补记）
+
+- registry dist-tag latest=0.1.2（curl 直证）：待办
+- registry shasum 与 dry-run 逐字一致（cbd139d7…）：待办
+- 隔离 prefix 冒烟：待办
+- 真机 `lzy update` 0.1.1→0.1.2 全链：待办

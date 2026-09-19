@@ -440,9 +440,10 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 
 0.1.2 零行为变化（docs/copy-only），win32 VM 7/7 活体矩阵不成比例——**降档为 CI windows 腿 + 真机 update 链**，发布记录如实注明。若用户要求保守可补 VM update 单项。
 
-### 发后验证（publish 后补记）
+### 发后验证（2026-09-20，publish 用户 2FA，四件全过）
 
-- registry dist-tag latest=0.1.2（curl 直证）：待办
-- registry shasum 与 dry-run 逐字一致（cbd139d7…）：待办
-- 隔离 prefix 冒烟：待办
-- 真机 `lzy update` 0.1.1→0.1.2 全链：待办
+- registry `latest=0.1.2`（curl dist-tags 直证；CDN 滞后 ≈2 分钟复达——0.0.9 先例复现，`npm view` 先于全量文档可达）。
+- registry shasum `cbd139d7bf203809de7d891f9e47e1a68b7a7bd9` 与 dry-run/tagged 树 tarball **逐字一致** ✔（publish 载荷=从 tag 打包的 /tmp/lazyzcode-0.1.2.tgz，绕开 tag 后 docs-only 记录提交的 0.0.6 反模式）。
+- 隔离 prefix 冒烟 ✔：`lzy 0.1.2（插件载荷同版本）· 引擎 0.16.9`；install/enabled/payload-ver ⚠✖ 为隔离上下文预期态（未注册/payload-ver 中间态自查面正常工作）。
+- 真机 `lzy update` 0.1.1→0.1.2 全链 **EXIT=0**（「sync 已由新装子进程执行」=ADR-0012 活体）；缓存 13 版本目录 [0.0.1..0.1.2]、doctor payload/install/payload-ver 三 ✔。
+- win32 VM 矩阵按预注降档跳过（docs-only patch；CI windows 腿 + 真机 update 链覆盖）。

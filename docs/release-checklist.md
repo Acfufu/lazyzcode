@@ -283,6 +283,72 @@ Requires the ZCode desktop app (logged in), Node ≥ 22, and git.
 - 载荷冻结纪律（ADJ-15）首版生效：tag 后仅 docs/release-checklist.md（未随包）动过；样本内容级对照（skills/zw/SKILL.md）已入 doctor payload-ver。
 - 随 0.0.10 沿用 0.0.9 补记两条 npm 雷：npm 12 EALLOWREMOTE（remote tarball 直装默认禁，绕法 `lazyzcode@0.0.10 --prefer-online`）+ npm view 元数据缓存滞后数分钟（registry HTTP 端点为真相源）。
 
+## 执行记录（0.1.1，人权门+债清账双 goal 列车——机械件已备，publish 留用户）
+
+> 机械件（2026-09-19，维护者指令直发，未走 goal loop）：版本三体 0.1.1（package.json / plugin/.zcode-plugin/plugin.json / CHANGELOG 定版 [Unreleased]→[0.1.1]）、市场 manifest `version`/`ref` 钉 v0.1.1（第 11 步每发布同步）、home.html `softwareVersion` 0.1.0→0.1.1（0.0.10 漏账教训后已入机械件清单）、sitemap 首页+guide 双语 lastmod→2026-09-19。本节提交不带 `Goal:` 尾注（沿先例，槽位被 done 态 v011-debt-clearing 占用，账本 warn 预期）。载荷=goal1（v011-ups-human-gate，8 提交 13c5633→8686fe3）+goal2（v011-debt-clearing，9 提交 b80c5c3→8d91e2d）已推 main 且 CI 各自跑过；本发布提交为其上单一定版提交，windows 新夹具雷风险低（无新测试夹具引入）。
+
+### Runbook（按序）
+
+1. push main（定版 1 提交）→ CI 四腿绿（node 22/24 × ubuntu/windows；判决只认 `gh run view --json conclusion`，tag 命令永不与未核验判决同串——0.1.0 lesson）。
+2. `npm publish --dry-run` 核验文件清单与 shasum（零敏感物、24+ 文件）。
+3. `git tag v0.1.1 && git push origin v0.1.1`（tag 最后切，落 CI 绿判的定版提交）。
+4. GitHub Release：以下方草稿为 notes 创建 `v0.1.1`。
+5. **publish（用户 2FA）**：`npm publish`；发后隔离 prefix 冒烟 `npm i -g lazyzcode@0.1.1 --prefer-online && lzy --version`（应 0.1.1；npm12 EALLOWREMOTE 雷=remote tarball 直装默认禁，`--prefer-online` 绕）。
+6. 发后核验：registry `dist-tag latest=0.1.1`（curl registry HTTP 端点为真相源，npm view 缓存滞后数分钟）、发布 shasum 与 dry-run 逐字一致、真机 `lzy update` 0.1.0→0.1.1 全链 EXIT=0、`lzy doctor` `payload-ver` 双 ✔、win32 VM 复测（registry 新装+update 链+人权门批准路径+standdown 短语活体）。
+
+### GitHub Release notes 草稿（v0.1.1）
+
+```markdown
+## v0.1.1 — the human gate + the debt-clearing pass
+
+Two-goal release: the plan-adoption **human gate** (0.1.1 goal1) and the
+**debt-clearing pass** (0.1.1 goal2).
+
+### Added
+
+- **UPS exact-hash human gate** (ADR-0018): plan adoption — `lzy loop plan`
+  and `lzy loop supersede` alike, both tiers — requires an approval record
+  written only by the UserPromptSubmit hook on a genuine user message
+  containing 「批准 <planHash 前 8 位>」. `--force` does not bypass; approval
+  records are append-only and survive reset; editing the plan after approval
+  voids it.
+- **`zw standdown`** (ADR-0009 revision): session-level opt-out — the Stop
+  hook releases a stood-down session read-only (budget untouched) until a
+  claiming trigger like 「zw 继续」 clears the flag or the goal is reset.
+- **Non-git host policy** (ADR-0019): `lzy loop register` hard-rejects a
+  non-git host up front with `git init` recovery guidance (no bypass); doctor
+  gains a standing `host-git` check, `status` guides on the missing state.
+  A non-git **degraded form** (all-`--surface` evidence, LIGHT-only, no
+  attestation) is chartered as a direction only — the LOOP_COMPLETE semantics
+  redefinition stays a future decision.
+- **Node floor pre-flight** at `lzy install` / `lzy sync`: low Node versions
+  fail at the entry with the current version and an upgrade pointer.
+- **Security & trust surface** section (README + guide, bilingual): what the
+  five hook events execute and inject, the official-cache install footprint
+  with zero `config.json` writes, user-verifiable recipes for both
+  distribution chains, and the plainly stated threat-model boundary.
+
+### Changed
+
+- **Pull-back is claim-gated** (ADR-0004 amendment 4): the empty-claim-set
+  fallback is abolished — pull-back requires a session-held unexpired claim;
+  bystander sessions are structurally exempt. A fresh goal whose executing
+  session never claimed releases at its first Stop by design (claim first
+  with an invocational trigger like 「zw 继续」).
+- zw SKILL: pull-back eligibility and standdown contract sentences, the
+  `Lzy-Attestation:` close-out trailer convention (text half; machine-side
+  doctor verification deliberately deferred), git-prerequisite sentence for
+  the host workspace.
+
+### Verification
+
+297/297 tests, CI four legs (node 22/24 × ubuntu/windows), docs anchors
+en 22/22 + zh 22/22, comparator 6/6 MATCH with a final LOOP_COMPLETE
+attestation per goal.
+
+**Full changelog**: https://github.com/Acfufu/lazyzcode/blob/main/CHANGELOG.md
+```
+
 ## 执行记录（0.1.0，协议升级列车——机械件已备，publish 留用户）
 
 > 机械件（2026-09-18，维护者指令直发，未走 goal loop）：版本三体 0.1.0（package.json / plugin/.zcode-plugin/plugin.json / CHANGELOG 定版）、市场 manifest `version`/`ref` 钉 v0.1.0（第 11 步每发布同步）、home.html `softwareVersion` 0.0.9→0.1.0（**补 0.0.10 漏账**：该面无测试拦截靠人，0.0.10 弧漏更，本次随发布补齐记档）、sitemap 首页+guide 双语 lastmod→2026-09-18、SKILL 活体面排序句随载荷首发（e083808，zpigeon 重采雪崩复盘；zpigeon 侧 preflight+INFRA-FAIL 归因=c7934a1 不随本包）。本节提交不带 `Goal:` 尾注（沿先例，账本 warn 预期）。⚠ 本批含 19 个首推提交（棒A 修复轮+棒B+batch-2 报告+SKILL 句），CI 首见这些树——windows 腿是新夹具雷高危面，绿判后再 tag。

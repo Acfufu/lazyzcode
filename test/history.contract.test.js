@@ -117,3 +117,28 @@ test("history：缺源降级——无尾注纯 git 仓与非 git 目录都给友
     cleanup(repo, plain);
   }
 });
+
+// Lane B×N 跨支收编（0.2.0 棒1，ADR-0020）：旁支带尾注提交在合并前即入谱系读面
+//（trailersBySlug 加 --all）——Lane B 合并前账本失明缺口收口（§⑩ 纪律形态②）。
+test("跨支尾注：旁支 Goal: 尾注提交未合并即在 history 在场（--all）", () => {
+  const d = initRepo(true);
+  try {
+    const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+    g(["checkout", "-qb", "side"]);
+    writeFileSync(join(d, "side.txt"), "s\n");
+    g(["add", "side.txt"]);
+    g(["commit", "-qm", "feat: side", "-m", "Goal: alpha#N9"]);
+    g(["checkout", "-q", "main"]); // 不合并——旁支提交对当前 HEAD 历史不可见
+    const r = spawnSync(process.execPath, [CLI, "loop", "history"], {
+      cwd: d,
+      encoding: "utf8",
+      timeout: 60_000,
+      env: { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME, LZY_ZCODE_ENGINE: "/nonexistent" },
+    });
+    const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
+    // 主支 2 条尾注（N1/N2）+ 旁支 1 条（N9，未合并）= 3 提交——--all 生效的直接证据
+    assert.match(out, /alpha\s+仅尾注\s+3 提交/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

@@ -101,7 +101,8 @@ export function createGit(cwd) {
     goalLedger(sinceIso) {
       const r = spawnSync(
         "git",
-        ["log", `--since=${sinceIso}`, "--format=%x1e%H%x1f%B"],
+        // --all（0.2.0 棒1 Lane B×N 收编，ADR-0020）：旁支/合并前尾注提交进 ledger 巡逻
+        ["log", "--all", `--since=${sinceIso}`, "--format=%x1e%H%x1f%B"],
         { cwd, shell: false, timeout: 10_000, encoding: "utf8" },
       );
       if (r.error || r.status !== 0) return null;
@@ -147,7 +148,8 @@ export function createGit(cwd) {
     commitSubjects(grepMarker) {
       const r = spawnSync(
         "git",
-        ["log", `--grep=${grepMarker}`, "--format=%h %s"],
+        // --all（0.2.0 棒1）：salvage 存根盘点含旁支尾注提交
+        ["log", "--all", `--grep=${grepMarker}`, "--format=%h %s"],
         { cwd, shell: false, timeout: 10_000, encoding: "utf8" },
       );
       if (r.error || r.status !== 0) return null;
@@ -161,7 +163,8 @@ export function createGit(cwd) {
     // /^Goal: <slug>#/m 提取；返回 Map：slug → { commits, lastAt(committer ISO 或 null) }。
     // git 不可用/非 git 仓库时返回 null（调用方按「无 git 面」降级）。
     trailersBySlug() {
-      const r = spawnSync("git", ["log", "--format=%x1e%cI%x1f%B"], {
+      // --all（0.2.0 棒1 Lane B×N 收编）：跨支尾注进 history 谱系（Lane B 合并前不再失明）
+    const r = spawnSync("git", ["log", "--all", "--format=%x1e%cI%x1f%B"], {
         cwd,
         shell: false,
         timeout: 10_000,

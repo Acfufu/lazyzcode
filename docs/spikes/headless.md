@@ -104,3 +104,23 @@ perl -e 'alarm 120; exec @ARGV' env HOME=<隔离HOME> node "$ENGINE" --resume <s
 - **`--max-turns` 旗标已从 CLI 面移除**：0.16.5 代 help 列出但解析器拒收一切形态（§6 实测）；0.16.9 代 bundle 内字面量 ×0（`maxTurns` 仅存于 agent/schema 配置字段，非 CLI 旗标）。「墙钟预算是唯一兜底」结论加强为唯一预算面。
 - **新旗标面**（CLI 校验块实拟）：`--target` / `--target-replace`（与 `--prompt` 互斥，报文 `--target cannot be used with --prompt`）、`--continue`（续会话，与 `--resume` 互斥）、`--force-mcs`、`--surface`、`--memory-bench`、`--browser-use=headless` + `--browser-executable`、`-p` 别名；`--resume <sessionId>` 契约不变。注意 `--session`/`--agent` 等字面量部分命中 bundle 内置的外部工具 shell 补全表，非 ZCode 旗标。
 - **对 spawnHeadless 原语零影响**：core/headless.js 本就不传 `--max-turns`（墙钟预算原语），契约无需改动；仅报文与注释跟新口径（同日 goal #N3）。
+
+## 10. 2026-09-19 · 0.16.9 活体复核（goal headless-respike；§9 为静态面，本节为实弹面）
+
+探针存档 `artifacts/headless-respike-probes/`（p1-help-0169 / guard-×4 / p3a-red-noauth-0169 / p2-roundtrip-0169 / p4a-resume-0169 / p4b-continue-0169 / p5-e2e-0169），live 模型调用恰 3 发（预算纪律）。
+
+**契约面实弹判定（对照 §2/§6 的 0.16.5 枚举）**：
+
+| 面 | 0.16.9 实弹结果 |
+|---|---|
+| `--help` 全 dump | `--max-turns` 零命中（0.16.5 存档 p1 在列=历史对照半）；`--target/--target-replace/--continue/-c/--force-mcs/--surface/--memory-bench/--browser-use/--browser-executable` 全在 |
+| 解析器互斥守卫 | `--target cannot be used with --prompt. Use either --target <objective> or --prompt "/goal <objective>".` ／ `--resume and --continue cannot be used together.` ／ `--target-replace requires --target.` ／ `Unknown option '--max-turns'.` ——四拒全 EXIT=1、零模型成本 |
+| 认证双门 | 红：隔离 HOME 双 `ZCODE_*_PROVIDER_CONFIG_FILE` 摘除→启动门拒「无法定位 CLI ZCode Built-in Provider Config：…」（同族 0.16.5 存档 p3a）；绿：真 HOME（env builtin+personal 双在场）round-trip EXIT=0 |
+| round-trip 摘要 | 形状同 0.16.5 存档 p2：`sessionId/traceId/turnId/response/usage/projection` 单对象；response="OK" |
+| `--resume` 跨进程续接 | EXIT=0，正确复述首轮单词（history carry 活体；attempt 注记：该发 `--json` 误置 prompt 引号内→纯文本输出，断言不受影响） |
+| `--continue`（cwd 基） | **模型创建门拒**（`Model creation failed`）——cwd 取「最新会话」命中的既有会话，其模型配置与当前 provider env 不符即死；**0.2.0 设计输入：自驱动必须显式 `--resume <sessionId>`，cwd 基续接不可依赖**（取到哪个会话与根因=未测面） |
+| e2e 全链 | `scripts/headless/e2e-loop.mjs` EXIT=0 PASS：注册→人权门 pending 短码→真用户批准消息过引擎 UPS（L2 活体首证 0.1.1 门在 headless 下成立）→approval record→yolo 回合自驱至 done→finish→attestation |
+
+**0.2.0 设计输入三行**：①`--continue`/`--resume` 并列但可靠性不对称——显式 `--resume` 是唯一可依赖的续接原语；②`--target`（help 自述「Run or set the session goal in headless mode」）为形态新原语，语义全貌留 0.2.0 设计期（本 spike 只钉互斥矩阵与 help 文本）；③`--max-turns` 移除再证墙钟唯一预算——spawnHeadless 原语零改动结论加强。**成本 caveat**：round-trip inputTokens 92k=真 HOME 全量 AGENTS.md 注入所致（0.16.5 存档 12k 为空 HOME，不可直比）——自驱动成本数学须把注入体积计为大头。
+
+未测面维持（预算纪律）：`--target` 语义全貌、流式逐事件、同机并行互扰、过期 sessionId 报错形态、`--continue` 取会话根因。

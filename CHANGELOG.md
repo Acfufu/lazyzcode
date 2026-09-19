@@ -3,6 +3,18 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Changed
+
+- Track the ZCode 3.14.0 engine baseline (runtime 0.16.5 → 0.16.9): the
+  zw skill's idle-run sentence now describes both binding forms (the
+  `queryId <taskId>:bound:` marker was retired in favor of an explicit
+  `boundSessionId` plus an `automationCheckTaskBinding` check), and the
+  headless wall-clock-budget copy no longer cites `--max-turns` (the flag is
+  gone from the 0.16.9 CLI surface). No behavior change; dated addendum added
+  to `docs/spikes/headless.md`.
+
 ## [0.1.1] - 2026-09-19
 
 ### Added

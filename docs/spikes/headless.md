@@ -96,3 +96,11 @@ perl -e 'alarm 120; exec @ARGV' env HOME=<隔离HOME> node "$ENGINE" --resume <s
 | p3a-red-no-auth.txt | **红半①**：双 provider env 摘除 → 启动门拒原文 |
 | p3a2-builtin-only.txt | **红半②**：仅 builtin → 模型创建门拒原文 |
 | p4-resume.txt | P4 续会话摘要 JSON |
+
+## 9. 2026-09-19 · 0.16.9/3.14.0 复核增注（goal engine-3140-sync；只增注，§1–8 历史结论不动）
+
+壳 3.12.3→3.14.0，引擎 runtime 0.16.5→0.16.9（`zcode.cjs --version` 活体 `0.16.9`）。对本文档契约面的复核增量：
+
+- **`--max-turns` 旗标已从 CLI 面移除**：0.16.5 代 help 列出但解析器拒收一切形态（§6 实测）；0.16.9 代 bundle 内字面量 ×0（`maxTurns` 仅存于 agent/schema 配置字段，非 CLI 旗标）。「墙钟预算是唯一兜底」结论加强为唯一预算面。
+- **新旗标面**（CLI 校验块实拟）：`--target` / `--target-replace`（与 `--prompt` 互斥，报文 `--target cannot be used with --prompt`）、`--continue`（续会话，与 `--resume` 互斥）、`--force-mcs`、`--surface`、`--memory-bench`、`--browser-use=headless` + `--browser-executable`、`-p` 别名；`--resume <sessionId>` 契约不变。注意 `--session`/`--agent` 等字面量部分命中 bundle 内置的外部工具 shell 补全表，非 ZCode 旗标。
+- **对 spawnHeadless 原语零影响**：core/headless.js 本就不传 `--max-turns`（墙钟预算原语），契约无需改动；仅报文与注释跟新口径（同日 goal #N3）。

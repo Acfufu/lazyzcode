@@ -13,7 +13,9 @@ versioning is SemVer.
   `boundSessionId` plus an `automationCheckTaskBinding` check), and the
   headless wall-clock-budget copy no longer cites `--max-turns` (the flag is
   gone from the 0.16.9 CLI surface). No behavior change; dated addendum added
-  to `docs/spikes/headless.md`.
+  to `docs/spikes/headless.md`, and the headless contract re-verified live on
+  engine 0.16.9 (§10: parser guards, auth gates, `--resume` cross-process
+  carry, E2E full chain PASS).
 
 ## [0.1.1] - 2026-09-19
 

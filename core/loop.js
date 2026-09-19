@@ -30,6 +30,8 @@ import {
 
 export const GOAL_VERSION = 1;
 const ACTIVE_STATES = new Set(["planning", "executing"]);
+// risk_class 轴序（0.2.0 棒1，ADR-0020）：只升不降的比较基准。
+const RISK_ORDER = ["low", "med", "high", "restricted"];
 
 // --note / --evidence 入账上限（评审 R2-9）
 export const NOTE_MAX = 300;
@@ -166,7 +168,7 @@ export function nextStep(goal) {
 }
 
 // ── 1. 注册 ────────────────────────────────────────────────────────────────
-export function registerGoal(cwd, slug, title, { tier = "light" } = {}) {
+export function registerGoal(cwd, slug, title, { tier = "light", risk = "low" } = {}) {
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/i.test(slug ?? "")) {
     throw new LoopError(`slug 不合法：${slug}（仅字母数字与连字符，≤64 字符）`);
   }
@@ -175,6 +177,13 @@ export function registerGoal(cwd, slug, title, { tier = "light" } = {}) {
   const tierNorm = typeof tier === "string" ? tier.toLowerCase() : tier;
   if (tierNorm !== "light" && tierNorm !== "heavy") {
     throw new LoopError(`tier 不合法：${tier}（light | heavy，默认 light）`);
+  }
+  // risk_class 落盘（0.2.0 棒1，ADR-0020；§⑮ Q5 拍板）：与 tier（工作量轴）正交的
+  // 风险轴，LOW<MED<HIGH<RESTRICTED 只升不降；机器执法点=drive 入口（棒2 接线），
+  // triage 自评仍 L0。additive 字段零版本 bump（沿 tier/subjects 先例）。
+  const riskNorm = typeof risk === "string" ? risk.toLowerCase() : risk;
+  if (!RISK_ORDER.includes(riskNorm)) {
+    throw new LoopError(`risk 不合法：${risk}（low | med | high | restricted，默认 low）`);
   }
   // 非 git 宿主前置硬拒（ADR-0019，0.1.1）：证据绑定 git 树，非 git 宿主的 finish 不可达
   //（unbound 拒+完整性闸门 host 根 missing 拒）——把不可达性从 finish 期提前到注册期，
@@ -206,6 +215,7 @@ export function registerGoal(cwd, slug, title, { tier = "light" } = {}) {
       title: title.trim(),
       status: "planning",
       tier: tierNorm,
+      risk: riskNorm,
       planPath: null,
       createdAt: new Date().toISOString(),
       startedAt: null,
@@ -273,6 +283,39 @@ export function setTier(cwd, value) {
       if (verdict !== "PASS") {
         warn = "本目标从未过评审门（review 为空或非 PASS）——HEAVY 机器门只在采纳时点执法，此升级为程序性自报";
       }
+    }
+    writeGoal(cwd, goal);
+    return { goal, changed: true, warn };
+  });
+}
+
+// risk_class 升级子命令（0.2.0 棒1，ADR-0020；§⑮ Q5）：镜像 setTier 只升不降；
+// 与 tier 的两点语义差异（注释在案防再议）：①无 planHash 耦合——risk 门执法点在
+// drive 入口（棒2 接线）而非采纳时点，无 ADJ-09 三连拒死锁面；②升到 high/restricted
+// 时 warn-only 提醒 SUSPENDED_RISK 协议（SKILL Continuation 节）：无人值守车道禁入，
+// 在途无人值守执行应挂起交回人工。
+export function setRisk(cwd, value) {
+  requireGoalPreLock(cwd);
+  return withLock(cwd, () => {
+    const goal = requireActive(cwd, "planning", "executing");
+    const norm = typeof value === "string" ? value.toLowerCase() : value;
+    if (!RISK_ORDER.includes(norm)) {
+      throw new LoopError(`risk 不合法：${value}（用法：lzy loop risk <low|med|high|restricted>）`);
+    }
+    const current = goal.risk ?? "low";
+    if (RISK_ORDER.indexOf(norm) < RISK_ORDER.indexOf(current)) {
+      throw new LoopError(`risk 只升不降：${current} 目标不可降为 ${norm}（风险轴规则，ADR-0020）`);
+    }
+    if (norm === current) {
+      return { goal, changed: false, warn: null };
+    }
+    goal.risk = norm;
+    let warn = null;
+    if (norm === "high" || norm === "restricted") {
+      warn =
+        norm === "high"
+          ? "HIGH：无人值守车道禁入（drive 入口机器门拒）——在途无人值守执行按 SUSPENDED_RISK 协议挂起交回人工"
+          : "RESTRICTED：硬禁（仅人工收窄计划范围后重评可解）——在途无人值守执行按 SUSPENDED_RISK 协议挂起交回人工";
     }
     writeGoal(cwd, goal);
     return { goal, changed: true, warn };
@@ -1829,7 +1872,7 @@ export function formatStatus(cwd, git) {
     lines.push(`  快照 ${goal.planHash.slice(0, 10)} · ${snapState}`);
   }
   // tier/subjects 读面（v008#N8）：缺键容忍（0.0.8 前 goal 无 tier/subjects 键按 light/空集）。
-  lines.push(`  tier ${goal.tier ?? "light"} · subjects ${(goal.subjects ?? []).length} 项`);
+  lines.push(`  tier ${goal.tier ?? "light"} · risk ${goal.risk ?? "low"} · subjects ${(goal.subjects ?? []).length} 项`);
   // 工作树脏净读数（ADJ-42，0.0.10）：SKILL 教「先读 status 的 dirt 再领 finish」——
   // 把该读面做真：脏列前 3 路径+药方（finish 完整性闸门会拦）。
   if (git) {

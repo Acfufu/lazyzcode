@@ -30,6 +30,7 @@ import {
   registerGoal,
   removeSubject,
   resetLoop,
+  setRisk,
   setTier,
   startLoop,
   supersedePlan,
@@ -65,7 +66,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -195,8 +196,9 @@ async function cmdLoop(args) {
     case "register": {
       const goal = registerGoal(cwd, _[1], f.title, {
         tier: typeof f.tier === "string" ? f.tier : undefined,
+        risk: typeof f.risk === "string" ? f.risk : undefined,
       });
-      console.log(`✔ 目标已注册：${goal.slug} — ${goal.title}（状态 planning · tier ${goal.tier}）`);
+      console.log(`✔ 目标已注册：${goal.slug} — ${goal.title}（状态 planning · tier ${goal.tier} · risk ${goal.risk ?? "low"}）`);
       console.log("  下一步：写决策完备计划到 .lazyzcode/plans/<slug>.md，然后 lzy loop plan <文件>");
       return;
     }
@@ -409,6 +411,15 @@ async function cmdLoop(args) {
       // 目标谱系读面（pisper-absorption#N4，只读）：证据包 ∪ salvage 存根 ∪ git 尾注三源并集。
       console.log(formatHistory(cwd, git));
       return;
+    case "risk": {
+      // risk_class 升级（0.2.0 棒1，ADR-0020）：只升不降；HIGH/RESTRICTED 升档 warn
+      // SUSPENDED_RISK（warn-only，镜像 tier 升档提醒形态）。
+      if (!_[1]) throw new LoopError("用法：lzy loop risk <low|med|high|restricted>");
+      const { goal, changed, warn } = setRisk(cwd, _[1]);
+      console.log(changed ? `✔ risk 已更新：${goal.slug} → ${goal.risk}` : `risk 已是 ${goal.risk}（同值 no-op）`);
+      if (warn) console.log(`  ⚠ ${warn}`);
+      return;
+    }
     case "cost":
       // 积分成本报表（plan-v2 Phase 2-2，只读）：账本缺席/sqlite3 缺席均降级输出不翻码。
       console.log(formatCost(cwd, readGoal(cwd)));
@@ -464,7 +475,7 @@ async function cmdLoop(args) {
       throw new LoopError("用法：lzy loop budget init [--wall-ms N --points N] | spend [--ms N --points N] | remaining");
     }
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/supersede/attempts/start/subject/tier/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff/lease/budget）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/supersede/attempts/start/subject/tier/risk/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff/lease/budget）`);
   }
 }
 
@@ -786,6 +797,8 @@ function printHelp() {
   lzy loop attempts                         attempt 世系读面（只读：attempt.json ∪ 中央账本派生）
   lzy loop start                            开跑（planning → executing，打印实测并发纪律行）
   lzy loop tier heavy                       tier 升级（只升不降；机器门=采纳时点，ADR-0013）
+  lzy loop risk <level>                     risk_class 升级（0.2.0，ADR-0020）：low|med|high|
+                                            restricted 只升不降；HIGH+ 拒入无人值守车道
   lzy loop lease acquire|heartbeat|release  运行级认领（0.2.0，ADR-0020）：分钟级互斥+心跳续期；
                                             fence 令牌申报写路径（--fence / LZY_RUNTIME_FENCE）
   lzy loop budget init|spend|remaining      运行预算（0.2.0，ADR-0020）：墙钟+积分双硬顶，

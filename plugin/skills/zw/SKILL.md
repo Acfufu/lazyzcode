@@ -359,7 +359,10 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
   wake** (App-UI automation): a fresh session each fire with fresh budgets —
   unlimited across fires, never a license to pad; **idle run** (host OffPeak
   idle task): the engine's first-class off-peak lane, binding the origin
-  session (`queryId <taskId>:bound:`, turnNumber continues across wakes) with
+  session (engine ≤0.16.5 bound via `queryId <taskId>:bound:`; 0.16.9
+  replaced the marker with an explicit `boundSessionId` plus a binding-check
+  RPC `automationCheckTaskBinding` → `{bound}`; turnNumber continues across
+  wakes) with
   **zero pool exemption** — engine 3/turn and hook 2/session both count, and
   per-session counters persist with the session. Conversation history is
   unreliable at an idle run's executor perception (probe offpeak-probe

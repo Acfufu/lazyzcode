@@ -5,7 +5,8 @@
 // 进程契约，不做任何循环编排。
 // 安全形态沿 core/engine.js 与 core/update.js 家法：字面量 argv 数组 + shell:false；
 // --mode 显式必填不设默认（spike 实测 --prompt 缺省 yolo——自驱动必须显式选模式）；
-// --max-turns 引擎 0.16.5 实拒（help 列出但解析器拒收一切形态，spike §6），墙钟预算
+// --max-turns 已从引擎 CLI 面移除（0.16.5 help 列出但解析器拒收一切形态；0.16.9
+// 字面量×0，spike §6 + 0.16.9 复核增注），墙钟预算
 // 是唯一兜底（超时 SIGKILL；null/0 守卫沿 scripts/ablation/spawn-engine.mjs b1 事故
 // 教训）。认证链（spike §3）：HOME 隔离换绑时认证 env（ZCODE_BUILTIN/PERSONAL_PROVIDER_
 // CONFIG_FILE）随 env 透传；无 env 时引擎读 ~/.zcode/v2/credentials.json（login OAuth，
@@ -100,7 +101,7 @@ export function spawnHeadless({
       return {
         ...base,
         ok: false,
-        error: `墙钟预算 ${Math.round(timeoutMs / 1000)}s 耗尽，进程已 SIGKILL（--max-turns 在 0.16.5 实拒，墙钟是唯一预算）——拆小任务或提高 timeoutMs；已产生的 stdout 附在原字段`,
+        error: `墙钟预算 ${Math.round(timeoutMs / 1000)}s 耗尽，进程已 SIGKILL（--max-turns 已移除〔0.16.9 面上无此旗标〕，墙钟是唯一预算）——拆小任务或提高 timeoutMs；已产生的 stdout 附在原字段`,
       };
     }
     if (base.exitCode !== 0) {

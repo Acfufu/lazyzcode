@@ -35,7 +35,7 @@ function settle(r, what) {
 export function createEngineCli(enginePath) {
   const missing = () => ({ ok: false, missing: true, error: MISSING_ERROR });
   return {
-    // 引擎版本（如 "0.16.5"）；引擎不可用返回 null。
+    // 引擎版本（如 "0.16.9"）；引擎不可用返回 null。
     version() {
       if (!enginePath) return null;
       const r = spawnSync(process.execPath, [enginePath, "--version"], {

@@ -483,3 +483,21 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - update 全链：0.1.1→0.2.0 **EXIT=0**，「sync 已由新装子进程执行」=ADR-0012 win32 活体，缓存 0.2.0 目录落位；`lzy --version` 0.2.0 · 引擎 0.16.5。
 - 0.2.0 三件套活体（scratch `C:\scratch020`，SYSTEM exec + `set "LOCALAPPDATA=…"` 引号形态）：**lease 互斥**（acquire fence 1 → 二次 acquire 拒「另一运行时持租（fence 1，至 …）」带僵尸恢复指路）· **fence 写拒**（活跃租约期 `--fence 9` 写 → 「写拒：fence 9 非现行（现行 1）——你已被接管，立即停手不写」）· **drive 门链**（executing 目标上 `lzy loop drive` → 凭据缺席拒带恢复文本；doctor `drive` 行四段齐「凭据缺席（headless 调用会停在认证门） · 活跃租约 fence=1 · 预算未初始化 · v020vm 可入 drive（risk=low）」）；lease 释放 ✔、scratch 清除 ✔。
 - 探针引号雷补记（host 侧驱动教训）：`set VAR=value && cmd` 会把**尾随空格**并进值（`LZY_ABLATE_HUMAN_GATE` 变 `"1 "` 消融判据不中、`LZY_ZCODE_ENGINE` 路径带空格失效）——SYSTEM exec 驱动一律 `set "VAR=value"` 引号形态（0.1.0 配方的静默变体，历次被引号形态掩盖）。
+
+## 0.2.1 执行记录（目标循环 goal v021-engine-surface，2026-09-20）
+
+主题=**兼容修复**（grill-with-docs 九问拍板；H3R 实验归下一弧）。十步全收口、HEAVY 硬管线三轮评审 PASS
+（R1 退回 3 项必修+7 条警示全修 → R2 过门 → 警示七条全收后 R3 复核过门），快照 `582ba30244…`。
+
+- **N1 引擎面边界归一**：`core/engine.js` 新增 `normalizePluginList`（0.16.9 裸数组 / 0.16.5 对象包封双形态，
+  `...raw` 透传未知顶层键、per-plugin 诊断注入归属键、非对象元素丢弃、保序去重；`null` 仅解析失败）。
+  修的是**野外 fail 级误报**：0.16.9 宿主 `lzy doctor`/`lzy status` 的 `enabled` 行 ✖ 且**退出码 1**，
+  而引擎列表实际含该插件（`id=lazyzcode@lazyzcode-local enabled=true skillCount=2 hookDetails=5`）。
+- **N2 债 E 收口**：`plugin/hooks/trigger.js` 批准分支拆三支诊断（cwd 漂移点名宿主根 / 未找到 / 无 pending 报 slug），
+  `hook-lib.js` 新增 `probeHostRoot`（只读、深度≤8、仅提示、ADR-0006 状态语义不动）。旧行为=批准句零反馈输出 `{}`。
+- **N4 五引擎面契约测试**：`test/engine-surface.contract.test.js` 17 例（假引擎扮两代包封）。
+- **文档**：ADR-0021 新立 + ADR-0018 修正案 + H3R 设计稿预注册修正 + 债 E discharged + AGENTS（§7 地图/§3 JSON 面/§8 两术语/§2 收官句，全 ‖ 续行恒 149 行）+ CHANGELOG 新建 `[Unreleased]`。
+- **验收**：`npm test` **343/343**（批前 320；+6 human-gate、+17 engine-surface）；docs-preview build 51 pages / anchors 双语 22-22 / links 断链 0；`lzy sync` 缓存含新钩子文案与 `probeHostRoot`；doctor `files` 逐文件 sha256 一致、`enabled` 转 ✔。
+- **F1–F4 双证据全在案**（红半绑 pre-fix 外部面、绿半绑复合指纹 `5b68a624ad`）；comparator 两轮 4/4 MATCH，按发现补强 F1 红半退出码原文与 F3 双支双跑后复核仍全 MATCH。
+- **终验 attestation**：`.lazyzcode/attestations/v021-engine-surface-20260920T144518Z.json`（sha256 `5b782537464e826f6a258ec4eb3edfca56115fb5aea17bda3b8ed2fdccf7f1ca`）。
+- **发布机械件余项**：三体 bump（package.json / 市场 manifest version+ref / plugin.json）→ CHANGELOG 定版 → CI 四腿绿 → tag v0.2.1 最后切 → GitHub Release → **publish 待用户 2FA** → 隔离 prefix 冒烟 + 真机 `lzy update` 0.2.0→0.2.1。**建议 VM 复测**：win32 引擎 0.16.5 上 `enabled` 行本已 ✔（该台不受此 bug 影响），0.16.9 宿主才是本轮修复面——若 VM 引擎停留在 0.16.5，可只跑 update 链与 scratch loop 回归。

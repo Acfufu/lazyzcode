@@ -3,6 +3,25 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+### Fixed
+
+- **Five-round dual review fix round (V021-ADJ-01..92, goal v021-r5-review-fix-ablation)** —
+  92 adjudicated findings (P1x10, P2x27, P3x55) across core/hooks/instrument:
+  `readGoal` errno discrimination (corrupt/unreadable goal.json no longer silently
+  overwritten by `register`); cross-process lock ownership token + 60s stale line
+  (mutual exclusion could break twice per window); lineage ledger duplicate-`n` and
+  `n:null` poisoning closed (dual-source `deriveAttempt`, write-side shape check);
+  `installPathFor` dot-segment escape fixed (`..` could `rm -rf` the plugins root);
+  headless wall clock is now a real hard stop (exit-based settle; measured 25x
+  overrun before); drive re-checks risk/identity between segments and always winds
+  down through the handoff path; zombie leases get a `lease reclaim` exit; lease is
+  bound to its goal. Hooks: approval negation matrix, approval write-failure
+  diagnostic, injected-text sanitization, version-order node selection. Ablation
+  instrument: trial CLI now runs the variant tree (D/F/G/H machine-gate ablations
+  were no-ops before), human gate ablated on all arms (pipeline was unrunnable
+  since 0.1.1), payload provenance, three-state verdict. See
+  `docs/reviews/2026-09-21-v021-r5-dual-review.md`.
+
 ## [Unreleased]
 
 ### Added

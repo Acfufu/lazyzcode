@@ -67,7 +67,7 @@
 
 ## 收尾验证链（必跑）
 
-1. `npm test` —— 基线以收窄发现面为准（2026-09-14 起 `node --test "test/**/*.test.js"`，幻影 pass 结构性根治——裸 cwd 发现已废；Node ≥22 对 `--test` 位置参数按 glob 解释，目录字面量形态不可用）。快照 **343/343**（2026-09-21，v021 五轮双审+修复轮 N6 实跑刷新〔`node --test "test/**/*.test.js"`：tests 343 · pass 343 · fail 0〕；前值 320/320 v020 棒2、309/309 v020 棒1、297/297 v011——此处曾漏刷）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
+1. `npm test` —— 基线以收窄发现面为准（2026-09-14 起 `node --test "test/**/*.test.js"`，幻影 pass 结构性根治——裸 cwd 发现已废；Node ≥22 对 `--test` 位置参数按 glob 解释，目录字面量形态不可用）。快照 **369/369**（2026-09-21，v021 修复轮 N6 实跑刷新〔`node --test "test/**/*.test.js"`：tests 369 · pass 369 · fail 0〕；前值 343/343 v021 评审轮；前值 320/320 v020 棒2、309/309 v020 棒1、297/297 v011——此处曾漏刷）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
 2. `node scripts/docs-preview/build.mjs && node scripts/docs-preview/check-anchors.mjs && node scripts/docs-preview/check-links.mjs` —— 断链 0、锚点双语对齐、页面数稳定。
 3. 动了 `plugin/` 时：`lzy sync` + grep 安装缓存。
 4. 提交带尾注 `Goal: <slug>#<步号>`（ADR-0005）。

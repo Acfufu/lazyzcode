@@ -463,3 +463,23 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 4. **CI 四腿绿**（判决=gh run view conclusion，永不认 watch 伪绿）→ **tag v0.2.0 最后切** → GitHub Release（notes 三节：Highlights/Coverage boundary/Upgrade）。
 5. **publish（用户 2FA）**：载荷=从 tag 打包的 tarball（`npm pack` 于 tag 树），`npm publish <tarball>`；发后隔离 prefix 冒烟 `npm i -g lazyzcode@0.2.0 --prefer-online`（npm12 EALLOWREMOTE 绕法）→ `lzy --version` 应 0.2.0。
 6. **发后核验**：registry `dist-tag latest=0.2.0`（curl HTTP 端点为真相源，npm view 缓存滞后数分钟）；发布 shasum 与 dry-run 逐字一致；真机 `lzy update` 0.1.2→0.2.0 全链 EXIT=0；`lzy doctor` `payload-ver` 双 ✔；win32 VM 复测（registry 新装+update 链+0.2.0 全新面：lease/fence/drive 三件套活体——`lzy loop lease acquire` 互斥/`--fence` 申报写拒/doctor drive 行三态/scratch drive 段循环）。
+
+### 发后核验（2026-09-20，publish 用户 2FA，全过）
+
+- registry：CDN 传播窗 ~60s 后 `dist-tags.latest=0.2.0`（curl HTTP 端点直证）；发布 shasum `453b13289125c7436d2ba4e1654abd0bf9491b54` 与 dry-run/tag 树 tarball **逐字一致** ✔（载荷=从 tag 树打包的 /tmp/lazyzcode-0.2.0.tgz）。
+- 隔离 prefix 冒烟 ✔：`lzy 0.2.0（插件载荷同版本）· 引擎 0.16.9`；载荷新面首发在案（`core/drive.js` 在装 + SKILL `lzy loop drive` 3 处命中）。
+- 真机 `lzy update` 0.1.2→0.2.0 全链 **EXIT=0**（「sync 已由新装子进程执行」=ADR-0012 活体；缓存 14 版本目录 [0.0.1..0.2.0]）；doctor `payload`/`install`/`payload-ver`（CLI 0.2.0 一致）三 ✔ + **`drive` 行首发 ✔**（凭据=oauth · 无活跃租约 · 预算 · 无 executing 目标）。
+
+### 发现（既有，非 0.2.0 回归）：`plugins list --json` 包封代际漂移 → `enabled` 行在 0.16.9 误报 fail
+
+- 症状：宿主（引擎 0.16.9）`lzy status`/`doctor` 的 `enabled` 行恒 ✖「引擎未列出该插件（运行 lzy install）」——但引擎实际列表含 `lazyzcode@lazyzcode-local | enabled: true | version: 0.2.0`（node 直查实证），且 `lzy install` 的「已启用（引擎官方 plugins enable）」成功。fail 级误报会翻 status/doctor 退出码。
+- 根因：`core/engine.js:86 findInstalledPlugin` 期望 `list.plugins`（对象包封），引擎 **0.16.9 的 `plugins list --json` 输出裸数组**；`core/status.js:136-169` 的 diagnostics 子面同形假设（一并静默失活）。
+- 代际定案（差异探针）：VM 引擎 **0.16.5** → 对象包封，`enabled` ✔（`[enabled] skills:2 hooks:5`）；宿主引擎 **0.16.9** → 裸数组，`enabled` ✖。`git show v0.1.2:core/engine.js` 与现状逐字相同 ⇒ **0.1.2 期（engine-3140-sync 锚 3.14.0 基线时）已存在，只核了版本锚未核此 JSON 面**，非 0.2.0 引入。
+- 处置：**0.2.0 载荷冻结不动**（已 publish，沿版本流转纪律进下一版）。拟议修法（一行级，归 0.2.1）：`findInstalledPlugin` 与 diagnostics 两处接受双形态（`Array.isArray(list) ? list : list?.plugins`；diagnostics 同理从数组元素或对象字段取）；补 status/doctor 契约测试钉两形态。
+
+### win32 VM 复测（2026-09-20，Windows 11 aarch64，引擎 0.16.5）
+
+- 台态：VM 停在 lzy 0.1.1（0.1.2 docs-only 按预注跳过 VM）→ 本轮从 0.1.1 起跑。
+- update 全链：0.1.1→0.2.0 **EXIT=0**，「sync 已由新装子进程执行」=ADR-0012 win32 活体，缓存 0.2.0 目录落位；`lzy --version` 0.2.0 · 引擎 0.16.5。
+- 0.2.0 三件套活体（scratch `C:\scratch020`，SYSTEM exec + `set "LOCALAPPDATA=…"` 引号形态）：**lease 互斥**（acquire fence 1 → 二次 acquire 拒「另一运行时持租（fence 1，至 …）」带僵尸恢复指路）· **fence 写拒**（活跃租约期 `--fence 9` 写 → 「写拒：fence 9 非现行（现行 1）——你已被接管，立即停手不写」）· **drive 门链**（executing 目标上 `lzy loop drive` → 凭据缺席拒带恢复文本；doctor `drive` 行四段齐「凭据缺席（headless 调用会停在认证门） · 活跃租约 fence=1 · 预算未初始化 · v020vm 可入 drive（risk=low）」）；lease 释放 ✔、scratch 清除 ✔。
+- 探针引号雷补记（host 侧驱动教训）：`set VAR=value && cmd` 会把**尾随空格**并进值（`LZY_ABLATE_HUMAN_GATE` 变 `"1 "` 消融判据不中、`LZY_ZCODE_ENGINE` 路径带空格失效）——SYSTEM exec 驱动一律 `set "VAR=value"` 引号形态（0.1.0 配方的静默变体，历次被引号形态掩盖）。

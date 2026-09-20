@@ -13,12 +13,26 @@
 // 凭据是 HOME 绑定的——换绑 HOME 会失凭据，E2E 走真 HOME 或显式 env 注入）。
 // 本模块零业务编排；错误用 HeadlessError（渲染口径与 LoopError/DagError 同）。
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { findEngine } from "./paths.js";
 
 export const HEADLESS_MODES = new Set(["build", "edit", "plan", "yolo"]);
 export const HEADLESS_DEFAULT_TIMEOUT_MS = 15 * 60_000;
 
 export class HeadlessError extends Error {}
+
+// headless 认证两态（0.2.0 棒2：drive/doctor/e2e 三面共读一份事实，收敛此前 doctor
+// checkHeadless 与 e2e-loop 各自内联的两份重复）。oauth=桌面 login 的凭据文件；
+// envAuth=桌面注入的 provider 配置 env（spike §3 认证链）；ok=任一在场。
+export function detectHeadlessAuth() {
+  const oauth = existsSync(join(homedir(), ".zcode", "v2", "credentials.json"));
+  const envAuth = Boolean(
+    process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE || process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE,
+  );
+  return { oauth, envAuth, ok: oauth || envAuth };
+}
 
 function assertTimeoutMs(timeoutMs) {
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
@@ -86,11 +100,13 @@ export function spawnHeadless({
     env.USERPROFILE = home;
   }
   const run = deps?.run ?? defaultRun;
+  const startedAt = Date.now();
   return Promise.resolve(run({ argv, cwd, env, timeoutMs })).then((raw) => {
     const base = {
       exitCode: raw.exitCode,
       signal: raw.signal ?? null,
       timedOut: Boolean(raw.timedOut),
+      durationMs: Date.now() - startedAt,
       stdout: String(raw.stdout ?? ""),
       stderr: String(raw.stderr ?? ""),
     };

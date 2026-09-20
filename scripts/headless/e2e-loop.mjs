@@ -8,10 +8,10 @@
 // 用法：node scripts/headless/e2e-loop.mjs [--mode yolo] [--timeout-minutes 15] [--keep]
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnHeadless, HEADLESS_MODES } from "../../core/headless.js";
+import { spawnHeadless, HEADLESS_MODES, detectHeadlessAuth } from "../../core/headless.js";
 
 const REPO = join(fileURLToPath(import.meta.url), "..", "..", "..");
 const CLI = join(REPO, "cli", "lzy.js");
@@ -30,10 +30,10 @@ if (!HEADLESS_MODES.has(mode)) {
 const timeoutMs = Number(arg("--timeout-minutes", "15")) * 60_000;
 const keep = process.argv.includes("--keep");
 
-// ── 认证门（缺席=skip 不 fail：本机没凭据不是产品缺陷）────────────────────────
-const oauth = existsSync(join(homedir(), ".zcode", "v2", "credentials.json"));
-const envAuth = Boolean(process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE || process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE);
-if (!oauth && !envAuth) {
+// ── 认证门（缺席=skip 不 fail：本机没凭据不是产品缺陷；两态事实源=detectHeadlessAuth）──
+const auth = detectHeadlessAuth();
+const oauth = auth.oauth;
+if (!auth.ok) {
   console.log("[e2e] SKIP：无 headless 凭据（无 ~/.zcode/v2/credentials.json 且无 ZCODE_*_PROVIDER_CONFIG_FILE env）——有凭据开发机手动跑，CI 不碰");
   process.exit(0);
 }

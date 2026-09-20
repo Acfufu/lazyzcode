@@ -4,10 +4,10 @@
 // 单项异常 fail-soft=warn，诊断自身故障不翻转退出码。
 import { readdirSync, readFileSync, existsSync, realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
 import { createEngineCli } from "./engine.js";
+import { detectHeadlessAuth } from "./headless.js";
 import { readRepoManifest, readRegistry, sha256File } from "./installer.js";
 import {
   MARKETPLACE,
@@ -507,15 +507,12 @@ function checkHeadless(push) {
     push("headless", "warn", `引擎 --version 探针失败（${engine}）——headless 驱动不可用`);
     return;
   }
-  const oauth = existsSync(join(homedir(), ".zcode", "v2", "credentials.json"));
-  const envAuth = Boolean(
-    process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE || process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE,
-  );
-  if (oauth || envAuth) {
+  const auth = detectHeadlessAuth();
+  if (auth.ok) {
     push(
       "headless",
       "ok",
-      `引擎 ${version} 可 headless 驱动 · 凭据=${oauth ? "oauth(~/.zcode/v2/credentials.json)" : "env(ZCODE_*_PROVIDER_CONFIG_FILE)"}`,
+      `引擎 ${version} 可 headless 驱动 · 凭据=${auth.oauth ? "oauth(~/.zcode/v2/credentials.json)" : "env(ZCODE_*_PROVIDER_CONFIG_FILE)"}`,
     );
   } else {
     push(

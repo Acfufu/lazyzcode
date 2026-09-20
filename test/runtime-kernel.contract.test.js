@@ -232,6 +232,11 @@ test("fence 写路径守卫（CLI 集成面）：申报制三态+开关两半—
 test("CLI 生命周期面（真实表面=stdout）：lease acquire/heartbeat/release + budget init/spend/remaining", () => {
   const d = repo("lzy-runtime-cli-");
   try {
+    // ADJ-31（0.2.1）：lease/budget 写面现前置 requireGoalPreLock（ADR-0006 fail-fast：无
+    // goal 目录不留 runtime.json 空壳/幻影租约）——夹具先注册目标（goal 只是前置；本文件
+    // 被测面仍是 runtime 面）。
+    const reg = lzy(["loop", "register", "rt", "--title", "t"], d);
+    assert.equal(reg.code, 0, reg.out);
     let r = lzy(["loop", "lease", "acquire", "--ttl-ms", "60000"], d);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /租约已获：fence 1/);
@@ -259,6 +264,61 @@ test("CLI 生命周期面（真实表面=stdout）：lease acquire/heartbeat/rel
     assert.equal(r.code, 0, r.out);
     // CLI 全程未破坏 goal 面（runtime.json 与 goal.json 互不干扰）
     assert.equal(lzy(["loop", "status"], d).code, 0);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ADJ-31 反向面：无 goal 目录上五个变更调用点一律拒，且不留 runtime.json 空壳/幻影租约
+test("无 goal 前置门：lease/budget 写面拒且零疤痕（runtime.json 都不建）", () => {
+  const d = repo("lzy-runtime-bare-");
+  try {
+    for (const args of [
+      ["loop", "lease", "acquire"],
+      ["loop", "lease", "heartbeat", "--fence", "1"],
+      ["loop", "lease", "release", "--fence", "1"],
+      ["loop", "budget", "init"],
+      ["loop", "budget", "spend", "--ms", "1"],
+    ]) {
+      const r = lzy(args, d);
+      assert.equal(r.code, 1, `${args.join(" ")} → ${r.out}`);
+      assert.match(r.out, /没有目标循环状态/, r.out);
+    }
+    assert.equal(existsSync(runtimeJson(d)), false, "无 goal 不留 runtime.json 空壳");
+    assert.equal(existsSync(join(d, ".lazyzcode", "loop")), false, "连 loop/ 目录都不建（fail-fast 家法）");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ADJ-27/ADJ-80（0.2.1）：声明通道与值旗标的非法输入 fail-loud——三条静默漏放
+//（空串/裸旗标/科学计数）与「裸值旗标静默默认 true」都在解析处显式拒。
+test("ADJ-27/80：--fence 非法形态与裸值旗标一律用法错（不再静默漏放/TypeError）", () => {
+  const d = repo("lzy-runtime-flag-");
+  try {
+    assert.equal(lzy(["loop", "register", "fl", "--title", "t"], d).code, 0);
+    for (const args of [
+      ["step", "done", "N1", "--fence", ""], // 空串：旧实现静默直通（写落盘）
+      ["step", "done", "N1", "--fence"], // 裸旗标：旧实现记 true 静默直通
+      ["step", "done", "N1", "--fence", "1e9"], // 科学计数：旧实现 parseInt 截成 1
+      ["step", "done", "N1", "--fence", "abc"], // 非数字：旧实现误导为「你已被接管」
+      ["step", "done", "N1", "--fence", "0"], // 0 非正整数
+    ]) {
+      const r = lzy(args, d);
+      assert.equal(r.code, 1, `${args.join(" ")} → ${r.out}`);
+      assert.match(r.out, /--fence 须为正整数/, r.out);
+    }
+    assert.equal(lzy(["loop", "status"], d).out.includes("[lzy]"), false, "非法 fence 不写盘（用法错先于门）");
+    // 裸值旗标（漏值）——旧实现静默默认 true，下游 title?.trim 抛 TypeError
+    const reg = lzy(["loop", "register", "fl2", "--title"], d);
+    assert.equal(reg.code, 1, reg.out);
+    assert.match(reg.out, /--title 缺值/);
+    assert.doesNotMatch(reg.out, /is not a function/);
+    for (const flag of ["--tier", "--risk", "--points", "--ms", "--ttl-ms", "--wall-ms", "--max-segments", "--mode", "--snapshot"]) {
+      const r = lzy(["loop", "budget", "init", flag], d);
+      assert.equal(r.code, 1, `${flag} 裸旗标应拒：${r.out}`);
+      assert.match(r.out, /缺值/, r.out);
+    }
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

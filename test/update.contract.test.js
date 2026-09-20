@@ -41,10 +41,11 @@ test("① compareVersions 数值序与非数字段退化（钉死规则：数字
   assert.equal(compareVersions("0.0.6", "0.0.6"), 0);
   assert.equal(compareVersions("0.0.5", "0.0.6"), -1);
   assert.equal(compareVersions("1.2", "1.2.0"), 0); // 缺段补 0
-  // 非数字段确定性退化（非 semver 语义，registry 现状只发纯数字版本）：
-  assert.equal(compareVersions("0.0.7-beta", "0.0.7"), 1);
-  // 字典序退化实况："10-beta" 首字符 "1" < "9" → -1（钉死规则下的确定行为，不是 bug）
-  assert.equal(compareVersions("0.0.10-beta", "0.0.9"), -1);
+  // ADJ-91（0.2.1）：-prerelease/+build 段先剥离再比——旧实现拿 "0.0.7-beta" 的末段与
+  // "0.0.7" 末段走字典序（"7-beta" > "7"）判出「本地高于已发布」的误导方向警告。
+  assert.equal(compareVersions("0.0.7-beta", "0.0.7"), 0); // 预发布不高于同号正式版
+  assert.equal(compareVersions("0.0.10-beta", "0.0.9"), 1); // 剥离后数值序（旧实现字典序判 -1）
+  assert.equal(compareVersions("0.0.10+build.5", "0.0.10"), 0); // build 段同样剥离
 });
 
 test("② 全局==published → 已是最新，install 与 child 均不触发，exit 0", async (t) => {

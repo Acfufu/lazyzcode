@@ -187,7 +187,7 @@ export function appendReviewNode(dag, { planHash, verdict }) {
 // 对照必须锚到已落账的绿半节点，先对照后取证/复用旧对照在入账处即拒。
 export const COMPARATOR_VERDICTS = new Set(["MATCH", "MISMATCH"]);
 
-export function appendComparatorNode(dag, { slug, planHash, verdict, fingerprint, fileSha256, itemsCount, items = [] }) {
+export function appendComparatorNode(dag, { slug, planHash, verdict, fingerprint, fileSha256, itemsCount, items = [], note = null, planNodeId = null }) {
   if (!slug || !planHash) throw new DagError("comparator 节点缺 slug/planHash");
   if (!COMPARATOR_VERDICTS.has(verdict)) throw new DagError(`comparator verdict 非法：${verdict}（MATCH|MISMATCH）`);
   if (typeof fingerprint !== "string" || !fingerprint) throw new DagError("comparator 节点缺可绑复合指纹（宿主非 git 仓无可对照面）");
@@ -221,6 +221,12 @@ export function appendComparatorNode(dag, { slug, planHash, verdict, fingerprint
     items: normalized,
     at: Date.now(),
   };
+  // note（ADJ-42，0.2.1）：schema 广告的 `note`（对照限定条件：对照者视角/排除项）曾被静默
+  // 丢弃——静默吞比拒绝更坏。存截断 ≤300（与 basis 同量级），空/非串=不写字段（零语义变化）。
+  if (typeof note === "string" && note.trim()) node.note = note.trim().slice(0, 300);
+  // attests 边对端（ADJ-48，0.2.1）：plan 节点缺席时边无法建立——旧实现静默跳过，审计面
+  // （dag dependents）少一条而无从察觉。现把对端落进节点字段（null=边缺席，机器可见）。
+  node.attestsPlanNodeId = typeof planNodeId === "string" && planNodeId ? planNodeId : null;
   dag.nodes.push(node);
   return node;
 }
@@ -303,13 +309,20 @@ export function findGreenByGeneration(dag, slug, step, seq, attempt = null) {
 export function findLatestComparator(dag, slug, planHash) {
   const nodes = dag.nodes.filter((n) => n.kind === "comparator" && n.slug === slug && n.planHash === planHash);
   if (nodes.length === 0) return null;
-  nodes.sort((a, b) => a.at - b.at || idNum(a.id) - idNum(b.id));
+  // 决胜口径与 nextId 一致（ADJ-50，0.2.1）：id 超 2^53 后 Number 相邻值塌缩为同数，
+  // 「最新为现行」退化为不决定（取决于 sort 稳定性）——用 BigInt 比数字段。
+  nodes.sort((a, b) => a.at - b.at || compareNodeIds(a.id, b.id));
   return nodes[nodes.length - 1];
 }
 
-function idNum(id) {
-  const m = /^n(\d+)$/.exec(id);
-  return m ? Number(m[1]) : 0;
+// id 数字段比较（n<数字> 形，loadDag 形状校验已挡非此形）；同号/畸形=0（不决定）。
+function compareNodeIds(a, b) {
+  const ma = /^n(\d+)$/.exec(a);
+  const mb = /^n(\d+)$/.exec(b);
+  if (!ma || !mb) return 0;
+  const va = BigInt(ma[1]);
+  const vb = BigInt(mb[1]);
+  return va < vb ? -1 : va > vb ? 1 : 0;
 }
 
 function nodeById(dag, id) {

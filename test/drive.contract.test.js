@@ -274,6 +274,9 @@ test("restart 两半：持现行租 fence 重开成功（spent 归零）；无�
       "无活跃租约=重开拒（僵尸无租重置被拒）",
     );
     // 交互 CLI：budget init 维持拒重置（restart 仅 drive 内部路径）
+    // ADJ-31：CLI 写面前置 requireGoalPreLock——本段是 CLI 面，先注册目标（无 goal 会撞
+    // 前置门，报文与「预算已初始化」不同轴）。
+    assert.equal(lzy(["loop", "register", "dr", "--title", "t"], d).code, 0);
     lzy(["loop", "budget", "init"], d);
     const r = lzy(["loop", "budget", "init"], d);
     assert.equal(r.code, 1);

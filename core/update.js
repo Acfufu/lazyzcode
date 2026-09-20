@@ -18,9 +18,13 @@ const MANUAL_STEPS = "npm install -g lazyzcode@latest && lzy sync";
 
 // 点分版本比较：数字段按数值、非数字段按字典序、缺段补 0（确定性退化，非完整 semver；
 // registry 现状只发纯数字版本）。返回 -1/0/1。
+// ADJ-91（0.2.1）：先剥离 -prerelease/+build 段再比——旧实现把 `0.2.1-beta` 的第三段
+// 与 `1` 走字符串比较（"1" < "1-beta"），判出 `0.2.1-beta > 0.2.1` 的误导方向警告；
+// 语义=预发布不高于同号正式版（剥段后相等 → 0）。
 export function compareVersions(a, b) {
-  const fa = String(a).split(".");
-  const fb = String(b).split(".");
+  const strip = (v) => String(v).split(/[-+]/)[0];
+  const fa = strip(a).split(".");
+  const fb = strip(b).split(".");
   const len = Math.max(fa.length, fb.length);
   for (let i = 0; i < len; i++) {
     const x = fa[i] ?? "0";
@@ -36,6 +40,17 @@ export function compareVersions(a, b) {
     if (c !== 0) return c;
   }
   return 0;
+}
+
+// npm 缺席判据（ADJ-91，0.2.1）：POSIX 面 ENOENT 就是事实；win32 分支经 cmd.exe 执行，
+// npm 不在时拿到的是 cmd 的退出码与「'npm' 不是内部或外部命令 / not recognized」文案，
+// r.error.code 不是 ENOENT → 曾被误诊为「网络或 registry 败」。两态同判据同恢复文案。
+export function npmMissing(r) {
+  if (r?.error?.code === "ENOENT") return true;
+  const text = `${r?.stderr ?? ""}${r?.stdout ?? ""}`;
+  return /不是内部或外部命令|not recognized as an internal or external command|command not found|不是可运行的程序/i.test(
+    text,
+  );
 }
 
 // 平台分派的默认 runner：npm 走 PATH（POSIX execvp 直解；win32 经 cmd.exe 解析 .cmd），
@@ -81,7 +96,7 @@ export function createUpdater(deps = {}) {
   async function update() {
     // 1) 探测已发布版本（也是 npm 在场性检查）。
     const view = await run(npmReq(["view", "lazyzcode", "version"], "npm view", VIEW_TIMEOUT_MS));
-    if (view.error?.code === "ENOENT") {
+    if (npmMissing(view)) {
       return {
         code: 1,
         action: "failed",
@@ -105,14 +120,19 @@ export function createUpdater(deps = {}) {
 
     // 2) 定位全局安装并读本地版本（缺席=新装继续）。
     const rootReq = await run(npmReq(["root", "-g"], "npm root -g", ROOT_TIMEOUT_MS));
-    if (rootReq.status !== 0) {
+    if (rootReq.status !== 0 || rootReq.error) {
       return {
         code: 1,
         action: "failed",
-        lines: [
-          "✖ 无法定位 npm 全局目录——本地未做任何改动：",
-          (rootReq.stderr || rootReq.stdout || "").trim(),
-        ],
+        lines: npmMissing(rootReq)
+          ? [
+              `✖ npm 未找到（update 只调你环境已有的 npm）——手动两步完成升级：`,
+              `  ${MANUAL_STEPS}`,
+            ]
+          : [
+              "✖ 无法定位 npm 全局目录——本地未做任何改动：",
+              (rootReq.stderr || rootReq.stdout || "").trim(),
+            ],
       };
     }
     const globalRoot = (rootReq.stdout ?? "").trim();

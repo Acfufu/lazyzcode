@@ -136,18 +136,40 @@ export async function collectStatus() {
     const list = eng.listJson();
     if (!list) {
       push("enabled", "warn", "引擎 plugins list 调用失败，启用态未知（重试或检查引擎日志）");
+    } else if (!list.shapeRecognized) {
+      // 形状漂移独立措辞（ADJ-64，0.2.1）：输出面不识别 ≠ 插件没装——旧实现两种都渲染成
+      // 「运行 lzy install」（用户被指向修不好的动作）。ADR-0021 的教训=代际复核须核 JSON 面。
+      // 级别仍取 fail（fail-loud 不降级：lzy 确实无法判定启用态），但药方换成「核对引擎代际」。
+      push(
+        "enabled",
+        "fail",
+        "引擎 plugins list 输出面不识别（形状漂移：非数组且无 plugins 数组）——启用态无法判定；请核对引擎代际与 lzy 版本（ADR-0021），勿按「未安装」处理",
+      );
     } else {
+      // 第二层防御（ADJ-53 残余）：归一器已过滤非对象元素，这里再护一道——单条畸形记录
+      // 不得炸掉整个 status（doctor 也吃这条基座）。
       const record = findInstalledPlugin(list, id);
-      if (!record) {
+      if (!record || typeof record !== "object") {
         push("enabled", "fail", "引擎未列出该插件（运行 lzy install）");
       } else if (!record.enabled) {
         push("enabled", "fail", "已安装但未启用（运行 lzy install 或 plugins enable）");
       } else {
-        push(
-          "enabled",
-          "ok",
-          `[enabled] skills:${record.skillCount ?? 0} commands:${record.commandRootCount ?? 0} hooks:${(record.hookDetails ?? []).length}`,
-        );
+        // hookDetails[].runnable=false（ADJ-60，0.2.1）：权限位类部署缺陷（钩子文件不可执行）
+        // 在 files(sha256) 与 enabled 两侧都不可见——引擎已在字段里给了逐钩子可运行性，
+        // 计入 warn 让「钩子静默全灭」在诊断面可见（warn 不翻退出码，fail-soft 家法）。
+        const hookDetails = Array.isArray(record.hookDetails) ? record.hookDetails : [];
+        const notRunnable = hookDetails.filter((h) => h && h.runnable === false);
+        const detail = `[enabled] skills:${record.skillCount ?? 0} commands:${record.commandRootCount ?? 0} hooks:${hookDetails.length}`;
+        if (notRunnable.length > 0) {
+          const names = notRunnable.map((h) => String(h.name ?? h.event ?? h.command ?? "?")).slice(0, 5);
+          push(
+            "enabled",
+            "warn",
+            `${detail} · ⚠ ${notRunnable.length} 个钩子 runnable=false（引擎判定不可运行：权限位/解释器缺失？钩子会静默失效）——例如 ${names.join("、")}；lzy doctor 的 hooks/hook-node 行可进一步定位`,
+          );
+        } else {
+          push("enabled", "ok", detail);
+        }
       }
     }
     // 归属判定：结构化字段精确等值优先，兜底带引号整串包含（裸子串会误捕他人插件诊断，评审 R3-12）。

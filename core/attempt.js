@@ -259,23 +259,25 @@ export function formatAttempts(cwd, slugHint = null) {
     return `${head}\n  ⚠ 中央账本派生失败（读面降级）：${e?.message ?? e}`;
   }
   const base = file && file.slug === slug ? file.attempts : [];
-  const fileMaxN = base.length > 0 ? Math.max(...base.map((a) => a.n)) : 0;
   const byN = new Map(base.map((a) => [a.n, { ...a, derived: false }]));
   for (const d of derived) {
     if (byN.has(d.n)) continue;
-    // 派生条目落在文件覆盖范围之前=上一运行的历史代次——状态诚实化为 superseded
-    //（派生视图区分不了 completed/abandoned，superseded 是保守真值：该代次确已非现役）。
-    byN.set(d.n, d.n < fileMaxN ? { ...d, status: "superseded" } : d);
+    // ADJ-45（0.2.1，读面诚实化）：派生视图区分不了 completed/abandoned/superseded，
+    // 也分不清「现役」还是终态（全部推断自中央账本 plan 节点的 attempt 戳）。旧实现把
+    // 最大代次一律渲染成 `active ←现役`（已完成的代次被读成现役，且失真会被下次写回
+    // 落盘）——现统一标 `derived`（终态不可辨），不再对任何派生条目断言 active/superseded。
+    byN.set(d.n, { ...d, status: "derived" });
   }
   const rows = [...byN.values()].sort((a, b) => a.n - b.n);
   if (rows.length === 0) return `${head}\n  目标 ${slug}：无 attempt 记录（未采纳过计划）`;
   const lines = rows.map((a) => {
-    const status = a.status === "superseded" && a.supersededBy ? `superseded → #${a.supersededBy}` : a.status;
-    const mark = a.n === Math.max(...rows.map((r) => r.n)) && a.status === "active" ? " ←现役" : "";
+    const status =
+      a.status === "superseded" && a.supersededBy ? `superseded → #${a.supersededBy}` : a.status;
+    const mark = a.status === "active" && a.n === Math.max(...rows.map((r) => r.n)) ? " ←现役" : "";
     return (
       `  #${a.n} ${status}  planHash ${a.planHash ? `${String(a.planHash).slice(0, 10)}…` : "—"}  ` +
       `tier ${a.tier ?? "—"}  采纳 ${a.adoptedAt ?? "—"}${a.supersededAt ? `  置换于 ${a.supersededAt}` : ""}` +
-      `${a.derived ? "（账本派生）" : ""}${mark}`
+      `${a.derived ? "（账本派生，终态不可辨）" : ""}${mark}`
     );
   });
   return `${head}\n  目标 ${slug} · ${rows.length} 代\n${lines.join("\n")}`;

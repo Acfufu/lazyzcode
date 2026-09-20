@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // lzy — LazyZCode CLI：install / sync / status / uninstall / loop / step。
 // loop = 目标循环状态机（注册→计划门→逐步派发→证据验证→完成），状态在 .lazyzcode/。
-import { resolve } from "node:path";
-import { watch } from "node:fs";
-import { assertNodeFloor, install, sync, uninstall, readRepoManifest } from "../core/installer.js";
+import { join, resolve } from "node:path";
+import { readdirSync, watch } from "node:fs";
+import { assertNodeFloor, install, sync, uninstall, readRepoManifest, readRegistry } from "../core/installer.js";
 import { createUpdater } from "../core/update.js";
 import { collectStatus } from "../core/status.js";
 import { collectDoctor, NODE_MAJOR_FLOOR } from "../core/doctor.js";
@@ -29,6 +29,7 @@ import {
   recordEvidenceHalf,
   registerGoal,
   removeSubject,
+  requireGoalPreLock,
   resetLoop,
   setRisk,
   setTier,
@@ -55,7 +56,7 @@ import {
   stalePreview,
 } from "../core/dag.js";
 import { recordComparatorAttestation } from "../core/attest.js";
-import { findEngine, repoPluginDir, userCliLogDir } from "../core/paths.js";
+import { findEngine, pluginsRoot, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
 import { auditAgentsMd, formatAgentsMd } from "../core/agentsmd.js";
 import { formatCost, rollingWaterlinePoints } from "../core/cost.js";
@@ -67,7 +68,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -95,6 +96,17 @@ function parseArgs(args) {
         !args[i + 1].startsWith("--")
       ) {
         push(a.slice(2), args[++i]);
+      } else if (VALUE_FLAGS.has(a.slice(2))) {
+        // 裸值旗标（漏值，ADJ-80，0.2.1）：旧实现静默默认 true，下游 `title?.trim` 之类
+        // 才炸出 TypeError（用户看到的是内部错误而非用法错）。这里直接 fail-loud——
+        // 同族先例=lzy loop claim 的 `--release` 裸旗标校验。--fence 走同一文案口径
+        //（ADJ-27：裸旗标/空串/科学计数都是「须为正整数」的用法错）。
+        const name = a.slice(2);
+        throw new LoopError(
+          name === "fence"
+            ? "--fence 须为正整数（收到 --fence（裸旗标/缺值））；用法：--fence <n>"
+            : `--${name} 缺值：本旗标需要 <value>（用法见 lzy help）`,
+        );
       } else {
         push(a.slice(2), true);
       }
@@ -104,8 +116,18 @@ function parseArgs(args) {
   }
   // --fence→env 桥（0.2.0 棒1 ADR-0020）：fence 写路径守卫单源读 LZY_RUNTIME_FENCE，
   // 命令级 --fence 旗标在解析完成后桥接（旗标=显式逐命令意图，覆盖继承 env）。
-  if (typeof f.fence === "string" && f.fence !== "") {
-    process.env.LZY_RUNTIME_FENCE = String(Number.parseInt(f.fence, 10));
+  // ADJ-27（0.2.1）：桥门做归一校验——空串/裸旗标/科学计数法（1e9 被 parseInt 截成 1）
+  // 曾静默落回「未申报」直通或申报成另一个数（`--fence abc` 更被误导为「你已被接管」）。
+  // 契约：--fence 须为正整数，否则显式用法错（与 lease 面同文案口径）。
+  if (f.fence !== undefined) {
+    const raw = typeof f.fence === "string" ? f.fence.trim() : f.fence;
+    const n = typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : NaN;
+    if (!Number.isSafeInteger(n) || n <= 0) {
+      throw new LoopError(
+        `--fence 须为正整数（收到 ${typeof f.fence === "string" ? `--fence ${JSON.stringify(f.fence)}` : "--fence（裸旗标/缺值）"}）；用法：--fence <n>`,
+      );
+    }
+    process.env.LZY_RUNTIME_FENCE = String(n);
   }
   return { _, f };
 }
@@ -362,8 +384,12 @@ async function cmdLoop(args) {
       }
       if (action === "list") {
         if (_[2]) throw new LoopError(`多余参数：${_[2]}（用法：lzy loop subject list）`);
+        // ADJ-79（0.2.1）：无 goal 时曾印「subjects：空（单树 host…）」——读起来像「本目录
+        // 有目标、subject 集为空」，绕过 ADR-0006 的统一无 goal 恢复式文案。改走 noGoalMessage
+        //（同族读面 claim/evidence list 同款；有 goal 才谈单树 host 的语义）。
         const goal = readGoal(cwd);
-        const subjects = goal?.subjects ?? [];
+        if (!goal) throw new LoopError(noGoalMessage(cwd));
+        const subjects = goal.subjects ?? [];
         if (subjects.length === 0) {
           console.log("subjects：空（单树 host——证据时效与 finish 闸门只看宿主树）");
         } else {
@@ -404,7 +430,9 @@ async function cmdLoop(args) {
     }
     case "attempts":
       // 世系读面（只读，formatHistory 同款永不 throw 家族）。
-      console.log(formatAttempts(cwd, readGoal(cwd)?.slug ?? null));
+      // ADJ-45（0.2.1）：补 --goal <slug>（与 evidence list / dag stale 对齐）——重注册他
+      // slug 后旧世系在盘上仍可读，此前 CLI 无入口；无参仍默认当前 goal。
+      console.log(formatAttempts(cwd, typeof f.goal === "string" ? f.goal : (readGoal(cwd)?.slug ?? null)));
       return;
     case "status":
       console.log(formatStatus(cwd, git));
@@ -433,10 +461,14 @@ async function cmdLoop(args) {
     case "lease": {
       // 运行级认领（0.2.0 棒1，ADR-0020）：acquire/heartbeat/release——分钟级互斥，
       // 匿名 handle=fence 令牌（ADR-0009 立场，不存 sessionId）。
+      // ADJ-31（0.2.1）：五个变更调用点前置 requireGoalPreLock（ADR-0006 fail-fast 家法）——
+      // 裸目录取租曾留 runtime.json 空壳 + 幻影活跃租约（doctor EXEMPT 看不见、reset 清不掉，
+      // 且此后该目录 register+drive 会被「另一运行时持租」拒满一个 TTL）。
       const action = _[1];
       const fence = f.fence != null && f.fence !== "" ? Number.parseInt(f.fence, 10) : null;
       if (action === "acquire") {
         const ttl = f["ttl-ms"] != null && f["ttl-ms"] !== "" ? Number.parseInt(f["ttl-ms"], 10) : undefined;
+        requireGoalPreLock(cwd);
         const lease = withLock(cwd, () => acquireLease(cwd, { ttlMs: ttl }));
         console.log(`✔ 租约已获：fence ${lease.fence}（至 ${new Date(lease.expiresAtMs).toISOString()}）——写路径申报用 --fence ${lease.fence} 或 env LZY_RUNTIME_FENCE`);
         return;
@@ -444,12 +476,14 @@ async function cmdLoop(args) {
       if (action === "heartbeat") {
         if (!Number.isInteger(fence)) throw new LoopError("用法：lzy loop lease heartbeat --fence <n> [--ttl-ms N]");
         const ttl = f["ttl-ms"] != null && f["ttl-ms"] !== "" ? Number.parseInt(f["ttl-ms"], 10) : undefined;
+        requireGoalPreLock(cwd);
         const lease = withLock(cwd, () => heartbeatLease(cwd, fence, { ttlMs: ttl }));
         console.log(`✔ 心跳已记：fence ${lease.fence}（续至 ${new Date(lease.expiresAtMs).toISOString()}）`);
         return;
       }
       if (action === "release") {
         if (!Number.isInteger(fence)) throw new LoopError("用法：lzy loop lease release --fence <n>");
+        requireGoalPreLock(cwd);
         const r = withLock(cwd, () => releaseLease(cwd, fence));
         console.log(r.released ? `✔ 租约已释放（fence ${fence}）` : "无活跃租约（幂等，无需释放）");
         return;
@@ -459,10 +493,12 @@ async function cmdLoop(args) {
     case "budget": {
       // 运行预算（0.2.0 棒1，ADR-0020）：init/spend/remaining——墙钟+积分双硬顶，
       // 超顶拒=drive 须干净收束的机器信号；runtime.json 自身写者不带 fence（ADR-0020 边界）。
+      // ADJ-31：init/spend 同为写面（remaining 只读，保留无 goal 可读）。
       const action = _[1];
       if (action === "init") {
         const wall = f["wall-ms"] != null && f["wall-ms"] !== "" ? Number.parseInt(f["wall-ms"], 10) : undefined;
         const pts = f.points != null && f.points !== "" ? Number.parseFloat(f.points) : undefined;
+        requireGoalPreLock(cwd);
         const b = withLock(cwd, () => initBudget(cwd, { wallClockBudgetMs: wall, pointsBudget: pts }));
         console.log(`✔ 预算已初始化：墙钟 ${b.wallClockBudgetMs}ms · 积分 ${b.pointsBudget}（env LZY_DRIVE_WALLCLOCK_BUDGET_MS / LZY_DRIVE_POINTS_BUDGET 可覆盖缺省）`);
         return;
@@ -470,6 +506,7 @@ async function cmdLoop(args) {
       if (action === "spend") {
         const ms = f.ms != null && f.ms !== "" ? Number.parseInt(f.ms, 10) : 0;
         const pts = f.points != null && f.points !== "" ? Number.parseFloat(f.points) : 0;
+        requireGoalPreLock(cwd);
         const b = withLock(cwd, () => recordSpend(cwd, { ms, points: pts }));
         console.log(`✔ 已记账：墙钟 ${b.spentMs}/${b.wallClockBudgetMs}ms · 积分 ${Math.round(b.spentPoints * 100) / 100}/${b.pointsBudget}`);
         return;
@@ -590,6 +627,12 @@ async function cmdEvidence(args) {
         console.log(
           `  对照 ${curComp.id} · ${curComp.verdict} · ${curComp.itemsCount} 项 · 指纹 ${String(curComp.fingerprint).slice(0, 10)}${comps.length > 1 ? `（历史 ${comps.length - 1} 条）` : ""}`,
         );
+        // ADJ-42/48（0.2.1）：note（限定条件）与 attests 边状态在对照行可见——note 曾被
+        // 静默丢弃；边缺席（plan 节点不在账本）此前无从察觉。
+        if (curComp.note) console.log(`    注：${String(curComp.note).slice(0, 120)}`);
+        if (!curComp.attestsPlanNodeId) {
+          console.log("    ⚠ attests 边缺席（账本无对应 plan 节点）——lzy dag dependents 查不到这条对照");
+        }
       }
     }
     // goal.json 在场才做孤儿判定（历史账本无基准，不妄判）
@@ -709,15 +752,18 @@ function reviewPlanIdOf(dag, reviewNode) {
 function cmdAttest(args) {
   const { _, f } = parseArgs(args);
   if (_[0] !== "comparator") {
-    throw new LoopError("用法：lzy attest comparator --file <结论.json>（schema：{slug, items:[{fid, verdict, basis}], note?}）");
+    throw new LoopError("用法：lzy attest comparator --file <结论.json>（schema：{slug, items:[{fid, verdict, evidenceNodeId|generation, basis}], note?}——每条 item 必须绑定该 F 项已落账的绿半节点）");
   }
   if (_[1]) throw new LoopError(`多余参数：${_[1]}（用法：lzy attest comparator --file <结论.json>）`);
   const file = typeof f.file === "string" ? resolve(process.cwd(), f.file) : null;
-  const { node, fingerprint } = recordComparatorAttestation(process.cwd(), file);
+  const { node, fingerprint, warn } = recordComparatorAttestation(process.cwd(), file);
   console.log(
     `${ICON.ok} 对照 attestation 已入账：${node.id} · ${node.verdict} · ${node.itemsCount} 项 · 指纹 ${fingerprint.slice(0, 10)} · 文件 sha256 ${node.fileSha256.slice(0, 12)}…`,
   );
   console.log(`  逐项：${node.items.map((it) => `${it.fid}:${it.verdict}`).join(" ")}`);
+  if (node.note) console.log(`  注：${node.note}`); // ADJ-42：schema 广告的 note 入账即回显
+  if (node.filePath) console.log(`  结论原件已归档：${node.filePath}（ADJ-48：事后可复核，不再只留 sha256）`);
+  if (warn) console.log(`  ⚠ ${warn}`); // ADJ-48：attests 边缺席不再静默
   if (node.verdict !== "MATCH") {
     console.log("  ⚠ MISMATCH 已如实入账（机器只记账不裁决）；HEAVY finish 会被拦——处置不匹配项后重新对照并重录");
   }
@@ -773,13 +819,54 @@ function cmdDag(args) {
   }
 }
 
+// 载荷实际版本（ADJ-92，0.2.1）：`lzy --version` 的「（插件载荷同版本）」曾是无校验断言——
+// ADR-0012 中间态（npm 已升、sync 未跑）下真实会话读的是旧载荷目录，当面失真。现实测：
+// 缓存目录枚举（多市场候选，含 /<plugin>/<version>/ 形态）+ 安装注册表版本，二者取「会话
+// 实际会装载的那个」；读不到=返回 null（版本行去掉括注，指向 lzy doctor 的 payload-ver 行）。
+function measuredPayloadVersion() {
+  try {
+    const root = pluginsRoot ? pluginsRoot() : null;
+    if (!root) return null;
+    const cacheRoot = join(root, "cache");
+    const versions = new Set();
+    for (const market of readdirSync(cacheRoot)) {
+      let dirs = [];
+      try {
+        dirs = readdirSync(join(cacheRoot, market, "lazyzcode"));
+      } catch {
+        continue;
+      }
+      for (const d of dirs) if (/^\d+\.\d+\.\d+/.test(d)) versions.add(d);
+    }
+    if (versions.size === 0) return null;
+    let entry = null;
+    try {
+      entry = readRegistry().plugins.find((e) => e.name === "lazyzcode" || String(e.id ?? "").startsWith("lazyzcode")) ?? null;
+    } catch {}
+    if (entry?.version && versions.has(entry.version)) return entry.version;
+    // 注册表未命中/不在缓存集：取语义最大值（多目录残留时以最高版本为准，如实呈现）
+    return [...versions].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).pop();
+  } catch {
+    return null;
+  }
+}
+
 async function cmdVersion() {
   let v = "unknown";
   try {
     v = readRepoManifest().version;
   } catch {}
   const ev = createEngineCli(findEngine()).version();
-  console.log(`lzy ${v}（插件载荷同版本）· 引擎 ${ev ?? "未找到"}`);
+  const payload = measuredPayloadVersion();
+  // 括注只在**实测相符**时保留（同版本）；不同则点名差异并给 sync 指路；读不到则去括注
+  // 指向 doctor（宁缺毋滥：不再对未校验的事实做断言）。
+  const payloadNote =
+    payload === null
+      ? "（载荷版本未实测——见 lzy doctor 的 payload-ver 行）"
+      : payload === v
+        ? "（插件载荷同版本）"
+        : `（插件载荷 ${payload} 与 CLI 不同——跑 lzy sync）`;
+  console.log(`lzy ${v}${payloadNote} · 引擎 ${ev ?? "未找到"}`);
 }
 
 // ── 项目记忆（AGENTS.md 分层审计，tier-1 init-deep）────────────────────────
@@ -865,9 +952,11 @@ function printHelp() {
 
 对照 attestation（v009 棒2——机器记账，HEAVY finish 强制 MATCH）：
   lzy attest comparator --file <json>       登记 qa-executor 对照结论（schema：{"slug","items":
-                                            [{"fid","verdict":"MATCH|MISMATCH","basis"}],"note"?}；
-                                            items 须覆盖全部 F 项；HEAVY finish 无 MATCH 记录即拒、
-                                            MISMATCH/指纹过期同拒；LIGHT 可 self-check 免录）
+                                            [{"fid","verdict":"MATCH|MISMATCH",
+                                            "evidenceNodeId"|"generation","basis"}],"note"?}；
+                                            items 须覆盖全部 F 项且每条绑定已落账绿半；
+                                            HEAVY finish 无 MATCH 记录即拒、MISMATCH/指纹过期同拒；
+                                            LIGHT 可 self-check 免录）
 
 项目记忆（AGENTS.md 分层，确定性审计——写盘归 init-deep 技能且草稿先行）：
   lzy agents-md    资格谓词+覆盖审计详单（退出码 0=覆盖完整无超限，1=有缺口/超限）

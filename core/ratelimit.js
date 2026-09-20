@@ -85,7 +85,8 @@ export async function collectRateLimitStats(
     available: true,
     files: files.length,
     truncation: { truncatedFiles: 0, bytesSkipped: 0, timeExceeded: false }, // 体积预算命中记录;全零=全量样本
-    rateLimited: 0, // 原始限流事件数（含重试）
+    rateLimited: 0, // 原始限流**日志行**数（含重试放大：引擎一次限流失败写 5 类同 reason 事件行）
+    failedRequests: 0, // 仅 model.request.failed 行=真实失败请求数（ADJ-62，0.2.1；doctor 渲染用）
     providers: {},
     sessions: {},
     fatal: 0,
@@ -196,6 +197,12 @@ export async function collectRateLimitStats(
       if (!d) continue; // 坏行/半行：fail-soft，不计入也不报错
       if (isRateLimited) {
         stats.rateLimited += 1;
+        // ADJ-62（0.2.1）：引擎一次限流失败写 5 类同 reason 行（model.request.failed /
+        // model.network.failed / model.retry.scheduled / model.network.retry_scheduled /
+        // model.retry.delay.resolved）——裸子串谓词全收 ⇒ 计数≈失败请求数的 5 倍（本机实测
+        // 1523 vs 304）。设计稿口径=model.request.failed；真实失败请求数单列
+        // failedRequests，doctor 渲染用它，原始行数以「限流日志行」另注（两口径都可见）。
+        if (isFailed) stats.failedRequests += 1;
         const ctx = d.context ?? {};
         // 空 providerId 视同缺字段（对抗审查 R5-A：空串会渲染无名行）
         if (typeof ctx.providerId === "string" && ctx.providerId) {
@@ -506,6 +513,14 @@ export function costAdvisory(stats, waterlinePts, threshold = WATERLINE_POINTS) 
   return { level: "ok", text: `近窗 ${stats.turns} ${unit}限流——档位维持（轻量档会放大重试与撞线）` };
 }
 
+// 窗口口径（ADJ-83，0.2.1）：`stats.files` 是**文件个数**不是天数——负证据行曾渲染
+// 「近 2 日窗口 0 起传输死亡」（把扫描体积当时间跨度，观察窗被系统性放大）。现行口径=
+// 实测时间跨度 spanHours（最小/最大事件时间戳推导）；跨度不可得（无事件/无时间戳）时
+// 如实说「样本内」，绝不按文件数编天数。样本截断声明由 doctor 侧统一追加（truncNoteOf）。
+function windowLabel(stats) {
+  return Number.isFinite(stats?.spanHours) ? `近 ${stats.spanHours}h` : "样本内";
+}
+
 // ── 传输死亡建议（ADR-0008）：把传输族统计翻译成 doctor transport 行文案 ──────
 // warn-only：诊断自身不翻退出码；不提供任何带数学输入（测量纯度，与限流分家的全部理由）。
 // 纯函数：stats 是 collectRateLimitStats 的产物。
@@ -515,7 +530,7 @@ export function transportAdvisory(stats) {
   }
   const t = stats.transport ?? { events: 0, turns: 0, byCode: {}, lastAt: null, fakeIp: false };
   if (t.events === 0) {
-    return { level: "ok", text: `近 ${stats.files} 日窗口 0 起传输死亡（请求未达服务端类故障）` };
+    return { level: "ok", text: `${windowLabel(stats)} 窗口 0 起传输死亡（请求未达服务端类故障）` };
   }
   const codes = Object.entries(t.byCode)
     .sort((a, b) => b[1] - a[1])
@@ -539,7 +554,7 @@ export function contentAdvisory(stats) {
   }
   const c = stats.content ?? { events: 0, byCode: {}, lastAt: null, lastSessionId: null };
   if (c.events === 0) {
-    return { level: "ok", text: `近 ${stats.files} 日窗口 0 起内容审核杀流（provider 内容审核中途杀流族）` };
+    return { level: "ok", text: `${windowLabel(stats)} 窗口 0 起内容审核杀流（provider 内容审核中途杀流族）` };
   }
   const codes = Object.entries(c.byCode)
     .sort((a, b) => b[1] - a[1])

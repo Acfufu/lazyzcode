@@ -180,7 +180,10 @@ test("账本分歧：删绿节点（合法校验和）→ verify/status 拒「�
   assert.equal(v.code, 1);
   assert.match(v.out, /账本不一致/);
   const st = cli(["loop", "status"], d);
-  assert.equal(st.code, 1, "status 读面同拒（不降级静默通过）");
+  // ADJ-09（0.2.1）：status 是用户恢复时的第一落点，损账本时按 never-throw 家法单项降级
+  //（原因照打、其余状态照常渲染），不再整条抛掉——fail-closed 仍在 verify/finish 两门。
+  assert.equal(st.code, 0, "status 读面单项降级（不整条失败）");
+  assert.match(st.out, /证据时效读取失败/);
   assert.match(st.out, /账本不一致/);
 });
 
@@ -356,10 +359,20 @@ test("终验 attestation：report 写失败=finish 拒且无残留；reset 存�
 
 // ── ⑧ doctor payload-ver 三态（债3）──────────────────────────────────────────
 test("doctor payload-ver：一致 ok／错配 warn 带 sync 指路／缓存缺席 skip", () => {
-  const cacheHome = (vers) => {
+  // ADJ-69（0.2.1）：内容级抽样不可读曾静默跳过仍打「一致」——本夹具的 cacheHome 原不写
+  // 样本文件（<cache>/skills/zw/SKILL.md），故「一致」实为「未比对」的假面。现 ok 支写真
+  // 样本（名副其实），另加「样本缺席 → warn 未做内容对照」一支。
+  const SAMPLE = join(ROOT, "plugin", "skills", "zw", "SKILL.md");
+  const cacheHome = (vers, { withSample = true } = {}) => {
     const h = mkdtempSync(join(tmpdir(), "lzy-v009-docver-"));
     for (const v of vers) {
-      mkdirSync(join(h, ".zcode", "cli", "plugins", "cache", "lazyzcode-local", "lazyzcode", v), { recursive: true });
+      const dir = join(h, ".zcode", "cli", "plugins", "cache", "lazyzcode-local", "lazyzcode", v);
+      if (withSample) {
+        mkdirSync(join(dir, "skills", "zw"), { recursive: true });
+        writeFileSync(join(dir, "skills", "zw", "SKILL.md"), readFileSync(SAMPLE));
+      } else {
+        mkdirSync(dir, { recursive: true });
+      }
     }
     return h;
   };
@@ -374,6 +387,9 @@ test("doctor payload-ver：一致 ok／错配 warn 带 sync 指路／缓存缺�
   const d1 = repo();
   const ok = line(run(cacheHome([CLI_VERSION]), d1));
   assert.match(ok, new RegExp(`✔ payload-ver\\s+缓存 \\[.*${CLI_VERSION.replace(/\./g, "\\.")}.*\\] · CLI ${CLI_VERSION.replace(/\./g, "\\.")} 一致`));
+  // 样本不可读（半份部署/手删 SKILL.md）→ 与「一致」区分
+  const noSample = line(run(cacheHome([CLI_VERSION], { withSample: false }), d1));
+  assert.match(noSample, /⚠ payload-ver.*未做内容对照/s);
   const warn = line(run(cacheHome(["0.0.7"]), d1));
   assert.match(warn, /⚠ payload-ver\s+缓存 \[0\.0\.7\] 无 CLI \d+\.\d+\.\d+ 的载荷目录.*lzy sync.*ADR-0012/s);
   const absent = line(run(mkdtempSync(join(tmpdir(), "lzy-v009-docver-")), d1));
@@ -650,4 +666,163 @@ test("legacy 收紧：多 subject 目标的 legacy 单树证据判过期（subje
   // 主树未变（单树哈希仍命中）但多 subject 下 legacy 轨判过期——旧实现照过（假 finish 口子）
   const v = verifyEvidence(d, createGit(d));
   assert.equal(v.stale.map((x) => x.id).join(","), "F1", "legacy 轨不再是统一权威的按步退出口");
+});
+
+// ── ⑰ 0.2.1 修复轮：comparator 覆盖/reprovenance + 对照复核面（V021-ADJ-06/42/48/50）──
+test("ADJ-06：legacy comparator 节点（无 items）不可过 finish——覆盖复查与入账同判据", () => {
+  const d = repo();
+  cycle(d, { heavy: true });
+  // 伪造 0.0.9-era 节点：合法校验和，无 items 字段（该修复是 0.0.10 的实现追文档），
+  // 指纹取当刻复合指纹（否则先撞「已过期」拒，到不了覆盖复查）
+  const fp = verifyEvidence(d, createGit(d)).fingerprint;
+  tamperLedger(d, (obj) => {
+    obj.nodes.push({
+      id: "n999",
+      kind: "comparator",
+      slug: "t",
+      planHash: goalJson(d).planHash,
+      verdict: "MATCH",
+      fingerprint: fp,
+      fileSha256: "0".repeat(64),
+      itemsCount: 0,
+      at: Date.now() + 1000, // 时点晚于锚定绿，跨过时点检查到覆盖复查
+    });
+  });
+  assert.throws(() => finishWithReport(d), /未覆盖全部 F 项.*缺 F1/s);
+  // 对照：同一伪造节点补上 items（绑锚定绿）即过覆盖复查（本门只补覆盖语义，不替代绑定）
+  const dag = loadDag(d);
+  const anchor = findGreenByGeneration(dag, "t", "F1", 1, goalJson(d).attempt);
+  tamperLedger(d, (obj) => {
+    const n = obj.nodes.find((x) => x.id === "n999");
+    n.items = [{ fid: "F1", verdict: "MATCH", evidenceNodeId: anchor.id, generation: 1, basis: "" }];
+  });
+  const { goal } = finishWithReport(d);
+  assert.equal(goal.status, "done");
+});
+
+test("ADJ-42/48：note 入节点（截断 ≤300）+ 结论原件归档 + attests 对端机器可见", () => {
+  const d = repo();
+  cycle(d, { heavy: true });
+  const note = "限定：对照者视角=独立于实现者；排除项=纯外观渲染";
+  recordComparatorAttestation(
+    d,
+    verdictFile(d, { slug: "t", note, items: [{ fid: "F1", verdict: "MATCH", generation: 1, basis: "x" }] }),
+  );
+  const dag = loadDag(d);
+  const comp = findLatestComparator(dag, "t", goalJson(d).planHash);
+  assert.equal(comp.note, note, "note 不再静默丢弃（ADJ-42）");
+  assert.match(comp.attestsPlanNodeId, /^n\d+$/, "attests 对端落节点字段（ADJ-48）");
+  // 原件归档：命名带节点身份，内容与结论文件逐字节同
+  const archived = join(d, ".lazyzcode", "evidence", `t.comparator.${comp.id}.json`);
+  assert.ok(existsSync(archived), `结论原件应归档：${archived}`);
+  assert.equal(sha256(readFileSync(archived)), comp.fileSha256, "归档字节=fileSha256 所证的那份");
+  // 超长 note 截断 300（与 basis 同量级）
+  recordComparatorAttestation(
+    d,
+    verdictFile(d, { slug: "t", note: "N".repeat(500), items: [{ fid: "F1", verdict: "MATCH", generation: 1, basis: "x" }] }),
+  );
+  const comp2 = findLatestComparator(loadDag(d), "t", goalJson(d).planHash);
+  assert.equal(comp2.note.length, 300);
+  // 结论文件超上限（1MiB）拒且不落账
+  const huge = verdictFile(d, `{"slug":"t","items":[],"pad":"${"x".repeat(1024 * 1024)}"}`);
+  assert.throws(() => recordComparatorAttestation(d, huge), /超上限/);
+});
+
+test("ADJ-48：plan 节点缺席时记录照落、attests 对端记 null（不静默）", () => {
+  const d = repo();
+  cycle(d, { heavy: true });
+  tamperLedger(d, (obj) => {
+    obj.nodes = obj.nodes.filter((n) => n.kind !== "plan");
+    obj.edges = obj.edges.filter((e) => e.type !== "plans");
+  });
+  const r = recordComparatorAttestation(
+    d,
+    verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1, basis: "x" }] }),
+  );
+  assert.equal(r.node.attestsPlanNodeId, null);
+  assert.match(r.warn, /attests 边缺席/);
+  assert.equal(loadDag(d).nodes.filter((n) => n.kind === "comparator").length, 1, "记录照落（机器只记账）");
+});
+
+test("ADJ-50：findLatestComparator 大 id 决胜走 BigInt（超 2^53 不塌缩）", () => {
+  const dag = emptyDag();
+  const big = 2n ** 60n;
+  const mk = (id, at) => {
+    dag.nodes.push({
+      id,
+      kind: "comparator",
+      slug: "s",
+      planHash: "p",
+      verdict: "MATCH",
+      fingerprint: "f",
+      fileSha256: "x",
+      itemsCount: 0,
+      items: [],
+      at,
+    });
+  };
+  mk(`n${big}`, 1000);
+  mk(`n${big + 1n}`, 1000); // 同 at：Number 口径下相邻 id 会塌缩成同数 → 决胜不决定
+  assert.equal(findLatestComparator(dag, "s", "p").id, `n${big + 1n}`);
+});
+
+// ADJ-13（0.2.1）：孤儿 tmp 家族三源合一——doctor 计数从 core/loop.js 的 LOOP_TMP_FAMILIES
+// 单源取（旧实现 doctor 只数 goal/dag 两族：3 枚只报 1、metrics/handoff/report/snapshot
+// 族既不报也不清）；reset 的清扫面同步扩到 snapshots//salvage//evidence/。
+test("ADJ-13：metrics/handoff/report/snapshot tmp 都入 doctor 计数与 reset 清扫", () => {
+  const d = repo();
+  const loop = join(d, ".lazyzcode", "loop");
+  const spec = [
+    join(loop, ".goal.json.1.1.tmp"),
+    join(loop, "metrics.json.1.tmp"), // 钩子侧形态（无前导点）
+    join(loop, ".metrics.json.2.2.tmp"), // core 侧形态
+    join(loop, ".handoff.json.3.3.tmp"),
+    join(loop, "snapshots", ".snapshot.t.md.4.4.tmp"),
+    join(loop, "salvage", ".report.t.md.5.5.tmp"),
+    join(d, ".lazyzcode", "evidence", ".report.t.report.md.6.6.tmp"),
+    join(d, ".lazyzcode", "evidence", ".evidence.t.F1.red.gen1.n2.1.txt.7.7.tmp"),
+  ];
+  for (const p of spec) {
+    mkdirSync(join(p, ".."), { recursive: true });
+    writeFileSync(p, "x");
+  }
+  const doc = cli(["doctor"], d).out;
+  const state = doc.split("\n").find((l) => l.includes("state")) ?? "";
+  assert.match(state, new RegExp(`孤儿 tmp ${spec.length} 个`), `全部家族都应入计数：${state}`);
+  // reset 清扫全部（含 metrics/handoff/snapshot/report/附件 tmp）；loop/ 常驻豁免面照旧
+  const r = cli(["loop", "reset"], d);
+  assert.equal(r.code, 0, r.out);
+  const left = [];
+  const walk = (dir) => {
+    for (const f of readdirSync(dir)) {
+      const p = join(dir, f);
+      if (f.endsWith(".tmp")) left.push(p);
+      else {
+        try {
+          if (readdirSync(p)) walk(p);
+        } catch {}
+      }
+    }
+  };
+  walk(join(d, ".lazyzcode"));
+  assert.deepEqual(left, [], "reset 后零孤儿 tmp");
+});
+
+// ADJ-15 的 doctor 半（0.2.1）：人权门批准记录的机器审计面——计数 + 形状异常逐条点名。
+test("ADJ-15：doctor approvals 行——零记录 skip；合法 ok；非 JSON/缺字段逐条点名 warn", () => {
+  const d = repo();
+  const dir = join(d, ".lazyzcode", "loop", "approvals");
+  mkdirSync(dir, { recursive: true });
+  const lineOf = (out) => out.split("\n").find((l) => /\bapprovals\b/.test(l)) ?? "";
+  assert.match(lineOf(cli(["doctor"], d).out), /➖ approvals\s+无批准记录/, "空目录=skip");
+  writeFileSync(join(dir, "a.json"), JSON.stringify({ version: 1, slug: "t", planHash: "ab".repeat(32), at: new Date().toISOString(), sessionId: "s1" }));
+  assert.match(lineOf(cli(["doctor"], d).out), /✔ approvals\s+批准记录 1 条/, "形状合法=ok");
+  writeFileSync(join(dir, "broken.json"), "{ not json");
+  writeFileSync(join(dir, "nokey.json"), JSON.stringify({ slug: "t" }));
+  writeFileSync(join(dir, "a.tmp"), "半写残留");
+  const warn = lineOf(cli(["doctor"], d).out);
+  assert.match(warn, /⚠ approvals\s+批准记录 3 条（合法 1）/, warn);
+  assert.match(warn, /broken\.json（非 JSON）/);
+  assert.match(warn, /nokey\.json（缺 slug\/planHash 字段）/);
+  assert.doesNotMatch(warn, /a\.tmp/, "tmp 残片不混入记录计数（孤儿 tmp 面另有 state 行）");
 });

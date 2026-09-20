@@ -25,7 +25,7 @@ import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvis
 import { WATERLINE_POINTS, rollingWaterlinePoints } from "./cost.js";
 import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
-import { assertDriveEligible, readGoal, scanSessionFlags } from "./loop.js";
+import { assertDriveEligible, countLoopResidueTmp, readGoal, scanSessionFlags } from "./loop.js";
 import { loadRuntime } from "./runtime.js";
 import { createGit } from "./git.js";
 
@@ -92,14 +92,20 @@ function checkPayloadVersion(push) {
     const market =
       (regEntry?.marketplace && marketVersions.has(regEntry.marketplace) && regEntry.marketplace) ||
       [...marketVersions.keys()].find((m) => marketVersions.get(m).includes(cliVersion));
-    if (market) {
+    // ADJ-69（0.2.1）：抽样不可读/未定位市场时曾静默跳过、照打「一致」——把「未比对」
+    // 渲染成「一致」。两态都 push 一条 problem，与「一致」区分（仍 warn，不翻退出码）。
+    if (!market) {
+      problems.push("未定位市场目录（注册表未指市场且候选缓存均无 CLI 版本号目录），未做内容对照");
+    } else {
       try {
         const cacheSkill = join(cacheRoot, market, PLUGIN_NAME, cliVersion, "skills", "zw", "SKILL.md");
         const pkgSkill = join(packageRoot, "plugin", "skills", "zw", "SKILL.md");
         if (sha256File(cacheSkill) !== sha256File(pkgSkill)) {
           problems.push("内容级对照不符（缓存载荷与包 payload 漂移，样本 skills/zw/SKILL.md）——重跑 lzy sync");
         }
-      } catch {}
+      } catch (e) {
+        problems.push(`内容级对照样本不可读（${e?.message ?? e}），未做内容对照——重跑 lzy sync 后复查`);
+      }
     }
     if (problems.length > 0) {
       push("payload-ver", "warn", `缓存 [${versions.join(", ")}] · CLI ${cliVersion} 目录在，但 ${problems.join("；")}`);
@@ -251,19 +257,10 @@ function checkLoopState(push, cwd) {
   } catch {
     sessions = 0;
   }
-  try {
-    // kill -9 落在 writeGoal/saveDag 与 rename 之间的孤儿 tmp（评审 R2-11；
-    // v009-bat1#N2 家族表与 cleanupLoopResidue 的 tmpFamilies 同源：goal.json + dag.json）
-    orphanTmp = readdirSync(dir).filter(
-      (f) => f.endsWith(".tmp") && (f.startsWith(".goal.json.") || f.startsWith(".dag.json.")),
-    ).length;
-  } catch {
-    orphanTmp = 0;
-  }
-  try {
-    // attestation tmp 家族（ADJ-14，0.0.10）：attestations/ 与 loop/ 同属清扫登记面
-    orphanTmp += readdirSync(join(cwd, ".lazyzcode", "attestations")).filter((f) => f.endsWith(".tmp")).length;
-  } catch {}
+  // ADJ-13（0.2.1）：孤儿 tmp 计数走 core/loop.js 的单源计数（家族表 + 扫描面与
+  // cleanupLoopResidue 全同）——旧实现 doctor 自成一份两族清单（goal/dag），比 cleanup
+  // 窄且异（metrics/handoff/report/snapshot 族既不报也不清，「state ok」可在有孤儿时报干净）。
+  orphanTmp = countLoopResidueTmp(cwd);
   if (goalMissing) {
     if (sessions > 0 || orphanTmp > 0) {
       push(
@@ -278,6 +275,7 @@ function checkLoopState(push, cwd) {
     // 清不掉目录本身，指引手动 rm -r。与上方残留 warn 分流，不重复告警。
     // salvage/ 存根是有意产物（可回收工件面，status 有读面）——仅剩它的目录不是疤痕。
     let emptyScar = false;
+    let scarEntries = [];
     try {
       const entries = readdirSync(dir); // 能列目录 = 目录在场
       // 目录在场即疤痕（空目录也是残留）；豁免=有意产物/正常残留：salvage/ 存根、
@@ -289,16 +287,38 @@ function checkLoopState(push, cwd) {
       // 记录族（0.1.1 goal1 ADR-0018，钩子写入 reset 不清，同 attempt.json 先例）、
       // runtime.json 运行时账本（0.2.0 棒1 ADR-0020，跨 reset 常驻，同 dag.json 先例）
       const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json"]);
+      scarEntries = entries;
       emptyScar = entries.length === 0 || entries.some((e) => !EXEMPT.has(e));
     } catch {
       emptyScar = false; // 目录缺席 = 真干净
     }
     if (emptyScar) {
-      push(
-        "state",
-        "warn",
-        `.lazyzcode/loop/ 空壳疤痕（有目录无 goal.json；reset 会报「无需 reset」清不掉）——手动 rm -r ${dir} 清除`,
-      );
+      // ADJ-71（0.2.1）：处方按目录实际内容分流——旧文案对**任何**非豁免项都统一给
+      // `rm -r <loop/>`，而同一目录里合法常驻的正是设计上 reset 不清的那批（approvals/
+      // 人权门审计、snapshots/ 计划快照、salvage/ 存根、dag.json/attempt.json/runtime.json/
+      // metrics.json）——照方执行=一次性删掉全部常驻账本。空目录才给 rm -r；含常驻项时
+      // 只点名可删残留并列出将连带删除的常驻面。
+      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json"]);
+      const transient = scarEntries.filter((e) => !EXEMPT.has(e));
+      const residents = scarEntries.filter((e) => EXEMPT.has(e)).sort();
+      if (scarEntries.length === 0) {
+        push(
+          "state",
+          "warn",
+          `.lazyzcode/loop/ 空壳疤痕（空目录无 goal.json；reset 会报「无需 reset」清不掉）——手动 rm -r ${dir} 清除（空目录，无连带损失）`,
+        );
+      } else {
+        push(
+          "state",
+          "warn",
+          `.lazyzcode/loop/ 空壳疤痕（有目录无 goal.json；reset 会报「无需 reset」）——可删残留：${transient.join("、")}；` +
+            `⚠ 目录内还有 reset 不清的常驻账本（${residents.join("、")}），整目录 rm -r 会一并删掉：` +
+            (transient.length > 0
+              ? `只删点名残留即可（rm -r ${dir}/${transient[0]}${transient.length > 1 ? " 等" : ""}）；`
+              : "") +
+            `要连常驻面一起清用 lzy loop reset（清 goal/会话/交接/孤儿 tmp；常驻账本按设计保留）`,
+        );
+      }
     } else {
       push("state", "ok", "无目标循环状态（干净）");
     }
@@ -329,18 +349,24 @@ function checkClaims(push, cwd) {
     push("claims", "skip", "非 executing 或无目标，认领不生效");
     return;
   }
-  const { claims, stuck, expired } = scanSessionFlags(cwd);
+  const { claims, stuck, expired, future } = scanSessionFlags(cwd);
   const stuckNote = stuck.length > 0 ? `；⚠ stuck ${stuck.length} 个（${stuck.join(" ")}），推进步骤即自愈` : "";
   const expiredNote =
     expired.length > 0 ? `；过期认领 ${expired.length} 个已按 48h TTL 退役（${expired.join(" ")}）` : "";
+  // 越界时间戳（ADJ-14，0.2.1）：claimedAt 在未来（时钟回拨/手改文件）——已按不新鲜处置
+  //（既不占步也不进拉回资格），这里如实点名，避免运维按「认领缺失」方向排查。
+  const futureNote =
+    future.length > 0
+      ? `；⚠ 时间戳越界（未来时刻）${future.length} 个（${future.join(" ")}）——时钟回拨或手改 claimedAt，已按不新鲜处置`
+      : "";
   if (claims.length > 0) {
-    push("claims", "ok", `认领 ${claims.length} 个（${claims.join(" ")}）——Stop 拉回仅限认领会话${stuckNote}${expiredNote}`);
+    push("claims", "ok", `认领 ${claims.length} 个（${claims.join(" ")}）——Stop 拉回仅限认领会话${stuckNote}${expiredNote}${futureNote}`);
   } else {
     push(
       "claims",
       "warn",
       "零认领：资格制下无人会被拉回（ADR-0004 修正案四）；参与会话发 invocational 触发（如「zw 继续」）即认领接管" +
-        `${stuckNote}${expiredNote}`,
+        `${stuckNote}${expiredNote}${futureNote}`,
     );
   }
 }
@@ -458,6 +484,57 @@ function checkOrphanWake(push, cwd) {
     "ok",
     `wake 在场 ${mine.length} 颗，目标非 executing，近 48h run ${recent.length} 次（未达连续空转判据）`,
   );
+}
+
+// 人权门批准记录审计行（ADJ-15 的 doctor 半，0.2.1；ADR-0018 补偿控制的机器落点）：
+// 批准记录只能由 UserPromptSubmit 钩子在真实用户消息上写入，而门本身是「目录里有任意
+// JSON，slug+planHash 命中即放行」——威胁边界=防偷懒不防伪证（手写记录即可过门，ADR-0018
+// 已诚实披露）。本行把那批记录变成**可见**的：计数 + 形状异常逐条点名（非 JSON/缺
+// slug|planHash 字段/字段类型不符）。只读零写，warn/skip only 不翻退出码。
+function checkApprovals(push, cwd) {
+  const dir = join(cwd, ".lazyzcode", "loop", "approvals");
+  let names;
+  try {
+    names = readdirSync(dir).filter((f) => f.endsWith(".json")); // 连 .tmp 残片一起排除（state 行管孤儿）
+  } catch {
+    push("approvals", "skip", "无批准记录目录（人权门未触发过或还未安装钩子）");
+    return;
+  }
+  const malformed = [];
+  let wellFormed = 0;
+  for (const f of names) {
+    let rec = null;
+    try {
+      rec = JSON.parse(readFileSync(join(dir, f), "utf8"));
+    } catch {
+      malformed.push(`${f}（非 JSON）`);
+      continue;
+    }
+    const okShape =
+      rec &&
+      typeof rec === "object" &&
+      !Array.isArray(rec) &&
+      typeof rec.slug === "string" &&
+      rec.slug &&
+      typeof rec.planHash === "string" &&
+      rec.planHash;
+    if (okShape) wellFormed += 1;
+    else malformed.push(`${f}（缺 slug/planHash 字段）`);
+  }
+  if (names.length === 0) {
+    push("approvals", "skip", "无批准记录（人权门未触发过）");
+    return;
+  }
+  if (malformed.length > 0) {
+    push(
+      "approvals",
+      "warn",
+      `批准记录 ${names.length} 条（合法 ${wellFormed}）· ⚠ 形状异常 ${malformed.length} 条：${malformed.slice(0, 5).join("、")}${malformed.length > 5 ? "…" : ""}——` +
+        `记录是本地文件（ADR-0018：防偷懒不防伪证）；异常记录请人工核对来源后清理`,
+    );
+    return;
+  }
+  push("approvals", "ok", `批准记录 ${names.length} 条（形状合法；ADR-0018 审计面——记录身份=文件+at/sessionId 字段）`);
 }
 
 // 提交账本巡逻（ADR-0005）：goal 起点后的提交缺 `Goal:` 尾注的比例。
@@ -615,6 +692,10 @@ async function checkRateLimit(push) {
     push("schedule", "skip", "无引擎日志——无人值守窗口无从实测，任意时段均可（建议 ≥1h 间隔）");
     return;
   }
+  // 传输族独立于限流族：无 429 不代表无传输死亡，行照出。样本截断声明同款追加
+  //（ADJ-83：负证据行必须与 rate-limit 行一样交代观察窗是否被截断）。
+  const truncNote = truncNoteOf(stats.truncation);
+  const withTrunc = (text) => (truncNote ? `${text}（${truncNote}）` : text);
   if (stats.rateLimited === 0) {
     const note0 = truncNoteOf(stats.truncation);
     push("rate-limit", "ok", `近 ${stats.spanHours ?? stats.files * 24}h 无账号级限流记录${note0 ? `（${note0}）` : ""}`);
@@ -628,10 +709,10 @@ async function checkRateLimit(push) {
     if (cst0) push("cost", cst0.level, cst0.text);
     // 传输族独立于限流族：无 429 不代表无传输死亡，行照出
     const tr0 = transportAdvisory(stats);
-    push("transport", tr0.level, tr0.text);
+    push("transport", tr0.level, withTrunc(tr0.text));
     // 内容杀流族同款独立：无 429 不代表无内容审核杀流（干净机+纯内容杀流恰是最常见盲区）
     const ct0 = contentAdvisory(stats);
-    push("content", ct0.level, ct0.text);
+    push("content", ct0.level, withTrunc(ct0.text));
     push("schedule", "skip", "无集中段证据——任意时段均可挂自动化，建议 ≥1h 间隔");
     return;
   }
@@ -639,9 +720,17 @@ async function checkRateLimit(push) {
   // 只测不嘱：建议行数字只取实测边界（maxClean），无实测时无数字；固定「≤3」类处方已废除。
   const unit = stats.caliber === "turn" ? "回合" : "次首撞";
   const spanH = stats.spanHours ?? stats.files * 24;
+  // 失败请求数用 failedRequests（ADJ-62，0.2.1）：仅 model.request.failed 行——裸子串
+  // rateLimited 是**日志行**数（引擎一次限流失败写 5 类同 reason 行，实测夸大 5 倍）。
+  // 两口径都可见：主句给真实失败请求数，行数差额显著时另注原始行数。
+  const failedReq = Number.isFinite(stats.failedRequests) ? stats.failedRequests : stats.rateLimited;
+  const lineNote =
+    Number.isFinite(stats.failedRequests) && stats.rateLimited !== failedReq
+      ? `、限流日志行 ${stats.rateLimited}`
+      : "";
   const head =
     `近 ${spanH}h 账号限流 ${stats.turns} ${unit}` +
-    `（失败请求 ${stats.rateLimited} 次、判死 ${stats.fatal}、最近 ${fmtLocal(stats.lastAt)}）`;
+    `（失败请求 ${failedReq} 次${lineNote}、判死 ${stats.fatal}、最近 ${fmtLocal(stats.lastAt)}）`;
   let mid;
   let advice;
   const extra = [];
@@ -674,7 +763,6 @@ async function checkRateLimit(push) {
   const adviceStr = `；${advice}`;
   const budget = 300 - [...adviceStr].length;
   let detail = head + mid;
-  const truncNote = truncNoteOf(stats.truncation);
   if (truncNote) extra.unshift(truncNote);
   for (const piece of extra) {
     if ([...`${detail}；${piece}`].length <= budget) detail += `；${piece}`;
@@ -683,10 +771,10 @@ async function checkRateLimit(push) {
   push("rate-limit", "warn", detail);
   // 传输死亡行（ADR-0008）：与限流同源同扫描不重复读日志，只记账不进任何带数学
   const tr = transportAdvisory(stats);
-  push("transport", tr.level, tr.text);
+  push("transport", tr.level, withTrunc(tr.text));
   // 内容审核杀流行：与限流同源同扫描不重复读日志，只记账不进任何带数学
   const ct = contentAdvisory(stats);
-  push("content", ct.level, ct.text);
+  push("content", ct.level, withTrunc(ct.text));
   // provider 分桶带行（决策 #21 前置件）：≥2 provider 才出行；同源同扫描零重复读
   const pb = providerBandAdvisory(stats);
   if (pb) push("band-by-provider", pb.level, pb.text);
@@ -736,15 +824,28 @@ function checkDrive(push, cwd) {
     push("drive", "warn", `runtime 账本不可读：${err?.message ?? err}`);
     return;
   }
-  const goal = readGoal(cwd);
-  let eligText = "无 executing 目标";
-  if (goal && goal.status === "executing") {
+  // ADJ-87（0.2.1）：readGoal 对版本不兼容/不可读 fail-closed 抛错——裸调会让 checkDrive
+  // 整行消失（collectDoctor 的通用兜底接住 → 只剩「自检项故障」，drive 行四段全没）。
+  // 同 status/claims/ledger 的单项降级家法：goal 读面异常就地降级，其余照常渲染。
+  let goal = null;
+  let goalErr = null;
+  try {
+    goal = readGoal(cwd);
+  } catch (err) {
+    goalErr = err?.message ?? String(err);
+  }
+  let eligText;
+  if (goalErr) {
+    eligText = `goal 不可读/版本不兼容（${String(goalErr).split("；")[0]}）——lzy loop status 与 reset 可读细节`;
+  } else if (goal && goal.status === "executing") {
     try {
       const eligible = assertDriveEligible(goal);
       eligText = `${goal.slug} 可入 drive（risk=${eligible.risk}）`;
     } catch (err) {
       eligText = `${goal.slug} 拒入：${String(err?.message ?? err).split("——")[0]}`;
     }
+  } else {
+    eligText = "无 executing 目标";
   }
   push(
     "drive",
@@ -772,6 +873,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     checkPayloadVersion,
     (p) => checkLoopState(p, cwd),
     (p) => checkClaims(p, cwd),
+    (p) => checkApprovals(p, cwd),
     (p) => checkHostGit(p, cwd),
     (p) => checkWaterline(p),
     (p) => checkOrphanWake(p, cwd),

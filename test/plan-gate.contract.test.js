@@ -11,6 +11,8 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createGit } from "../core/git.js";
+import { TITLE_MAX, adoptPlan, registerGoal, resetLoop } from "../core/loop.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
@@ -243,4 +245,21 @@ test("依赖边：20 节环路径封顶展示；6000 深链照常采纳（迭代
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
+});
+
+// ADJ-17（0.2.1）：入账长度上限家族补全——goal.title 与计划条目标题此前无任何上限
+//（状态文件常驻且每次 status/verify 重解析，巨标题正是 R2-9 要防的面）。
+test("ADJ-17：--title 与计划条目标题上限 300（超限 LoopError 点名字段与上限）", () => {
+  const d = repo();
+  assert.throws(() => registerGoal(d, "t", "x".repeat(TITLE_MAX + 1)), /--title 超上限 300/);
+  // 裸 --title（漏值=true）在 core 侧类型守卫即拒（CLI 侧另有用法错）
+  assert.throws(() => registerGoal(d, "t", true), /目标标题不能为空/);
+  assert.equal(registerGoal(d, "t", "x".repeat(TITLE_MAX)).title.length, TITLE_MAX, "恰在上限=放行");
+  resetLoop(d, createGit(d));
+  registerGoal(d, "t", "ok");
+  const p = join(d, "long.md");
+  writeFileSync(p, `- [N1] ${"y".repeat(TITLE_MAX + 1)}\n`);
+  assert.throws(() => adoptPlan(d, p), /计划条目标题超上限 300 字符：N1/);
+  writeFileSync(p, `- [N1] ${"y".repeat(TITLE_MAX)}\n`);
+  assert.equal(adoptPlan(d, p).goal.steps[0].title.length, TITLE_MAX, "恰在上限=放行");
 });

@@ -303,8 +303,13 @@ evidence does not demonstrate the claim: re-capture on the right surface, or if 
 itself was wrong, amend the plan honestly — then re-run. LIGHT goals: do the comparison
 yourself as a self-check (weaker — you authored the evidence; know its blind spot).
 **Machine attestation (0.0.9 baton 2):** transcribe the comparator verdicts into a minimal
-JSON (`{"slug", "items": [{"fid", "verdict": "MATCH|MISMATCH", "basis"}], "note"?}` — items
-must cover every F item) and record it with
+JSON
+(`{"slug", "items": [{"fid", "verdict": "MATCH|MISMATCH", "evidenceNodeId"|"generation",
+"basis"}], "note"?}` — items must cover every F item, and **every item must bind evidence**
+(`evidenceNodeId` = the green node id shown by `lzy evidence list`, or `generation` = its
+capture generation): a comparison that is not anchored to an already-recorded green half is
+rejected at record time, so capture (or rebind) evidence first, then compare) and record it
+with
 `lzy attest comparator --file <verdicts.json>`. For HEAVY goals `finish` machine-enforces a
 current MATCH attestation whose fingerprint matches the tree (missing / MISMATCH / stale all
 reject, no bypass); LIGHT goals may skip the recording.
@@ -590,6 +595,16 @@ otherwise is a lie about who enforces it.
    half is not repairable by more green — recover via `lzy evidence red` /
    `waive-red`) and harness match (INV-08: red/green recorded with `--harness`
    must name the same procedure).
+   **INV-09 scope — be precise about what the machine checks (ADJ-47):**
+   *presence* is the gate's criterion. A red (or waived) half paired to the
+   anchored green passes; a red half recorded in an earlier generation may
+   stay paired to a later green (re-pairing on rebind is ADR-0014 semantics),
+   so "the halves are the same assertion in the before/after states" is **not**
+   machine-proven by INV-09 alone. Same-source proof becomes machine-checked
+   only when both halves declare `--harness` (then INV-08 compares the
+   hashes); otherwise it rests on the protocol and your declarations. Declare
+   `--harness` on both halves whenever that pairing claim is load-bearing —
+   it converts a protocol promise into a checked one.
 3. **[L0]** `.lazyzcode/` is the loop's single source of truth — if speech and
    state disagree, trust the state, then fix the speech.
 4. **[L0]** Never `reset`/`abandon` a goal slot another session is actively
@@ -652,7 +667,7 @@ tool). Aliases are equal — `zw` is the primary.
 | `lzy evidence red <Fid> · waive-red <Fid> --reason · list` | dual-evidence ledger: record the red half (own surface), the one-line exemption's machine form, and the per-F manifest view |
 | `lzy dag dependents <id|surface>` | "what depends on X" against the central invalidation DAG (read-only) |
 | `lzy dag stale` | invalidation preview: which evidence nodes are stale against the current composite fingerprint (display-only; gates still judge by direct fingerprint comparison) |
-| `lzy attest comparator --file <json>` | record comparator verdicts (schema `{slug, items:[{fid, verdict, basis}]}`; HEAVY finish enforces current MATCH) |
+| `lzy attest comparator --file <json>` | record comparator verdicts (schema `{slug, items:[{fid, verdict, evidenceNodeId\|generation, basis}], note?}` — every item must bind a recorded green half; HEAVY finish enforces current MATCH) |
 | `lzy loop finish` | final gate: all done + fresh evidence + all {host}∪subjects trees clean (+ HEAVY: MATCH attestation); auto-archives the evidence bundle and writes the final attestation |
 | `lzy loop export` | re-export the evidence bundle to `.lazyzcode/evidence/<slug>.report.md` |
 | `lzy loop abandon` / `lzy loop reset` | give up / clear state |

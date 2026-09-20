@@ -328,3 +328,67 @@ test("收尾：模块级隔离 HOME 清理", () => {
   assert.ok(HOME.startsWith(tmpdir()));
   assert.ok(!HOME.startsWith(ROOT));
 });
+
+// ADJ-60/64（0.2.1）：enabled 行的两个新增判读面——逐钩子可运行性（引擎已在
+// hookDetails[].runnable 给出，权限位类部署缺陷此前不可见）与形状漂移的独立措辞
+//（「输出面不识别」不再指向修不好的 lzy install）。
+test("ADJ-60：hookDetails[].runnable=false → enabled 行降为 warn 并点名钩子", () => {
+  const s = scratch();
+  try {
+    const rec = REC({
+      hookDetails: [
+        { name: "Stop", runnable: true },
+        { name: "UserPromptSubmit", runnable: false },
+        { name: "PostToolUse", runnable: false },
+      ],
+    });
+    const r = lzy(["status"], s, { FAKE_LIST_FILE: listFixture(s, [rec], "runnable") });
+    const line = enabledLine(r.out);
+    assert.ok(line.includes("⚠"), `runnable=false 应 warn：${line}`);
+    assert.match(line, /2 个钩子 runnable=false/);
+    assert.match(line, /UserPromptSubmit/);
+    // 全 true=ok（零语义变化）
+    const ok = lzy(["status"], s, {
+      FAKE_LIST_FILE: listFixture(s, [REC({ hookDetails: [{ name: "Stop", runnable: true }] })], "runnable-ok"),
+    });
+    assert.ok(enabledLine(ok.out).includes("✔"), enabledLine(ok.out));
+  } finally {
+    cleanup(s);
+  }
+});
+
+test("ADJ-64：形状漂移（非数组且无 plugins 数组）→ 独立措辞，不指 lzy install", () => {
+  const s = scratch();
+  try {
+    const drift = lzy(["status"], s, { FAKE_LIST_FILE: listFixture(s, { data: { plugins: [REC()] } }, "drift") });
+    const line = enabledLine(drift.out);
+    assert.ok(line.includes("✖"), `fail-loud 不降级：${line}`);
+    assert.match(line, /输出面不识别|形状漂移/);
+    assert.doesNotMatch(line, /运行 lzy install/, "不再指向修不好的动作（ADR-0021 教训）");
+    // 归一器的形状标志：两代形状真；四种漂移假（包封位移/键改名/id 列表/非对象元素）
+    assert.equal(normalizePluginList([]).shapeRecognized, true);
+    assert.equal(normalizePluginList({ plugins: [] }).shapeRecognized, true);
+    for (const bad of [{ data: { plugins: [] } }, { plugins: { 0: {} } }, ["id"], [null]]) {
+      assert.equal(normalizePluginList(bad).shapeRecognized, false, JSON.stringify(bad).slice(0, 40));
+    }
+    // 真「未列出」（形状认识但记录不在）仍指 lzy install
+    const missing = lzy(["status"], s, { FAKE_LIST_FILE: listFixture(s, [], "missing") });
+    assert.match(enabledLine(missing.out), /运行 lzy install/);
+  } finally {
+    cleanup(s);
+  }
+});
+
+// ADJ-92（0.2.1）：--version 的载荷括注改为实测——缓存/注册表读不到时去括注（指向 doctor），
+// 与 CLI 版本不同则点名差异。
+test("ADJ-92：--version 括注按实测载荷版本给出（隔离 HOME 无缓存=去断言）", () => {
+  const s = scratch();
+  try {
+    const r = lzy(["--version"], s, { FAKE_VERSION: "9.9.9" });
+    assert.match(r.out, /^lzy \d+\.\d+\.\d+/);
+    assert.match(r.out, /引擎 9\.9\.9/);
+    assert.match(r.out, /载荷版本未实测.*payload-ver/, "读不到载荷=不做无校验断言");
+  } finally {
+    cleanup(s);
+  }
+});

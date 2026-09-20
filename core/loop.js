@@ -869,7 +869,10 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
   // 位置=planHash 计算后、goal 变更前；--force 不越过（无逃生 flag）；plan/supersede/
   // 存量重采纳同一门；双档全适用（V3 表4 H1）。无记录→落 approvalPending 后拒（报文
   // 带短码+恢复指引）；重拒幂等刷新。批准记录只能由 UserPromptSubmit 钩子在真实用户
-  // 消息上写入——CLI 侧无 approve 命令（自跑即假人权门，前提已证伪）。
+  // 消息上写入——CLI 侧无 approve 命令。
+  // ADJ-15（0.2.1）：报文口径=禁令，不是能力断言——批准记录是工作区里的本地 JSON 文件，
+  // 手写即可「过门」；本门防偷懒不防伪证（与 dag/attestation 同一威胁边界），补偿控制=
+  // 协议文本+审计环（doctor approvals 行为批准记录的机器读面），边界见 ADR-0018。
   if (!ablated("LZY_ABLATE_HUMAN_GATE") && !findApproval(cwd, goal.slug, planHash)) {
     // planPath 进 pending：首次采纳时 goal.planPath 尚为空、复采纳时指向旧计划——
     // 钩子的 exact-hash 复核必须哈希到「本门所验的这份文件」。
@@ -882,8 +885,10 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
     const short = planHash.slice(0, 8);
     throw new LoopError(
       `人权门未过（UPS exact-hash，ADR-0018）：计划 ${goal.slug}（短码 ${short}）等待人类批准。` +
-        `把「批准 ${short}」原样转给用户，用户消息到达后重跑本命令；` +
-        `模型不可自跑命令或手写记录冒充批准（批准记录只能由 UserPromptSubmit 钩子在真实用户消息上写入）。`,
+        `把「批准 ${short}」原样转给用户，用户消息到达后重跑本命令。` +
+        `禁令：不得手写 approvals/ 批准记录、也不得自跑命令冒充批准（正规通道只有 UserPromptSubmit ` +
+        `钩子在真实用户消息上写记录）——本门防偷懒不防伪证：记录是工作区本地文件，手写即可过门，` +
+        `威胁边界与 dag/attestation 同级；补偿控制=协议文本+审计环（doctor approvals 行），见 ADR-0018。`,
     );
   }
   goal.planPath = relative(cwd, planFile) || planFile;
@@ -1005,6 +1010,11 @@ function attachEvidenceFiles(cwd, goal, step, files, seq = 1) {
     // seq=取证代数（step.evidenceSeq）：重取证落新代数文件名，不再同名覆写旧附件（plan-v2 Phase 2-1）
     const dest = join(outDir, `${goal.slug}.${step.id}.${seq}.${i + 1}${ext}`);
     copyFileSync(src, dest);
+    // 0600（ADJ-18，0.2.1）：证据附件常含 HTTP 响应/截图/CLI 输出（可能带凭据或内部
+    // 数据），.lazyzcode/evidence/ 是 reset 不清的长期留存目录——与账本同权限，不留 umask 差。
+    try {
+      chmodSync(dest, 0o600);
+    } catch {}
     return {
       path: relative(cwd, dest),
       name: basename(src),
@@ -1122,7 +1132,10 @@ export function recordEvidenceHalf(cwd, git, id, { half, text = null, files = nu
 
 function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal, harness }) {
   guardFence(cwd);
-  const goal = requireActive(cwd, "executing");
+  // done 态恢复白名单第三腿（ADJ-04，0.2.1）：HEAVY finish 的 INV-09/INV-08 拒报文都把
+  // `lzy evidence red` / `waive-red` 写成恢复命令，而 done 态下这两条曾被状态门反拒 →
+  // 恢复链断（唯一出路 reset/abandon）。白名单与 completeStep/attest 对齐（executing|done）。
+  const goal = requireActive(cwd, "executing", "done");
   const step = goal.steps.find((s) => s.id === id);
   if (!step) {
     throw new LoopError(`无此步骤：${id}（现有：${goal.steps.map((s) => s.id).join(" ") || "无"}）`);
@@ -1207,6 +1220,9 @@ function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal
 // （<slug>.<F>.<half>.gen<seq>.<nodeId>.<n><ext>）——红半与绿半瞄准同一代数，不带 half
 // 段会互相覆写；同代次第二条红半落新节点 id 新文件、永不覆写（ADJ-24，0.0.10），
 // 目标名意外在场即拒（防碰撞退化为静默覆盖与假 sha256 声明）。
+// ADJ-05（0.2.1）：先全部复制到 .tmp 名、全部成功才 rename 到终名——中途任一失败
+// （不可读/非文件/超限）即清理本次已复制的 tmp 并整命令拒，不再留「半失败终名残留」；
+// 重试时 nextId 推出同一节点 id → 撞 ADJ-24 护栏死端（消除死端的碰撞报文见下）。
 function attachHalfFiles(cwd, goal, step, files, seq, half, nodeId) {
   if (!files || files.length === 0) return undefined;
   if (files.length > EVIDENCE_FILES_MAX) {
@@ -1214,30 +1230,52 @@ function attachHalfFiles(cwd, goal, step, files, seq, half, nodeId) {
   }
   const outDir = join(cwd, ".lazyzcode", "evidence");
   mkdirSync(outDir, { recursive: true });
-  return files.map((src, i) => {
-    let st;
-    try {
-      st = statSync(src);
-    } catch {
-      throw new LoopError(`证据文件不可读：${src}`);
+  const staged = [];
+  try {
+    const out = [];
+    for (let i = 0; i < files.length; i++) {
+      const src = files[i];
+      let st;
+      try {
+        st = statSync(src);
+      } catch {
+        throw new LoopError(`证据文件不可读：${src}`);
+      }
+      if (!st.isFile()) throw new LoopError(`证据路径不是文件：${src}`);
+      if (st.size > EVIDENCE_FILE_MAX_BYTES) {
+        throw new LoopError(`证据文件超上限 ${EVIDENCE_FILE_MAX_BYTES} bytes：${src}（${st.size}）`);
+      }
+      const ext = (/(\.[a-z0-9]{1,9})$/i.exec(basename(src))?.[1] ?? ".bin").toLowerCase();
+      const dest = join(outDir, `${goal.slug}.${step.id}.${half}.gen${seq}.${nodeId}.${i + 1}${ext}`);
+      if (existsSync(dest)) {
+        throw new LoopError(
+          `红半附件目标已存在（文件名含节点身份 ${nodeId}，不应碰撞）：${dest}——拒绝覆写（ADJ-24）；` +
+            `若为上一次半失败残留，删除残留 ${dest} 后重试`,
+        );
+      }
+      const tmp = join(outDir, `.evidence.${basename(dest)}.${process.pid}.${Date.now()}.${i}.tmp`);
+      copyFileSync(src, tmp);
+      try {
+        chmodSync(tmp, 0o600); // 与证据家族同权限（ADJ-18）
+      } catch {}
+      staged.push({ tmp, dest });
+      out.push({
+        path: relative(cwd, dest),
+        name: basename(src),
+        sha256: createHash("sha256").update(readFileSync(tmp)).digest("hex"),
+        bytes: st.size,
+      });
     }
-    if (!st.isFile()) throw new LoopError(`证据路径不是文件：${src}`);
-    if (st.size > EVIDENCE_FILE_MAX_BYTES) {
-      throw new LoopError(`证据文件超上限 ${EVIDENCE_FILE_MAX_BYTES} bytes：${src}（${st.size}）`);
+    for (const s of staged) renameSync(s.tmp, s.dest);
+    return out;
+  } catch (err) {
+    for (const s of staged) {
+      try {
+        rmSync(s.tmp, { force: true });
+      } catch {}
     }
-    const ext = (/(\.[a-z0-9]{1,9})$/i.exec(basename(src))?.[1] ?? ".bin").toLowerCase();
-    const dest = join(outDir, `${goal.slug}.${step.id}.${half}.gen${seq}.${nodeId}.${i + 1}${ext}`);
-    if (existsSync(dest)) {
-      throw new LoopError(`红半附件目标已存在（文件名含节点身份 ${nodeId}，不应碰撞）：${dest}——拒绝覆写（ADJ-24）`);
-    }
-    copyFileSync(src, dest);
-    return {
-      path: relative(cwd, dest),
-      name: basename(src),
-      sha256: createHash("sha256").update(readFileSync(dest)).digest("hex"),
-      bytes: st.size,
-    };
-  });
+    throw err;
+  }
 }
 
 // ── 4b. 步级认领（决策 #21 最小链，2026-09-14）：同目标多工人占步互斥 ────────
@@ -1246,10 +1284,26 @@ function attachHalfFiles(cwd, goal, step, files, seq, half, nodeId) {
 // 48h，与 goal 级 claimedAt 同常数）；step done 自动清；goal.json 写路径全走 withLock。
 
 // 认领新鲜谓词：claim.at 在 TTL 内才算在场（过期=可再认领，重认领自然覆写）。
+// ADJ-14（0.2.1）：未来时间戳（时钟回拨/VM 恢复/手改文件）曾使差值恒为负 → 恒判新鲜，
+// 占步 48h 互斥永不退役。取值=「不新鲜」（而非 clamp 到 now）：clamp 会让一条伪造/越界
+// 的认领凭 48h 重新起算、继续挡住同目标其他工人，而保守方向应是把异常时间戳视为无效
+// 标记（重认领自然覆写，零工作量损失）——扫描侧同判并把 sid 记入 future 名单告警。
 function isClaimFresh(step) {
   if (!step.claim || typeof step.claim.at !== "string") return false;
   const at = Date.parse(step.claim.at);
-  return Number.isFinite(at) && Date.now() - at <= CLAIM_TTL_MS;
+  if (!Number.isFinite(at)) return false;
+  const now = Date.now();
+  if (at > now) return false; // 未来时间戳=异常标记，不新鲜
+  return now - at <= CLAIM_TTL_MS;
+}
+
+// 认领时间戳越界谓词（ADJ-14，0.2.1）：claim.at 在未来（时钟回拨/VM 恢复/手改文件）——
+// 值语义=异常标记，只用于读面点名（不新鲜判定在 isClaimFresh 内联，避免两处漂移）。
+function claimTimeAnomaly(step) {
+  const at = step?.claim?.at;
+  if (typeof at !== "string") return null;
+  const t = Date.parse(at);
+  return Number.isFinite(t) && t > Date.now() ? at : null;
 }
 
 // 无阻塞谓词：deps 全 done（无 deps=恒无阻塞）。返回未完成依赖 id 列表（空=可认领）。
@@ -1460,6 +1514,21 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
       throw new LoopError(
         `对照 attestation 已过期（记录 ${comparator.id} 的指纹与当前树不符——对照后代码又变了）：重新对照并重录`,
       );
+    }
+    // ── 覆盖复查（ADJ-06，0.2.1）：0.0.9-era 的 comparator 节点无 items 字段——下面的
+    // 绑定循环会被 `items ?? []` 空转，同时让 INV-09 的「legacy 轨不重复执法」分支失去
+    // 前提（升级携带账本的防御缺口）。判据与入账侧（attest.js validateAttestationDoc）
+    // 同：items 必须覆盖 goal 的全部 F 项，legacy 空 items 节点不可过门。
+    {
+      const fids = goal.steps.filter((s) => s.kind === "F").map((s) => s.id);
+      const covered = new Set((comparator.items ?? []).map((it) => it.fid));
+      const uncovered = fids.filter((id) => !covered.has(id));
+      if (uncovered.length > 0) {
+        throw new LoopError(
+          `对照 attestation（${comparator.id}）未覆盖全部 F 项：缺 ${uncovered.join(" ")}` +
+            `（无 items 的旧版记录不可过门）——重新对照全部 F 项并重录（lzy attest comparator --file …）`,
+        );
+      }
     }
     // ── 对照绑证据（ADJ-02，0.0.10）：item 须绑定该 F 项当前代次的锚定绿节点，且对照
     // 时点晚于所锚节点取证时点——「先对照后取证」「rebind 后复用旧对照」「跨 reset 复用」
@@ -1687,12 +1756,8 @@ function buildReportLines(cwd, git, goal) {
 
 function writeReportFile(cwd, goal, lines, targetPath) {
   const p = targetPath ?? join(cwd, ".lazyzcode", "evidence", `${goal.slug}.report.md`);
-  mkdirSync(dirname(p), { recursive: true });
-  // tmp 落盘+rename 原子写：kill -9 窗口的 .tmp 残片为无害孤儿（history 读面按
-  // .report.md 后缀过滤不受扰；ADR-0013 已知边界）。
-  const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
-  writeFileSync(tmp, `${lines.join("\n")}\n`);
-  renameSync(tmp, p);
+  // 0600（ADJ-18，0.2.1）：证据包含取证原文/附件清单，与账本同权限。
+  writeAtomic(p, `${lines.join("\n")}\n`, "report.");
   return { path: relative(cwd, p) };
 }
 
@@ -1786,17 +1851,39 @@ export const HANDOFF_SNAPSHOT_SECTIONS = [
 
 // 内容 lint：7 节标题在场且各节至少一行非空正文（裸标题=空壳交接，与缺节同拒）。
 // 导出（0.2.0 棒2）：drive 自写交接快照收束前用同一 lint 自检（函数体不变，单一事实源）。
+// ADJ-33（0.2.1）：改「按 HANDOFF_SNAPSHOT_SECTIONS 顺序分节 + 标题仅行首匹配」——
+// ①旧实现用 indexOf 裸子串找标题，正文里出现 "## " 开头的行（脏树清单节承载
+// git status --porcelain 原文，`## notes/foo.md` 这类路径完全合法；剩余步骤节承载
+// 计划条目标题）会被当成节界 → 该节被判「空节」→ 快照生成器（drive windDown）被自己的
+// 校验器拒绝，恰在必须交回的时刻；②旧实现不查节序，七节任意排列都能过。现语义：标题须
+// 行首出现、且按契约顺序（乱序=后面的节找不到=缺节）；重复标题按「该节到下一个节标题」取段。
+// 契约字面量不变（HANDOFF_SNAPSHOT_SECTIONS 逐字节同 zw SKILL.md 模板）。
 export function lintHandoffSnapshot(content) {
   const missing = [];
+  const lines = String(content ?? "").split(/\r?\n/);
+  const isSectionHead = (line) => HANDOFF_SNAPSHOT_SECTIONS.some((h) => line.startsWith(h));
+  let cursor = 0;
   for (const head of HANDOFF_SNAPSHOT_SECTIONS) {
-    const at = content.indexOf(head);
+    let at = -1;
+    for (let i = cursor; i < lines.length; i++) {
+      if (lines[i].startsWith(head)) {
+        at = i;
+        break;
+      }
+    }
     if (at < 0) {
       missing.push(head);
       continue;
     }
-    const rest = content.slice(at + head.length);
-    const next = rest.indexOf("\n## ");
-    if (!((next < 0 ? rest : rest.slice(0, next)).trim())) missing.push(`${head}（空节）`);
+    let end = lines.length;
+    for (let i = at + 1; i < lines.length; i++) {
+      if (isSectionHead(lines[i])) {
+        end = i;
+        break;
+      }
+    }
+    if (!lines.slice(at + 1, end).some((l) => l.trim())) missing.push(`${head}（空节）`);
+    cursor = at + 1;
   }
   return missing;
 }
@@ -1845,7 +1932,9 @@ export function handoffGoal(cwd, snapshot, treeHash) {
     const p = handoffPath(cwd);
     const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
     mkdirSync(dirname(p), { recursive: true });
-    writeFileSync(tmp, `${JSON.stringify(marker, null, 2)}\n`);
+    // 0600（ADJ-18，0.2.1）：交接标记与账本同语义（快照路径/头树/请求时刻），曾是唯一
+    // 无 mode 的 JSON——与 goal.json 的权限口径拉齐。
+    writeFileSync(tmp, `${JSON.stringify(marker, null, 2)}\n`, { mode: 0o600 });
     renameSync(tmp, p); // 原子落盘：与 Stop 侧 unlink 消费的互斥由文件系统原子性保证
     incMetrics(cwd, "registered"); // 永不抛（契约见上）——登记不因计数失败而失败
     return marker;
@@ -1856,45 +1945,65 @@ export function resetLoop(cwd, git) {
   return withLock(cwd, () => doResetLoop(cwd, git));
 }
 
+const LOOP_TMP_SCAN_DIRS = (cwd) => [
+  loopDir(cwd),
+  join(loopDir(cwd), "snapshots"),
+  join(loopDir(cwd), "salvage"),
+];
+// approvals/ 与 attestations/ 的 tmp 命名由钩子/写者自定（家族前缀不覆盖），沿用「任何
+// .tmp」口径（与 cleanup 全同——观测面与清扫面必须同一判据，否则又造出第三份清单）。
+const ANY_TMP_SCAN_DIRS = (cwd) => [
+  join(loopDir(cwd), "approvals"),
+  join(cwd, ".lazyzcode", "evidence"),
+  join(cwd, ".lazyzcode", "attestations"),
+];
+
+// 孤儿 tmp 计数（doctor 用）：与 cleanupLoopResidue 同一家族表、同一扫描面（ADJ-13，0.2.1）。
+// 旧实现里 doctor 自成两族清单（goal/dag）且只扫 loop/ 顶层——「state ok」可在有孤儿时报干净。
+export function countLoopResidueTmp(cwd) {
+  let n = 0;
+  for (const d of LOOP_TMP_SCAN_DIRS(cwd)) {
+    try {
+      n += readdirSync(d).filter(isLoopTmpName).length;
+    } catch {}
+  }
+  for (const d of ANY_TMP_SCAN_DIRS(cwd)) {
+    try {
+      n += readdirSync(d).filter((f) => f.endsWith(".tmp")).length;
+    } catch {}
+  }
+  return n;
+}
+
 // 孤儿/残留清理（评审 R2-11）：kill -9 落在 tmp 写入与 rename 之间会留孤儿 .tmp；
 // 会话计数器在 goal 清除后也成悬空状态。doctor 的状态卫生与 reset 指引共用此语义。
-// tmp 家族表（v009-bat1#N2）：goal.json 之外再收中央 DAG 账本（core/dag.js saveDag
-// 同一命名约定 .<basename>.<pid>.<ts>.tmp）；attempt.json 世系账本同命名（0.1.0 棒B，
-// core/attempt.js saveAttempts）——新增常驻账本须在此登记，否则孤儿不可清。
+// 家族表=LOOP_TMP_FAMILIES（模块顶部单一事实源，ADJ-13，0.2.1）：doctor 的孤儿计数
+//（countLoopResidueTmp）与本函数同表同扫描面（LOOP_TMP_SCAN_DIRS/ANY_TMP_SCAN_DIRS）——
+// 此前 doctor 只数两族、cleanup 四族、metrics 两族谁都管不到。新增常驻账本须登记家族并
+// 确认两面覆盖，否则孤儿既不可清也不可见。
 function cleanupLoopResidue(cwd) {
   const dir = loopDir(cwd);
-  const goalName = basename(goalPath(cwd));
-  const tmpFamilies = [`.${goalName}.`, ".dag.json.", ".attempt.json.", ".runtime.json."];
   let cleaned = 0;
-  try {
-    for (const f of readdirSync(dir)) {
-      if (f.endsWith(".tmp") && tmpFamilies.some((p) => f.startsWith(p))) {
-        rmSync(join(dir, f), { force: true });
-        cleaned++;
-      }
+  const sweep = (d, pred = isLoopTmpName) => {
+    let names;
+    try {
+      names = readdirSync(d);
+    } catch {
+      return;
     }
-  } catch {}
-  try {
-    // 终验 attestation 的孤儿 tmp（ADJ-14，0.0.10）：写失败窗口的 .<attemptId>.<pid>.<ts>.tmp
-    // 落在 loop/ 外的 attestations/，同样登记进清扫家族。
-    for (const f of readdirSync(join(cwd, ".lazyzcode", "attestations"))) {
-      if (f.endsWith(".tmp")) {
-        rmSync(join(cwd, ".lazyzcode", "attestations", f), { force: true });
+    for (const f of names) {
+      if (!pred(f)) continue;
+      try {
+        rmSync(join(d, f), { recursive: true, force: true });
         cleaned++;
-      }
+      } catch {}
     }
-  } catch {}
+  };
+  const anyTmp = (f) => f.endsWith(".tmp");
+  for (const d of LOOP_TMP_SCAN_DIRS(cwd)) sweep(d);
+  for (const d of ANY_TMP_SCAN_DIRS(cwd)) sweep(d, anyTmp);
   try {
-    // 人权门批准记录的孤儿 tmp（0.1.1 goal1，ADR-0018）：钩子 tmp+rename 写窗口的
-    // .<name>.<pid>.<ts>.tmp 落在 loop/approvals/，同样登记进清扫家族（记录本体 reset 不清）。
-    for (const f of readdirSync(join(dir, "approvals"))) {
-      if (f.endsWith(".tmp")) {
-        rmSync(join(dir, "approvals", f), { force: true });
-        cleaned++;
-      }
-    }
-  } catch {}
-  try {
+    // 会话旗标整目录内容清除（目录本身保留：reset 清内容留目录是既有契约）。
     for (const f of readdirSync(join(dir, "sessions"))) {
       rmSync(join(dir, "sessions", f), { recursive: true, force: true });
       cleaned++;
@@ -1976,9 +2085,11 @@ function writeSalvageStub(cwd, goal, git, reason) {
     `- 证据包：.lazyzcode/evidence/${goal.slug}.report.md（finish 归档，reset 不清）`,
     "",
   ];
-  mkdirSync(salvageDir(cwd), { recursive: true });
+  // 原子写（ADJ-18，0.2.1）：本存根曾是全文件唯一的裸写——写入中断即留半截 salvage
+  // 存根，而它正是接管者读的审计材料；tmp 家族 report. 前缀覆盖（salvage 与报告同形
+  // 命名空间，清扫面见 cleanupLoopResidue 的 evidence/ 扫描）。
   const p = join(salvageDir(cwd), `${goal.slug}.md`);
-  writeFileSync(p, lines.join("\n"));
+  writeAtomic(p, lines.join("\n"), "report.");
   return { path: relative(cwd, p), dirty: dirty?.length ?? 0, commits: commits?.length ?? 0 };
 }
 
@@ -1994,11 +2105,12 @@ export function scanSessionFlags(cwd) {
   const claims = [];
   const stuck = [];
   const expired = []; // 认领 TTL（plan-v2 Phase 2-5）：claimedAt 超 48h 的死亡会话认领
+  const future = []; // 越界时间戳（ADJ-14，0.2.1）：claimedAt 在未来=异常标记，按不新鲜处置
   let names;
   try {
     names = readdirSync(join(loopDir(cwd), "sessions"));
   } catch {
-    return { claims, stuck, expired };
+    return { claims, stuck, expired, future };
   }
   for (const name of names) {
     if (!name.endsWith(".json")) continue; // 连 .lock-<sid> 目录与 .pid.tmp 一起排除
@@ -2008,7 +2120,9 @@ export function scanSessionFlags(cwd) {
         const sid = name.slice(0, -".json".length);
         if (typeof raw.claimedAt === "string" && raw.claimedAt) {
           const at = Date.parse(raw.claimedAt);
-          if (Number.isFinite(at) && Date.now() - at > CLAIM_TTL_MS) expired.push(sid);
+          const now = Date.now();
+          if (Number.isFinite(at) && at > now) future.push(sid);
+          else if (Number.isFinite(at) && now - at > CLAIM_TTL_MS) expired.push(sid);
           else claims.push(sid);
         }
         if (raw.stuck === true) stuck.push(sid);
@@ -2017,7 +2131,7 @@ export function scanSessionFlags(cwd) {
       // 损坏文件跳过
     }
   }
-  return { claims, stuck, expired };
+  return { claims, stuck, expired, future };
 }
 
 export function formatStatus(cwd, git) {
@@ -2084,7 +2198,8 @@ export function formatStatus(cwd, git) {
       // 步级认领/阻塞读面（决策 #21）：done 不标注（认领已自清）；blocked 只列未完成依赖。
       let flag = "";
       if (s.status !== "done") {
-        if (isClaimFresh(s)) flag = " [claimed]";
+        if (claimTimeAnomaly(s)) flag = " [claim:时间戳越界（未来时刻）]";
+        else if (isClaimFresh(s)) flag = " [claimed]";
         else {
           const undone = blockedBy(s, goal);
           if (undone.length > 0) flag = ` [blocked: ${undone.join(",")}]`;
@@ -2116,6 +2231,13 @@ export function formatStatus(cwd, git) {
     if (flags.stuck.length > 0) {
       lines.push(`  ⚠ stuck ${flags.stuck.length}：${flags.stuck.join(" ")}（原地无进展两振停拉，推进步骤即自愈）`);
     }
+    if (flags.future.length > 0) {
+      // 越界时间戳告警（ADJ-14，0.2.1）：时钟回拨/手改 claimedAt——已按不新鲜处置（不占步、
+      // 不进拉回资格），此处只作可见性提示（warn-only，不翻退出码）。
+      lines.push(
+        `  ⚠ 认领时间戳越界（未来时刻）${flags.future.length} 个：${flags.future.join(" ")}（时钟回拨或手改 claimedAt；已按不新鲜处置）`,
+      );
+    }
     try {
       // 交接标记读面（ADR-0009）：在场=下个 Stop 将消费并放行（一次性）。
       const marker = JSON.parse(readFileSync(handoffPath(cwd), "utf8"));
@@ -2130,14 +2252,24 @@ export function formatStatus(cwd, git) {
     );
   }
   if (git && (goal.status === "executing" || goal.status === "done")) {
-    const { current, stale, unbound } = verifyEvidence(cwd, git);
-    const fDone = goal.steps.filter((s) => s.kind === "F" && s.status === "done");
-    const freshCount = fDone.length - stale.length - unbound.length;
-    lines.push(`  tree ${(current ?? "未知").slice(0, 10)}`);
-    lines.push(
-      `  证据时效：新鲜 ${freshCount} · 过期 ${stale.length} · 未绑定 ${unbound.length}` +
-        (stale.length + unbound.length > 0 ? "（lzy loop finish 会被拦）" : ""),
-    );
+    // ADJ-09（0.2.1）：本段曾裸调 verifyEvidence（loadDag DagError / 账本-goal 分歧 LoopError
+    // 原样上抛）——损账本时 status 整条失败 exit 1，而 status 恰是用户恢复时的第一落点。
+    // never-throw 读面家族（formatRepoList/formatHistory/formatAttempts）同款：单项降级，
+    // 其余状态照常渲染（原因自带恢复指路——DagError 文案含备份/重建步骤）。
+    try {
+      const { current, stale, unbound } = verifyEvidence(cwd, git);
+      const fDone = goal.steps.filter((s) => s.kind === "F" && s.status === "done");
+      const freshCount = fDone.length - stale.length - unbound.length;
+      lines.push(`  tree ${(current ?? "未知").slice(0, 10)}`);
+      lines.push(
+        `  证据时效：新鲜 ${freshCount} · 过期 ${stale.length} · 未绑定 ${unbound.length}` +
+          (stale.length + unbound.length > 0 ? "（lzy loop finish 会被拦）" : ""),
+      );
+    } catch (err) {
+      lines.push(
+        `  ⚠ 证据时效读取失败：${err?.message ?? err}（其余状态照常；修好账本后重跑 lzy loop status）`,
+      );
+    }
   }
   return lines.join("\n");
 }

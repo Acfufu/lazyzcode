@@ -8,6 +8,7 @@ import { mkdtempSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, u
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { lintHandoffSnapshot } from "../core/loop.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
@@ -602,17 +603,19 @@ test("认领健壮性：旧 goal.json 无 deps/claim 字段容忍、畸形 claim
     g.steps.find((s) => s.id === "N2").claim = "bogus";
     writeFileSync(goalAt, JSON.stringify(g));
     assert.equal(lzy(["loop", "claim", "N2"], d).code, 0);
-    // 远未来时间戳 = 在场认领（互斥成立）；唯一出路 --release（ADR-0004 修正案三已知边界钉）
+    // 未来时间戳（ADJ-14，0.2.1）：时钟回拨/手改 claimedAt 不再「恒新鲜」（旧实现差值
+    // 恒负 → 占步 48h 互斥永不退役）。现按不新鲜处置=不占步、不进拉回资格，status 一行点名。
     const g2 = JSON.parse(readFileSync(goalAt, "utf8"));
     g2.steps.find((s) => s.id === "N1").claim = { at: "not-a-date" };
     g2.steps.find((s) => s.id === "N2").claim = { at: "9999-01-01T00:00:00.000Z" };
     writeFileSync(goalAt, JSON.stringify(g2));
     const st1 = lzy(["loop", "status"], d).out;
     assert.doesNotMatch(st1, /N1\s+\[N\] x \[claimed\]/); // 坏时间戳不算认领
-    assert.match(st1, /N2\s+\[N\] y \[claimed\]/); // 远未来戳算在场
-    assert.match(lzy(["loop", "claim", "N2"], d).out, /已被认领/);
+    assert.doesNotMatch(st1, /N2\s+\[N\] y \[claimed\]/); // 未来戳=不新鲜（旧断言「算在场」已由 ADJ-14 废止）
+    assert.match(st1, /N2\s+\[N\] y \[claim:时间戳越界（未来时刻）\]/); // 越界时间戳如实点名（warn-only）
+    assert.equal(lzy(["loop", "claim", "N2"], d).code, 0); // 异常标记不占步：可再认领
+    assert.match(lzy(["loop", "claim", "N2"], d).out, /已被认领/); // 重认领后互斥恢复
     assert.equal(lzy(["loop", "claim", "N2", "--release"], d).code, 0);
-    assert.equal(lzy(["loop", "claim", "N2"], d).code, 0);
     // release 缺 id → 用法错（评审 R1-A6）
     assert.match(lzy(["loop", "claim", "--release"], d).out, /用法/);
     // release 吃值 → 拒（--release=yes 静默反义防，评审 R2-A）
@@ -643,4 +646,60 @@ test("status 下一步标注（R1-A4）：指向被认领/被阻塞步时点名�
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
+});
+
+// ADJ-33（0.2.1）：交接快照 lint 改「按契约顺序分节 + 标题仅行首匹配」——旧实现 indexOf
+// 裸子串找标题（正文含 "## " 行即把本节切成空节 → 生成器被自己的校验器拒绝）+ 不查节序。
+test("ADJ-33：lint 查节序；正文含 '## ' 行不再误判空节；行首标题照常", () => {
+  const sections = [
+    ["## 剩余步骤", "N2、F1"],
+    ["## 下一步动作", "推进 N2"],
+    ["## 目标与进度", "1/3"],
+    ["## 脏树清单", "## notes/foo.md\nM src/a.js"], // 正文含行首 "## " 的脏树路径（真实形态）
+    ["## tree hash", "abc123"],
+    ["## 风险与坑", "无"],
+    ["## 复归指令", "zw 继续"],
+  ];
+  const body = (order) => ["# 交接快照", ...order.flatMap(([h, t]) => [h, t])].join("\n");
+  assert.deepEqual(lintHandoffSnapshot(body(sections)), [], "顺序正确 + 正文含 ## 行 = 全过");
+  // 乱序：复归指令提早到首位 → 游标扫到它时已越过 = 缺节（旧实现判 [] 放行）
+  const shuffled = [sections[6], ...sections.slice(0, 6)];
+  const missing = lintHandoffSnapshot(body(shuffled));
+  assert.ok(missing.length > 0, `乱序应报缺节：${JSON.stringify(missing)}`);
+  assert.ok(missing.some((m) => m.includes("## 复归指令")), `越位标题应报缺：${JSON.stringify(missing)}`);
+  // 真空节仍判罚
+  assert.match(lintHandoffSnapshot(body(sections.map(([h, t], i) => (i === 0 ? [h, ""] : [h, t])))).join(","), /空节/);
+  // 「## notes/foo.md」不再把「脏树清单」切成空节
+  assert.ok(!lintHandoffSnapshot(body(sections)).some((m) => m.includes("脏树清单")), "子串不再误判空节");
+});
+
+// ADJ-79（0.2.1）：无 goal 时 subject list 走统一恢复式文案（不再印「单树 host」陈述）
+test("ADJ-79：无 goal 的 subject list 报恢复式文案（exit 1）", () => {
+  const d = repo();
+  try {
+    const r = lzy(["loop", "subject", "list"], d);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /没有目标循环状态/);
+    assert.doesNotMatch(r.out, /单树 host/);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+// ADJ-45（0.2.1）：attempts 读面补 --goal（对齐 evidence list / dag stale）
+test("ADJ-45：loop attempts --goal 指向他 slug 的历史世系；无参默认当前 goal", () => {
+  const d = repo();
+  const p = join(d, "p.md");
+  try {
+    writeFileSync(p, "- [N1] x\n- [F1] v\n");
+    lzy(["loop", "register", "old", "--title", "t"], d);
+    assert.equal(lzy(["loop", "plan", "p.md"], d).code, 0);
+    assert.equal(lzy(["loop", "start"], d).code, 0);
+    assert.equal(lzy(["loop", "abandon"], d).code, 0);
+    assert.equal(lzy(["loop", "reset"], d).code, 0);
+    const r = lzy(["loop", "attempts", "--goal", "old"], d);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /目标 old/);
+    assert.match(r.out, /#1 abandoned/); // 文件条目（收口终态）优先于派生
+    // 无参且无 goal：报「无」而非炸
+    assert.match(lzy(["loop", "attempts"], d).out, /attempt 世系/);
+  } finally { rmSync(d, { recursive: true, force: true }); }
 });

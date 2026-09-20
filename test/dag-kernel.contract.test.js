@@ -474,3 +474,33 @@ test("跨实例隔离：旧实例红不配新实例绿、supersedes 不跨实例
   assert.equal(red2Edges.length, 2, "实例2 红半两条 red_of：录时反向边指锚定绿 g2 + 落地时 pairReds 指现行绿 g2b");
   assert.deepEqual(red2Edges.map((e) => e.to), [g2.id, g2b[1].id]);
 });
+
+// ADJ-05（0.2.1）：红半附件逐个拷贝，中途失败即留「半失败终名残留」——重试时 nextId 推出
+// 同一节点 id → 撞 ADJ-24 碰撞护栏成死端。现实现=先全量复制到 .tmp、全部成功才 rename；
+// 中途失败清理本次 tmp 并整命令拒，修正文件表后重跑即过（无需人工删残留）。
+test("红半附件半失败不落终名残留：中途失败清理 tmp、修正后重试即过（ADJ-05）", () => {
+  const d = repo();
+  registerGoal(d, "t", "title");
+  const p = join(d, ".lazyzcode", "plan.md");
+  mkdirSync(join(d, ".lazyzcode"), { recursive: true });
+  writeFileSync(p, "- [F1] v\n");
+  adoptPlan(d, p);
+  startLoop(d, createGit(d));
+  const good = join(d, "good.txt");
+  writeFileSync(good, "GOOD");
+  const notFile = join(d, "notafile");
+  mkdirSync(notFile, { recursive: true });
+  const evDir = join(d, ".lazyzcode", "evidence");
+  // [good, DIR] → 第二项非文件即抛（第一项已复制到 tmp）
+  assert.throws(
+    () => recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "半失败", files: [good, notFile] }),
+    /证据路径不是文件/,
+  );
+  assert.equal(existsSync(evDir) ? readdirSync(evDir).filter((f) => !f.startsWith(".")).length : 0, 0, "终名零残留");
+  assert.equal(readdirSync(evDir).filter((f) => f.endsWith(".tmp")).length, 0, "本次 tmp 已清理");
+  // 修正文件表后重试：nextId 仍推同一 id，但无残留 → 照过（旧实现在此撞碰撞护栏死端）
+  const r = recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "重试成功", files: [good] });
+  assert.equal(r.node.files.length, 1);
+  assert.equal(readFileSync(join(d, r.node.files[0].path), "utf8"), "GOOD");
+  assert.equal(createHash("sha256").update("GOOD").digest("hex"), r.node.files[0].sha256);
+});

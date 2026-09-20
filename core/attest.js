@@ -4,8 +4,9 @@
 // self-check 免录）。结论文件=主代理转抄 qa-executor 文本报告的最小 JSON——转抄错位
 // （fid 拼写/verdict 词形/漏项）在 schema 校验处拦下，绝不静默入账。
 // 依赖方向：attest.js → loop.js → dag.js 单向（dag.js 不反向 import，免循环）。
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 import {
   LoopError,
   fingerprintSubjects,
@@ -29,6 +30,10 @@ export function recordComparatorAttestation(cwd, file) {
   return withLock(cwd, () => doRecordComparatorAttestation(cwd, file));
 }
 
+// 结论原件体积上限（ADJ-48，0.2.1）：结论文件是「主代理转抄 qa-executor 报告的最小
+// JSON」——正常量级 KB 级；1MiB 上限拦住「手滑塞整份报告」且读入不再无界。
+const COMPARATOR_FILE_MAX_BYTES = 1024 * 1024;
+
 function doRecordComparatorAttestation(cwd, file) {
   guardFence(cwd); // fence 写路径守卫（0.2.0 棒1 ADR-0020；done 态放行语义不变，本守卫在前）
   // done 态恢复白名单（ADJ-10 出口，0.0.10）：rebind 后需重对照再重 finish。
@@ -40,6 +45,17 @@ function doRecordComparatorAttestation(cwd, file) {
     throw new LoopError(
       `用法：lzy attest comparator --file <结论.json>（schema：{"slug","items":[{"fid","verdict":"MATCH|MISMATCH","evidenceNodeId"|"generation","basis?"}],"note"?}——每条对照必须绑定该 F 项已落账的绿半（节点 id 或取证代次））`,
     );
+  }
+  try {
+    const st = statSync(file);
+    if (st.isFile() && st.size > COMPARATOR_FILE_MAX_BYTES) {
+      throw new LoopError(
+        `对照结论文件超上限 ${COMPARATOR_FILE_MAX_BYTES} bytes（当前 ${st.size}）：${file}——结论是转抄后的最小 JSON（fid/verdict/绑定/basis/note），详述留在报告里`,
+      );
+    }
+  } catch (e) {
+    if (e instanceof LoopError) throw e;
+    // stat 失败交给下面的 readFileSync 报「不可读」（保留原有恢复文案）
   }
   let raw;
   try {
@@ -62,6 +78,10 @@ function doRecordComparatorAttestation(cwd, file) {
   }
   const dag = loadDag(cwd);
   const resolved = doc.items.map((it) => resolveItemBinding(dag, goal, it));
+  const planNode = findNodes(
+    dag,
+    (n) => n.kind === "plan" && n.slug === goal.slug && n.planHash === goal.planHash,
+  ).at(-1);
   const node = appendComparatorNode(dag, {
     slug: goal.slug,
     planHash: goal.planHash,
@@ -70,14 +90,37 @@ function doRecordComparatorAttestation(cwd, file) {
     fileSha256: createHash("sha256").update(raw).digest("hex"),
     itemsCount: doc.items.length,
     items: resolved,
+    note: doc.note ?? null, // ADJ-42：schema 广告的 note 落节点（截断 ≤300），不再静默丢弃
+    planNodeId: planNode?.id ?? null, // ADJ-48：对端缺席时记 null（机器可见），边不静默丢
   });
-  const planNode = findNodes(
-    dag,
-    (n) => n.kind === "plan" && n.slug === goal.slug && n.planHash === goal.planHash,
-  ).at(-1);
+  // 结论原件归档（ADJ-48，0.2.1）：结论文件在 /tmp 会被清，fileSha256 只证「当时那份
+  // 文件的字节」——按证据附件同款复制入 .lazyzcode/evidence/（命名带节点身份+slug），
+  // 事后可复核。拷贝失败=整命令拒（账本未落盘，不留「有记录无原件」的半截）。
+  const archivedRel = archiveConclusion(cwd, goal.slug, node.id, raw);
+  node.filePath = archivedRel;
+  // attests 边（ADR-0014 §N3）：plan 节点缺席=边无法建立——记录照落（机器只记账不裁决），
+  // 但如实返回 warn 供调用方展示（旧实现静默跳过，审计面凭空少一条）。
+  let warn = null;
   if (planNode) addEdge(dag, { type: "attests", from: node.id, to: planNode.id });
+  else {
+    warn =
+      `attests 边缺席：本账本无 slug=${goal.slug} planHash=${String(goal.planHash).slice(0, 10)}… 的 plan 节点` +
+      `（0.0.8 在途 goal 或被人工重建的账本）——记录已入账，但 lzy dag dependents <plan 节点> 查不到这条对照`;
+  }
   saveDag(cwd, dag);
-  return { node, fingerprint, verdict: node.verdict };
+  return { node, fingerprint, verdict: node.verdict, warn };
+}
+
+// 结论原件归档：`.lazyzcode/evidence/<slug>.comparator.<nodeId>.json`（0600，与证据家族
+// 同权限）。节点身份在文件名里=重录落新节点新文件，永不覆写（ADJ-24 家法）。
+function archiveConclusion(cwd, slug, nodeId, raw) {
+  const dir = join(cwd, ".lazyzcode", "evidence");
+  mkdirSync(dir, { recursive: true });
+  const p = join(dir, `${slug}.comparator.${nodeId}.json`);
+  const tmp = join(dir, `.evidence.${slug}.comparator.${nodeId}.json.${process.pid}.${Date.now()}.tmp`);
+  writeFileSync(tmp, raw, { mode: 0o600 });
+  renameSync(tmp, p);
+  return `.lazyzcode/evidence/${slug}.comparator.${nodeId}.json`;
 }
 
 // 对照绑证据（ADJ-02，0.0.10）：把 item 的 evidenceNodeId|generation 解析成账本绿半

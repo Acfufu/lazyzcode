@@ -37,12 +37,29 @@ export function inputCwd(input) {
 }
 
 // 没有可信 sessionId 就没有预算账目：返回 undefined，由续跑类钩子 failOpen（评审 R1-2）。
+// traceId 回退已删除（V021-ADJ-67）：traceId 语义是「每次进程运行」而非每会话（headless
+// spike 实测同 sessionId 返回新 traceId），一旦它成为唯一键，Stop 的 ≤2 预算会在每次
+// resume 后重新起算——恰是红线 #2 预留位的静默失效形态。缺 sessionId 即不记账。
 export function inputSessionId(input) {
-  return (
-    input?.sessionId ??
-    input?.session_id ??
-    (typeof input?.traceId === "string" ? input.traceId : undefined)
-  );
+  return input?.sessionId ?? input?.session_id;
+}
+
+// 注入文本净化（V021-ADJ-66）：goal.json（工作区可控数据）的 slug/title/步标题在拼进
+// additionalContext 前必须过此函数——宿主把 additionalContext 当宿主指导注入，模型对它的
+// 信任级别高于读到的仓库内容，原样插入即「工作区数据伪装成宿主提示」。
+// 三道：①剥 ANSI CSI 转义（须先于控制字符处理，否则 ESC 被替换成空格后参数串残留为可见
+// 文本；沿 core/ratelimit.js providerId 剥控制字符先例）；②控制字符（含 \n \r \t）折为空格、
+// 连续空白折叠——换行折叠是硬要求：多行文本能在注入面伪造出额外提示行；③截断 ≤max 字符
+// （单段长度帽）。同输入逐字节确定（无时间戳/无随机），注入确定性不变量不受影响。
+export function sanitizeInjectText(value, max = 200) {
+  const s =
+    typeof value === "string" ? value : value === undefined || value === null ? "" : String(value);
+  return s
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "") // ANSI CSI 序列
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ") // C0/C1 控制字符（含换行/制表）→ 空格
+    .replace(/\s+/g, " ") // 连续空白（含全角空格等 \s 族）折叠
+    .trim()
+    .slice(0, max);
 }
 
 // sessionId 消毒后再拼状态文件名：含 / 或 .. 的输入会逸出 sessions/ 目录
@@ -214,7 +231,14 @@ export function withSessionLock(cwd, sessionId, fn) {
       try {
         ageMs = Date.now() - statSync(join(lock, "owner")).mtimeMs;
       } catch {
-        ageMs = 0; // owner 还没写完 = 刚加的锁，继续等
+        // owner 缺席（mkdir 与写 owner 之间被强杀）= 无法从 owner 求年龄；回退用锁目录
+        // 自身 mtime（V021-ADJ-59）——否则 ageMs 恒 0，锁永不回收，此后该会话每 Stop
+        // 白等 SESSION_LOCK_WAIT_MS 才无锁放行。目录也 stat 不到（并发已回收）= 0。
+        try {
+          ageMs = Date.now() - statSync(lock).mtimeMs;
+        } catch {
+          ageMs = 0;
+        }
       }
       if (ageMs > SESSION_LOCK_STALE_MS) {
         try {

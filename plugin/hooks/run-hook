@@ -9,21 +9,49 @@
 set -u
 dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
+launcher_log() {
+  printf '%s lzy hook: %s\n' "$(date -u +%FT%TZ)" "$1" >> /tmp/lzy-hook-launcher.log 2>/dev/null || true
+}
+
+# sort -V 功能探针（不只看退出码）：能自然排序 v2/v10 才算可用。
+# 不支持时回退语义 = 字典序 last-wins（历史行为：取最后可执行者），并记一行日志。
+sort_by_version_ok() {
+  [ "$(printf 'v2\nv10\n' | sort -V 2>/dev/null | tail -n 1)" = "v10" ]
+}
+
 resolve_node() {
   if command -v node >/dev/null 2>&1; then
-    NODE="$(command -v node)"
+    NODE="$(command -v node)"   # PATH 有声明权：显式 PATH 解析优先，不参与版本比较
     return 0
   fi
   NODE=""
-  for cand in "${HOME:-}"/.nvm/versions/node/*/bin/node /opt/homebrew/bin/node /usr/local/bin/node; do
-    # 不提前 break：候选序列里最后一个可执行项（通常是最新版本）胜出
-    [ -x "$cand" ] && NODE="$cand"
+  # nvm 候选按**版本序**取最大（V021-ADJ-57）：glob 是字典序，v9.x 残留会排在 v24.x 之后
+  #（"v9" > "v2x" 逐字节），旧 last-wins 因此选中 Node 9 → 五钩子解析即失败，且 exec 已替换
+  # shell，fail-open 通道不覆盖此路径。
+  nvm_cands=""
+  for cand in "${HOME:-}"/.nvm/versions/node/*/bin/node; do
+    [ -x "$cand" ] && nvm_cands="${nvm_cands}${cand}
+"
   done
+  if [ -n "$nvm_cands" ]; then
+    if sort_by_version_ok; then
+      NODE="$(printf '%s' "$nvm_cands" | sort -V | tail -n 1)"
+    else
+      NODE="$(printf '%s' "$nvm_cands" | tail -n 1)"
+      launcher_log "node: sort -V unavailable; nvm fallback keeps lexicographic last-wins (selected ${NODE})"
+    fi
+  fi
+  # 无版本目录的系统级 fallback（路径不含版本段，不参与版本比较）：nvm 无候选时才用。
+  if [ -z "$NODE" ]; then
+    for cand in /opt/homebrew/bin/node /usr/local/bin/node; do
+      [ -x "$cand" ] && NODE="$cand"
+    done
+  fi
   [ -n "$NODE" ]
 }
 
 if [ "${1-}" = "--print-node" ]; then
-  # 供 lzy doctor 的 hook-node 检查探测启动器解析结果
+  # 供 lzy doctor 的 hook-node 检查探测启动器解析结果（所选版本经此行可观测）
   if resolve_node; then printf '%s\n' "$NODE"; exit 0; else exit 1; fi
 fi
 
@@ -31,8 +59,7 @@ script="${1-}"
 shift 2>/dev/null || true
 if [ -z "$script" ]; then exit 0; fi
 if ! resolve_node; then
-  printf '%s lzy hook: node unresolvable (PATH=%s); %s skipped (fail-open)\n' \
-    "$(date -u +%FT%TZ)" "${PATH-}" "$script" >> /tmp/lzy-hook-launcher.log 2>/dev/null || true
+  launcher_log "node unresolvable (PATH=${PATH-}); ${script} skipped (fail-open)"
   exit 0
 fi
 exec "$NODE" "$dir/$script" "$@"

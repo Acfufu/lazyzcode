@@ -5,7 +5,7 @@ import { test } from "node:test";
 process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, existsSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -290,6 +290,36 @@ test("sessionId 消毒：恶意 id 不逸出 sessions/ 目录（R1-3）", () => 
   }
 });
 
+test("withSessionLock：owner 缺席的陈旧锁按锁目录 mtime 回收（V021-ADJ-59）", () => {
+  const d = scratch();
+  try {
+    // 复现形态：mkdirSync(lock) 与 writeFileSync(owner) 之间持锁进程被强杀 → 锁目录无 owner、
+    // 且永远无人再写它。旧实现 owner stat 失败即 ageMs=0（注释当「刚加的锁」），锁永不回收，
+    // 此后该会话每个 Stop 白等 SESSION_LOCK_WAIT_MS=2s 才无锁放行。
+    const lock = join(d, ".lazyzcode", "loop", "sessions", ".lock-s");
+    mkdirSync(lock, { recursive: true });
+    const old = Date.now() / 1000 - 60; // 锁目录 mtime 回拨 60s（远超 5s 陈旧线）
+    utimesSync(lock, old, old);
+    const code = `
+      import { withSessionLock } from ${JSON.stringify(pathToFileURL(join(HOOKS, "hook-lib.js")).href)};
+      const t0 = Date.now();
+      const r = withSessionLock(${JSON.stringify(d)}, "s", () => "ran");
+      console.log(JSON.stringify({ r, elapsedMs: Date.now() - t0 }));
+    `;
+    const r = spawnSync(process.execPath, ["--input-type=module", "-e", code], {
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+    assert.equal(r.status, 0, r.stderr);
+    const o = JSON.parse(r.stdout.trim());
+    assert.equal(o.r, "ran", "陈旧锁回收后临界段照常执行");
+    assert.ok(o.elapsedMs < 1_000, `陈旧锁须立即回收（elapsedMs=${o.elapsedMs}；旧实现要等满 2s）`);
+    assert.equal(existsSync(lock), false, "临界段结束释放锁");
+  } finally {
+    cleanup(d);
+  }
+});
+
 test("stop 并发：同会话 6 连发续跑发放不超过 2（R1-4 锁语义）", () => {
   const d = scratch();
   try {
@@ -381,6 +411,29 @@ test("run-hook 启动器：--print-node 解析；PATH-less 时 fallback 或 fail
     const r3 = spawnStripped(["stop.js"], "");
     assert.equal(r3.status, 0);
     assert.equal(r3.stdout.trim(), "");
+  }
+});
+
+test("run-hook：nvm 候选按版本序取最大——v9 残留 + v24 并存时选 v24（V021-ADJ-57）", () => {
+  if (process.platform === "win32") return; // POSIX 面（win32 孪生逻辑同语义，不在此夹具内）
+  const home = scratch();
+  try {
+    // 三个 nvm 候选，字典序最后 = v9.11.2（"v9" > "v2x" 逐字节）——旧 last-wins 选中它，
+    // Node 9 跑 ESM 钩子=解析即失败，五钩子全灭且此路径无 fail-open 日志。
+    for (const v of ["v9.11.2", "v20.11.0", "v24.19.0"]) {
+      const bin = join(home, ".nvm", "versions", "node", v, "bin");
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(bin, "node"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    }
+    const r = spawnSync("/bin/sh", [LAUNCHER, "--print-node"], {
+      encoding: "utf8",
+      timeout: 10_000,
+      env: { PATH: "/usr/bin:/bin", HOME: home }, // PATH 无 node → 走 nvm fallback
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout.trim(), /v24\.19\.0\/bin\/node$/, "取版本最大者而非字典序最后");
+  } finally {
+    cleanup(home);
   }
 });
 

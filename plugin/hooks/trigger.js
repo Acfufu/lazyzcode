@@ -22,18 +22,28 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { resolve, join } from "node:path";
 
-const BARE_ZW_RE = /^\s*zw(?![a-z0-9_-])/i;
+// 锚 `^[ \t\r]*` 而非 `^\s*`（V021-ADJ-68）：`\s` 含换行，空行开头的多行 prompt 会把第 2 行
+// 的首 token 判成「句首」（误写认领 / 误触 standdown：粘一段含 `zw standdown` 行的文本即可静默
+// 退出拉回）。`\r` 保留在窗口内（单行 CR 形态仍算句首），`\n` 不在——首行是空行就不是句首。
+const BARE_ZW_RE = /^[ \t\r]*zw(?![a-z0-9_-])/i;
 const EXPLICIT_RE = /lazyzcode[：:]zw/i;
 const ALIAS_RE = /(^|[^a-z0-9_-])(ulw|ultrawork)([^a-z0-9_-]|$)/i;
 // 唤起级别名（ADR-0004 修正案）：句首 ulw/ultrawork 是发起形态；句中「/ulw」是提及
 // （ specimen：「对比 /ulw 的写法」曾误认领，致盲真主会话）。通知注入维持全谱 ALIAS_RE 不变。
-const ALIAS_INITIAL_RE = /^\s*(ulw|ultrawork)(?![a-z0-9_-])/i;
-// 人权门批准形态（0.1.1 goal1，ADR-0018）：恰「批准/approve + 8 位 hex 短码」；负向
-// 后行断言屏蔽中文否定前置字（不/别）。多条命中取首个（钉死）。
-const APPROVE_RE = /(?<![不别])(?:批准|approve)\s*([0-9a-f]{8})\b/i;
+const ALIAS_INITIAL_RE = /^[ \t\r]*(ulw|ultrawork)(?![a-z0-9_-])/i;
+// 人权门批准形态（0.1.1 goal1，ADR-0018）：恰「批准/approve + 8 位 hex 短码」。否定面在
+// approvalVerdict 内做消息级前置筛（APPROVE_NEG_RE）——旧实现用负向后行断言只挡紧邻「不/别」，
+// 「不要批准/不准批准/未批准/请勿批准/拒绝批准/don't approve」照写记录（V021-ADJ-56）。
+const APPROVE_RE = /(?:批准|approve)\s*([0-9a-f]{8})\b/i;
+// 否定前置筛（V021-ADJ-56）：否定词与批准词之间 ≤6 个**非断句**字符（句读/换行/空白边界不计
+// 跨度）——「不要批准」命中，「不要改计划，批准 abc12345」「请勿修改计划，批准 abc12345」不命中
+//（句读阻断跨度 + 只在批准词之前的切片内生效）。审阅语义：仅否决不采纳，反向（少记）安全。
+const APPROVE_NEG_RE =
+  /(?:不要?|不准|别|未|请勿|拒绝|勿|don['’]?t|do\s+not|not)\s*[^。！？\n，,、；;.?!]{0,6}(?:批准|approve)/i;
 // standdown 声明形态（0.1.1 goal2，ADR-0009 修订节）：句首「zw standdown」——本会话
 // 退出当前目标参与（Stop 不再拉回）；参与触发（invocational）写认领时同步清旗标。
-const STANDDOWN_RE = /^\s*zw\s+standdown(?![a-z0-9_-])/i;
+// 锚同 BARE_ZW_RE（^[ \t\r]*，V021-ADJ-68）：空行开头的多行 prompt 不得触发。
+const STANDDOWN_RE = /^[ \t\r]*zw\s+standdown(?![a-z0-9_-])/i;
 
 // 返回 null=落回既有触发词逻辑（零输出零 exit）；返回对象=恰一次 emit 后 exit 0
 // （由调用方执行）。emit 文案零时间戳零文件名（双跑确定性不变量）；全分支异常
@@ -42,6 +52,10 @@ function approvalVerdict(input) {
   const prompt = typeof input?.prompt === "string" ? input.prompt : "";
   const m = prompt.match(APPROVE_RE);
   if (!m) return null;
+  // 否定前置筛（V021-ADJ-56）：只审批准词**之前**的文本（切片到命中短码为止，故
+  // 「批准 abc12345，不要改计划」照常算批准），命中否定形态即整支落回既有触发词管线
+  //（与旧「不批准/别批准」同路径：不写记录、不 emit 批准文案、落回可能注入 ZW 的常规面）。
+  if (APPROVE_NEG_RE.test(prompt.slice(0, m.index + m[0].length))) return null;
   try {
     const cwd = inputCwd(input);
     const goal = readGoal(cwd);
@@ -92,16 +106,29 @@ function approvalVerdict(input) {
           `Ask the model to re-run the adoption command for a fresh code. Nothing was recorded.`,
       };
     }
+    // 批准记录落盘：写面单独 try/catch（V021-ADJ-63）——旧实现把写盘包在函数级 catch 里，
+    // 失败时 return null 落回触发词管线（句子无触发词 → {}），用户体验与债 E 完全同形：
+    // 批准句发出、门不开、零回执。现在失败即 emit 一条与既有三支同形的诊断并接管本回合
+    //（诊断只含 errno 摘要，零时间戳零文件名——emit 双跑确定性与注入确定性不变量不破）。
     const dir = join(cwd, ".lazyzcode", "loop", "approvals");
-    mkdirSync(dir, { recursive: true });
-    const sid = String(inputSessionId(input) ?? "unknown");
-    const name = `${short}-${sanitizeSessionId(sid).slice(0, 24)}-${Date.now()}.json`;
-    const tmp = join(dir, `.${name}.${process.pid}.tmp`);
-    writeFileSync(
-      tmp,
-      `${JSON.stringify({ version: 1, slug: goal.slug, planHash: pending.planHash, at: new Date().toISOString(), sessionId: sid }, null, 2)}\n`,
-    );
-    renameSync(tmp, join(dir, name));
+    try {
+      mkdirSync(dir, { recursive: true });
+      const sid = String(inputSessionId(input) ?? "unknown");
+      const name = `${short}-${sanitizeSessionId(sid).slice(0, 24)}-${Date.now()}.json`;
+      const tmp = join(dir, `.${name}.${process.pid}.tmp`);
+      writeFileSync(
+        tmp,
+        `${JSON.stringify({ version: 1, slug: goal.slug, planHash: pending.planHash, at: new Date().toISOString(), sessionId: sid }, null, 2)}\n`,
+      );
+      renameSync(tmp, join(dir, name));
+    } catch (err) {
+      const reason = err?.code ?? err?.name ?? "unknown";
+      return {
+        additionalContext:
+          `[lzy] Approval was valid but the approval record could not be written (${reason}) — the human gate stays closed and nothing was recorded. ` +
+          `Check that .lazyzcode/loop/approvals is writable (not blocked by a file or a read-only mount) and that the disk has free space, then re-send the approval sentence.`,
+      };
+    }
     return {
       additionalContext:
         `[lzy] Human approval recorded for plan ${goal.slug} (short code ${short}). ` +

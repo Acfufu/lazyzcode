@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -190,17 +190,86 @@ test("钩子：短码不符——纠错报文报 pending 短码，零记录", ()
   assert.ok(!existsSync(approvalsDir(s)));
 });
 
-test("钩子：否定形态（不批准/别批准）零记录照走既有管线", () => {
+test("钩子：否定形态零记录照走既有管线（全矩阵，V021-ADJ-56）", () => {
   const s = scratch();
   registerGoal(s);
   lzy(["loop", "plan", "plan.md"], s);
-  for (const p of [`不批准 ${sha(PLAN1).slice(0, 8)}`, `别批准 ${sha(PLAN1).slice(0, 8)}`]) {
+  const code = sha(PLAN1).slice(0, 8);
+  // 旧守卫只挡紧邻「不/别」，以下全形都照写记录（门语义缺口）——矩阵钉死全否。
+  const negations = [
+    `不批准 ${code}`,
+    `别批准 ${code}`,
+    `不要批准 ${code}`,
+    `不准批准 ${code}`,
+    `未批准 ${code}`,
+    `请勿批准 ${code}`,
+    `拒绝批准 ${code}`,
+    `don't approve ${code}`,
+    `do not approve ${code}`,
+    `我不批准 ${code}`,
+  ];
+  for (const p of negations) {
     const r = hookRun(p, s);
     assert.equal(r.code, 0);
-    assert.equal(r.out.trim(), "{}"); // 落回触发词逻辑→非触发词→failOpen {}
-    assert.ok(!existsSync(approvalsDir(s)));
+    assert.equal(r.out.trim(), "{}", `${JSON.stringify(p)} 落回触发词逻辑→failOpen {}`);
+    assert.ok(!existsSync(approvalsDir(s)), `${JSON.stringify(p)} 不得写记录`);
+  }
+  // 反向（防误伤）：否定词在批准词**之后**、或与批准词隔着句读的另一分句，都仍算批准。
+  const approvals = [
+    `批准 ${code}，不要改计划`,
+    `批准 ${code}。不要改计划`,
+    `不要改计划，批准 ${code}`,
+    `请勿修改计划，批准 ${code}`,
+  ];
+  for (const p of approvals) {
+    assert.equal(existsSync(approvalsDir(s)), false, "前提：每轮前无记录（幂等检查）");
+    const r = hookRun(p, s);
+    assert.equal(r.code, 0);
+    assert.ok(r.out.includes("Human approval recorded for plan"), `${JSON.stringify(p)} 应算批准`);
+    rmSync(approvalsDir(s), { recursive: true, force: true }); // 清记录，下轮重新验证
   }
 });
+
+test("钩子：批准记录写入失败——emit 原因诊断且不落回静默（V021-ADJ-63）", () => {
+  const s = scratch();
+  registerGoal(s);
+  lzy(["loop", "plan", "plan.md"], s);
+  const code = sha(PLAN1).slice(0, 8);
+  // 态 A：approvals 路径被普通文件占位（mkdirSync 失败）
+  mkdirSync(join(s.d, ".lazyzcode", "loop"), { recursive: true });
+  writeFileSync(approvalsDir(s), "blocker");
+  const a = hookRun(`批准 ${code}`, s);
+  assert.equal(a.code, 0);
+  assert.ok(a.out.includes("could not be written"), "诊断接管本回合，不得零反馈");
+  assert.ok(a.out.includes("approvals"), "诊断点名可写性检查面");
+  assert.ok(!a.out.includes("Human approval recorded for plan"), "未记录不得报成功");
+  assert.ok(!/at .*trigger\.js/.test(a.out), "无异常栈外溢");
+  assert.equal(readFileSync(approvalsDir(s), "utf8"), "blocker", "占位文件不被破坏");
+  rmSync(approvalsDir(s), { force: true }); // 移除占位文件（本文件既无全局 cleanup 助手，就地清）
+});
+
+test(
+  "钩子：批准记录写入失败（EACCES 只读目录）——同款诊断（V021-ADJ-63）",
+  { skip: process.platform === "win32" || (process.getuid?.() ?? -1) === 0 },
+  () => {
+    const s = scratch();
+    mkdirSync(approvalsDir(s), { recursive: true });
+    registerGoal(s);
+    lzy(["loop", "plan", "plan.md"], s);
+    chmodSync(approvalsDir(s), 0o500); // r-x：mkdir 递归已存在=no-op，writeFileSync EACCES
+    try {
+      const r = hookRun(`批准 ${sha(PLAN1).slice(0, 8)}`, s);
+      assert.equal(r.code, 0);
+      assert.ok(r.out.includes("could not be written"));
+      assert.ok(r.out.includes("EACCES"), "原因摘要带 errno");
+      assert.ok(!r.out.includes("Human approval recorded for plan"));
+      assert.ok(!/at .*trigger\.js/.test(r.out), "无异常栈外溢");
+      assert.equal(readdirSync(approvalsDir(s)).filter((f) => f.endsWith(".json")).length, 0);
+    } finally {
+      chmodSync(approvalsDir(s), 0o700); // 恢复权限，否则清理失败
+    }
+  },
+);
 
 test("钩子：无 goal / 无 pending——诊断报文接管，批准面不写盘", () => {
   const s = scratch();

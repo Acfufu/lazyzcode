@@ -6,11 +6,13 @@
 // 旁路会话结构性免拉）；standdown（ADR-0009 修订节）：会话旗标在场即只读放行。
 // 进度振数：拉回后步骤零推进两振写 stuck 提前弃拉（不消耗预算），有推进自愈。
 // 交接放行（ADR-0009）：`lzy loop handoff` 落目录级匿名标记，Stop 在此一次性原子消费
-// （unlink 恰一赢家）；放行显式 continue:false 不入 3 池（红线 #2 形态同 stuck 分支）。
+// （rename 到 .consuming 独占，恰一赢家——V021-ADJ-70）；放行显式 continue:false 不入 3 池
+//（红线 #2 形态同 stuck 分支）。
 // 水位警戒线（plan-v2 Phase 2-3）：读本地计费账本折算近 5h 滚动积分，超阈值向继续中的
 // 会话注入一次 nudge（上下文卫生的机械信号，替代 A' 缓刑期的人格化水位判断）。
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import {
   MAX_STOP_CONTINUES,
@@ -24,6 +26,7 @@ import {
   readSessionCounter,
   readSessionState,
   readStdinJson,
+  sanitizeInjectText,
   sanitizeSessionId,
   withSessionLock,
   writeSessionCounter,
@@ -49,10 +52,17 @@ const WATERLINE_SQL =
 function waterlineNudge() {
   try {
     const threshold = Number(process.env.LZY_WATERLINE_POINTS) || WATERLINE_POINTS;
-    const db = join(process.env.HOME ?? "", ".zcode", "cli", "db", "db.sqlite");
+    // HOME 解析与 canonical 同形（core/paths.js billingDbPath → homedir()）：win32 上 cmd.exe
+    // 环境默认只有 USERPROFILE 无 HOME，只认 HOME 会 join("", …) 出相对路径 → sqlite 打不开
+    // → nudge 在 win32 永不触发，而 doctor 行（走 canonical）照常读数，两面互斥皆绿
+    //（V021-ADJ-54）。显式链 HOME → USERPROFILE → os.homedir()。
+    const home = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
+    const db = join(home, ".zcode", "cli", "db", "db.sqlite");
+    // 内层预算须显著小于钩子外层 timeout（hooks.json Stop entry "timeout": 10s）：
+    // 二者相等时内层慢查询与引擎杀钩子同时发生，fail-open 分支先被砍（V021-ADJ-58）。
     const r = spawnSync("sqlite3", ["-readonly", "-json", db, WATERLINE_SQL], {
       shell: false,
-      timeout: 10_000,
+      timeout: 3_000,
       encoding: "utf8",
       maxBuffer: 8 * 1024 * 1024,
     });
@@ -118,24 +128,28 @@ try {
   }
 
   // 交接放行（ADR-0009）：消费块置于认领闸门后、pending 分叉前（评审钉死落点）——
-  // pending 与全收口两分支共享同一交接出口。unlink 是原子动作：并发多会话同停时
-  // 恰一赢家 rm 成功、输家 ENOENT 落回拉回纪律（故 rm 不带 force——ENOENT 必须抛出）。
+  // pending 与全收口两分支共享同一交接出口。
+  // 原子独占消费（V021-ADJ-70）：旧实现「readFileSync 取内容 → rmSync 消费」非原子，两动作
+  // 之间若有新 handoff 经原子 rename 落位（`lzy loop handoff` 后再跑），rm 删掉的是**新**标记
+  // 而 emit 的是**旧**快照——载荷与状态不符。现改为 renameSync 到 `.consuming` 后缀（改名即
+  // 独占，恰一赢家；并发输家 rename ENOENT 落回拉回纪律），再读该独占文件、再删它。
+  // 坏 JSON 走同一路径（视同无标记，垃圾清走）。残余：rename 与 rm 之间进程被杀会留
+  // `.consuming` 残件（loop.js 的清理家族不认该后缀，loop.js 不属本次修复面）——下一次
+  // 交接 rename 会原子覆盖它，故残件自愈且不阻断；异常路径仍 try/finally 自清。
   const handoffPath = join(cwd, ".lazyzcode", "loop", "handoff.json");
+  const consumingPath = `${handoffPath}.consuming`;
   let handoff = null;
   try {
-    handoff = JSON.parse(readFileSync(handoffPath, "utf8"));
+    renameSync(handoffPath, consumingPath); // ENOENT=无标记（或并发输家）：静默落回拉回
+    try {
+      handoff = JSON.parse(readFileSync(consumingPath, "utf8"));
+    } finally {
+      try {
+        rmSync(consumingPath, { force: true }); // 消费完成/坏 JSON 都把独占件清走
+      } catch {}
+    }
   } catch {
     handoff = null;
-    try {
-      rmSync(handoffPath); // 坏 JSON：当垃圾清走，本轮视同无标记（无标记时 ENOENT 同样静默忽略）
-    } catch {}
-  }
-  if (handoff) {
-    try {
-      rmSync(handoffPath); // 原子消费：恰一赢家，输家 ENOENT 落回拉回
-    } catch {
-      handoff = null;
-    }
   }
   if (handoff) {
     // 放行同时清本会话振数与 stuck（评审 E2：重入防误振；stuck 会话由此获得体面出口）
@@ -143,11 +157,13 @@ try {
       writeSessionState(cwd, sessionId, { stallCount: 0, stuck: false, lastDoneCount: null });
     });
     const snap = typeof handoff.snapshot === "string" ? handoff.snapshot : "";
+    // 注入净化（V021-ADJ-66）：slug 与快照文本均工作区可控，过 sanitizeInjectText
+    //（剥控制字符/ANSI、折叠换行、≤200 字符）后才进 additionalContext。
     emit({
       continue: false,
       additionalContext:
-        `[lzy] 交接标记已消费，本轮放行（目标 ${goal.slug} 保持 executing，状态在盘）。` +
-        (snap ? `交接快照：${snap}。` : "") +
+        `[lzy] 交接标记已消费，本轮放行（目标 ${sanitizeInjectText(goal.slug)} 保持 executing，状态在盘）。` +
+        (snap ? `交接快照：${sanitizeInjectText(snap)}。` : "") +
         `用户开新上下文后以「zw 继续」续跑。`,
     });
     // 放行计数（可观测面）：必须在 emit 之后、exit 之前，且 incMetrics 契约永不抛——
@@ -187,8 +203,8 @@ try {
         return {
           continue: false,
           additionalContext:
-            `[lzy] 目标循环 ${goal.slug} 连续两振原地无进展（done ${doneCount}/${steps.length}），` +
-            `已停拉（stuck）。排查阻塞后推进步骤即自愈；未完成项：${pending.map((s) => s.id).join(" ")}。`,
+            `[lzy] 目标循环 ${sanitizeInjectText(goal.slug)} 连续两振原地无进展（done ${doneCount}/${steps.length}），` +
+            `已停拉（stuck）。排查阻塞后推进步骤即自愈；未完成项：${sanitizeInjectText(pending.map((s) => s.id).join(" "))}。`,
         };
       }
       const used = state.continues;
@@ -210,8 +226,8 @@ try {
         return {
           continue: false,
           additionalContext:
-            `[lzy] 目标循环 ${goal.slug} 已用尽本钩子续跑预算（${used}/${MAX_STOP_CONTINUES}，` +
-            `引擎 3 次共享池需给后台通知预留）。未完成项：${pending.map((s) => s.id).join(" ")}。` +
+            `[lzy] 目标循环 ${sanitizeInjectText(goal.slug)} 已用尽本钩子续跑预算（${used}/${MAX_STOP_CONTINUES}，` +
+            `引擎 3 次共享池需给后台通知预留）。未完成项：${sanitizeInjectText(pending.map((s) => s.id).join(" "))}。` +
             `下次会话 SessionStart 会提醒续接。`,
         };
       }
@@ -225,9 +241,9 @@ try {
       return {
         continue: true,
         additionalContext:
-          `[lzy] 目标循环「${goal.slug} — ${goal.title}」未完成（${doneCount}/${steps.length} 步）。` +
-          `下一步 ${next.id} [${next.kind}] ${next.title}。继续执行该步；` +
-          `完成后 node <lazyzcode>/cli/lzy.js step done ${next.id}` +
+          `[lzy] 目标循环「${sanitizeInjectText(goal.slug)} — ${sanitizeInjectText(goal.title)}」未完成（${doneCount}/${steps.length} 步）。` +
+          `下一步 ${sanitizeInjectText(next.id)} [${sanitizeInjectText(next.kind)}] ${sanitizeInjectText(next.title)}。继续执行该步；` +
+          `完成后 node <lazyzcode>/cli/lzy.js step done ${sanitizeInjectText(next.id)}` +
           (next.kind === "F" ? " --evidence <真实表面取证>" : "") +
           ` 收口。本会话 lzy 续跑预算 ${used + 1}/${MAX_STOP_CONTINUES}。不做完不停。` +
           (waterline ? `\n${waterline}` : ""),
@@ -247,7 +263,7 @@ try {
       return {
         continue: true,
         additionalContext:
-          `[lzy] 目标循环「${goal.slug}」全部步骤已收口，但终验门未过。` +
+          `[lzy] 目标循环「${sanitizeInjectText(goal.slug)}」全部步骤已收口，但终验门未过。` +
           `运行 node <lazyzcode>/cli/lzy.js loop finish 做证据时效终验` +
           `（F 项证据复合指纹须新鲜，{host}∪subjects 全树 clean），通过后目标才算 done。` +
           (waterline ? `\n${waterline}` : ""),

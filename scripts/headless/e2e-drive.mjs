@@ -86,8 +86,10 @@ console.log(drvOut.split("\n").map((l) => `[drive] ${l}`).join("\n"));
 
 // ── 终验断言族 ────────────────────────────────────────────────────────────────
 const checks = [];
-const segLines = drvOut.split("\n").filter((l) => /\[drive\] 段 \d+/.test(l) || /段 \d+\//.test(l));
-checks.push(["段日志在案（≥1 段）", drv.status === 0 ? segLines.length > 0 : false]);
+const segLines = drvOut.split("\n").filter((l) => /段 \d+\/\d+/.test(l));
+// 段日志=循环确实跑过的证据：与退出码解耦（段失败路径 exit=1 时日志同样在场——
+// 首轮实弹实证：段完成 2/2 步后引擎 turn 失败，日志在而旧断言误判 ✘）。
+checks.push(["段日志在案（≥1 段）", segLines.length > 0]);
 r = lzy(["loop", "status"]);
 const done = r.code === 0 && /状态 done/.test(r.out);
 const windDown = /收束/.test(drvOut);
@@ -111,6 +113,7 @@ checks.push(["runtime.json activeLease=null（lease 已释放）", leaseReleased
 const markerOk = existsSync(join(scratch, "response.txt")) &&
   readFileSync(join(scratch, "response.txt"), "utf8").includes(MARK);
 checks.push([`标记文件在案（${MARK}）`, markerOk]);
+checks.push(["drive 退出码=0（done 或干净收束；1=门拒/段失败）", drv.status === 0]);
 
 let verdict = true;
 for (const [label, ok] of checks) {

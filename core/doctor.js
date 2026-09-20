@@ -25,7 +25,8 @@ import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvis
 import { WATERLINE_POINTS, rollingWaterlinePoints } from "./cost.js";
 import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
-import { scanSessionFlags } from "./loop.js";
+import { assertDriveEligible, readGoal, scanSessionFlags } from "./loop.js";
+import { loadRuntime } from "./runtime.js";
 import { createGit } from "./git.js";
 
 export const NODE_MAJOR_FLOOR = 22; // 单源（债六，0.1.1）：install/sync 前置探测同用此常量
@@ -708,6 +709,50 @@ async function checkRateLimit(push) {
   }
 }
 
+// drive 通道诊断（0.2.0 棒2，ADR-0020）：无人值守执行通道可用性一行多态——引擎缺席=
+// skip（沿 headless 行家法）；在场则拼 auth 两态+活跃租约态+预算态+现行 goal 的 drive
+// 资格。warn-only/skip 不翻退出码（运行形态非故障，零遥测本地只读）。
+function checkDrive(push, cwd) {
+  const engine = findEngine();
+  if (!engine) {
+    push("drive", "skip", "引擎缺席——drive 无人值守通道不可用（装 ZCode 桌面端或设 LZY_ZCODE_ENGINE）");
+    return;
+  }
+  const auth = detectHeadlessAuth();
+  const authText = auth.ok
+    ? `凭据=${auth.oauth ? "oauth" : "env"}`
+    : "凭据缺席（headless 调用会停在认证门）";
+  let leaseText = "无活跃租约";
+  let budgetText = "预算未初始化（drive 首跑自动初始化）";
+  try {
+    const rt = loadRuntime(cwd);
+    if (rt?.activeLease && rt.activeLease.expiresAtMs > Date.now()) {
+      leaseText = `活跃租约 fence=${rt.activeLease.fence}（至 ${new Date(rt.activeLease.expiresAtMs).toISOString()}）`;
+    }
+    if (rt?.budget) {
+      budgetText = `预算 ${rt.budget.spentMs}/${rt.budget.wallClockBudgetMs}ms · ${Math.round(rt.budget.spentPoints * 100) / 100}/${rt.budget.pointsBudget}pt`;
+    }
+  } catch (err) {
+    push("drive", "warn", `runtime 账本不可读：${err?.message ?? err}`);
+    return;
+  }
+  const goal = readGoal(cwd);
+  let eligText = "无 executing 目标";
+  if (goal && goal.status === "executing") {
+    try {
+      const eligible = assertDriveEligible(goal);
+      eligText = `${goal.slug} 可入 drive（risk=${eligible.risk}）`;
+    } catch (err) {
+      eligText = `${goal.slug} 拒入：${String(err?.message ?? err).split("——")[0]}`;
+    }
+  }
+  push(
+    "drive",
+    auth.ok ? "ok" : "warn",
+    `drive 通道 · ${authText} · ${leaseText} · ${budgetText} · ${eligText}（lzy loop drive；ADR-0020）`,
+  );
+}
+
 export async function collectDoctor(cwd = process.cwd()) {
   const checks = [];
   const push = (name, state, detail) => checks.push({ name, state, detail });
@@ -733,6 +778,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkLedger(p, cwd),
     checkPlatform,
     checkHeadless,
+    (p) => checkDrive(p, cwd),
     (p) => checkAgentsMd(p, cwd),
     (p) => checkRateLimit(p),
   ];

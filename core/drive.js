@@ -240,7 +240,8 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         break;
       }
       // 水位联动执法（积分侧；billing DB 滞后=已知边界，null=跳过并注记）。
-      const rp = deps.rollingPoints != null ? deps.rollingPoints : rollingWaterlinePoints();
+      // 哨兵判据=!== undefined（显式注入 null=「读数缺席」测试形态，与未注入区分）。
+      const rp = deps.rollingPoints !== undefined ? deps.rollingPoints : rollingWaterlinePoints();
       if (rp != null && rp >= budget.pointsBudget) {
         windDown(true, `积分预算尽（近 5h 滚动水位 ${rp} ≥ 积分硬顶 ${budget.pointsBudget}）`);
         break;

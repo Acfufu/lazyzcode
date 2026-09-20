@@ -27,11 +27,15 @@ export const TASKS_DIR = join(SCRIPTS_DIR, "tasks");
 // 正式跑批永不设置（研究脚本面，非产品配置面）。
 export const OUT_ROOT = process.env.LZY_ABLATION_OUT_ROOT || join(REPO_ROOT, "artifacts", "ablation");
 
-// 变体表（预注册冻结，docs/research-ablation-design.md §变体；改动须留 attempt note）：
+// 变体表（预注册冻结，docs/research-ablation-design.md §3；改动须留 attempt note）：
 // install=是否装插件（B 裸引擎不装）；prune=装前从包拷贝里剪掉的 plugin/ 子目录
 // （C −文本层：去 skills+agents 留 hooks 与 CLI）；switches=引擎会话 env（恰 "1" 才消融，
 // 下沉到 trial 内一切 lzy/钩子 子进程）。
 // b2 扩展臂 G/H/I/J（设计 §3 预注册，2026-09-18 增补）——本行即 attempt note。
+// attempt note（2026-09-21，修复轮 ADJ-81/82）：D/E 两行的 human-gate 开关**早已在表内**
+// 但 b1/b2 期从不生效——trial 内 lzy 是宿主全局 CLI（开关由 CLI 进程读，见 run-trial 的
+// shim），且 0.1.1 起人权门使无开关臂整个不可复跑。修法=全部臂基线消融（spawn-engine
+// BASE_ABLATE_ENV）+ 变体树 shim；变体表开关面本身不变。
 export const VARIANTS = {
   A: { name: "full-control", install: true, prune: [], switches: {} },
   B: { name: "bare-engine", install: false, prune: [], switches: {} },

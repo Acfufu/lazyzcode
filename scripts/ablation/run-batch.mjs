@@ -153,9 +153,10 @@ if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
       exit(2);
     }
     // --reps 前置形态门（ADJ-75③）：NaN/0/小数在此拦下并打用法（runBatch 内还有同一道门，
-    // 覆盖程序化调用）——绝不静默空跑。
+    // 覆盖程序化调用）——绝不静默空跑。回显用户原字面量（Number() 后 NaN 会打印成 null）。
     if (!Number.isInteger(a.reps) || a.reps <= 0) {
-      console.error(`用法：--reps 必须为正整数（收到 ${JSON.stringify(argv[argv.indexOf("--reps") + 1] ?? a.reps)}）`);
+      const raw = argv.includes("--reps") ? argv[argv.indexOf("--reps") + 1] : a.reps;
+      console.error(`用法：--reps 必须为正整数（收到 ${JSON.stringify(raw)}）`);
       exit(2);
     }
     const r = await runBatch({

@@ -40,8 +40,9 @@ export function shimDirFor(trialDir) {
 // INTEGRITY/ATTEST/HUMAN_GATE——由 lzy CLI 进程读 env）从未生效。修法=机制无关：每次
 // trial 建一个只含 `lzy` 的 shim 目录并前置进子会话 PATH，shim 恒以本变体 pkg 的
 // cli/lzy.js 起进程；断言（assertVariantCliIdentity）再亲核载荷身份。
-// PATH 解析是 node 侧行为（non-win32 上 execvp 直读 PATH），故 shim 无需扩展名；
-// 本管线只在 darwin/linux 跑（win32 由 posix sh 路径判据拦，见下）。
+// PATH 解析是 node 侧行为（non-win32 上 execvp 直读 PATH），故 shim 无需扩展名；win32 靠
+// 孪生 .cmd 走 PATHEXT——但**本管线跑批只在 darwin/linux**（b1/b2/b3 实证面即此二平台），
+// win32 属未跑形态，孪生只为形态完整、不声明证据。
 export function createVariantCliShim(trialDir, pkgDir) {
   const dir = shimDirFor(trialDir);
   mkdirSync(dir, { recursive: true });

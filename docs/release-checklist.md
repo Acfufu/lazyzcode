@@ -447,3 +447,19 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - 隔离 prefix 冒烟 ✔：`lzy 0.1.2（插件载荷同版本）· 引擎 0.16.9`；install/enabled/payload-ver ⚠✖ 为隔离上下文预期态（未注册/payload-ver 中间态自查面正常工作）。
 - 真机 `lzy update` 0.1.1→0.1.2 全链 **EXIT=0**（「sync 已由新装子进程执行」=ADR-0012 活体）；缓存 13 版本目录 [0.0.1..0.1.2]、doctor payload/install/payload-ver 三 ✔。
 - win32 VM 矩阵按预注降档跳过（docs-only patch；CI windows 腿 + 真机 update 链覆盖）。
+
+## 执行记录（0.2.0，Unattended Runtime minor——机械件已备，publish 留用户）
+
+### 内容与定位
+
+- **minor 面**：0.2.0 = Durable Unattended Runtime 单主轴（roadmap §⑮ 七问拍板；ADR-0020/0003 修正节/决策 #28），两棒串行收口：**棒1** 机器地基（`loop/runtime.json` 账本：lease 运行级认领/fencing 申报制写路径守卫/budget 双硬顶；risk_class 机器面 register+只升不降+`assertDriveEligible` drive 入口门；Lane B×N `git log --all` 收编）→ **棒2** drive 集成（`lzy loop drive` 无人值守执行通道：段循环 headless `--resume`+段内 fence 注入/五因收束除 done 外自写 7 字段 handoff 快照/退出码契约；doctor `drive` 行；双语协议文本含「只读侦察不立 goal」句；E2E 实弹 `scripts/headless/e2e-drive.mjs`；H3R 实验设计稿 `docs/design-h3r-experiment.md`）。
+- **行为升级非 docs-only**：win32 VM 复测适用（0.1.2 降档豁免不沿用）。
+
+### Runbook（按序）
+
+1. **push main**：19 提交（棒1 九条 + 棒2 十条，全部带 Goal 尾注）+ 定版提交随行上远端。
+2. **版本五处同步**（同批提交）：`package.json` / `plugin/.zcode-plugin/plugin.json` / `.claude-plugin/marketplace.json`（version+ref→v0.2.0）/ `docs/_layouts/home.html` softwareVersion / `docs/sitemap.xml` homepage lastmod；CHANGELOG `[0.2.0] - 2026-09-20` 定版（Unreleased 两条目：Runtime kernel 棒1 + Drive 棒2）。
+3. **发布前验证**：`npm test` 全绿（发布树实跑）；`npm publish --dry-run` 文件数/size/shasum 记录；tarball 零 `.mimosa`/`.lazyzcode`/`sess_`/`acfufu` 命中。
+4. **CI 四腿绿**（判决=gh run view conclusion，永不认 watch 伪绿）→ **tag v0.2.0 最后切** → GitHub Release（notes 三节：Highlights/Coverage boundary/Upgrade）。
+5. **publish（用户 2FA）**：载荷=从 tag 打包的 tarball（`npm pack` 于 tag 树），`npm publish <tarball>`；发后隔离 prefix 冒烟 `npm i -g lazyzcode@0.2.0 --prefer-online`（npm12 EALLOWREMOTE 绕法）→ `lzy --version` 应 0.2.0。
+6. **发后核验**：registry `dist-tag latest=0.2.0`（curl HTTP 端点为真相源，npm view 缓存滞后数分钟）；发布 shasum 与 dry-run 逐字一致；真机 `lzy update` 0.1.2→0.2.0 全链 EXIT=0；`lzy doctor` `payload-ver` 双 ✔；win32 VM 复测（registry 新装+update 链+0.2.0 全新面：lease/fence/drive 三件套活体——`lzy loop lease acquire` 互斥/`--fence` 申报写拒/doctor drive 行三态/scratch drive 段循环）。

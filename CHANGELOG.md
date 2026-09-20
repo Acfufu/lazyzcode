@@ -3,6 +3,33 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Engine surface contract** (ADR-0021, goal v021-engine-surface): all five engine
+  CLI touch points now have contract tests (`test/engine-surface.contract.test.js`,
+  a fake engine that plays both generations), and the engine-output boundary
+  normalizes at a single point (`core/engine.js normalizePluginList`).
+
+### Fixed
+
+- **`plugins list --json` envelope drift — false `enabled` failure on engine 0.16.9
+  hosts** (pre-existing since 0.1.2, not a 0.2.0 regression): 0.16.9 emits a bare
+  array where 0.16.5 wrapped it in `{plugins:[...]}`. `findInstalledPlugin` read only
+  `list.plugins`, so `lzy status` / `lzy doctor` reported `enabled ✖ 引擎未列出该插件`
+  and exited 1 on hosts where the plugin was in fact installed and enabled. The
+  normalizer accepts both envelopes; unrecognized shapes still land `fail` rather than
+  being downgraded to a warning.
+- **Human gate: silent approval failure on cwd drift** (debt E, ADR-0018 amendment):
+  `approvalVerdict` returned null both when the goal was unreadable (the model had
+  `cd`'d away) and when there was simply no pending adoption, so the user's 「批准 …」
+  sentence produced no output at all. It now emits a diagnostic in each case — naming
+  the goal's host root via a read-only, depth-bounded ancestor probe when one is found.
+  Approval recording is unchanged (`approvals/` stays unwritten), and the probe is a
+  hint only: it is never used for state resolution, so strict-cwd semantics (ADR-0006)
+  are untouched.
+
 ## [0.2.0] - 2026-09-20
 
 ### Added

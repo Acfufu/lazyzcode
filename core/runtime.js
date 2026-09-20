@@ -237,13 +237,23 @@ export function assertFenceIfPresent(cwd, fence) {
 // ── 运行预算（墙钟+积分双硬顶）───────────────────────────────────────────
 // 积分面联动：remaining 读近 5h 滚动水位作参照行（rollingWaterlinePoints null=账本/
 // sqlite3 缺席，如实降级显示）；drive 预算硬顶本身=配置值，水位线联动执法归棒2 drive。
-export function initBudget(cwd, { wallClockBudgetMs, pointsBudget } = {}) {
+// restart（0.2.0 棒2）：drive 每-run 重开预算（「每次 drive 双硬顶」语义，§⑮ Q4；
+// runtime.json 跨 reset 常驻，不重开则二轮 drive 即刻假超顶）——只 drive 内部路径使用，
+// 须持活跃租约且 fence 相符（僵尸无租重置被拒）；交互 CLI budget init 维持拒重置不变。
+export function initBudget(cwd, { wallClockBudgetMs, pointsBudget, restart = false, fence = null } = {}) {
   const state = loadRuntime(cwd) ?? freshState();
   if (state.budget) {
-    throw new RuntimeError(
-      `预算已初始化（spent 记录在场，cap 墙钟 ${state.budget.wallClockBudgetMs}ms/积分 ${state.budget.pointsBudget}）——` +
-        `重算须人工编辑 ${runtimeFilePath(cwd)}（防误清 spent 审计）`,
-    );
+    if (!restart) {
+      throw new RuntimeError(
+        `预算已初始化（spent 记录在场，cap 墙钟 ${state.budget.wallClockBudgetMs}ms/积分 ${state.budget.pointsBudget}）——` +
+          `重算须人工编辑 ${runtimeFilePath(cwd)}（防误清 spent 审计）`,
+      );
+    }
+    if (!leaseActive(state.activeLease) || state.activeLease.fence !== fence) {
+      throw new RuntimeError(
+        `预算重开拒：无活跃租约或 fence ${fence} 非现行——每-run 预算重开仅限持租的 drive（fencing 语义）`,
+      );
+    }
   }
   const envWall = Number.parseInt(process.env.LZY_DRIVE_WALLCLOCK_BUDGET_MS ?? "", 10);
   const envPoints = Number.parseInt(process.env.LZY_DRIVE_POINTS_BUDGET ?? "", 10);

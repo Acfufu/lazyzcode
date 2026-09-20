@@ -59,6 +59,7 @@ import { findEngine, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
 import { auditAgentsMd, formatAgentsMd } from "../core/agentsmd.js";
 import { formatCost, rollingWaterlinePoints } from "../core/cost.js";
+import { runDrive } from "../core/drive.js";
 
 const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 
@@ -66,7 +67,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -479,8 +480,20 @@ async function cmdLoop(args) {
       }
       throw new LoopError("用法：lzy loop budget init [--wall-ms N --points N] | spend [--ms N --points N] | remaining");
     }
+    case "drive": {
+      // 无人值守执行通道（0.2.0 棒2，ADR-0020/§⑮ Q3）：单唤起内 spawn headless 会话
+      // 循环推进 executing 目标；段间 budget/lease/risk 三门；收束=done/预算尽/段尽/
+      // 无推进，除 done 外自写 handoff 快照干净交回。退出码 0=done 或干净收束。
+      const r = await runDrive(cwd, {
+        wallMs: f["wall-ms"] != null && f["wall-ms"] !== "" ? Number.parseInt(f["wall-ms"], 10) : null,
+        maxSegments: f["max-segments"] != null && f["max-segments"] !== "" ? Number.parseInt(f["max-segments"], 10) : undefined,
+        mode: typeof f.mode === "string" ? f.mode : undefined,
+      });
+      if (!r.ok) process.exitCode = 1;
+      return;
+    }
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/supersede/attempts/start/subject/tier/risk/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff/lease/budget）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/supersede/attempts/start/subject/tier/risk/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff/lease/budget/drive）`);
   }
 }
 
@@ -808,6 +821,11 @@ function printHelp() {
                                             fence 令牌申报写路径（--fence / LZY_RUNTIME_FENCE）
   lzy loop budget init|spend|remaining      运行预算（0.2.0，ADR-0020）：墙钟+积分双硬顶，
                                             超顶拒=drive 须干净收束的机器信号
+  lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]
+                                            无人值守执行通道（0.2.0，ADR-0020）：单唤起内
+                                            headless 段循环推进 executing 目标；段间三门
+                                            （risk/lease/预算）+水位联动；收束自写 handoff
+                                            快照交回（退出码 0=done 或干净收束，1=门拒/段失败）
   lzy loop subject add <path>               声明兄弟仓根入 subject 集（仅 executing；校验 git 仓/
                                             与宿主无包含；集合变化=全体 F 证据过期须重取）
   lzy loop subject remove <path>            移除 subject（missing 死锁出口；证据过期语义照走）
@@ -826,6 +844,8 @@ function printHelp() {
                                             .lazyzcode/evidence/ 并绑 sha256，≤4 个/项；
                                             --harness 声明取证程序串，INV-08 红绿同源核对）
   lzy loop verify                           证据时效核对（退出码 0=全部新鲜，1=有过期/未绑定）
+  lzy loop handoff --snapshot <快照文件>    交接登记（ADR-0009）：7 字段快照落标记，Stop 一次性
+                                            消费放行（一次性、不耗拉回预算；lint 强制 7 节全在）
   lzy loop finish                           终验完成（全部 done + F 证据新鲜才放行；自动归档证据包）
   lzy loop export                           重导出证据包到 .lazyzcode/evidence/<slug>.report.md
   lzy loop abandon / reset                  放弃 / 清除状态

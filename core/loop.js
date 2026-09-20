@@ -1667,7 +1667,8 @@ export const HANDOFF_SNAPSHOT_SECTIONS = [
 ];
 
 // 内容 lint：7 节标题在场且各节至少一行非空正文（裸标题=空壳交接，与缺节同拒）。
-function lintHandoffSnapshot(content) {
+// 导出（0.2.0 棒2）：drive 自写交接快照收束前用同一 lint 自检（函数体不变，单一事实源）。
+export function lintHandoffSnapshot(content) {
   const missing = [];
   for (const head of HANDOFF_SNAPSHOT_SECTIONS) {
     const at = content.indexOf(head);

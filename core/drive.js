@@ -47,6 +47,10 @@ export const DRIVE_SEGMENT_TIMEOUT_MS = HEADLESS_DEFAULT_TIMEOUT_MS;
 // lease TTL：max(缺省 15min, 2×段超时)——段间心跳制下给单段留足缓冲（已知未知②）。
 const LEASE_TTL_MS = Math.max(15 * 60_000, 2 * DRIVE_SEGMENT_TIMEOUT_MS);
 const STUCK_STREAK_LIMIT = 2; // 镜像 Stop 振数纪律：连续两段零推进→stuck 收束
+// 已知边界（ADJ-34，2026-09-21 五轮双审·部分成立）：推进信号只认 done 步数跳变（现状
+// 被契约测试钉为语义）——一步天然跨多段（首段探索/提交前被掐断）时会以 stuck 干净收束，
+// 代价是反复浪费唤起（安全侧：有快照）。扩展信号（新提交/脏树变化/证据入账）为增强项，
+// 未随本轮落地。
 
 function doneCountOf(goal) {
   return (goal?.steps ?? []).filter((s) => s?.status === "done").length;

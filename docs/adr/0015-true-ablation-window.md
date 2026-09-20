@@ -13,3 +13,9 @@
 3. **kill-switch 纪律**：默认关路径与改动前行为逐字段同（契约测试红绿钉）；机器开关只围既定闸门块（全部 throw-before-write 或只读分类），不碰状态文件一致性；dag.js 不设开关（账本既是 fail-closed 权威也是指标源）。
 4. **两条口径钉死**：kill-switch 的红绿红半 = 开关开的 fixture 表面捕获——开关态无法先于改动存在，依 ADR-0014「红绿各绑各面」合法；`LZY_ABLATE_VERIFY` 消融范围 = doFinishLoop 内 stale/unbound 两处拒绝，`lzy loop verify` 独立报告面不在消融内（variant-D 签名解读按此）。
 5. **试跑纪律**：trial 循环与宿主工作区完全隔离（全新 scratch 仓 + 隔离 HOME，产物入 gitignored `artifacts/ablation/`）；严格串行（并发上限遵从 `lzy loop start` 并发纪律行）；429 脏窗 trial 分层标记不混入对比。
+
+## 修正案（2026-09-21，v021 五轮双审 ADJ-81/82 修复轮）
+
+边界 1 的累计总量于此修正并记账：**b1(30) + b2(10) + b3(50) = 90 trials**。
+
+**b3 窗口开启缘由**：v021 五轮双审（`docs/reviews/2026-09-21-v021-r5-dual-review.md`，ADJ-81/82）判定——①b1/b2 期 trial 内的 `lzy` CLI 取自宿主 PATH 全局版（当时 0.0.10，其载荷**零** `LZY_ABLATE_*` 开关；`git show v0.0.10:core/loop.js | grep -c LZY_ABLATE` = 0），D/F/G/H 的机器闸门消融从未生效，相关归因句依据缺失（E/C/I/J 不受影响）；②0.1.1 人权门落地后，未随变体表消融的臂在计划采纳门硬拒，管线不可复跑。经用户 2026-09-21 指令（「对修复后的项目进行完整的消融实验」）与本修正案开启 b3：全网格 10 臂 × 5 题 × 1 rep，仪器三修随批生效（trial 内 CLI=变体树 shim + 载荷版本断言；全臂基线 env 含 `LZY_ABLATE_HUMAN_GATE=1`；payload provenance 入 trial-meta/ledger）。b3 数据为该修复后的**首批有效数据**；b1/b2 的 D/F/G/H 格判据作废（两份报告与 `docs/ablation.md` #9/#29 已加批注，重跑后改写相关归因句）。判据沿 `docs/research-ablation-design.md` §6 冻结判据继承，不改预注册口径。

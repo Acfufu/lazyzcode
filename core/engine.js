@@ -64,7 +64,8 @@ export function createEngineCli(enginePath) {
       );
       return settle(r, "plugins uninstall");
     },
-    // `plugins list --json` 的解析结果；失败返回 null（永不抛，status 侧已有空值兜底）。
+    // `plugins list --json` 的解析结果（已归一，见 normalizePluginList）；
+    // 失败返回 null（永不抛，status 侧已有空值兜底）。
     listJson() {
       if (!enginePath) return null;
       const r = spawnSync(
@@ -75,12 +76,53 @@ export function createEngineCli(enginePath) {
       const s = settle(r, "plugins list");
       if (!s.ok) return null;
       try {
-        return JSON.parse(s.stdout);
+        return normalizePluginList(JSON.parse(s.stdout));
       } catch {
         return null;
       }
     },
   };
+}
+
+function isPlainObject(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// 引擎输出面归一（ADR-0021）：`plugins list --json` 的包封跨代际漂移——0.16.5 出
+// 对象 {plugins:[…], diagnostics:[…]}，0.16.9 出裸数组，插件记录本身字段逐字相同。
+// 归一收在此唯一边界，调用方（findInstalledPlugin/status.js）不感知代际。
+// 返回形状恒为 {plugins:[…], diagnostics:[…]}（对象输入另经 ...raw 透传未知顶层键，
+// diagnostics 键由联合结果覆盖）。null 仅在 JSON.parse 失败时给出——标量或对象缺
+// plugins 数组一律归一为 {plugins:[]}，让「引擎未列出该插件」仍落 fail 而非降级为 warn。
+export function normalizePluginList(raw) {
+  const plugins = Array.isArray(raw)
+    ? raw
+    : isPlainObject(raw) && Array.isArray(raw.plugins)
+      ? raw.plugins
+      : [];
+  const topLevel = isPlainObject(raw) && Array.isArray(raw.diagnostics)
+    ? raw.diagnostics.filter(isPlainObject)
+    : [];
+  // 归属键注入：per-plugin 诊断未自带归属时补上其宿主插件 id，使 status.js 的
+  // `d?.plugin === id` 谓词无需改动即可命中。过滤在前——非对象元素一律丢弃，
+  // 否则 {...d} 会把字符串展成字符表。
+  const perPlugin = plugins.flatMap((p) =>
+    isPlainObject(p) && Array.isArray(p.diagnostics)
+      ? p.diagnostics
+          .filter(isPlainObject)
+          .map((d) => ({ ...d, plugin: d.plugin ?? d.pluginId ?? d.id ?? p.id }))
+      : [],
+  );
+  const seen = new Set();
+  const diagnostics = [];
+  for (const d of [...topLevel, ...perPlugin]) {
+    const key = JSON.stringify([d.severity, d.code, d.message, d.plugin ?? ""]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    diagnostics.push(d);
+  }
+  const base = isPlainObject(raw) ? { ...raw } : {};
+  return { ...base, plugins, diagnostics };
 }
 
 export function findInstalledPlugin(list, id) {

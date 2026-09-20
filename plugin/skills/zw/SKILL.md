@@ -42,9 +42,13 @@ Then run the tier triage below and follow the workflow. No preamble before it.
   risk_class is machine-registered (L1 data): `lzy loop register --risk …` /
   `lzy loop risk <level>` (upgrade-only), and the drive-entry gate
   (`assertDriveEligible`, ADR-0020) rejects HIGH/RESTRICTED at the unattended
-  lane entry (drive wiring lands in 0.2.0 baton 2). Triage self-assessment
-  itself remains L0 — err toward upgrading; the machine enforces the value you
-  declared.
+  lane entry, machine-enforced since 0.2.0 baton 2 (`lzy loop drive` runs the
+  gate before anything spawns). Triage self-assessment itself remains L0 — err
+  toward upgrading; the machine enforces the value you declared.
+- **Read-only recon needs no goal.** Information gathering, code reading and
+  Q&A are not goal-loop work — the loop is for state-changing work (plan
+  adoption needs a human and a decision-complete plan anyway). Do the recon,
+  report, and stop; don't register a goal just to think out loud.
 - **Mention ≠ invocation.** If the user message only mentions zw/ulw in passing
   (meta-discussion about this project — its hooks, status, docs, trigger design),
   do not engage the loop: answer the question directly.
@@ -518,6 +522,23 @@ suggests the off-peak window measured from your own 429 data, cross-checked
 against declared pricing peaks (a hand-maintained table) with a safe-window
 note.
 
+Since 0.2.0 a wake-up has an **in-wake execution channel**: `lzy loop drive`
+(ADR-0020) spawns headless engine segments inside one wake and pushes the
+executing goal segment by segment — risk/lease/budget gates are checked
+between segments (HIGH+ risk never enters; a lease keeps a single runtime
+holder; each drive gets a fresh wall-clock + points cap), and every segment's
+lzy writes carry the run's fence token so a taken-over run fails closed on
+write instead of corrupting state. Wind-down is always clean and enumerated:
+`done`, wall clock exhausted, points budget exhausted, segments exhausted, or
+two consecutive zero-progress segments (stuck). Every non-done wind-down
+authors the 7-field handoff snapshot itself and registers the handoff marker,
+so the next wake-up (or a human `zw 继续`) resumes from disk. Exit code 0 =
+done or clean wind-down; 1 = gate reject or segment failure. The host
+automation remains the **only scheduled wake face** — drive is what a wake
+runs once awake (and what you can run yourself in an unattended window).
+`lzy doctor`'s `drive` line reports channel availability (credentials, lease,
+budget, current goal eligibility).
+
 Protocol for a wake-up session (this IS a red-line contract, not a suggestion):
 
 1. **Continue only.** Re-ground with `lzy loop status`, then push the current
@@ -624,6 +645,7 @@ tool). Aliases are equal — `zw` is the primary.
 | `lzy loop risk <level>` | risk_class upgrade, one-way (low|med|high|restricted; drive-entry gate rejects HIGH+; ADR-0020) |
 | `lzy loop lease acquire/heartbeat/release` | run-level lease: minutes-scale mutual exclusion, fence token for write-path declaration (ADR-0020) |
 | `lzy loop budget init/spend/remaining` | drive budget: wall-clock + points double cap, over-cap reject = clean wind-down signal (ADR-0020) |
+| `lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]` | in-wake unattended execution channel (0.2.0, ADR-0020): headless segments inside one wake, gates between segments, wind-down authors the handoff snapshot itself; exit 0 = done or clean wind-down, 1 = gate reject/segment failure |
 | `lzy loop status` | progress, next step, evidence freshness |
 | `lzy step done <ID> [--note] [--evidence] [--evidence-file …]` | complete a step (F requires evidence; files bound by sha256) |
 | `lzy loop verify` | evidence freshness report (exit 1 when stale/unbound evidence **or no goal exists**) |

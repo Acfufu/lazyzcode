@@ -33,6 +33,36 @@ versioning is SemVer.
   (coexistence: host stays the only timed wake face; lzy still writes zero
   scheduler code), zw SKILL/guide/README updates.
 
+- **Drive — the in-wake unattended execution channel** (ADR-0020, 0.2.0
+  baton 2, roadmap §⑮ Q3): `lzy loop drive [--wall-ms N] [--max-segments N]
+  [--mode m]` spawns headless engine segments inside one wake and pushes the
+  executing goal segment by segment. Gate order: executing-only → risk
+  (`assertDriveEligible`) → engine → credentials → run-level lease
+  (one runtime holder) → budget (initialized on first use, restarted fresh per
+  run under a fence-matched active lease — every drive gets its own
+  wall-clock + points cap). Segments run with `LZY_RUNTIME_FENCE` injected, so
+  in-segment `lzy` writes fail closed once the run is superseded; the
+  wall clock is capped at `min(budget, --wall-ms)` (the host's exogenous cut
+  is a first-class input); an over-cap `recordSpend` rejection routes to a
+  clean wind-down rather than escaping as an error. Wind-down has five named
+  causes — done, wall clock, points (rolling-5h waterline linkage), segments
+  exhausted, two zero-progress segments (stuck) — and every non-done cause
+  authors the 7-field handoff snapshot itself (same lint as
+  `lzy loop handoff`), registers the marker, and releases the lease. Exit
+  code 0 = done or clean wind-down; 1 = gate reject or segment failure
+  (snapshot authored before a nonzero exit when possible). `lzy doctor` gains
+  a `drive` line (credential two-state, active lease, budget counters, current
+  goal eligibility; engine absent = skip). `scripts/headless/e2e-drive.mjs`
+  is the live-fire acceptance script (SKIP exit 0 without credentials, CI
+  never touches the network). Primitives: `detectHeadlessAuth()` is now the
+  single source for the oauth/env credential probe (doctor + both e2e
+  scripts), `spawnHeadless` returns the `durationMs` its docs always
+  promised. Docs: zw SKILL (drive section under Unattended; "read-only recon
+  needs no goal" triage bullet; cheat-sheet row), guide/README (both
+  languages), `docs/design-h3r-experiment.md` (pre-registered experiment
+  design for the step-level high-risk gate — design only, separate spike
+  goal).
+
 ## [0.1.2] - 2026-09-20
 
 ### Changed

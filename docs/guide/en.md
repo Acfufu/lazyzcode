@@ -463,6 +463,26 @@ to continue it exits cleanly, and the wake-up itself is bounded by the
 continuation budget, fatal-429 handling, serial subagents, and ≥1-hour
 spacing between runs.
 
+Since 0.2.0 a wake-up also has an **in-wake execution channel**: `lzy loop
+drive` spawns headless engine segments inside one wake and pushes the
+executing goal segment by segment. Between segments it checks the gates — the
+run holds a minutes-scale lease (one runtime holder at a time, renewed by
+heartbeat), each run gets a fresh wall-clock + points budget, and HIGH+
+risk goals are machine-rejected before anything spawns. Every segment's `lzy`
+writes carry the run's fence token, so a taken-over run fails closed on write
+instead of corrupting loop state. Wind-down is clean and enumerated: `done`,
+budget exhausted, segments exhausted, or two zero-progress segments (stuck) —
+every non-done wind-down writes the 7-field handoff snapshot itself and
+registers the marker for the next session. `lzy doctor`'s `drive` line reports
+the channel's availability on your machine:
+
+```
+lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]
+```
+
+The host automation stays the only scheduled wake face — drive is what runs
+once awake (and what you can run yourself in an unattended window).
+
 No need to wait for your laptop for the overnight digest: push the results to
 **your own** IM bot webhook (zero servers — `lzy` ships no notification
 channel of its own). Recipe: [unattended notify](../unattended-notify.md).

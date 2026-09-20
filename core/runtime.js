@@ -12,6 +12,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { createHash } from "node:crypto";
+import { WATERLINE_POINTS } from "./cost.js";
 
 export const RUNTIME_VERSION = 1;
 export const RUNTIME_FILE = "runtime.json";
@@ -156,28 +157,64 @@ function leaseActive(lease, now = Date.now()) {
   return lease != null && lease.expiresAtMs > now;
 }
 
+// 持租者活性探测（ADJ-32，0.2.1 五轮双审）：SIGKILL 的 drive 留下活性租约，后续每次
+// 唤起被拒且不给 handoff，恢复=人工删文件。同机 pid 存活可判（ESRCH=已死）；容器/pid 复用
+// 等不确定情形按「存活」处理（保守侧=继续拒，TTL 兜底），故只用于报错文案与 reclaim 出口。
+function holderPidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return null; // 旧格式无 pid=不可判
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err?.code === "ESRCH" ? false : true;
+  }
+}
+
 // 运行级认领：活跃未过期租约在场=拒（单运行时互斥）；否则发号新 fence（单调 +1）
-// 并落租约。ttlMs ≤0 视为缺省。
-export function acquireLease(cwd, { ttlMs } = {}) {
+// 并落租约。ttlMs ≤0 视为缺省。slug=本租约绑定的目标（ADJ-12：跨 reset 僵尸写收窄）。
+export function acquireLease(cwd, { ttlMs, slug = null } = {}) {
   const ttl = Number.isInteger(ttlMs) && ttlMs > 0 ? ttlMs : DEFAULT_LEASE_TTL_MS;
   const state = loadRuntime(cwd) ?? freshState();
   if (leaseActive(state.activeLease)) {
     const until = new Date(state.activeLease.expiresAtMs).toISOString();
+    const alive = holderPidAlive(state.activeLease.hostPid);
+    const zombieNote = alive === false
+      ? `持租进程 pid ${state.activeLease.hostPid} 已不存在（僵尸租约）——回收：lzy loop lease reclaim`
+      : `等待其 release/过期，或确认为僵尸残留后 lzy loop lease reclaim（或人工删除 ${runtimeFilePath(cwd)}）`;
     throw new RuntimeError(
-      `另一运行时持租（fence ${state.activeLease.fence}，至 ${until}）——单运行时互斥；` +
-        `等待其 release/过期，或确认为僵尸残留后由人工删除 ${runtimeFilePath(cwd)}`,
+      `另一运行时持租（fence ${state.activeLease.fence}，至 ${until}）——单运行时互斥；${zombieNote}`,
     );
   }
   const now = Date.now();
   state.fenceCounter += 1;
   state.activeLease = {
     fence: state.fenceCounter,
+    slug: typeof slug === "string" && slug !== "" ? slug : null,
+    hostPid: process.pid,
     acquiredAt: new Date(now).toISOString(),
     heartbeatAt: new Date(now).toISOString(),
     expiresAtMs: now + ttl,
   };
   saveRuntime(cwd, state);
   return state.activeLease;
+}
+
+// 僵尸租约回收出口（ADJ-32）：持有者 pid 可判且已死=直接回收；不可判或仍活=须 --force
+// （人工确认为僵尸后行使）；无活跃租约=幂等 no-op。fenceCounter 不回退（单调性保持）。
+export function reclaimLease(cwd, { force = false } = {}) {
+  const state = loadRuntime(cwd) ?? freshState();
+  if (!leaseActive(state.activeLease)) return { reclaimed: false, reason: "无活跃租约" };
+  const alive = holderPidAlive(state.activeLease.hostPid);
+  if (alive !== false && !force) {
+    throw new RuntimeError(
+      `回收拒：持租进程 ${alive === true ? `pid ${state.activeLease.hostPid} 仍存活` : "活性不可判（旧格式租约）"}——` +
+        `确认对方真的停手后用 lzy loop lease reclaim --force，或等待 TTL 过期`,
+    );
+  }
+  const fence = state.activeLease.fence;
+  state.activeLease = null;
+  saveRuntime(cwd, state);
+  return { reclaimed: true, fence, forced: alive !== false };
 }
 
 // 心跳续期：fence 不符/租约已过期= fail-closed 拒（已被接管或死租——工人须停手）。
@@ -218,7 +255,9 @@ export function releaseLease(cwd, fence) {
 // fence 缺席=未申报（交互人类）→放行；fence 在场（drive 派生工人）→必须与现行活跃
 // 租约相符，否则=已被接管/租约已死，拒（停手不写，fencing 语义）。runtime.json 缺席
 // 时带 fence 的调用同样拒（无租约在册=申报失真，不静默放行）。
-export function assertFenceIfPresent(cwd, fence) {
+// ADJ-12（0.2.1 五轮双审）：租约绑目标——reset 不清 runtime.json，僵尸 worker 的 fence
+// 对 reset 后的新目标仍会相符；slug 在场且不符即拒（旧格式租约无 slug=跳过该维）。
+export function assertFenceIfPresent(cwd, fence, slug = null) {
   if (fence == null) return { checked: false };
   const state = loadRuntime(cwd);
   if (!state || !leaseActive(state.activeLease)) {
@@ -231,7 +270,28 @@ export function assertFenceIfPresent(cwd, fence) {
       `写拒：fence ${fence} 非现行（现行 ${state.activeLease.fence}）——你已被接管，立即停手不写（fencing 语义）`,
     );
   }
+  const leaseSlug = state.activeLease.slug;
+  if (typeof leaseSlug === "string" && leaseSlug !== "" && typeof slug === "string" && slug !== "" && leaseSlug !== slug) {
+    throw new RuntimeError(
+      `写拒：现行租约绑定目标 ${leaseSlug}（本写面目标 ${slug}）——租约与目标不符，立即停手不写（fencing 语义，ADJ-12）`,
+    );
+  }
   return { checked: true, lease: state.activeLease };
+}
+
+// 预算 env 解析（ADJ-28，0.2.1 五轮双审）：原 parseInt 静默吞错值——"abc"/"0"/"-5"
+// 静默回落缺省（想要 0 预算的人拿到 30min）、"1e3" 截成 1ms。改为 Number() + fail-loud：
+// 在场即必须为有限正数，否则 RuntimeError（配置错误导向响亮失败，不是静默换档）。
+function parseBudgetEnv(name) {
+  const raw = process.env[name];
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new RuntimeError(
+      `${name} 非法：${JSON.stringify(raw)}（须为有限正数；-1/0/abc 一律拒）——修正后重试，或取消该 env 用缺省`,
+    );
+  }
+  return n;
 }
 
 // ── 运行预算（墙钟+积分双硬顶）───────────────────────────────────────────
@@ -255,16 +315,16 @@ export function initBudget(cwd, { wallClockBudgetMs, pointsBudget, restart = fal
       );
     }
   }
-  const envWall = Number.parseInt(process.env.LZY_DRIVE_WALLCLOCK_BUDGET_MS ?? "", 10);
-  const envPoints = Number.parseInt(process.env.LZY_DRIVE_POINTS_BUDGET ?? "", 10);
+  const envWall = parseBudgetEnv("LZY_DRIVE_WALLCLOCK_BUDGET_MS");
+  const envPoints = parseBudgetEnv("LZY_DRIVE_POINTS_BUDGET");
   const wall = Number.isInteger(wallClockBudgetMs) && wallClockBudgetMs > 0
     ? wallClockBudgetMs
-    : Number.isInteger(envWall) && envWall > 0
+    : envWall !== null
       ? envWall
       : DEFAULT_DRIVE_WALLCLOCK_MS;
   const pts = Number.isFinite(pointsBudget) && pointsBudget > 0
     ? pointsBudget
-    : Number.isInteger(envPoints) && envPoints > 0
+    : envPoints !== null
       ? envPoints
       : DEFAULT_DRIVE_POINTS;
   state.budget = { wallClockBudgetMs: wall, pointsBudget: pts, spentMs: 0, spentPoints: 0 };
@@ -280,18 +340,32 @@ export function recordSpend(cwd, { ms = 0, points = 0 } = {}) {
   if (!state.budget) {
     throw new RuntimeError("预算未初始化：先 lzy loop budget init（或由 drive 自动初始化，棒2）");
   }
-  const b = state.budget;
-  const newMs = b.spentMs + (Number.isFinite(ms) && ms > 0 ? ms : 0);
-  const newPoints = b.spentPoints + (Number.isFinite(points) && points > 0 ? points : 0);
-  if (newMs > b.wallClockBudgetMs) {
-    throw new RuntimeError(
-      `墙钟预算超顶：累计 ${newMs}ms > cap ${b.wallClockBudgetMs}ms——drive 须干净收束（handoff 快照+放行，ADR-0020）`,
-    );
+  // ADJ-28（0.2.1 五轮双审）：原实现把非法/负数静默归零（调用方以为记账成功）；超顶
+  // 整笔拒又使账本低于实耗（差一整段）。改为：非法值响亮拒；超顶时**先如实入账**
+  // （附 overrun 标记）再抛——账本与现实对账，信号语义（超顶拒=收束）不变。
+  if (!Number.isFinite(ms) || ms < 0) {
+    throw new RuntimeError(`记账拒：ms 须为有限非负数，收到 ${JSON.stringify(ms)}`);
   }
-  if (newPoints > b.pointsBudget) {
-    throw new RuntimeError(
-      `积分预算超顶：累计 ${newPoints} > cap ${b.pointsBudget}——drive 须干净收束（handoff 快照+放行，ADR-0020）`,
+  if (!Number.isFinite(points) || points < 0) {
+    throw new RuntimeError(`记账拒：points 须为有限非负数，收到 ${JSON.stringify(points)}`);
+  }
+  const b = state.budget;
+  const newMs = b.spentMs + ms;
+  const newPoints = b.spentPoints + points;
+  const overWall = newMs > b.wallClockBudgetMs;
+  const overPoints = newPoints > b.pointsBudget;
+  if (overWall || overPoints) {
+    b.spentMs = newMs;
+    b.spentPoints = newPoints;
+    b.lastOverrun = { at: new Date().toISOString(), ms, points };
+    saveRuntime(cwd, state);
+    const err = new RuntimeError(
+      overWall
+        ? `墙钟预算超顶：累计 ${newMs}ms > cap ${b.wallClockBudgetMs}ms——drive 须干净收束（handoff 快照+放行，ADR-0020；本笔已如实入账并标 lastOverrun）`
+        : `积分预算超顶：累计 ${newPoints} > cap ${b.pointsBudget}——drive 须干净收束（handoff 快照+放行，ADR-0020；本笔已如实入账并标 lastOverrun）`,
     );
+    err.code = "BUDGET_OVER"; // ADJ-26：超顶路由用错误码而非文案匹配（文案可改，路由不破）
+    throw err;
   }
   b.spentMs = newMs;
   b.spentPoints = newPoints;
@@ -310,15 +384,18 @@ export function formatBudget(cwd, { rollingPoints } = {}) {
   }
   if (!state?.budget) return `${head}\n  （未初始化：lzy loop budget init）`;
   const b = state.budget;
+  // ADJ-29（0.2.1 五轮双审）：警戒线硬编码 1600 曾忽略 env 覆盖（同仓 doctor/stop 两面
+  // 均读 LZY_WATERLINE_POINTS）——读面与执法面必须同源；drive 实际执法用 pointsBudget。
+  const envWl = Number(process.env.LZY_WATERLINE_POINTS) || WATERLINE_POINTS;
   const lines = [
     head,
     `  墙钟：${b.spentMs}/${b.wallClockBudgetMs}ms（余 ${Math.max(0, b.wallClockBudgetMs - b.spentMs)}ms）`,
     `  积分：${Math.round(b.spentPoints * 100) / 100}/${b.pointsBudget}（余 ${Math.round(Math.max(0, b.pointsBudget - b.spentPoints) * 100) / 100}）`,
-    `  账号近 5h 滚动水位：${rollingPoints == null ? "不可读（fail-soft 降级）" : `${rollingPoints} / 警戒线 1600`}（联动执法归棒2 drive）`,
+    `  账号近 5h 滚动水位：${rollingPoints == null ? "不可读（fail-soft 降级）" : `${rollingPoints} / 警戒线 ${envWl}`}（drive 执法用积分硬顶 ${b.pointsBudget}）`,
   ];
   if (state.activeLease && leaseActive(state.activeLease)) {
     lines.push(
-      `  活跃租约：fence ${state.activeLease.fence}（至 ${new Date(state.activeLease.expiresAtMs).toISOString()}）`,
+      `  活跃租约：fence ${state.activeLease.fence}${state.activeLease.slug ? `（目标 ${state.activeLease.slug}）` : ""}（至 ${new Date(state.activeLease.expiresAtMs).toISOString()}）`,
     );
   }
   return lines.join("\n");

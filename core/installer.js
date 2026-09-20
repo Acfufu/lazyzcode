@@ -9,13 +9,14 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createEngineCli } from "./engine.js";
 import {
   MARKETPLACE,
   findEngine,
   installPathFor,
   pluginId,
+  pluginsRoot,
   registryPath,
   repoManifestPath,
   repoPluginDir,
@@ -135,6 +136,18 @@ function isDotResidue(rel) {
 
 // 把仓库 plugin/ 载荷整目录部署到引擎缓存（也是 lzy sync 的热重载原语）。
 // 先落同父 tmp 再整体换装：并发会话不会看到 rm→cp 空窗里的半份载荷（评审 R3-3）。
+// ADJ-61（0.2.1 五轮双审）第二道闸：任何递归强删前断言目标落在 pluginsRoot() 之内
+//（缺失即抛，不删）——白名单再漏一维也不会演成越界删。
+function assertInsidePluginsRoot(dest) {
+  const root = resolve(pluginsRoot());
+  const rp = resolve(dest);
+  if (rp !== root && !rp.startsWith(root + sep)) {
+    throw new Error(
+      `部署/卸载目标越界（须落在引擎插件根内）：${rp}（根 ${root}）——拒绝递归删除（ADJ-61 护栏）`,
+    );
+  }
+}
+
 export function deployFiles(manifest) {
   const dest = installPathFor(manifest);
   const parent = dirname(dest);
@@ -213,7 +226,9 @@ export async function uninstall() {
       `可选清理：官方命令可一并移除 config 中的启用残留\n  zcode plugins uninstall ${id} --force`,
     );
   }
-  rmSync(entry?.installPath ?? installPathFor(manifest), { recursive: true, force: true });
+  const uninstallDest = entry?.installPath ?? installPathFor(manifest);
+  assertInsidePluginsRoot(uninstallDest); // ADJ-61：注册表 installPath 是脏输入面，rm 前同断言
+  rmSync(uninstallDest, { recursive: true, force: true });
 
   // installed=是否真有安装物被动过：cli 头行按事实给 ✔/➖，不再无中生有打绿勾（评审 R3-8）。
   const installed = Boolean(entry) || engineRemoved;

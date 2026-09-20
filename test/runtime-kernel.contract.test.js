@@ -156,11 +156,39 @@ test("budget：缺省定标（env 覆盖）+ 记账递减 + 墙钟/积分超顶�
     try {
       withLock(d2, () => initBudget(d2, {}));
       assert.throws(() => withLock(d2, () => recordSpend(d2, { ms: 101 })), /墙钟预算超顶/);
-      assert.throws(() => withLock(d2, () => recordSpend(d2, { ms: 50, points: 999 })), /积分预算超顶/);
-      // 恰好不超=过（边界：等于 cap 非超）
-      withLock(d2, () => recordSpend(d2, { ms: 100, points: 0 }));
+      // ADJ-28（0.2.1 五轮双审）：超顶时本笔仍如实入账（账本与现实对账）+ lastOverrun 标记。
+      const afterOver = loadRuntime(d2).budget;
+      assert.equal(afterOver.spentMs, 101, "超顶笔如实入账（原实现整笔拒致账本低于实耗）");
+      assert.equal(typeof afterOver.lastOverrun?.at, "string", "lastOverrun 标记在场");
+      assert.throws(() => withLock(d2, () => recordSpend(d2, { ms: "abc" })), /记账拒/);
+      assert.throws(() => withLock(d2, () => recordSpend(d2, { ms: -5 })), /记账拒/);
     } finally {
       rmSync(d2, { recursive: true, force: true });
+    }
+    const d3 = repo("lzy-runtime-budget3-");
+    try {
+      withLock(d3, () => initBudget(d3, {}));
+      assert.throws(() => withLock(d3, () => recordSpend(d3, { ms: 50, points: 999 })), /积分预算超顶/);
+    } finally {
+      rmSync(d3, { recursive: true, force: true });
+    }
+    // 恰好不超=过（边界：等于 cap 非超）——独立仓：超顶笔现已如实入账（ADJ-28），
+    // 同仓二次记账会撞上一笔已入账的 50ms。
+    const d5 = repo("lzy-runtime-budget5-");
+    try {
+      withLock(d5, () => initBudget(d5, {}));
+      withLock(d5, () => recordSpend(d5, { ms: 100, points: 0 }));
+    } finally {
+      rmSync(d5, { recursive: true, force: true });
+    }
+    // env 非法值 fail-loud（ADJ-28：原 parseInt 静默吞错值——"abc"/"1e3"/"0" 全被吞）
+    process.env.LZY_DRIVE_WALLCLOCK_BUDGET_MS = "abc";
+    const d4 = repo("lzy-runtime-budget4-");
+    try {
+      assert.throws(() => withLock(d4, () => initBudget(d4, {})), /LZY_DRIVE_WALLCLOCK_BUDGET_MS 非法/);
+    } finally {
+      process.env.LZY_DRIVE_WALLCLOCK_BUDGET_MS = "100";
+      rmSync(d4, { recursive: true, force: true });
     }
   } finally {
     if (envSave.wall === undefined) delete process.env.LZY_DRIVE_WALLCLOCK_BUDGET_MS;

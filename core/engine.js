@@ -95,11 +95,15 @@ function isPlainObject(v) {
 // diagnostics 键由联合结果覆盖）。null 仅在 JSON.parse 失败时给出——标量或对象缺
 // plugins 数组一律归一为 {plugins:[]}，让「引擎未列出该插件」仍落 fail 而非降级为 warn。
 export function normalizePluginList(raw) {
-  const plugins = Array.isArray(raw)
+  // ADJ-53（0.2.1 五轮双审）：diagnostics 侧「非对象元素一律丢弃」的纪律同样施加到
+  // plugins 本体——`[null]` 等 JSON 常见 miss 位曾使 findInstalledPlugin 取属性即抛，
+  // `lzy status` 整体崩、doctor 丢全部基础检查（status.js 调用点不在 try 内）。
+  const plugins = (Array.isArray(raw)
     ? raw
     : isPlainObject(raw) && Array.isArray(raw.plugins)
       ? raw.plugins
-      : [];
+      : []
+  ).filter(isPlainObject);
   const topLevel = isPlainObject(raw) && Array.isArray(raw.diagnostics)
     ? raw.diagnostics.filter(isPlainObject)
     : [];

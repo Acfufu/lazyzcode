@@ -21,7 +21,7 @@
 - [ ] tagline 与 NOTE 三节拍弧线在场。
 - [ ] 两技能自述（zw / init-deep）与 `plugin/skills/*/SKILL.md` frontmatter `description` 事实一致。
 - [ ] CLI 命令表齐全（快照 20 行，2026-09-18 v0.1.0 棒B 后；2026-09-19 0.1.1 goal1 目标循环行内容扩人权门句、行数不变，逐版计数账见下行「三面分记」；沿革 2026-09-16 增 update→又增 证据主体 subject/tier 两行）：install / sync / update / status / doctor / 目标循环 / 证据主体 subject / Tier / 步级认领 claim / 证据包 export / 交接 handoff / 跨仓清单 list / 目标谱系 history / 积分报表 cost / 证据账本 red·waive·list / 失效 DAG dependents·stale / 对照 attestation / attempt 世系 supersede·attempts / agents-md / uninstall——新命令进 `cli/lzy.js` 必须同批进双语表。
-- [ ] 「`lzy doctor` 都查什么」段与实跑输出一致（含 rate-limit / transport / content / band-by-provider / cost / schedule / agents-md / claims / host-git / ledger / waterline / orphan-wake / hook-node——核验：跑 `lzy doctor` 逐行对描述）。
+- [ ] 「`lzy doctor` 都查什么」段与实跑输出一致（含 rate-limit / transport / content / band-by-provider / provider-mix / cost / schedule / agents-md / claims / host-git / ledger / waterline / orphan-wake / hook-node / payload-ver / handoff-usage / codegraph / drive——核验：跑 `lzy doctor` 逐行对描述；2026-09-21 ADJ-78：drive/provider-mix/payload-ver/codegraph/handoff-usage 五线曾漏记，双语 README 已补）。
 - [ ] 「之后的路 / Your next moves」承载记住 + 接着走两拍的入口（快速上手只教循环）。
 - [ ] 架构树与实际一致（skills 2、hooks 5 经 run-hook 启动器[win32 走 run-hook.cmd 孪生]、agents 3、core 模块清单）。
 - [ ] schedule 措辞口径：「限流实测 ∩ 计价高峰对照」（2026-09-10 起，双语 8 处；不许退回纯限流表述）。
@@ -67,7 +67,7 @@
 
 ## 收尾验证链（必跑）
 
-1. `npm test` —— 基线以收窄发现面为准（2026-09-14 起 `node --test "test/**/*.test.js"`，幻影 pass 结构性根治——裸 cwd 发现已废；Node ≥22 对 `--test` 位置参数按 glob 解释，目录字面量形态不可用）。快照 **320/320**（2026-09-20，v020 棒2 N6 实跑刷新；前值 309/309 v020 棒1、297/297 v011——此处曾漏刷）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
+1. `npm test` —— 基线以收窄发现面为准（2026-09-14 起 `node --test "test/**/*.test.js"`，幻影 pass 结构性根治——裸 cwd 发现已废；Node ≥22 对 `--test` 位置参数按 glob 解释，目录字面量形态不可用）。快照 **343/343**（2026-09-21，v021 五轮双审+修复轮 N6 实跑刷新〔`node --test "test/**/*.test.js"`：tests 343 · pass 343 · fail 0〕；前值 320/320 v020 棒2、309/309 v020 棒1、297/297 v011——此处曾漏刷）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
 2. `node scripts/docs-preview/build.mjs && node scripts/docs-preview/check-anchors.mjs && node scripts/docs-preview/check-links.mjs` —— 断链 0、锚点双语对齐、页面数稳定。
 3. 动了 `plugin/` 时：`lzy sync` + grep 安装缓存。
 4. 提交带尾注 `Goal: <slug>#<步号>`（ADR-0005）。

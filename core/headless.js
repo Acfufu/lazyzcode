@@ -13,7 +13,7 @@
 // 凭据是 HOME 绑定的——换绑 HOME 会失凭据，E2E 走真 HOME 或显式 env 注入）。
 // 本模块零业务编排；错误用 HeadlessError（渲染口径与 LoopError/DagError 同）。
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { findEngine } from "./paths.js";
@@ -27,11 +27,22 @@ export class HeadlessError extends Error {}
 // checkHeadless 与 e2e-loop 各自内联的两份重复）。oauth=桌面 login 的凭据文件；
 // envAuth=桌面注入的 provider 配置 env（spike §3 认证链）；ok=任一在场。
 export function detectHeadlessAuth() {
-  const oauth = existsSync(join(homedir(), ".zcode", "v2", "credentials.json"));
-  const envAuth = Boolean(
-    process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE || process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE,
-  );
-  return { oauth, envAuth, ok: oauth || envAuth };
+  const credentials = join(homedir(), ".zcode", "v2", "credentials.json");
+  // ADJ-43（0.2.1 五轮双审）：判据须同强度——oauth 腿用 existsSync（目录/0 字节也算），
+  // env 腿只判在场不验指向文件（陈旧 env 把应 SKIP 的调用变成硬失败，doctor 还报 ok）。
+  const oauth = filePresent(credentials);
+  const envFile = process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE || process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+  const envAuth = Boolean(envFile) && filePresent(envFile);
+  const envStale = Boolean(envFile) && !envAuth; // env 在场但文件缺席：第三态供 doctor 报 warn
+  return { oauth, envAuth, envStale, ok: oauth || envAuth };
+}
+
+function filePresent(p) {
+  try {
+    return statSync(p).isFile() && statSync(p).size > 0;
+  } catch {
+    return false;
+  }
 }
 
 function assertTimeoutMs(timeoutMs) {
@@ -154,48 +165,77 @@ function defaultRun({ argv, cwd, env, timeoutMs }) {
     let timedOut = false;
     let settled = false;
     let spawnError = null;
+    const settle = (payload) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolvePromise({ stdout, stderr, timedOut, ...(spawnError ? { spawnError } : {}), ...payload });
+    };
+    // 墙钟兜底结算（ADJ-38，0.2.1 五轮双审）：SIGKILL 只及直接子进程；持 stdio 管道的
+    // 后代可把 close 拖到预算外（探针实测 timeoutMs=1000 实耗 25s=25×）。预算到点即
+    // destroy 管道 + exit 事件结算（宽限窗收 stdout 尾巴），保证「预算到点 ⇒ 预算+ε 返回」。
+    const graceTimer = () => {
+      setTimeout(() => settle({ exitCode: null, signal: "SIGKILL" }), 1500).unref();
+    };
     const timer = setTimeout(() => {
       timedOut = true;
       try {
         child.kill("SIGKILL");
       } catch {}
+      try {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+      } catch {}
+      graceTimer();
     }, timeoutMs);
+    // 流内 UTF-8 解码（ADJ-39）：逐 chunk 字符串拼接会把跨边界的多字节字符解成 U+FFFD。
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    // 体积上限（ADJ-49）：唯一无预算读面——恶意/故障引擎刷屏可 OOM。
+    const MAX_STREAM = 8 * 1024 * 1024;
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
     child.stdout?.on("data", (d) => {
+      if (stdout.length >= MAX_STREAM) {
+        stdoutTruncated = true;
+        return;
+      }
       stdout += d;
     });
     child.stderr?.on("data", (d) => {
+      if (stderr.length >= MAX_STREAM) {
+        stderrTruncated = true;
+        return;
+      }
       stderr += d;
     });
     child.on("error", (err) => {
       spawnError = err?.message ?? String(err);
     });
+    child.on("exit", (code, signal) => {
+      // ADJ-38：exit 即结算（不等 close——close 依赖 stdio 关闭，可被后代拖住）。
+      // 但正常路径给 200ms 宽限收 stdout 尾巴，超时未 close 也按 exit 结算。
+      setTimeout(() => {
+        settle({
+          exitCode: code,
+          signal: signal ?? null,
+          ...(stdoutTruncated ? { stdoutTruncated: true } : {}),
+          ...(stderrTruncated ? { stderrTruncated: true } : {}),
+        });
+      }, 200).unref();
+    });
     child.on("close", (code, signal) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolvePromise({
+      settle({
         exitCode: code,
         signal: signal ?? null,
-        timedOut,
-        stdout,
-        stderr,
-        ...(spawnError ? { spawnError } : {}),
+        ...(stdoutTruncated ? { stdoutTruncated: true } : {}),
+        ...(stderrTruncated ? { stderrTruncated: true } : {}),
       });
     });
     // 防御兜底：个别平台 spawn 失败后 close 可能迟到——error 后短窗补结算，Promise 永不挂。
     child.on("error", () => {
       setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolvePromise({
-          exitCode: null,
-          signal: null,
-          timedOut,
-          stdout,
-          stderr,
-          spawnError: spawnError ?? "进程启动失败",
-        });
+        settle({ exitCode: null, signal: null, spawnError: spawnError ?? "进程启动失败" });
       }, 50).unref();
     });
   });

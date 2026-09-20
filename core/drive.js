@@ -9,14 +9,14 @@
 // 积分执法=水位联动（rollingWaterlinePoints ≥ pointsBudget → 收束；ADR-0020 已知边界）。
 // 退出码契约：0=done 或干净收束（run 契约正常完成）；1=门拒/段 infra 失败（尽力收束带
 // 快照后非零）。deps 可注入（run/rollingPoints/now/git）供离线契约测试（headless.js 先例）。
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   LoopError,
   assertDriveEligible,
   handoffGoal,
   lintHandoffSnapshot,
+  loopDir,
   noGoalMessage,
   readGoal,
   withLock,
@@ -29,7 +29,12 @@ import {
   recordSpend,
   releaseLease,
 } from "./runtime.js";
-import { HEADLESS_DEFAULT_TIMEOUT_MS, detectHeadlessAuth, spawnHeadless } from "./headless.js";
+import {
+  HEADLESS_DEFAULT_TIMEOUT_MS,
+  HEADLESS_MODES,
+  detectHeadlessAuth,
+  spawnHeadless,
+} from "./headless.js";
 import { findEngine } from "./paths.js";
 import { rollingWaterlinePoints } from "./cost.js";
 import { createGit } from "./git.js";
@@ -68,6 +73,9 @@ function composeSegmentPrompt(cwd, cliPath) {
 }
 
 // 7 字段交接快照自写（lint 家法：先 lint 后登记，契约字面量与 SKILL 模板逐字节一致）。
+// ADJ-23（0.2.1 五轮双审）：快照落工作区 `.lazyzcode/loop/handoff/`（reset 不清家族）——
+// 原实现落 OS 临时目录：唯一指针被下个 Stop 消费、/tmp 会被系统清理、每次收束留垃圾
+// 目录，「下一唤起从盘上恢复」的承诺落空（无人值守后继会话读不到精确续跑状态）。
 function authorHandoffSnapshot(cwd, goal, cause, extraRisk, deps) {
   const git = deps.git ? deps.git(cwd) : createGit(cwd);
   const porcelain = git.porcelainPaths();
@@ -98,9 +106,11 @@ function authorHandoffSnapshot(cwd, goal, cause, extraRisk, deps) {
   if (missing.length > 0) {
     throw new LoopError(`drive 自写交接快照未过 7 字段 lint：${missing.join("、")}`);
   }
-  const dir = mkdtempSync(join(tmpdir(), "lzy-drive-handoff-"));
-  const snap = join(dir, "handoff.md");
-  writeFileSync(snap, content);
+  const dir = join(loopDir(cwd), "handoff");
+  mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const snap = join(dir, `${goal?.slug ?? "goal"}-${stamp}.md`);
+  writeFileSync(snap, content, { mode: 0o600 });
   return { snap, treeHash };
 }
 
@@ -110,7 +120,13 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
     : DRIVE_MAX_SEGMENTS_DEFAULT;
   const mode = opts.mode ?? DRIVE_MODE_DEFAULT;
   const wallMs = Number.isFinite(opts.wallMs) && opts.wallMs > 0 ? opts.wallMs : null;
-  const nowFn = deps.now ?? Date.now;
+  // ADJ-26（0.2.1 五轮双审）：参数校验前置——原实现 mode 校验在 spawnHeadless 内（取租/
+  // 建预算之后），一次纯用法错误已落 runtime.json 且不留交接快照。
+  if (!HEADLESS_MODES.has(mode)) {
+    throw new LoopError(
+      `--mode 非法：${JSON.stringify(mode)}——合法 ${[...HEADLESS_MODES].join("|")}（drive 缺省 yolo）`,
+    );
+  }
 
   // ── 门序（任一拒即 LoopError → CLI exit1）─────────────────────────────────
   const goal = readGoal(cwd);
@@ -134,39 +150,21 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
     );
   }
 
-  // lease + 每-run 预算重开（同一 withLock 临界区；runtime 写须持锁）。
-  const lease = withLock(cwd, () => {
-    const l = acquireLease(cwd, { ttlMs: LEASE_TTL_MS });
-    process.env.LZY_RUNTIME_FENCE = String(l.fence); // 本进程写面申报（handoff 经 guardFence）
-    try {
-      if (loadRuntime(cwd)?.budget) {
-        initBudget(cwd, { restart: true, fence: l.fence });
-      } else {
-        initBudget(cwd);
-      }
-    } catch (err) {
-      releaseLease(cwd, l.fence); // 已在本临界区内，直接释放（嵌套 withLock 会自撞锁）
-      delete process.env.LZY_RUNTIME_FENCE;
-      throw err;
-    }
-    return l;
-  });
-  const budget = loadRuntime(cwd).budget;
-  const effectiveWallMs = wallMs != null ? Math.min(budget.wallClockBudgetMs, wallMs) : budget.wallClockBudgetMs;
-
-  console.log(
-    `[drive] 启动：${goal.slug} · 段上限 ${maxSegments} · 有效墙钟 ${effectiveWallMs}ms · mode=${mode} · fence=${lease.fence}`,
-  );
-
-  const cliPath = resolve(process.argv[1] ?? "lzy");
-  const startedAt = nowFn();
+  let lease = null;
+  let budget = null;
   let resumeSession = null;
   let noProgressStreak = 0;
-  let lastDoneCount = doneCountOf(goal);
   let spentMsLocal = 0;
   let outcome = null; // {ok, cause, handoff}
 
-  const windDown = (ok, cause, riskNote) => {
+  const windDown = (ok, cause, riskNote, { skipHandoff = false } = {}) => {
+    if (skipHandoff) {
+      // ADJ-25：租约失效/被接管的收束——不写交接（写会被 fencing 守卫拒，且接管者自负
+      // 责）；只打印接管指示，非零退出。
+      outcome = { ok, cause, handoff: null };
+      console.log(`[drive] 收束：${cause}——已被接管/租约失效，不写交接（接管者负责续跑）`);
+      return;
+    }
     const fresh = readGoal(cwd);
     if (fresh && fresh.status === "executing") {
       const { snap, treeHash } = authorHandoffSnapshot(cwd, fresh, cause, riskNote, deps);
@@ -180,8 +178,46 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
   };
 
   try {
+    // lease + 每-run 预算重开（同一 withLock 临界区；runtime 写须持锁）。
+    // ADJ-26：取租→释放整段进 try/finally（原 loadRuntime 在 try 外，抛错即租约泄漏窗口）。
+    lease = withLock(cwd, () => {
+      const l = acquireLease(cwd, { ttlMs: LEASE_TTL_MS, slug: goal.slug }); // ADJ-12：租约绑目标
+      process.env.LZY_RUNTIME_FENCE = String(l.fence); // 本进程写面申报（handoff 经 guardFence）
+      try {
+        if (loadRuntime(cwd)?.budget) {
+          initBudget(cwd, { restart: true, fence: l.fence });
+        } else {
+          initBudget(cwd);
+        }
+      } catch (err) {
+        releaseLease(cwd, l.fence); // 已在本临界区内，直接释放（嵌套 withLock 会自撞锁）
+        delete process.env.LZY_RUNTIME_FENCE;
+        throw err;
+      }
+      return l;
+    });
+    budget = loadRuntime(cwd).budget;
+    const effectiveWallMs = wallMs != null ? Math.min(budget.wallClockBudgetMs, wallMs) : budget.wallClockBudgetMs;
+
+    console.log(
+      `[drive] 启动：${goal.slug} · 段上限 ${maxSegments} · 有效墙钟 ${effectiveWallMs}ms · mode=${mode} · fence=${lease.fence}`,
+    );
+
+    const cliPath = resolve(process.argv[1] ?? "lzy");
+    let lastDoneCount = doneCountOf(goal);
+
     for (let seg = 1; seg <= maxSegments; seg++) {
-      withLock(cwd, () => heartbeatLease(cwd, lease.fence, { ttlMs: LEASE_TTL_MS }));
+      // 段首段间三门（ADJ-20：risk 门原只查入口一次，7 处文档/prompt 承诺段间复核）；
+      // 心跳失败=租约失效/被接管——ADJ-25：必须走收束通道（原实现异常穿出 runDrive：
+      // 无快照、无 marker、租约残留、段账不入账）。
+      try {
+        const freshGoal = readGoal(cwd);
+        if (freshGoal) assertDriveEligible(freshGoal);
+        withLock(cwd, () => heartbeatLease(cwd, lease.fence, { ttlMs: LEASE_TTL_MS }));
+      } catch (err) {
+        windDown(false, `段间门拒（${(err?.message ?? err).slice(0, 200)}）`, undefined, { skipHandoff: true });
+        break;
+      }
       const remainingWall = effectiveWallMs - spentMsLocal;
       if (remainingWall <= 0) {
         windDown(true, "墙钟预算尽");
@@ -215,25 +251,30 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
       try {
         withLock(cwd, () => recordSpend(cwd, { ms: result.durationMs ?? 0, points: 0 }));
       } catch (err) {
-        if (/预算超顶/.test(err?.message ?? "")) {
+        if (err?.code === "BUDGET_OVER") { // ADJ-26：错误码路由，不靠文案匹配
           windDown(true, `预算尽（${String(err.message).split("：")[0]}）`);
           break;
         }
         throw err;
       }
-      // 进度检测 + 终态判定（done 由段内 finish 达成——段 prompt 已钉该分支）。
+      // 终态判定 + 段间身份/进度检测（ADJ-24：原实现只看 done 与计数变化——目标被
+      // abandon/reset 后仍继续 spawn，且 done 计数下降（换代）被当作「有推进」）。
       const fresh = readGoal(cwd);
-      if (fresh && fresh.status === "done") {
+      if (fresh && fresh.status === "done" && fresh.slug === goal.slug) {
         outcome = { ok: true, cause: "done", handoff: null };
         console.log(`[drive] ✔ goal done（${fresh.slug}）——终验 attestation：.lazyzcode/attestations/`);
         break;
       }
+      if (!fresh || fresh.slug !== goal.slug || fresh.status !== "executing") {
+        windDown(false, `目标已非本 drive 的 executing 目标（slug/状态换代：${fresh ? `${fresh.slug}/${fresh.status}` : "状态不可读"}）`);
+        break;
+      }
       const dc = doneCountOf(fresh);
-      if (dc === lastDoneCount) {
-        noProgressStreak += 1;
-      } else {
+      if (dc > lastDoneCount) {
         noProgressStreak = 0;
         lastDoneCount = dc;
+      } else {
+        noProgressStreak += 1;
       }
       if (noProgressStreak >= STUCK_STREAK_LIMIT) {
         windDown(true, `无推进（stuck，连续 ${STUCK_STREAK_LIMIT} 段零步进）`);
@@ -253,17 +294,21 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
       }
     }
   } finally {
-    try {
-      withLock(cwd, () => releaseLease(cwd, lease.fence));
-    } catch {
-      // 已被接管时释放被拒（fencing 语义）——静默容忍，收束语义已完成。
+    if (lease) {
+      try {
+        withLock(cwd, () => releaseLease(cwd, lease.fence));
+      } catch {
+        // 已被接管时释放被拒（fencing 语义）——静默容忍，收束语义已完成。
+      }
     }
     delete process.env.LZY_RUNTIME_FENCE;
   }
 
   if (!outcome) {
-    // 循环意外退出（防御兜底，正常不可达）：按干净收束口径补账。
-    outcome = { ok: true, cause: "循环退出（无显式收束因）", handoff: null };
+    // ADJ-36：循环无显式收束因退出=内部错误——原兜底判 ok:true（fail-open，破坏
+    // 「退出码 0 ⟺ 枚举因」闭式契约）；改为非零退出并尽力交接。
+    windDown(false, "内部错误：循环无显式收束因退出");
+    if (!outcome) outcome = { ok: false, cause: "内部错误：循环无显式收束因退出", handoff: null };
   }
   return outcome;
 }

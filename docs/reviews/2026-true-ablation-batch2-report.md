@@ -1,5 +1,7 @@
 # 真消融报告 — batch 2（2026-09-18）
 
+> 批注（2026-09-21，v021 五轮双审 ADJ-81/82）：本轮 trial 的 lzy CLI=宿主 PATH 全局 0.0.10（其载荷无 LZY_ABLATE_* 开关），D/F/G/H 的机器闸门消融未生效——相关归因句（D「五闸门全灭仍提交」/F 无差/G 门灭行为不退化/H 门面失活）依据缺失，待 b3 重跑后改写；E/C/I/J 四臂不受影响（E 反证：beta trial 无 sessions/ 目录）。本批受影响臂：G/H（D/F 属 batch 1）；§0 pilot「0.0.10 具备全部五开关」的相对声明同因失据，以本批注为准。本报告历史正文保持冻结，批注不改正文。
+
 **Goal** `ablation-batch2-extension` · **特赦** ADR-0015 窗口内预注册扩展 · **预注册** `docs/research-ablation-design.md` §3/§6（γ 与 G/H/I/J 槽位冻结；brief 内容冻结后新写，槽位预注册）· 本 goal 计划经二轮评审门 PASS
 **样本**：10 trials = G×γ、A×γ、H×{t1,alpha}、I×{t1,alpha}、J×{t1,alpha}（tier-heavy 强制）、A×{t1,alpha}（tier-light 强制）；串行、pre-flight 门过、**429 脏窗标记全零**（rateLimitedEvents=0 ×10）。
 **产物面**：`artifacts/ablation/b2/`（ledger.jsonl 10 行全 done）+ 每 trial 五类工件（本地产物）；pilot 工件在 `artifacts/ablation/b2pilot-A-t4-gamma-cross-session-change-r1/`。batch 1 报告（`2026-true-ablation-report.md`）保持冻结，本报告与其互为接续。

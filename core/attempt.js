@@ -110,6 +110,9 @@ export function saveAttempts(cwd, lineage) {
       `attempt 世系写护栏：盘上账本有载荷而本次写入为空序列，拒绝覆写：${p}。重跑当前命令以重新加载；确系废弃残留先人工删除该文件。${RECOVERY}`,
     );
   }
+  // 写侧形状校验（ADJ-44，0.2.1 五轮双审）：NaN/null 的 n 经 JSON.stringify 落盘即毒化
+  // 账本（读侧 assertEntries 自拒 → abandon/register/重 finish 全堵且 reset 不解）。
+  assertEntries(lineage?.attempts, p);
   mkdirSync(dirname(p), { recursive: true });
   const payload = { attemptVersion: lineage.attemptVersion, slug: lineage.slug, attempts: lineage.attempts };
   const out = { ...payload, checksum: checksumOf(payload) };
@@ -162,24 +165,35 @@ export function initLineageAtRegister(cwd, { slug, n, tier }) {
   const prev = loadAttempts(cwd);
   if (prev && prev.slug === slug && prev.attempts.length > 0) {
     const now = new Date().toISOString();
+    // 同 n 兜底（ADJ-03）：调用方序号与账本冲突时顺延，保证 (n, status) 唯一——同号
+    // 会让 bind/close 的 find 命中被降级条目（planHash/终态落在隐藏条目上）。
+    const maxN = prev.attempts.reduce((m, a) => (Number.isInteger(a?.n) ? Math.max(m, a.n) : m), 0);
+    const useN = Number.isInteger(n) && n > maxN ? n : maxN + 1;
     const attempts = prev.attempts.map((a) =>
-      a.status === "active" ? { ...a, status: "superseded", supersededAt: now, supersededBy: n } : a,
+      a.status === "active" ? { ...a, status: "superseded", supersededAt: now, supersededBy: useN } : a,
     );
-    attempts.push({ n, planHash: null, tier: tier ?? null, adoptedAt: null, status: "active" });
+    attempts.push({ n: useN, planHash: null, tier: tier ?? null, adoptedAt: null, status: "active" });
     saveAttempts(cwd, { ...prev, attempts });
-  } else {
-    saveAttempts(cwd, {
-      attemptVersion: ATTEMPT_VERSION,
-      slug,
-      attempts: [{ n, planHash: null, tier: tier ?? null, adoptedAt: null, status: "active" }],
-    });
+    return useN;
   }
+  const useN = Number.isInteger(n) && n > 0 ? n : 1;
+  saveAttempts(cwd, {
+    attemptVersion: ATTEMPT_VERSION,
+    slug,
+    attempts: [{ n: useN, planHash: null, tier: tier ?? null, adoptedAt: null, status: "active" }],
+  });
+  return useN;
 }
 
 // 采纳绑定：本代次条目记 planHash+采纳时点（条目缺席=派生基准上补建）。
+// n 命中多条（历史畸形）时优先 active 条目（ADJ-03：旧 superseded 同号条目不夺绑）。
+function findEntry(lineage, n) {
+  return lineage.attempts.find((a) => a.n === n && a.status === "active") ?? lineage.attempts.find((a) => a.n === n);
+}
+
 export function bindPlanToAttempt(cwd, { slug, n, planHash, tier }) {
   const lineage = baseForWrite(cwd, slug);
-  let entry = lineage.attempts.find((a) => a.n === n);
+  let entry = findEntry(lineage, n);
   if (!entry) {
     entry = { n, planHash: null, tier: tier ?? null, adoptedAt: null, status: "active" };
     lineage.attempts.push(entry);
@@ -195,7 +209,7 @@ export function bindPlanToAttempt(cwd, { slug, n, planHash, tier }) {
 export function supersedeAttempt(cwd, { slug, from, to, planHash, tier }) {
   const lineage = baseForWrite(cwd, slug);
   const now = new Date().toISOString();
-  const prev = lineage.attempts.find((a) => a.n === from);
+  const prev = findEntry(lineage, from);
   if (prev) {
     prev.status = "superseded";
     prev.supersededAt = now;
@@ -203,7 +217,7 @@ export function supersedeAttempt(cwd, { slug, from, to, planHash, tier }) {
   } else {
     lineage.attempts.push({ n: from, planHash: null, tier: null, adoptedAt: null, status: "superseded", supersededAt: now, supersededBy: to });
   }
-  const next = lineage.attempts.find((a) => a.n === to);
+  const next = findEntry(lineage, to);
   if (next) {
     next.status = "active";
     next.planHash = planHash;
@@ -220,7 +234,7 @@ export function closeAttempt(cwd, { slug, n, status }) {
     throw new AttemptError(`closeAttempt 终态非法：${status}（completed|abandoned）`);
   }
   const lineage = baseForWrite(cwd, slug);
-  const entry = lineage.attempts.find((a) => a.n === n);
+  const entry = findEntry(lineage, n);
   if (entry) entry.status = status;
   else lineage.attempts.push({ n, planHash: null, tier: null, adoptedAt: null, status });
   saveAttempts(cwd, lineage);

@@ -1,5 +1,7 @@
 # 真消融报告 — batch 1（2026-09-17）
 
+> 批注（2026-09-21，v021 五轮双审 ADJ-81/82）：本轮 trial 的 lzy CLI=宿主 PATH 全局 0.0.10（其载荷无 LZY_ABLATE_* 开关），D/F/G/H 的机器闸门消融未生效——相关归因句（D「五闸门全灭仍提交」/F 无差/G 门灭行为不退化/H 门面失活）依据缺失，待 b3 重跑后改写；E/C/I/J 四臂不受影响（E 反证：beta trial 无 sessions/ 目录）。本批受影响臂：D/F（G/H 属 batch 2）。本批报告历史正文保持冻结，批注不改正文。
+
 **Goal** `true-ablation-full-flow` · **特赦** ADR-0015 · **预注册** `docs/research-ablation-design.md`（同提交冻结）· **管线/任务集/开关** 入库 `scripts/ablation/`、`core/loop.js`、`plugin/hooks/`
 **样本**：30 trials = batch 1 全矩阵 24（{A,B,C,D,E,F} × {t1,alpha,beta,delta} × 1 rep）+ batch 2 最小扩展 6（delta 签名格 {A,B,C} 补 rep 至 3）；串行、pre-flight 门过、429 脏窗标记全零。
 **产物面**：`artifacts/ablation/`（30 trial 目录五类工件 + `b1/ledger.jsonl` 30 行，本地产物不入库）。2026-09-17 收尾归档：工件整体迁入主仓 `artifacts/ablation/`（`_host/`=宿主循环状态存档 goal.json/dag.json/metrics/快照；`_pkg/`=变体包暂存），worktree `wt/wt1` 随之拆除；循环工件（attestation/evidence/plan/快照）在 `.lazyzcode/`。

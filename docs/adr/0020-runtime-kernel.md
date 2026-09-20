@@ -40,8 +40,10 @@ risk 只升不降无降级命令，出口经重建非降档），棒2 drive 接�
 
 1. **钩子侧写面**（stop.js unlink handoff.json、trigger.js/session-start.js 写
    sessions/）不经 withLock，不在 fence 守卫面。
-2. **resetLoop** 直接删 loop/（含 runtime.json）——持旧 fence 的僵尸 reset 可摧毁
-   活跃运行；与钩子面同属「人工/协议层管辖」。
+2. **resetLoop** 的删除面=goal.json（+ 残留 tmp/sessions），**不删 runtime.json、
+   dag.json、attempt.json（三者跨 reset 常驻）**；reset 无 fence 守卫直接删 goal.json
+   （该边界如实记档）——残留租约以 TTL 自然过期或人工删除。僵尸伤害面已收窄：租约现在
+   绑定目标 slug（跨 reset 的僵尸写因目标不符即拒）；与钩子面同属「人工/协议层管辖」。
 3. **runtime.json 自身写者**（budget init/spend）不带 fence——僵尸只能扰动预算读数，
    不伤 goal/dag 权威面一致性。
 4. **未申报的机器写**：带 fence 与否靠申报自觉（交互直通语义的代价）；drive 派生

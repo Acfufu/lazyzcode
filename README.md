@@ -178,7 +178,13 @@ Engine and install state, enabled flags, hook syntax self-check (vm-parsed in a
 worker, including `hooks.json` registry validation), node version floor,
 `hook-node` resolution (the launcher's node fallback chain — nvm/homebrew on
 POSIX, nvm-windows/Program Files on Windows — for GUI-launched sessions), the
-`lzy` PATH shim, `.lazyzcode/` state hygiene, a platform notice,
+`lzy` PATH shim, a payload-version cross-check (`payload-ver`: the cached
+version directories versus the CLI's own `package.json` — the ADR-0012
+intermediate-state self-check), `.lazyzcode/` state hygiene, a handoff-lane
+usage counter (`handoff-usage`: registered versus consumed markers — a
+difference means reset cleanup or bad markers, never lost handoffs), an
+optional code-index probe (`codegraph`: user-level MCP config plus CLI
+availability; absent = skip, never flips the exit code), a platform notice,
 GLM plan rate-limit pressure (last 2 days of engine logs, read-only:
 deduplicated 429 turns, fatal turns, longest sustained run, and an empirical
 concurrency band — warn-only, never flips the exit code), transport-death
@@ -189,14 +195,18 @@ mid-stream kills such as 1301 — an in-place retry reproduces, never fed into
 the concurrency math), a per-provider band line (`band-by-provider`:
 completed-side clean buckets × 429 dirty buckets, emitted only when the
 window has ≥1 429 and ≥2 providers — a provider with no 429 of its own gets
-an honest "no dirty-face sample" row) and a model-tier advisory (`cost`: a
+an honest "no dirty-face sample" row), a mixed-account caveat (`provider-mix`:
+account-level advice pools 429 data across providers — one provider hitting
+the wall says nothing about the others) and a model-tier advisory (`cost`: a
 zero-429 window with a low rolling waterline suggests trying a lighter tier
 for routine goals — advisory text only, never predicate math), a project-memory
 adoption audit (`agents-md`, warn-only, with a staleness hint: ≥50 covered-dir
 commits since the map's last commit suggests re-running init-deep), a claim
 patrol for the open goal loop, and a headless-drive line (`headless`: engine
 probe plus credential two-state — oauth credentials file or desktop-injected
-config env; absent engine = skip, missing credentials = warn-only, 0.1.0)
+config env; absent engine = skip, missing credentials = warn-only, 0.1.0) and —
+0.2.0 — the unattended drive channel (`drive`: credential two-state, active
+lease, run budget, and whether the open goal is drive-eligible; ADR-0020)
 (`claims`: who claimed it, stuck markers; zero claims = nobody is pullable under claim-gated pull-back — warn-only),
 whether the host is a git repository (`host-git`: warn with `git init` guidance when not — evidence binds git trees, ADR-0019),
 commit-ledger coverage (`ledger`: goal-era commits missing the `Goal:` trailer — warn-only),
@@ -384,7 +394,7 @@ machine). Zero npm dependencies, Node ≥ 22, pure ESM.
 ```
 lazyzcode/
 ├── plugin/   → the lazyzcode plugin: skills/zw + skills/init-deep, hooks/ (5, via the run-hook launcher), agents/ (3)
-├── core/     → shared logic: loop, installer, doctor, ratelimit, agentsmd, engine, git, paths, status
+├── core/     → shared logic: loop, installer, doctor, ratelimit, agentsmd, engine, git, paths, status, update, cost, dag, attempt, attest, runtime, drive, headless, hostdb
 ├── cli/      → the lzy entry (cli/lzy.js) + syntax-check worker
 ├── test/     → contract tests (node:test, zero deps) + GitHub Actions (node 22/24)
 └── docs/     → research notes, ADRs, five review rounds, diagnostics

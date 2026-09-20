@@ -3,6 +3,7 @@
 // 安全形态沿 core/engine.js 家法：可执行恒 process.execPath 或字面量解释器、argv 数组、
 // shell:false——本管线永不拼接 shell 字符串。输出根 artifacts/ablation/（gitignored）。
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -113,7 +114,57 @@ function copyTreeFiltered(src, dest, excludeTop) {
   }
 }
 
-// 变体包拷贝（带 stamp 缓存：同 variant+HEAD 只拷一次；--rebuild 由调用方先清目录）。
+// 载荷身份（ADJ-74）：测量仪器必须有 payload provenance——`.stamp` 只记最近 HEAD
+// 时，脏树工作会静默复用「已提交树」的旧拷贝，事后无法回答「这批样本量的是哪份载荷」。
+// payloadHash = 对源树 cli/ core/ plugin/ 三目录（排除 .mimosa）逐文件
+// `"<相对路径>\0<sha256>\n"` 排序串接后的 sha256（与指纹家法同形）；路径分隔符归一为 "/"，
+// 使同一份内容在 win32/mac/linux 上得同一个 hash。只读源树，不触网络不写盘。
+const PAYLOAD_DIRS = ["cli", "core", "plugin"];
+const PAYLOAD_EXCLUDE = new Set([".mimosa"]);
+
+function collectFiles(root, dir, rel, out) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return; // 目录缺席（如 C 变体剪枝后的 plugin/skills）不算载荷面
+  }
+  for (const ent of entries) {
+    if (PAYLOAD_EXCLUDE.has(ent.name)) continue;
+    const abs = join(dir, ent.name);
+    const relChild = rel ? `${rel}/${ent.name}` : ent.name;
+    const st = lstatSync(abs);
+    if (st.isSymbolicLink()) continue; // 链接不承载载荷内容（同 copyTreeFiltered 立场）
+    if (st.isDirectory()) collectFiles(root, abs, relChild, out);
+    else if (st.isFile()) out.push({ rel: `${root}/${relChild}`, abs });
+  }
+}
+
+// pkgDir 省略时取仓内源树（REPO_ROOT 在三目录下）；传变体已装配的 pkg 即得该变体的载荷指纹。
+export function computePayloadHash(pkgDir = REPO_ROOT) {
+  const files = [];
+  for (const sub of PAYLOAD_DIRS) collectFiles(sub, join(pkgDir, sub), "", files);
+  files.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+  const parts = files.map((f) => `${f.rel}\0${createHash("sha256").update(readFileSync(f.abs)).digest("hex")}\n`);
+  return { hash: createHash("sha256").update(parts.join("")).digest("hex"), files: files.length };
+}
+
+// 源树脏判：三载荷目录里有 tracked 改动（或被删的 tracked 文件）即 true；非 git 仓=null。
+// 未跟踪文件不计（构建产物/临时文件不影响「已提交树 vs 工作树」的载荷身份判断）。
+export function payloadTreeDirty() {
+  const r = spawnSync("git", ["status", "--porcelain", "--", ...PAYLOAD_DIRS], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    shell: false,
+    timeout: 30_000,
+  });
+  if (r.error || r.status !== 0) return null;
+  return (r.stdout ?? "").trim().length > 0;
+}
+
+// 变体包拷贝（带 stamp 缓存）。复用判据（ADJ-74）= head 相同 ∧ prune 相同 ∧ payloadHash
+// 相同 ∧ 工作树干净；任一不满足即重建。脏树（dirty=true/不可判）**总是重建**——工作树内容
+// 构建出的载荷不等于任何已提交树，复用旧拷贝就是身份失真，代价只是每次多拷一次包。
 export function ensureVariantPkg(variant, { rebuild = false } = {}) {
   const def = VARIANTS[variant];
   if (!def) throw new Error(`未知变体：${variant}（合法：${Object.keys(VARIANTS).join("/")}）`);
@@ -121,12 +172,21 @@ export function ensureVariantPkg(variant, { rebuild = false } = {}) {
   let head = "";
   {
     const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8", shell: false });
-    head = r.status === 0 ? r.stdout.trim() : `dirty-${Date.now()}`;
+    head = r.status === 0 ? r.stdout.trim() : null;
   }
+  const dirty = head === null ? true : payloadTreeDirty() !== false; // null（非 git/查询失败）从保守：算脏
+  const payloadHash = computePayloadHash().hash;
   const dest = join(OUT_ROOT, "_pkg", variant, "pkg");
-  const stamp = JSON.stringify({ head, variant, prune: def.prune });
-  if (!rebuild && existsSync(stampPath) && readFileSync(stampPath, "utf8") === stamp && existsSync(dest)) {
-    return dest;
+  const stamp = JSON.stringify({ head, dirty, payloadHash, variant, prune: def.prune, at: new Date().toISOString() });
+  if (!rebuild && !dirty && existsSync(stampPath) && existsSync(dest)) {
+    try {
+      const prev = JSON.parse(readFileSync(stampPath, "utf8"));
+      if (prev.head === head && prev.payloadHash === payloadHash && JSON.stringify(prev.prune) === JSON.stringify(def.prune)) {
+        return dest;
+      }
+    } catch {
+      // 旧格式/损坏 stamp（0.2.0 前的 {head,variant,prune}）→ 落到重建路径，不静默复用
+    }
   }
   rmSync(join(OUT_ROOT, "_pkg", variant), { recursive: true, force: true });
   mkdirSync(join(OUT_ROOT, "_pkg", variant), { recursive: true });

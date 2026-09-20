@@ -17,6 +17,8 @@
 
 ## 账本
 
+> 行号注记：#29 紧随 #9 排列（真消融行毗邻），编号不重排以保追溯（2026-09-21，v021 五轮双审 ADJ-89）。
+
 | # | 日期 | 部件 | 形态 | 结果 | 证据 |
 |---|------|------|------|------|------|
 | 0 | 2026-09-07 | 全部钩子（环境级） | 天然 | GUI 直启致引擎 env 无 node，四钩子静默全灭（累计 895+ 次 hook.run.failed）；纪律层靠 zw 技能文本存活、循环未崩——暴露「静默失败无感知」真问题；产出 run-hook.sh 启动器（nvm/homebrew fallback）+ doctor hook-node 检查 | docs/diagnostics/2026-09-07-hook-spawn-env.md |
@@ -49,6 +51,9 @@
 | 26 | 2026-09-17 | 计划评审门 | 影子（goal v010-fix-round） | 同 #25 形态：仅 PASS 行在案，不可考不计入判据样本（其修复的 0.0.9 双审 44 条=工作对象非计划评审计数）；tier=attestation heavy | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
 | 27 | 2026-09-17 | 计划评审门 | 影子（goal true-ablation-full-flow） | 本行为其计划评审门影子行，与 #9 真消融行并存不互斥（#9 记实验结论，本行记该 goal 自身计划门样本）；仅 PASS 行在案，attempt 注记两条（--max-turns 死亡/鉴别门返工）为执行换路账 → 不可考不计入判据样本；tier=attestation heavy | 本行 + recovery.md §0/§2（本地产物）+ report 评审行 |
 | 28 | 2026-09-17 | 计划评审门 | 影子（goal v010-batb-protocol-headless） | 评审门三轮收敛：两 P1（裸 deps 行炸门/恢复路径与账本机制矛盾）+门序/AGENTS 算术/审计环/夹具重钉全收（AGENTS §2 batb 行）→ **独有 P1/P2 > 0 → 门挣得成本**（连续样本=0 终态）；tier=attestation heavy（comparator MATCH） | 本行 + AGENTS §2 v010-batb-protocol-headless 行 + recovery.md §1（本地产物）+ report 评审行 |
+
+> 批注 #9（2026-09-21，v021 五轮双审 ADJ-81/82）：本轮 trial 的 lzy CLI=宿主 PATH 全局 0.0.10（其载荷无 LZY_ABLATE_* 开关），D/F/G/H 的机器闸门消融未生效——相关归因句（D「五闸门全灭仍提交」/F 无差/G 门灭行为不退化/H 门面失活）依据缺失，待 b3 重跑后改写；E/C/I/J 四臂不受影响（E 反证：beta trial 无 sessions/ 目录）。
+> 批注 #29（2026-09-21，v021 五轮双审 ADJ-81/82）：同管线同因——G/H 的机器闸门消融未生效（G×γ 无差/H 门面失活归因依据缺失，待 b3 重跑后改写）；I/J 两臂不受影响。
 
 ## 维护
 

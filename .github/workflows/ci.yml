@@ -1,5 +1,9 @@
 name: ci
 
+# 最小权限（ADJ-90）：jobs 只需读代码；action 钉 SHA 不做——无 Dependabot 维护面时手动 pin 反增维护负担，留待有自动更新面再议。
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, dev]

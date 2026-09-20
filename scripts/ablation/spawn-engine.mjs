@@ -4,10 +4,11 @@
 // [--mode …]；HOME/USERPROFILE 双换隔离；认证 env（ZCODE_*_PROVIDER_CONFIG_FILE，桌面注入）
 // 经 process.env 展开自动转发；墙钟 alarm=SIGKILL（spike 用 perl alarm，Node 侧用定时器等价）。
 // 消融开关 env 由调用方并入 extraEnv（变体 D/E/F 的开关须随引擎进程下沉到 trial 内一切
-// lzy/钩子 子进程）。安全形态：argv 数组 + shell:false，无任何命令拼接。
+// lzy/钩子 子进程），基线两枚人权门开关见 BASE_ABLATE_ENV。PATH 可经 pathEnv 前置（变体
+// CLI shim，ADJ-81）；安全形态：argv 数组 + shell:false，无任何命令拼接。
 //
 // CLI：node scripts/ablation/spawn-engine.mjs --home <dir> --cwd <dir> [--prompt-file <f>]
-//        [--resume <sessId>] [--mode <m>] [--timeout-ms <n>] [--switch K=V …]
+//        [--resume <sessId>] [--mode <m>] [--timeout-ms <n>] [--switch K=V …] [--path-env <PATH>]
 // 库：  import { spawnEngine } from "./spawn-engine.mjs"
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -17,6 +18,16 @@ import { resolveEngine } from "./common.mjs";
 
 const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 
+// 基线消融 env（ADJ-82）：人权门（ADR-0018）自 0.1.1 起没有真人批准通道就会硬拒计划采纳
+// ——headless trial 内不存在「真实用户消息」，A/B/C/F/G/H/I/J 臂一律卡在 `lzy loop plan`，
+// 该管线整个不可复跑。故人权门在管线内**全域一致消融**（所有臂同权，不构成臂间差异）；
+// 该门本身（含申批记录落地）由 `scripts/headless/e2e-loop.mjs` 的真批准路径单独覆盖——
+// 消融不等于免检。新增任何机器门时须同步评估它在 headless 下的可越过性（见设计 §试跑纪律）。
+export const BASE_ABLATE_ENV = {
+  LZY_ABLATE_HUMAN_GATE: "1",
+  LZY_ABLATE_HOOK_HUMAN_GATE: "1",
+};
+
 export async function spawnEngine({
   home,
   cwd,
@@ -25,6 +36,7 @@ export async function spawnEngine({
   mode = "yolo", // spike §6：--prompt 缺省即 yolo——自驱动面必须显式选模式，不静默
   timeoutMs = DEFAULT_TIMEOUT_MS,
   extraEnv = {},
+  pathEnv = null, // 变体 CLI shim 前置后的 PATH（ADJ-81）；null=继承父进程 PATH
   engine = null,
 } = {}) {
   const enginePath = engine || resolveEngine();
@@ -39,7 +51,10 @@ export async function spawnEngine({
   const args = [enginePath];
   if (resume) args.push("--resume", resume);
   args.push("--prompt", prompt, "--json", "--mode", mode);
-  const env = { ...process.env, HOME: home, USERPROFILE: home, ...extraEnv };
+  // env 组装序：基线消融（全臂同权）→ HOME/USERPROFILE 双换隔离 → 变体开关 → PATH 前置。
+  // 变体开关在基线之后合并（D/E 臂自带 HUMAN_GATE 开关时同值覆盖，无行为差）。
+  const env = { ...process.env, ...BASE_ABLATE_ENV, HOME: home, USERPROFILE: home, ...extraEnv };
+  if (pathEnv) env.PATH = pathEnv;
   return await new Promise((resolve) => {
     const child = spawn(process.execPath, args, { cwd, env, shell: false });
     let stdout = "";
@@ -71,6 +86,7 @@ function parseCliArgs(argv) {
     else if (a === "--resume") out.resume = argv[++i];
     else if (a === "--mode") out.mode = argv[++i];
     else if (a === "--timeout-ms") out.timeoutMs = Number(argv[++i]);
+    else if (a === "--path-env") out.pathEnv = argv[++i];
     else if (a === "--switch") {
       const [k, v] = String(argv[++i]).split("=");
       out.switches[k] = v ?? "1";
@@ -83,7 +99,7 @@ if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
   try {
     const a = parseCliArgs(argv);
     if (!a.home || !a.cwd || !a.promptFile) {
-      console.error("用法：--home <dir> --cwd <dir> --prompt-file <f> [--resume <sessId>] [--mode m] [--timeout-ms n] [--switch K=V]");
+      console.error("用法：--home <dir> --cwd <dir> --prompt-file <f> [--resume <sessId>] [--mode m] [--timeout-ms n] [--switch K=V] [--path-env PATH]");
       exit(2);
     }
     const r = await spawnEngine({
@@ -94,6 +110,7 @@ if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
       mode: a.mode,
       timeoutMs: a.timeoutMs,
       extraEnv: a.switches,
+      pathEnv: a.pathEnv ?? null,
     });
     process.stdout.write(r.stdout);
     process.stderr.write(r.stderr);

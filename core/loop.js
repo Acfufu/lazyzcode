@@ -2,7 +2,7 @@
 // 证据验证（F 项绑定 tree hash，代码一变旧证据作废）→ 完成。
 // 状态落工作区 .lazyzcode/loop/goal.json（与宿主 .zcode/ 划清边界，宪法 §4 决策 #6）。
 // 本模块零 spawn（tree hash 经 core/git.js 取），全部同步语义。
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { createGit } from "./git.js";
@@ -11,6 +11,7 @@ import {
   bindPlanToAttempt,
   closeAttempt,
   initLineageAtRegister,
+  loadAttempts,
   supersedeAttempt,
 } from "./attempt.js";
 import { assertFenceIfPresent } from "./runtime.js";
@@ -44,6 +45,39 @@ export const EVIDENCE_FILES_MAX = 4;
 export const EVIDENCE_FILE_MAX_BYTES = 20 * 1024 * 1024;
 // rebind 历史上限：取证历史 append-only 留审计，超出丢最旧（plan-v2 Phase 2-1）
 export const EVIDENCE_HISTORY_MAX = 5;
+// 目标标题/计划条目标题上限（ADJ-17，0.2.1）：goal.json 常驻且每次 status/verify 重解析，
+// 巨标题（手滑/把整段报告粘进标题）与 note/evidence/harness 的教训同族——上限取同量级。
+export const TITLE_MAX = 300;
+
+// ── 孤儿 tmp 家族表（单一事实源，ADJ-13，0.2.1）─────────────────────────────
+// 全部写成「裸名前缀」（比对时剥掉开头点），cleanupLoopResidue 的清扫与 doctor 的孤儿
+// 计数同取此表——历史上三源不一（doctor 两族、cleanup 四族、metrics 两族谁都管不到）。
+// 口径：
+//   · goal.json./dag.json./attempt.json./runtime.json. —— 常驻账本的 .<name>.<pid>.<ts>.tmp；
+//   · handoff.json. —— 交接标记 tmp（本文件 handoffGoal）；
+//   · metrics.json. —— 放行计数 tmp：core 侧 incMetrics 写 .metrics.json.<pid>.<ts>.tmp，
+//     钩子侧（plugin/hooks/hook-lib.js）写 metrics.json.<pid>.tmp——前缀 metrics.json.
+//     同时覆盖两形态（钩子侧命名已登记进本前缀，钩子文件属另一写者故仅在此声明）；
+//   · snapshot./report./evidence. —— 计划快照、证据包报告、红半/绿半附件的 tmp 家族
+//     （各自 live 在 snapshots//evidence/ 子目录，清扫面见 CLEANUP_TMP_DIRS）。
+export const LOOP_TMP_FAMILIES = [
+  "goal.json.",
+  "dag.json.",
+  "attempt.json.",
+  "runtime.json.",
+  "handoff.json.",
+  "metrics.json.",
+  "snapshot.",
+  "report.",
+  "evidence.",
+];
+
+// 家族谓词：剥前导点后按前缀判（`.goal.json.1.2.tmp` 与 `metrics.json.1.tmp` 都命中）。
+export function isLoopTmpName(name) {
+  if (typeof name !== "string" || !name.endsWith(".tmp")) return false;
+  const bare = name.startsWith(".") ? name.slice(1) : name;
+  return LOOP_TMP_FAMILIES.some((p) => bare.startsWith(p));
+}
 
 export class LoopError extends Error {}
 
@@ -63,10 +97,19 @@ export function guardFence(cwd) {
   if (ablated("LZY_ABLATE_FENCE")) return;
   const raw = process.env.LZY_RUNTIME_FENCE;
   if (raw == null || raw === "") return;
-  assertFenceIfPresent(cwd, Number.parseInt(raw, 10));
+  // ADJ-12：带 fence 的写必须落在租约绑定的目标上（reset 不清 runtime.json，僵尸 worker
+  // 的 fence 对新目标仍相符）；goal 不可读/不存在时不带 slug（fence 相符即可，注册新目标
+  // 的申报由本函数在 registerGoal 内行使——见下）。
+  let slug = null;
+  try {
+    slug = readGoal(cwd)?.slug ?? null;
+  } catch {
+    slug = null;
+  }
+  assertFenceIfPresent(cwd, Number.parseInt(raw, 10), slug);
 }
 
-function loopDir(cwd) {
+export function loopDir(cwd) {
   return join(cwd, ".lazyzcode", "loop");
 }
 
@@ -75,11 +118,27 @@ export function goalPath(cwd) {
 }
 
 export function readGoal(cwd) {
+  let text;
+  try {
+    text = readFileSync(goalPath(cwd), "utf8");
+  } catch (err) {
+    // ADJ-02 家法（0.0.9 ADJ-01 收口于 dag/attempt/runtime，goal.json 是漏网者）：
+    // 仅 ENOENT=缺席；EACCES/EISDIR/其余一律 fail-closed——「不可读」被当「无 goal」
+    // 会让 register 的查重放行并静默覆写一份完好的账本（写路径 rename 不看目标读权限）。
+    if (err?.code === "ENOENT") return null;
+    throw new LoopError(
+      `goal 状态文件不可读（${err?.code ?? err?.message ?? err}）：${goalPath(cwd)}。` +
+        `恢复：检查该文件的权限/属主后重跑；确认文件损坏时先自行备份，再 lzy loop reset 清除（清除不可逆）`,
+    );
+  }
   let goal;
   try {
-    goal = JSON.parse(readFileSync(goalPath(cwd), "utf8"));
+    goal = JSON.parse(text);
   } catch {
-    return null;
+    throw new LoopError(
+      `goal 状态文件损坏（JSON 解析失败）：${goalPath(cwd)}。` +
+        `恢复：手工修复 JSON，或先备份该文件再 lzy loop reset 清除后重新注册（清除不可逆）`,
+    );
   }
   // 版本快败：schema 不符的状态文件会在远离成因处被误读（评审 R2-10）。
   if (goal && typeof goal === "object" && goal.version !== GOAL_VERSION) {
@@ -99,8 +158,23 @@ function writeGoal(cwd, goal) {
   renameSync(tmp, p);
 }
 
+// 原子写帮手（ADJ-08/18，0.2.1）：tmp（0600）→ rename，家族同法。family 必须是
+// LOOP_TMP_FAMILIES 的前缀之一（tmp 名 = `.<family><basename>.<pid>.<ts>.tmp`），
+// 否则 kill -9 残片没有任何清扫面/巡逻面认领它。持久产物统一 0600（与账本同权限）。
+function writeAtomic(p, data, family) {
+  mkdirSync(dirname(p), { recursive: true });
+  const tmp = join(dirname(p), `.${family}${basename(p)}.${process.pid}.${Date.now()}.tmp`);
+  writeFileSync(tmp, data, { mode: 0o600 });
+  renameSync(tmp, p);
+  return p;
+}
+
 // ── 跨进程互斥：goal.json 的 read-modify-write 必须串行，后写覆盖会丢步骤（评审 R2-5）──
-const LOCK_STALE_MS = 10_000; // 持锁者死亡（进程被杀）后锁可抢
+// ADJ-01（0.2.1 五轮双审）：①临界段可超 10s（多 subject 指纹 1+N 次 git spawn 各带独立
+// 超时、abandon/reset 的 writeSalvageStub 两发固定 10s 上界），stale 线 10s 过紧 → 60s；
+// ②释放无归属校验（无条件 rmSync）——被抢锁后原持锁者退出会删掉新持锁者的锁，第三个
+// 进程即刻可入（互斥在同一窗口两度破，探针实测）→ owner.json 记 token，仅 token 相符才删。
+const LOCK_STALE_MS = 60_000; // 持锁者死亡（进程被杀）后锁可抢；须大于临界段上界（见上）
 const LOCK_WAIT_MS = 5_000;
 
 function sleepMs(ms) {
@@ -122,7 +196,13 @@ export function withLock(cwd, fn) {
       try {
         ageMs = Date.now() - statSync(join(lock, "owner.json")).mtimeMs;
       } catch {
-        ageMs = 0; // owner 还没写完 = 刚加的锁，继续等
+        // owner 还没写完 = 刚加的锁（继续等）；若 owner 永久缺席（mkdir 与写 owner 之间
+        // 进程被杀），回退用锁目录自身 mtime，否则该锁永不可回收（ADJ-01/59 同族）。
+        try {
+          ageMs = Date.now() - statSync(lock).mtimeMs;
+        } catch {
+          ageMs = 0;
+        }
       }
       if (ageMs > LOCK_STALE_MS) {
         rmSync(lock, { recursive: true, force: true });
@@ -136,15 +216,22 @@ export function withLock(cwd, fn) {
       sleepMs(50);
     }
   }
+  const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   try {
     writeFileSync(
       join(lock, "owner.json"),
-      `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`,
+      `${JSON.stringify({ pid: process.pid, token, at: new Date().toISOString() })}\n`,
       { mode: 0o600 },
     );
     return fn();
   } finally {
-    rmSync(lock, { recursive: true, force: true });
+    // 归属校验后释放：锁已被抢（stale 误判/人工删除后重建）则不动别人的锁。
+    try {
+      const owner = JSON.parse(readFileSync(join(lock, "owner.json"), "utf8"));
+      if (owner?.token === token) rmSync(lock, { recursive: true, force: true });
+    } catch {
+      // owner 不可读=已被接管；保留现锁（不 rm），让新持有者自行释放。
+    }
   }
 }
 
@@ -187,7 +274,14 @@ export function registerGoal(cwd, slug, title, { tier = "light", risk = "low" } 
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/i.test(slug ?? "")) {
     throw new LoopError(`slug 不合法：${slug}（仅字母数字与连字符，≤64 字符）`);
   }
-  if (!title?.trim()) throw new LoopError("目标标题不能为空（--title）");
+  if (typeof title !== "string" || !title.trim()) throw new LoopError("目标标题不能为空（--title）");
+  // 长度上限（ADJ-17，0.2.1）：目标标题常驻 goal.json；裸 `--title`（漏值=true）在类型
+  // 守卫处即拒（CLI 侧另有用法错，core 这里是不信任输入的防御层）。
+  if (title.trim().length > TITLE_MAX) {
+    throw new LoopError(
+      `--title 超上限 ${TITLE_MAX} 字符（当前 ${title.trim().length}）；目标名一句即可，细节进计划文件`,
+    );
+  }
   // tier 落盘（v008#N8）：大小写归一为小写；非法值 LoopError。
   const tierNorm = typeof tier === "string" ? tier.toLowerCase() : tier;
   if (tierNorm !== "light" && tierNorm !== "heavy") {
@@ -224,6 +318,9 @@ export function registerGoal(cwd, slug, title, { tier = "light", risk = "low" } 
         `已存在目标状态 ${existing.slug}（${existing.status}，含证据档案）；lzy loop reset 清除后再注册`,
       );
     }
+    // ADJ-30（0.2.1 五轮双审）：register 是 goal.json 写入口，纳入 fence 守卫面——
+    // 申报制下仅带 fence 的调用（drive 派生工人）受限；交互无 fence 恒直通。
+    guardFence(cwd);
     const goal = {
       version: GOAL_VERSION,
       slug,
@@ -246,7 +343,8 @@ export function registerGoal(cwd, slug, title, { tier = "light", risk = "low" } 
     // 世系初始化（0.1.0 棒B，ADR-0016）：register=本目标运行的开端，attempt.json 重置为
     // 本运行（历史运行由中央账本 plan 节点 attempt 戳派生）。写序在 goal.json 前——
     // 世系写失败=注册失败（fail-closed 同 dag-first，不留无世系的半截状态）。
-    initLineageAtRegister(cwd, { slug, n: goal.attempt, tier: tierNorm });
+    // ADJ-03：init 在同 n 冲突时顺延，以其返回值为准回写实例戳（两处必须同一事实源）。
+    goal.attempt = initLineageAtRegister(cwd, { slug, n: goal.attempt, tier: tierNorm });
     writeGoal(cwd, goal);
     return goal;
   });
@@ -254,11 +352,20 @@ export function registerGoal(cwd, slug, title, { tier = "light", risk = "low" } 
 
 // 从中央账本推导本实例序号：同 slug 已带戳节点的最大 attempt+1；无戳/无账本=1。
 // loadDag 不可读即抛（dag-first 家法，register 不在损账本上落新实例）。
+// ADJ-03（0.2.1 五轮双审）：只数 DAG 带戳节点会在「注册未采纳→reset→重注册」时回落到
+// 1（从未产生 plan 节点），与旧实例同号 → 世系双条目同 n、planHash/收口落错条目。取
+// max(DAG 带戳最大值, 世系文件最大 n)+1——两个事实源都单调，同 n 成为不变量。
 function deriveAttempt(cwd, slug) {
   const dag = loadDag(cwd);
   let max = 0;
   for (const n of dag.nodes) {
     if (n.slug === slug && Number.isInteger(n.attempt)) max = Math.max(max, n.attempt);
+  }
+  const lineage = loadAttempts(cwd);
+  if (lineage && lineage.slug === slug && Array.isArray(lineage.attempts)) {
+    for (const a of lineage.attempts) {
+      if (Number.isInteger(a?.n)) max = Math.max(max, a.n);
+    }
   }
   return max + 1;
 }
@@ -404,7 +511,14 @@ function parsePlanItems(body) {
       }
       deps = [...new Set(tokens)];
     }
-    items.push({ id, kind: m[1], title: m[3].trim(), deps });
+    const title = m[3].trim();
+    // 条目标题上限（ADJ-17，0.2.1）：与 goal.title 同限——标题族人读/机器解析面都要小。
+    if (title.length > TITLE_MAX) {
+      throw new LoopError(
+        `计划条目标题超上限 ${TITLE_MAX} 字符：${id}（当前 ${title.length}）——标题凝成一句，细节写进条目正文`,
+      );
+    }
+    items.push({ id, kind: m[1], title, deps });
   }
   for (const [i, line] of lines.entries()) {
     if (consumedDeps.has(i) || line.includes("<!--lzy:allow-->")) continue;
@@ -794,7 +908,11 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
   // forward-only 代次推进（0.1.0 棒B，ADR-0016）：supersede 开新 attempt=旧+1（deriveAttempt
   // 家法的内存推进——中央账本 plan 节点带新戳，跨 reset 重注册的序号自然衔接）；旧快照
   // 归档 .attempt<n>.md 后写新快照（attempt 历史在 snapshots/ 亦可达）；基线头树取当前。
-  const priorAttempt = goal.attempt;
+  // ADJ-44（0.2.1 五轮双审）：≤0.0.10 写出的存量 goal 无 attempt 戳，裸 +1 得 NaN →
+  // JSON.stringify 落 "n": null → 读侧 assertEntries 自拒，abandon/register/重 finish
+  // 全堵且 reset 不解（唯一出路=人工删账本）。入口按 deriveAttempt 家法归一。
+  const priorAttempt = Number.isInteger(goal.attempt) ? goal.attempt : deriveAttempt(cwd, goal.slug);
+  goal.attempt = priorAttempt;
   if (supersede) {
     goal.attempt = priorAttempt + 1;
     goal.baseTreeHash = git ? git.headTreeHash() : goal.baseTreeHash;
@@ -804,9 +922,9 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
     }
   }
   // 快照先落盘再持久 goal（写序：goal.planHash 永不指向缺席快照；快照写失败=采纳失败）。
-  const snapDir = join(loopDir(cwd), "snapshots");
-  mkdirSync(snapDir, { recursive: true });
-  writeFileSync(join(snapDir, `${goal.slug}.md`), body);
+  // 原子写（ADJ-08，0.2.1）：本文件曾是全家族唯一裸写——kill -9/ENOSPC 命中截断窗口即留
+  // 半截快照，planHash 复核行永久显示「⚠ sha256 不符（疑篡改）」且无修复指引（假警报长挂）。
+  writeAtomic(join(loopDir(cwd), "snapshots", `${goal.slug}.md`), body, "snapshot.");
   // 评审/采纳即注册边（v009-bat1#N4，ADR-0014）：plan+review 节点与 reviews/plans 边落
   // 中央 DAG——dag-first（账本写失败=采纳拒，goal.json 未动）。复采纳=新节点追加（账本
   // 不可变，最新节点为现役——权威切换归棒2）。
@@ -1790,11 +1908,20 @@ function cleanupLoopResidue(cwd) {
 }
 
 function doResetLoop(cwd, git) {
-  const goal = readGoal(cwd);
+  // ADJ-02：reset 是损坏 goal.json 的恢复出口——readGoal 现在对损坏 fail-closed 抛错，
+  // reset 必须先容错读取（损坏=当作可清除状态，原文件随 rm 一并消失；先打印读取失败原因）。
+  let goal = null;
+  let readNote = null;
+  try {
+    goal = readGoal(cwd);
+  } catch (err) {
+    readNote = err?.message ?? String(err);
+  }
   const cleaned = cleanupLoopResidue(cwd);
   if (!goal) {
     rmSync(goalPath(cwd), { force: true });
-    if (cleaned === 0) throw new LoopError("本目录没有目标，无需 reset");
+    if (cleaned === 0 && !readNote) throw new LoopError("本目录没有目标，无需 reset");
+    if (readNote) return { slug: "（目标状态不可读，已清除）", readNote };
     return { slug: "（仅残留状态，已清理）" };
   }
   const salvage = writeSalvageStub(cwd, goal, git, "reset 清除");

@@ -159,13 +159,19 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 引擎与安装状态、启用标志、钩子语法自检（worker 内 vm 解析，含 `hooks.json`
 注册校验）、node 版本下限、`hook-node` 解析（启动器的 node 回退链——POSIX
 nvm/homebrew、Windows nvm-windows/Program Files，专治 GUI 直启场景）、`lzy`
-PATH shim、`.lazyzcode/` 状态卫生、平台提示、GLM
+PATH shim、载荷版本对照（`payload-ver`：缓存版本目录 vs CLI 自身
+`package.json`——ADR-0012 中间态自检）、`.lazyzcode/` 状态卫生、交接车道用量
+（`handoff-usage`：登记 vs 消费计数——差值=reset 清理/坏标记，非交接丢失）、
+可选代码索引探针（`codegraph`：用户级 MCP 配置 + CLI 可用性；缺席=skip，
+不翻退出码）、平台提示、GLM
 套餐限流压力（近 2 日引擎日志只读扫描：去重后的 429 回合、判死回合、最长连撞、
 经验并发带——warn-only，不翻退出码）、传输死亡回合独立分族计数（`transport`：
 请求未达服务端类故障如 ENETDOWN，绝不进并发带数学）、内容审核杀流独立分族计数
 （`content`：provider 内容审核中途杀流如 1301——原地重试必复现，绝不进并发带数学）、
 按 provider 分桶带行（`band-by-provider`：完成侧净桶×429 脏桶，窗内有 429 且
-≥2 provider 才出行——自身无 429 的行如实标注「无脏面样本」）与模型档位建议行（`cost`：零限流窗+低滚动水位建议常规目标试轻量档——
+≥2 provider 才出行——自身无 429 的行如实标注「无脏面样本」）、混算口径提示
+（`provider-mix`：账号级建议混算多 provider 的 429 数据——一家撞线不代表他
+provider 同压）与模型档位建议行（`cost`：零限流窗+低滚动水位建议常规目标试轻量档——
 纯建议文本，不进谓词数学）、项目记忆采纳审计
 （`agents-md`，warn-only，含地图落后提示：基点后覆盖域 ≥50 提交即提醒重跑
 init-deep）、进行中目标的认领巡逻（`claims`：谁认领了它、
@@ -175,7 +181,8 @@ stuck 停拉标记；零认领 = 资格制下无人会被拉回——warn-only�
 近 5h 滚动积分对比自参照警戒线，sqlite3 缺席时如实报降级原因）与本仓 unbound wake 的
 空转巡逻（`orphan-wake`，无挂载即 skip），以及
 无人值守的错峰窗口建议（`schedule`，实测集中段反推并对照声明式计价高峰表核对
-重叠——数据沉默时 skip，绝不拍脑袋）与 headless 驱动行（`headless`：引擎探针+凭据两态〔oauth credentials 文件或桌面注入 env〕——引擎缺席=skip、凭据缺席=warn-only，0.1.0）。全程本地、零遥测、
+重叠——数据沉默时 skip，绝不拍脑袋）与 headless 驱动行（`headless`：引擎探针+凭据两态〔oauth credentials 文件或桌面注入 env〕——引擎缺席=skip、凭据缺席=warn-only，0.1.0），以及
+0.2.0 的无人值守执行通道行（`drive`：凭据两态、活跃租约、运行预算、现行目标是否可入 drive；ADR-0020）。全程本地、零遥测、
 零新增配置面。
 
 ## 使用内置工作流
@@ -329,7 +336,7 @@ Node ≥ 22、纯 ESM。
 ```
 lazyzcode/
 ├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（5 个，经 run-hook 启动器）、agents/（3 只）
-├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、agentsmd、engine、git、paths、status
+├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、agentsmd、engine、git、paths、status、update、cost、dag、attempt、attest、runtime、drive、headless、hostdb
 ├── cli/      → lzy 入口（cli/lzy.js）+ 语法检查 worker
 ├── test/     → 契约测试（node:test 零依赖）+ GitHub Actions（node 22/24）
 └── docs/     → 调研底稿、ADR、五轮评审、诊断记录

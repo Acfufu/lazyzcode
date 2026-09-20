@@ -100,12 +100,16 @@ export function installPathFor(manifest) {
   // cache 目录——都换成清晰报错（评审 R1-5②）。
   const name = manifest?.name ?? PLUGIN_NAME;
   const version = manifest?.version;
+  // ADJ-61（0.2.1 五轮双审）：`/^[A-Za-z0-9._-]+$/` 放行纯点段——{name:"..",version:".."}
+  // 使 dest===pluginsRoot()，deployFiles 随即 rmSync 整棵插件缓存树（威胁模型正是
+  // 「装别人给的插件」）。显式排除纯点段。
   const OK_RE = /^[A-Za-z0-9._-]+$/;
-  if (typeof name !== "string" || !OK_RE.test(name)) {
-    throw new Error(`manifest.name 不合法：${JSON.stringify(name) ?? "（缺失）"}（仅限字母数字._-）`);
+  const isDotSegment = (v) => /^\.+$/.test(v);
+  if (typeof name !== "string" || !OK_RE.test(name) || isDotSegment(name)) {
+    throw new Error(`manifest.name 不合法：${JSON.stringify(name) ?? "（缺失）"}（仅限字母数字._-，且不得为 . 或 ..）`);
   }
-  if (typeof version !== "string" || !OK_RE.test(version)) {
-    throw new Error(`manifest.version 不合法：${JSON.stringify(version) ?? "（缺失）"}（仅限字母数字._-）`);
+  if (typeof version !== "string" || !OK_RE.test(version) || isDotSegment(version)) {
+    throw new Error(`manifest.version 不合法：${JSON.stringify(version) ?? "（缺失）"}（仅限字母数字._-，且不得为 . 或 ..）`);
   }
   return join(pluginsRoot(), "cache", MARKETPLACE, name, version);
 }

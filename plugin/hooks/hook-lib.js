@@ -5,6 +5,7 @@
 // 依据：GLM prompt cache 逐字节前缀比对，注入模板抖动=缓存全 miss 静默变贵（缓存折扣进 lzy loop cost 口径）。
 // 契约钉：test/hooks.contract.test.js「五钩子确定性钉」同状态双跑逐字节一致。
 import {
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -14,7 +15,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 // Stop 续跑预算：引擎硬顶 3 次/会话，且与 ZCode 后台任务通知共享同一池（宪法红线 2）。
 // lzy 最多用 2 次，给后台通知预留 1 次。
@@ -58,6 +59,27 @@ export function readGoal(cwd) {
       readFileSync(join(cwd, ".lazyzcode", "loop", "goal.json"), "utf8"),
     );
     return goal && typeof goal === "object" ? goal : null;
+  } catch {
+    return null;
+  }
+}
+
+// 债 E 诊断专用（ADR-0018 修正案）：从 startDir 逐级上溯，返回最近一个含
+// .lazyzcode/loop/goal.json 的祖先目录绝对路径；未命中返 null。
+// 边界三条：①只读——仅 existsSync，零写盘、零状态解析，**不得**被任何写面或状态
+// 解析复用（ADR-0006 严格 cwd 就地语义不变，状态解析永不 walk-up）；②纯提示——只验
+// 路径存在性，不验 goal 状态与 pending，故可能点名一个已完成/无 pending 的祖先目标
+// （合法态，本函数不追求精确）；③进程内零新语义——不缓存、不落盘。
+export function probeHostRoot(startDir, maxDepth = 8) {
+  try {
+    let dir = resolve(startDir);
+    for (let i = 0; i <= maxDepth; i += 1) {
+      if (existsSync(join(dir, ".lazyzcode", "loop", "goal.json"))) return dir;
+      const parent = dirname(dir);
+      if (parent === dir) return null; // 已到文件系统根（win32 盘根同判据，不手写分隔符）
+      dir = parent;
+    }
+    return null;
   } catch {
     return null;
   }

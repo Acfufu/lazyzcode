@@ -57,6 +57,21 @@ function hookRun(prompt, s, env = {}) {
   return { code: r.status, out: r.stdout ?? "" };
 }
 
+// cwd 漂移形态（债 E 事故建模）：进程 cwd 与引擎投递的 input.cwd 分离——规划期 cd 后
+// 用户发批准句，钩子按 input.cwd 就地读 goal 读不到。input.cwd 由本助手显式指定。
+function hookRunAt(prompt, atCwd, s, env = {}) {
+  const r = spawnSync(process.execPath, [TRIGGER], {
+    cwd: s.d,
+    encoding: "utf8",
+    timeout: 30_000,
+    input: JSON.stringify({ prompt, cwd: atCwd, sessionId: "sess_hg" }),
+    env: { ...process.env, HOME: s.HOME, USERPROFILE: s.HOME, ...env },
+  });
+  return { code: r.status, out: r.stdout ?? "" };
+}
+
+const sessionsDir = (s) => join(s.d, ".lazyzcode", "loop", "sessions");
+
 const PLAN1 = "- [N1] item one\n";
 const PLAN2 = "- [N1] item one changed\n";
 const approvalsDir = (s) => join(s.d, ".lazyzcode", "loop", "approvals");
@@ -187,13 +202,102 @@ test("钩子：否定形态（不批准/别批准）零记录照走既有管线"
   }
 });
 
-test("钩子：无 goal / 无 pending——零输出落回，批准面不写盘", () => {
+test("钩子：无 goal / 无 pending——诊断报文接管，批准面不写盘", () => {
   const s = scratch();
   const code = sha(PLAN1).slice(0, 8);
-  assert.equal(hookRun(`批准 ${code}`, s).out.trim(), "{}"); // 无 goal
+  // 判据=成功标记缺席（trigger.js:82）。不写「不含 recorded」——诊断文案自身含
+  // "nothing was recorded"，该断言不可满足（评审订正）。
+  const r1 = hookRun(`批准 ${code}`, s); // 无 goal
+  assert.equal(r1.code, 0);
+  assert.ok(!r1.out.includes("Human approval recorded for plan"));
+  assert.ok(r1.out.includes("no goal loop is registered"));
   registerGoal(s);
-  assert.equal(hookRun(`批准 ${code}`, s).out.trim(), "{}"); // 有 goal 无 pending
+  const r2 = hookRun(`批准 ${code}`, s); // 有 goal 无 pending
+  assert.equal(r2.code, 0);
+  assert.ok(!r2.out.includes("Human approval recorded for plan"));
+  assert.ok(r2.out.includes("no pending plan adoption to approve"));
+  assert.ok(r2.out.includes("t1")); // 报文点名 slug
   assert.ok(!existsSync(approvalsDir(s)));
+});
+
+test("钩子：cwd 漂移（宿主根在祖先）——报文点名宿主根绝对路径", () => {
+  const s = scratch();
+  registerGoal(s);
+  const sub = join(s.d, "deep", "deeper");
+  mkdirSync(sub, { recursive: true });
+  const r = hookRunAt(`批准 ${sha(PLAN1).slice(0, 8)}`, sub, s);
+  assert.equal(r.code, 0);
+  assert.ok(!r.out.includes("Human approval recorded for plan"));
+  assert.ok(r.out.includes("A goal loop was found at"));
+  assert.ok(r.out.includes(s.d)); // 宿主根绝对路径被点名（债 E 的修复本相）
+  assert.ok(!existsSync(approvalsDir(s)));
+});
+
+test("钩子：无任何祖先目标——B 支文案（or any parent directory）", () => {
+  const s = scratch();
+  const sub = join(s.d, "iso");
+  mkdirSync(sub, { recursive: true });
+  const r = hookRunAt(`批准 ${sha(PLAN1).slice(0, 8)}`, sub, s);
+  assert.equal(r.code, 0);
+  assert.ok(r.out.includes("or any parent directory"));
+  assert.ok(!r.out.includes("A goal loop was found at"));
+  assert.ok(!existsSync(approvalsDir(s)));
+});
+
+test("钩子：日期串误命中（批准 20260920）——C 支含 slug 与「非本意请忽略」子句", () => {
+  const s = scratch();
+  registerGoal(s);
+  const r = hookRun("批准 20260920", s); // [0-9a-f]{8} 命中纯数字日期串
+  assert.equal(r.code, 0);
+  assert.ok(!r.out.includes("Human approval recorded for plan"));
+  assert.ok(r.out.includes("no pending plan adoption to approve"));
+  assert.ok(r.out.includes("t1"));
+  assert.ok(r.out.includes("If you did not intend to approve a plan adoption, ignore this notice."));
+  assert.ok(!existsSync(approvalsDir(s)));
+});
+
+test("钩子：诊断报文双跑字节一致（确定性不变量）", () => {
+  const s = scratch();
+  registerGoal(s);
+  const sub = join(s.d, "deep");
+  mkdirSync(sub, { recursive: true });
+  const a1 = hookRunAt(`批准 ${sha(PLAN1).slice(0, 8)}`, sub, s).out;
+  const a2 = hookRunAt(`批准 ${sha(PLAN1).slice(0, 8)}`, sub, s).out;
+  assert.ok(a1.includes("A goal loop was found at"));
+  assert.equal(a1, a2);
+  const c1 = hookRun(`批准 ${sha(PLAN1).slice(0, 8)}`, s).out;
+  const c2 = hookRun(`批准 ${sha(PLAN1).slice(0, 8)}`, s).out;
+  assert.ok(c1.includes("no pending plan adoption to approve"));
+  assert.equal(c1, c2);
+});
+
+test("钩子：LZY_ABLATE_HOOK_HUMAN_GATE=1 下诊断分支同样短路", () => {
+  const s = scratch();
+  registerGoal(s);
+  const sub = join(s.d, "deep");
+  mkdirSync(sub, { recursive: true });
+  const r = hookRunAt(`批准 ${sha(PLAN1).slice(0, 8)}`, sub, s, {
+    LZY_ABLATE_HOOK_HUMAN_GATE: "1",
+  });
+  assert.equal(r.code, 0);
+  assert.ok(!r.out.includes("no goal loop is registered"));
+  assert.equal(r.out.trim(), "{}"); // 批准面全灭→非触发词→failOpen
+});
+
+test("钩子：优先序代价钉——触发词+批准形态同现时 C 支接管，本回合零认领零 ZW 注入", () => {
+  const s = scratch();
+  registerGoal(s);
+  // 采纳（消融人权门过）→ start 进 executing；此时无 pending，落 C 支。
+  lzy(["loop", "plan", "plan.md"], s, { LZY_ABLATE_HUMAN_GATE: "1" });
+  lzy(["loop", "start"], s);
+  assert.equal(readGoalJson(s).status, "executing");
+  const r = hookRun("zw 批准 deadbeef", s);
+  assert.equal(r.code, 0);
+  // C 支文案在场
+  assert.ok(r.out.includes("no pending plan adoption to approve"));
+  // 代价：触发词管线未进入——ZW 引导未注入、认领未写（N2③ 记账的取舍，此处钉死）
+  assert.ok(!r.out.includes("Trigger word detected"));
+  assert.ok(!existsSync(join(sessionsDir(s), "sess_hg.json")));
 });
 
 test("钩子：全符——记录落盘字段齐（slug/planHash/sessionId）+确认报文含短码", () => {

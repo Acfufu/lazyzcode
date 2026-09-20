@@ -11,6 +11,7 @@ import {
   failOpen,
   inputCwd,
   inputSessionId,
+  probeHostRoot,
   readGoal,
   readStdinJson,
   sanitizeSessionId,
@@ -45,7 +46,31 @@ function approvalVerdict(input) {
     const cwd = inputCwd(input);
     const goal = readGoal(cwd);
     const pending = goal?.approvalPending;
-    if (!pending?.planHash) return null;
+    if (!pending?.planHash) {
+      // 债 E（ADR-0018 修正案）：批准正则已命中却读不到 goal/pending——旧实现静默
+      // return null，用户发出的批准句零反馈，L2 门失败完全无声（2026-09-20 zpigeon
+      // 事故被误诊为「引擎 hook 调度未生效」）。两条诊断分支各 emit 一次即接管本回合
+      // （沿本函数既有三分支形态）：只提示不阻断，approvals/ 恒不写。
+      // 注意优先序代价：落到任一支即不再进入下方触发词管线，故同含触发词与批准形态的
+      // 提示词（如「zw 批准 <短码>」）本回合不写认领、不注入 ZW 引导——批准句是更强
+      // 意图信号，先让人权门说清楚（N3 用例⑥钉死该既成行为）。
+      if (!goal) {
+        const root = probeHostRoot(cwd);
+        return {
+          additionalContext: root
+            ? `[lzy] Approval sentence received, but no goal loop is registered at ${cwd} — nothing was recorded. ` +
+              `A goal loop was found at ${root}; ask the model to return to that directory and re-send the approval sentence.`
+            : `[lzy] Approval sentence received, but no goal loop is registered at ${cwd} or any parent directory — nothing was recorded. ` +
+              `Confirm you are in the goal's host workspace root, then re-send the approval sentence.`,
+        };
+      }
+      return {
+        additionalContext:
+          `[lzy] Approval sentence received, but this goal loop has no pending plan adoption to approve (goal ${goal?.slug ?? "unknown"}) — nothing was recorded. ` +
+          `Ask the model to run the adoption command (lzy loop plan <file>) first. ` +
+          `If you did not intend to approve a plan adoption, ignore this notice.`,
+      };
+    }
     const short = String(pending.planHash).slice(0, 8).toLowerCase();
     if (m[1].toLowerCase() !== short) {
       return {

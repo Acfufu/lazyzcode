@@ -14,6 +14,7 @@ import {
   standingMultiplier,
   attributeGoalPoints,
   claimedSessionIds,
+  waterlineScopeNote,
 } from "../core/cost.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
@@ -55,6 +56,17 @@ test("computePoints：系数×乘数、夜窗取代、未计价模型如实缺�
   assert.ok(r.unpricedModels.has("minimax-m2.7"));
   assert.equal(Math.round(r.points * 100) / 100, 4.6);
   assert.equal(Math.round(r.bySession.get("a") * 100) / 100, 4.6);
+});
+
+// ADJ-55（0.2.1 五轮双审·成立）：水位读数只覆盖 GLM-5.3 族——口径披露句=单一来源纯函数，
+// 表外零行不出声、有行如实计数（「未计价」不得渲染成「没消耗」）。canonical SQL 同时取
+// pts 与表外行数两列（stop.js 副本同形，hooks.contract 面活体钉 nudge 文案）。
+test("waterlineScopeNote：表外行 ≥1 才出声、行数如实、非法值静默（ADJ-55）", () => {
+  assert.equal(waterlineScopeNote(0), "");
+  assert.equal(waterlineScopeNote(undefined), "");
+  assert.equal(waterlineScopeNote(NaN), "");
+  assert.equal(waterlineScopeNote(1), "（口径：仅 GLM-5.3 族计价，表外模型 1 行计 0——读数偏低）");
+  assert.match(waterlineScopeNote(6133), /表外模型 6133 行计 0/);
 });
 
 test("OR 归因：时间窗 ∩（目录=本仓 ∪ 认领会话）；claimedSessionIds 只认带 claimedAt 的会话文件", () => {

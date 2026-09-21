@@ -151,20 +151,40 @@ const fmt = (n) => (Math.round(n * 100) / 100).toString();
 // core/，沿 hook-lib incMetrics 双份先例）。定标 2026-09-13：近 14 天滚动 5h 积分 p95≈1576
 // （常设系数口径，不折时段/促销，偏保守上界）上取整到 1600；同批 max 1768 / 中位 748。
 // env LZY_WATERLINE_POINTS 覆盖（全仓第二个 LZY_ 变量）。
+// 口径披露（V021-ADJ-55，0.2.1 五轮双审·成立）：本读数**仅 GLM-5.3 族计价**——CASE 表外
+// model_id（deepseek/… 6k+ 行实测）按 `ELSE 0` 计 0，故「近 5h 滚动 N 积分」是下界而非账号
+// 全量；同查一并返回表外行数（unpricedRows），三处显示面（stop nudge / doctor waterline 行 /
+// 本模块注释）据此如实标注，绝不把「未计价」渲染成「没消耗」。
 export const WATERLINE_POINTS = 1600;
 export const WATERLINE_ROLLING_SQL =
   "SELECT ROUND(SUM(input_tokens/1e6*CASE model_id WHEN 'GLM-5.3-Flash' THEN 2.3 WHEN 'GLM-5.3' THEN 6.9 ELSE 0 END+" +
   "cache_read_input_tokens/1e6*CASE model_id WHEN 'GLM-5.3-Flash' THEN 0.56 WHEN 'GLM-5.3' THEN 1.7 ELSE 0 END+" +
-  "output_tokens/1e6*CASE model_id WHEN 'GLM-5.3-Flash' THEN 8 WHEN 'GLM-5.3' THEN 24 ELSE 0 END),1) AS pts " +
+  "output_tokens/1e6*CASE model_id WHEN 'GLM-5.3-Flash' THEN 8 WHEN 'GLM-5.3' THEN 24 ELSE 0 END),1) AS pts, " +
+  "SUM(CASE WHEN model_id IN ('GLM-5.3-Flash','GLM-5.3') THEN 0 ELSE 1 END) AS unpriced " +
   "FROM model_usage WHERE status='completed' AND started_at>=(strftime('%s','now')-18000)*1000";
 
-// 近 5h 滚动积分；账本缺席/sqlite3 缺席/查询失败返回 null（fail-soft，doctor 显示降级行）。
-export function rollingWaterlinePoints() {
+// 近 5h 滚动积分读数；账本缺席/sqlite3 缺席/查询失败返回 null（fail-soft，doctor 显示降级行）。
+// 返回 { points, unpricedRows }——unpricedRows=窗内未计价模型行数（≥1 时显示面须带口径披露）。
+export function rollingWaterline() {
   const db = billingDbPath();
   if (!existsSync(db)) return null;
   const rows = queryHostDb(db, WATERLINE_ROLLING_SQL);
   const pts = Number(rows?.[0]?.pts);
-  return Number.isFinite(pts) ? pts : null;
+  if (!Number.isFinite(pts)) return null;
+  const unpricedRows = Number(rows?.[0]?.unpriced);
+  return { points: pts, unpricedRows: Number.isFinite(unpricedRows) ? unpricedRows : 0 };
+}
+
+// 数值面（drive 执法/CLI 预算读面沿用）：只取 points，null 语义同 rollingWaterline。
+export function rollingWaterlinePoints() {
+  return rollingWaterline()?.points ?? null;
+}
+
+// 口径披露句（单一来源，doctor 行与 stop nudge 副本同文案）：表外有行才出声。
+export function waterlineScopeNote(unpricedRows) {
+  const n = Number(unpricedRows);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return `（口径：仅 GLM-5.3 族计价，表外模型 ${n} 行计 0——读数偏低）`;
 }
 
 export function formatCost(cwd, goal, now = new Date()) {

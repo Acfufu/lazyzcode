@@ -465,7 +465,8 @@ test("水位警戒线（plan-v2 Phase 2-3）：超阈值注一次、窗内不重
   const d = scratch();
   const home = mkdtempSync(join(tmpdir(), "lzy-hooks-wl-home-"));
   try {
-    // fixture 账本：近 1h Flash 1e9 input ≈ 2300 积分 > 默认线 1600
+    // fixture 账本：近 1h Flash 1e9 input ≈ 2300 积分 > 默认线 1600；外加一行 deepseek
+    //（表外模型，ELSE 0 计 0）——ADJ-55：nudge 须带缺表口径披露（「未计价」≠「没消耗」）
     const dbDir = join(home, ".zcode", "cli", "db");
     mkdirSync(dbDir, { recursive: true });
     const create = spawnSync(
@@ -473,7 +474,8 @@ test("水位警戒线（plan-v2 Phase 2-3）：超阈值注一次、窗内不重
       [
         join(dbDir, "db.sqlite"),
         "CREATE TABLE model_usage (session_id TEXT, model_id TEXT, started_at INTEGER, status TEXT, input_tokens INTEGER, cache_read_input_tokens INTEGER, output_tokens INTEGER);" +
-          `INSERT INTO model_usage VALUES ('x','GLM-5.3-Flash',${Date.now()},'completed',1000000000,0,0);`,
+          `INSERT INTO model_usage VALUES ('x','GLM-5.3-Flash',${Date.now()},'completed',1000000000,0,0);` +
+          `INSERT INTO model_usage VALUES ('x','deepseek/deepseek-v4.1-flash',${Date.now()},'completed',6133000,0,0);`,
       ],
       { timeout: 10_000 },
     );
@@ -484,6 +486,8 @@ test("水位警戒线（plan-v2 Phase 2-3）：超阈值注一次、窗内不重
     const o1 = JSON.parse(hook("stop.js", { sessionId: "s", cwd: d }, wlEnv).out);
     assert.equal(o1.continue, true);
     assert.match(o1.additionalContext, /水位警戒/);
+    // ADJ-55：读数与表外行数同源一查——nudge 文案如实披露「仅 GLM-5.3 族计价」
+    assert.match(o1.additionalContext, /口径：仅 GLM-5\.3 族计价，表外模型 1 行计 0——读数偏低/);
     const st1 = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "sessions", "s.json"), "utf8"));
     assert.ok(st1.lastWaterlineWarnAt > 0, "warn-once 状态落会话文件");
     // 同会话窗内二跑不重复

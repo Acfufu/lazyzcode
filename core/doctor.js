@@ -22,7 +22,7 @@ import {
   userCliLogDir,
 } from "./paths.js";
 import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvisory, providerMixNote, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
-import { WATERLINE_POINTS, rollingWaterlinePoints } from "./cost.js";
+import { WATERLINE_POINTS, rollingWaterline, rollingWaterlinePoints, waterlineScopeNote } from "./cost.js";
 import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
 import { assertDriveEligible, countLoopResidueTmp, readGoal, scanSessionFlags } from "./loop.js";
@@ -400,17 +400,20 @@ function checkWaterline(push) {
   }
   const env = process.env.LZY_WATERLINE_POINTS;
   const threshold = Number(env) || WATERLINE_POINTS;
-  const pts = rollingWaterlinePoints();
-  if (pts === null) {
+  const read = rollingWaterline();
+  if (read === null) {
     push("waterline", "warn", "sqlite3 缺席或账本不可读——stop 钩子水位警戒将静默跳过（fail-open）");
     return;
   }
   const envNote = env ? `（env 覆盖自 ${WATERLINE_POINTS}）` : "";
-  const over = pts > threshold;
+  const over = read.points > threshold;
+  // 缺表口径披露（V021-ADJ-55）：读数只覆盖 GLM-5.3 族，表外模型行计 0——有则如实标注，
+  // 免得把「未计价」读成「没消耗」（stop nudge 副本同文案；单一来源 waterlineScopeNote）。
+  const scopeNote = waterlineScopeNote(read.unpricedRows);
   push(
     "waterline",
     over ? "warn" : "ok",
-    `近 5h 滚动 ${pts} / 警戒线 ${threshold} 积分${envNote}——` +
+    `近 5h 滚动 ${read.points} / 警戒线 ${threshold} 积分${envNote}${scopeNote}——` +
       (over ? "已超线，stop 钩子将注入收尾 nudge（5h 窗内一次）" : "未超线"),
   );
 }

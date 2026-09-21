@@ -86,6 +86,16 @@ export const VARIANTS = {
   },
   I: { name: "no-roles", install: true, prune: ["agents"], switches: {} },
   J: { name: "tier-heavy-forced", install: true, prune: [], switches: {}, tierHint: "heavy" },
+  // H3R 网格三臂（0.2.2 棒2，ADR-0022/§⑰ Q5；设计稿三臂冻结不改）：
+  // H3R-A = L0 文本对照（现状）、H3R-B = 目标级 risk 门（`assertDriveEligible`，已落地形态）、
+  // H3R-C = B + 步级 H3R 门原型（`LZY_ABLATE_H3R_GATE` 恰 "1" **唤醒**——该开关与家族
+  // 「恰 1 消融即关」语义相反，是预注册冻结的形态，见 ADR-0022）。
+  // **A 与 B 开关表全同且这是刻意的**：`assertDriveEligible` 对 low/med 恒放行，而网格所有目标
+  // 以 `--risk med` 登记，故两臂在机器面完全同形——B 的存在是把「目标级门对步级风险失明」显式
+  // 钉进工件命名；24 发里 16 发属复制对，报告须如实标注（§⑰ 判据②原文即把 A/B 当共同基线）。
+  "H3R-A": { name: "h3r-text-only", install: true, prune: [], switches: {} },
+  "H3R-B": { name: "h3r-goal-risk-gate", install: true, prune: [], switches: {} },
+  "H3R-C": { name: "h3r-step-gate", install: true, prune: [], switches: { LZY_ABLATE_H3R_GATE: "1" } },
 };
 
 // 整包树拷贝排除集（N4 冻结）：防宿主循环态/构建产物泄入 trial 会话。

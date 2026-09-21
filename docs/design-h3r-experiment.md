@@ -4,7 +4,8 @@
 关联：ADR-0015（真消融 kill-switch 形态）、ADR-0017（headless 原语）、ADR-0020（risk_class 机器面/drive 入口门）、
 决策 #25（真消融特赦窗口）/ #28（runtime kernel）
 
-**本稿状态：设计落档，未实施。** 实验本体归棒2 落地后的独立 spike goal（需 `lzy loop drive` 与 risk 字段做底座）。
+**本稿状态：已实施（0.2.2 棒2，goal `v022-bat2-h3r`）**——原型落在 `core/h3r.js`，实验读数与执法点结论见
+`docs/reviews/2026-h3r-gate-report.md`；车道边界与开关语义一律以 `docs/adr/0022-h3r-lane-boundary.md` 为准。
 
 ## 背景与问题
 
@@ -21,7 +22,7 @@ drive 入口门，ADR-0020）。但 **H3R 的机器形态设计空间无实证**
 |---|---|---|
 | **A** | L0 文本对照（现状） | 已存在：SKILL 协议句，无机器件 |
 | **B** | 目标级 risk 门（棒1 形态） | **已落地**（`assertDriveEligible`，drive 入口执 L1）；本臂=对照已具身形态 |
-| **C** | B + 步级 H3R 门原型 | 待实现：机器判定「该步是否高危」→ 执行前停摆待人工批准；kill-switch `LZY_ABLATE_H3R_GATE`（沿 ADR-0015 形态：恰 `"1"` 消融、默认关=行为逐字段同） |
+| **C** | B + 步级 H3R 门原型 | 已落地（原型，段起点执法）：机器判定「该步是否高危」→ 执行前停摆待人工批准；kill-switch `LZY_ABLATE_H3R_GATE`（**恰 `"1"` 唤醒**——与 `LZY_ABLATE_*` 家族的「恰 1 消融」**相反**，ADR-0022；不设=休眠，行为与 0.2.1 逐字段同） |
 
 C 臂原型的最小实现面（spike goal 的设计输入，非本稿承诺）：步级高危判定的声明语法（计划项标注
 或风险词表）、批准记录的位置与粒度（复用 approvals/ 族还是新鉴权面）、停摆形态（drive 段内拒执行并

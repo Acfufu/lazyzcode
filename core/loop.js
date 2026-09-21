@@ -67,6 +67,8 @@ export const LOOP_TMP_FAMILIES = [
   "runtime.json.",
   "handoff.json.",
   "metrics.json.",
+  "segment.json.",
+  "h3r-hit.json.",
   "snapshot.",
   "report.",
   "evidence.",
@@ -1021,6 +1023,9 @@ function doStartLoop(cwd, git) {
   goal.startedAt = new Date().toISOString();
   goal.baseTreeHash = git ? git.headTreeHash() : null;
   writeGoal(cwd, goal);
+  // 段标是**运行态**（N2）：开跑即清——上一 run 的残留不得参与本 run 的一段一步判定
+  // （段标本身带 fence 前缀已防误伤，这里是第二道保险，也让“残留”不跨 goal 存活）。
+  rmSync(join(loopDir(cwd), "segment.json"), { force: true });
   return goal;
 }
 
@@ -1071,8 +1076,47 @@ function attachEvidenceFiles(cwd, goal, step, files, seq = 1) {
   });
 }
 
+// ── 一段一步机器核验（0.2.3 goal v023-h3r-enforcement#N2） ────────────────────
+// drive 唤醒态给段会话注入 `LZY_SEGMENT_ID`（`<fence>:seg-<n>`，跨 run 唯一）；本原语把
+// 「一段一步」从段提示词的 L0 文本抬成 L1 机器面——同段第二次 `step done` 即拒。
+// 复用 `completeStep` 已持的临界区（**绝不嵌套 withLock**：`:1030` 已持锁，嵌套会自撞到
+// `LOCK_WAIT_MS` 再抛）；无段标（休眠 / 交互 / 非 drive）=恒直通，默认行为逐字段同。
+// 同 `stepId` 重录（rebind 取证路径）放行——那是重取证不是第二步。
+function segmentStepState(cwd) {
+  try {
+    const prev = JSON.parse(readFileSync(join(loopDir(cwd), "segment.json"), "utf8"));
+    return prev && typeof prev === "object" ? prev : null;
+  } catch {
+    return null; // 缺席/损坏 = 本段尚无记录（损坏不是拒绝的理由）
+  }
+}
+
+function assertSegmentStepAllowed(cwd, id) {
+  const segmentId = process.env.LZY_SEGMENT_ID;
+  if (!segmentId) return;
+  const prev = segmentStepState(cwd);
+  if (prev && prev.segmentId === segmentId && prev.stepId && prev.stepId !== id) {
+    throw new LoopError(
+      `本段已翻过一步（${prev.stepId}）：段提示词要求一段一步（LZY_SEGMENT_ID 申报：${segmentId}）` +
+        `——现在结束本段，drive 复核三门后开下一段`,
+    );
+  }
+}
+
+function recordSegmentStep(cwd, id) {
+  const segmentId = process.env.LZY_SEGMENT_ID;
+  if (!segmentId) return;
+  const file = join(loopDir(cwd), "segment.json");
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify({ segmentId, stepId: id, at: new Date().toISOString() }, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  renameSync(tmp, file);
+}
+
 function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = null, harness = null } = {}) {
   guardFence(cwd);
+  assertSegmentStepAllowed(cwd, id);
   // done 态恢复白名单（ADJ-10 出口，0.0.10）：done 目标的账本分歧曾把报错给的恢复命令
   // （step done rebind）反拒成死端——rebind 类命令放行，重 finish 落新 attestation。
   const goal = requireActive(cwd, "executing", "done");
@@ -1165,6 +1209,7 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
     saveDag(cwd, dag);
   }
   writeGoal(cwd, goal);
+  recordSegmentStep(cwd, id); // 记账在写盘成功之后（失败不落段标，闸门不误判）
   return { goal, step, rebinding, dirty: git ? git.dirty() : false };
 }
 

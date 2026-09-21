@@ -14,7 +14,7 @@
 // 缺省 400 相对水位 1600 取四分之一（相对账号水位、非相对本 run 消耗）。
 // 退出码契约：0=done 或干净收束（run 契约正常完成）；1=门拒/段 infra 失败（尽力收束带
 // 快照后非零）。deps 可注入（run/rollingPoints/now/git）供离线契约测试（headless.js 先例）。
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { progressSignature, signatureKey } from "./progress.js";
 import {
@@ -127,6 +127,41 @@ function authorHandoffSnapshot(cwd, goal, cause, extraRisk, deps) {
   const snap = join(dir, `${goal?.slug ?? "goal"}-${stamp}.md`);
   writeFileSync(snap, content, { mode: 0o600 });
   return { snap, treeHash };
+}
+
+// 段会话 env（N2/N3）：fence 恒注入（派生工人申报制，ADR-0020）。身份段标**仅唤醒态**
+// 注入（`LZY_ABLATE_H3R_ONESTEP === "1"`，反向语义同 H3R_GATE）——默认态逐字段同 0.2.2。
+// 段标带 fence 前缀 `<fence>:seg-<n>` ⇒ 跨 run 唯一（纯 `seg-<n>` 会被上一 run 残留的
+// `segment.json` 误伤，恰在最需要的无人值守续跑链上）。`LZY_LOOP_DIR` 供钩子定位标记落点。
+function buildSegmentEnv(fence, seg, cwd) {
+  const env = { LZY_RUNTIME_FENCE: String(fence) };
+  if (process.env.LZY_ABLATE_H3R_ONESTEP === "1") {
+    env.LZY_SEGMENT_ID = `${fence}:seg-${seg}`;
+    env.LZY_LOOP_DIR = join(cwd, ".lazyzcode", "loop");
+  }
+  return env;
+}
+
+// 命中标记（N4）读取与消费：相符=消费并回摘要；不符/损坏=删除并回 null（他 run 残留与
+// 伪造标记都不得改收束因）。调用方须已持锁（与段账同址）。
+function takeH3rHit(cwd, segmentId) {
+  const file = join(loopDir(cwd), "h3r-hit.json");
+  let raw = null;
+  try {
+    raw = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    raw = null;
+  }
+  if (!raw || typeof raw !== "object") {
+    rmSync(file, { force: true }); // 坏/缺席：静默清（force 对不存在路径无害）
+    return null;
+  }
+  rmSync(file, { force: true });
+  if (raw.segmentId !== segmentId) return null;
+  return {
+    matched: Array.isArray(raw.matched) && raw.matched.length > 0 ? raw.matched : ["(未记)"],
+    command: typeof raw.command === "string" ? raw.command : "(未记)",
+  };
 }
 
 export async function runDrive(cwd, opts = {}, deps = {}) {
@@ -281,7 +316,7 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         mode,
         timeoutMs: segTimeout,
         cwd,
-        extraEnv: { LZY_RUNTIME_FENCE: String(lease.fence) },
+        extraEnv: buildSegmentEnv(lease.fence, seg, cwd),
         enginePath: deps.enginePath ?? null,
         deps: deps.run ? { run: deps.run } : null,
       });
@@ -308,6 +343,12 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         }
         throw err;
       }
+      // H3R 命令层命中标记（N4）：钩子在段内拦下高危命令时写 `loop/h3r-hit.json`（带段标）。
+      // **读+消费只在这里发生一次、且必定清除**（在 done/换代判之前）——他段残留与伪造标记
+      // 不留残骸；但**判定顺序**在 done 与身份换代之后（目标已完成或已换代时无须人工介入）。
+      // 读写在 withLock 内（与段账同址，避免与并发钩子写竞态）。休眠态不读，默认行为逐字段同。
+      const h3rHit =
+        process.env.LZY_ABLATE_H3R_PRETOOL === "1" ? withLock(cwd, () => takeH3rHit(cwd, `${lease.fence}:seg-${seg}`)) : null;
       // 终态判定 + 段间身份/进度检测（ADJ-24：原实现只看 done 与计数变化——目标被
       // abandon/reset 后仍继续 spawn，且 done 计数下降（换代）被当作「有推进」）。
       const fresh = readGoal(cwd);
@@ -318,6 +359,17 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
       }
       if (!fresh || fresh.slug !== goal.slug || fresh.status !== "executing") {
         windDown(false, `目标已非本 drive 的 executing 目标（slug/状态换代：${fresh ? `${fresh.slug}/${fresh.status}` : "状态不可读"}）`);
+        break;
+      }
+      // segmentId 相符=本段命中 ⇒ 干净收束（ok:true，与 stuck/预算尽同族：exit 0 + 7 字段
+      // 快照）；不符（他 run 残留 / 伪造）在上面已被清且 h3rHit 为 null——它不是「一行即停」
+      // 的匿名杠杆。
+      if (h3rHit) {
+        windDown(
+          true,
+          `工具调用被拒（PreToolUse 高危命令）：命中 ${h3rHit.matched.join("、")} · 命令 ${String(h3rHit.command).slice(0, 80)}`,
+          "本段已拦下高危命令（未执行）：请在交互会话读快照确认后按计划推进（交互会话天然免门，是恢复路径，ADR-0022）",
+        );
         break;
       }
       // 状态集判据：签名不变才算零推进（提交/证据入账/交接登记任一前进即清零振数）

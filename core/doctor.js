@@ -297,7 +297,10 @@ function checkLoopState(push, cwd) {
       // handoff/ 交接快照（0.2.2 棒1：ADJ-23 落工作区且属 reset 不清家族——下一次唤起
       // 要从盘上读续跑状态，故残留快照是正常残留而非可删残留。此前缺席 EXEMPT 使合法
       // 快照被判「空壳疤痕」并被指路删除，见侦测记录）
-      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json", "handoff"]);
+      // segment.json 一段一步段标（0.2.3 goal v023-h3r-enforcement#N2）：**运行态**而非持久
+      // 账本——`lzy loop start` 清、reset 随之消失；进 EXEMPT 只为「drive 跑动期间 status/doctor
+      // 不得把它误报成可删疤痕」，别照本行把它读成常驻面。
+      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json", "handoff", "segment.json", "h3r-hit.json"]);
       scarEntries = entries;
       emptyScar = entries.length === 0 || entries.some((e) => !EXEMPT.has(e));
     } catch {
@@ -309,7 +312,7 @@ function checkLoopState(push, cwd) {
       // 人权门审计、snapshots/ 计划快照、salvage/ 存根、dag.json/attempt.json/runtime.json/
       // metrics.json）——照方执行=一次性删掉全部常驻账本。空目录才给 rm -r；含常驻项时
       // 只点名可删残留并列出将连带删除的常驻面。
-      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json", "handoff"]);
+      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json", "handoff", "segment.json", "h3r-hit.json"]);
       const transient = scarEntries.filter((e) => !EXEMPT.has(e));
       const residents = scarEntries.filter((e) => EXEMPT.has(e)).sort();
       if (scarEntries.length === 0) {

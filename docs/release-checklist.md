@@ -519,6 +519,16 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
    `payload`/`install`/`payload-ver`（缓存 15 版本目录 · CLI 0.2.1 一致）三 ✔ **且 `enabled` 行在本机 0.16.9 宿主 ✔**
    （本轮修复面的主场活体）。市场 manifest 的 pin 形态（ref vs sha）见第 11 步注记（ADJ-88）。
 
+### 发布链实弹记录（2026-09-21，机械件部分已执行；publish 待用户 2FA）
+
+- **push**：22 提交上远端（`4ffa820..b99375f`）=修复轮 20 + ADJ-32 接线 + 定版 + win32 测试雷修复 1。发布提交无 `Goal:` 尾注（槽位被 done 态 `v021-r5-review-fix-ablation` 占用未动，沿 0.2.0/0.1.2 先例，账本 patrol 预期一条 warn）。
+- **CI 首跑红（windows 双腿）**：run 35552241062——ubuntu 双腿绿，windows node 24 **fail 1**、node 22 被 fail-fast 取消。唯一失败=`test/human-gate.contract.test.js:301` 的 cwd 漂移用例：对**钩子原始 stdout** 断言宿主根路径，而 raw stdout 是 JSON 信封，win32 路径的反斜杠在其中转义成 `\\`（darwin 无此面 ⇒ 本地恒绿）。**第八族 win32 测试雷**，判据同族=「本地绿 / CI 红 / 只在 win32」。注：本用例属 v021-engine-surface 新增，其 20 个提交此前只存在于本地，**从未过 windows 腿**——推上去才第一次被检验。
+- **test-only 修复**（b99375f）：断言改走解码信封 `JSON.parse(r.out).additionalContext`（沿 claim/hooks/ablation-switch 既有惯例）。`test/` 不在 npm 包内 ⇒ **payload 冻结点不变**（沿 0.1.0 f6fc29d 先例）。
+- **复跑四腿全绿**：run 35553016901（node 22/24 × ubuntu/windows 全 success；判决=`gh run view --json conclusion`，不认 watch 伪绿）。
+- **tag v0.2.1 最后切**：`= b99375f`（CI 绿判树）→ **GitHub Release**（notes=本节下方草稿逐字，Latest）。
+- **载荷核对**：`git archive v0.2.1 | tar -x` 于临时目录 `npm pack` → shasum `cedca6e5c16749697fab1983ef1069ab559e692a`，与定版前 dry-run **逐字一致** ✔（载荷=tag 树而非工作树）。
+- **仍未执行**：`npm publish <tarball>`（用户 2FA）→ 隔离 prefix 冒烟 + 真机 `lzy update` 0.2.0→0.2.1 + doctor `payload-ver`/`enabled` 双核对 + win32 VM 降档项。
+
 ### GitHub Release notes 草稿（v0.2.1）
 
 ```markdown

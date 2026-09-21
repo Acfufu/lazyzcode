@@ -24,5 +24,8 @@ artifacts/
 .codegraph/
 .zcode/
 
+# ZCode 工作区忽略清单（带「以上同步自 .gitignore」标记的生成件，同步即改写；本机工具面不入库）
+.zcodeignore
+
 # pnpm 误跑再生锁文件（本仓零依赖根包；2026-09-14 Q3 拍板升 ignore——删了三回复发）
 pnpm-lock.yaml

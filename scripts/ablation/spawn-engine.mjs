@@ -55,22 +55,66 @@ export async function spawnEngine({
   // 变体开关在基线之后合并（D/E 臂自带 HUMAN_GATE 开关时同值覆盖，无行为差）。
   const env = { ...process.env, ...BASE_ABLATE_ENV, HOME: home, USERPROFILE: home, ...extraEnv };
   if (pathEnv) env.PATH = pathEnv;
-  return await new Promise((resolve) => {
+  return await new Promise((resolvePromise) => {
+    const startedAt = Date.now();
     const child = spawn(process.execPath, args, { cwd, env, shell: false });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (c) => (stdout += c));
-    child.stderr.on("data", (c) => (stderr += c));
-    const alarm = setTimeout(() => {
-      child.kill("SIGKILL"); // 墙钟 alarm：预算耗尽强杀，绝不悬挂整批
-    }, timeout);
-    child.on("close", (code, signal) => {
+    let timedOut = false;
+    let settled = false;
+    const settle = (payload) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(alarm);
-      resolve({ ok: code === 0 && signal === null, code, signal, stdout, stderr, killed: signal === "SIGKILL" });
+      // durationMs 回报（0.2.2 棒1#N10）：调用方据此比较「请求墙钟 vs 实耗」。旧实现不回报，
+      // 于是「预算到点却拖了很久」在批量产物里**不可见**——ADJ-38 修完也无人能量到它还犯不犯。
+      resolvePromise({ durationMs: Date.now() - startedAt, timedOut, stdout, stderr, ...payload });
+    };
+    // 墙钟兜底结算（ADJ-38 语义，0.2.2 棒1#N10 对齐 core/headless.js）：SIGKILL 只及**直接**
+    // 子进程，而持 stdio 管道的后代能把 close 拖到预算外（合成探针实测 timeoutMs=1000 实耗
+    // 25s＝25×）。预算到点即 destroy 管道 + exit 结算（宽限窗收 stdout 尾巴），兑现「预算到点
+    // ⇒ 预算+ε 返回」。本改动的紧迫性：棒2 的 24 trials 全跑在这条路径上。
+    const graceTimer = () =>
+      setTimeout(() => settle({ ok: false, code: null, signal: "SIGKILL", killed: true }), 1500).unref();
+    const alarm = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill("SIGKILL");
+      } catch {}
+      try {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+      } catch {}
+      graceTimer();
+    }, timeout);
+    // 流内 UTF-8 解码（ADJ-39 同款）：逐 chunk 拼接会把跨边界的多字节字符解成 U+FFFD，
+    // 而 trial 产物里带中文（任务 brief 回显）。
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    // 体积上限（ADJ-49 同款）：唯一无预算读面——故障引擎刷屏可把整批 OOM。
+    const MAX_STREAM = 8 * 1024 * 1024;
+    child.stdout.on("data", (d) => {
+      if (stdout.length < MAX_STREAM) stdout += d;
+    });
+    child.stderr.on("data", (d) => {
+      if (stderr.length < MAX_STREAM) stderr += d;
     });
     child.on("error", (err) => {
-      clearTimeout(alarm);
-      resolve({ ok: false, error: err.message, stdout, stderr, killed: false });
+      setTimeout(
+        () => settle({ ok: false, error: err.message, code: null, signal: null, killed: false }),
+        50,
+      ).unref();
+    });
+    child.on("exit", (code, signal) => {
+      // ADJ-38：exit 即结算（不等 close——close 依赖 stdio 关闭，可被后代拖住）。正常路径留
+      // 200ms 宽限收 stdout 尾巴；超时未 close 也按 exit 结算。
+      setTimeout(
+        () => settle({ ok: code === 0 && signal === null, code, signal: signal ?? null, killed: signal === "SIGKILL" }),
+        200,
+      ).unref();
+    });
+    child.on("close", (code, signal) => {
+      settle({ ok: code === 0 && signal === null, code, signal: signal ?? null, killed: signal === "SIGKILL" });
     });
   });
 }

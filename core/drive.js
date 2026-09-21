@@ -1,6 +1,7 @@
 // drive 编排器（0.2.0 棒2，ADR-0020/§⑮ Q3）：`lzy loop drive` 的实现——单唤起内循环
 // spawn headless 会话推进一个 executing 目标，段间查 budget/lease/risk 三门，收束=
-// 步完成/预算尽/门拒/需人工，五因收束（除 done 外）自写 7 字段 handoff 快照干净交回。
+// 步完成/预算尽/门拒/需人工等，除 done 外各因都自写 7 字段 handoff 快照干净交回；
+// 0.2.2 棒2 增 `h3r` 因（高危步停摆，原型默认休眠，ADR-0022）。
 // 门序：executing 态 → risk（assertDriveEligible）→ 引擎 → 凭据 → lease（他租拒）→
 // 预算（缺席 init / 在场 restart 重开每-run 预算——§⑮ Q4）。
 // 段内 fence 注入（ADR-0020「drive 派生工人一律注入 fence」接线点）：段会话 env 带
@@ -44,6 +45,7 @@ import {
 import { findEngine } from "./paths.js";
 import { rollingWaterlinePoints } from "./cost.js";
 import { createGit } from "./git.js";
+import { h3rStopVerdict } from "./h3r.js";
 
 export const DRIVE_MAX_SEGMENTS_DEFAULT = 6;
 export const DRIVE_MODE_DEFAULT = "yolo";
@@ -235,6 +237,22 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         withLock(cwd, () => heartbeatLease(cwd, lease.fence, { ttlMs: LEASE_TTL_MS }));
       } catch (err) {
         windDown(false, `段间门拒（${(err?.message ?? err).slice(0, 200)}）`, undefined, { skipHandoff: true });
+        break;
+      }
+      // H3R 高危步门（0.2.2 棒2 原型，ADR-0022）：唤醒态下下一步命中词表/升格标记即停摆。
+      // 位置考究——**紧跟三门之后、墙钟判之前**：此时「下一步是谁」已可判，且**不 spawn 段**
+      // （零引擎调用、零 token）。收束走 ok:true ⇒ 退出码 0 的干净通道（与 stuck/预算尽同族），
+      // 快照经 windDown 自写 7 字段，恢复路径写进「风险与坑」。默认休眠时整块不执行，
+      // 行为与 0.2.1 逐字段同（契约测试钉两半）。
+      const h3r = h3rStopVerdict(readGoal(cwd));
+      if (h3r) {
+        windDown(
+          true,
+          `高危步停摆（H3R）：${h3r.step.id} 命中 ${h3r.matches.join("、")}`,
+          `下一步 ${h3r.step.id}「${h3r.step.title}」命中高危面（${h3r.matches.join("、")}）。` +
+            `本门只作用于无人值守 drive 段循环（ADR-0022）——请在人工交互会话确认后按计划推进` +
+            `（交互会话天然免门，是恢复路径）；未执行任何步骤，无脏改动需善后`,
+        );
         break;
       }
       const remainingWall = effectiveWallMs - spentMsLocal;

@@ -401,14 +401,23 @@ Applies when a goal's code lives outside the repo that owns `.lazyzcode/`
   rejoins (a claiming trigger clears the flag) or the loop is reset.
 - When you feel the `[lzy]` nudge: continue the **current step**. Do not replan,
   do not summarize, do not ask questions — work.
-- **No-op detection (pull-back integrity):** every pull-back must move the
-  loop's state set — {done count, F-item evidence fingerprint set (legacy
-  evidence: tree-hash set), handoff registrations, salvage stubs}. A
-  `step done` rebinding whose fingerprint did not change counts as a no-op; two
-  consecutive handoff registrations with
+- **Progress signal / no-op detection (state set) — one concept, two enforcement
+  points.** The **progress signal state set** is {done-step count, per-subject
+  HEAD tree set (a commit moves it), evidence-ledger green-node count, handoff
+  and salvage registrations}. Any component advancing counts as movement; a
+  **dirty tree is deliberately not a signal** — writing without committing must
+  not extend the leash. Both enforcement points read this same set, but they are
+  **not equally strong**, and the difference matters when you cite it:
+  **L1 (machine, full set)** — `lzy loop drive`'s segment loop holds the whole
+  set across segments and winds down on two consecutive unmoving segments
+  (`core/progress.js` is the single source). **L0-plus-partial (Stop hook)** —
+  the Stop hook's pull-back check judges by the done count alone today; the rule
+  below is what binds it, and it is protocol, not a machine gate. So: every
+  pull-back must move the state set. A `step done` rebinding whose fingerprint
+  did not change counts as a no-op; two consecutive handoff registrations with
   zero state-set movement are likewise violations (a handoff is a graceful
-  hand-back per ADR-0009, not a free bail-out channel). Zero movement means
-  you are padding: stop working the loop and close cleanly.
+  hand-back per ADR-0009, not a free bail-out channel). Zero movement means you
+  are padding: stop working the loop and close cleanly.
 - Budget exhausted with steps remaining? State plainly which steps remain and
   stop cleanly; the next session's SessionStart hook re-injects the loop state.
 - **Risk suspension (SUSPENDED_RISK, 0.1.0).** If risk_class rises to HIGH+

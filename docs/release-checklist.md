@@ -504,17 +504,27 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 
 | # | 步骤 | 状态 |
 |---|---|---|
-| 1 | 版本面五处同步 0.2.2（`package.json` / `plugin/.zcode-plugin/plugin.json` / `.claude-plugin/marketplace.json` version+ref / `docs/_layouts/home.html` softwareVersion / `docs/sitemap.xml` lastmod） | ✅ 已落（commit 2572ab5） |
+| 1 | 版本面五处同步 0.2.2（`package.json` / `plugin/.zcode-plugin/plugin.json` / `.claude-plugin/marketplace.json` version+ref / `docs/_layouts/home.html` softwareVersion / `docs/sitemap.xml` lastmod） | ✅ 已落（前四处=commit 2572ab5；**sitemap lastmod 2572ab5 漏更**，随定版提交补 2026-09-22——本批首页（home.html 版本面）+ guide 双语（ab8af4e 锁行）均有实质改动，按 0.2.1 惯例三页同步） |
 | 2 | CHANGELOG 定版 0.2.2（含两棒条目） | ✅ 已落（commit 1689caa） |
 | 3 | `lzy sync` 载荷同步 + `lzy doctor` files/payload-ver 一致 | ✅ 已落 |
-| 4 | `npm test` 全绿（404/404） | ✅ 已落 |
-| 5 | `npm pack --dry-run` 零敏感物 + `artifacts/` 不入包 | ✅ 自检（见下） |
+| 4 | `npm test` 全绿（404/404） | ✅ 定版树实跑复核（node v22.23.1） |
+| 5 | `npm pack --dry-run` 零敏感物 + `artifacts/` 不入包 | ✅ 维护者侧复核（见下） |
 | 6 | **`git push`**（触发 CI） | ⏳ **维护者** |
 | 7 | **核 CI 四腿全绿**——判决只认 `gh run view` 的 conclusion，**勿用 `watch` 的伪绿**（0.1.0 教训） | ⏳ **维护者** |
 | 8 | **`git tag v0.2.2`**——**最后切**，且在 CI 判决之后 | ⏳ **维护者** |
 | 9 | GitHub Release（正文可用报告 §0 摘要） | ⏳ **维护者** |
 | 10 | **`npm publish`**（需 2FA；发布载荷冻结纪律见本文件「发布载荷冻结」节） | ⏳ **维护者** |
 | 11 | 发布后：隔离 prefix 冒烟 + 真机 `lzy update` 0.2.1→0.2.2 | ⏳ **维护者** |
+
+### 发布前自检（维护者侧实跑，2026-09-22）
+
+- `npm test` **404/404**（node v22.23.1，定版树实跑，0 fail）。
+- `npm publish --dry-run`：**42 文件 / 259.1 kB / shasum `7244ea30a41b534232cc545fc2d26c412347e03f`**；清单只含
+  `cli/ core/ plugin/ + README(双语)/LICENSE/CHANGELOG/package.json`，无 `docs/`、无 `artifacts/`、无 `.mimosa` 目录。
+- tarball 内容级扫描（`npm pack` 后解包 grep）：`sess_` **0**、`/Users/` **0**；`.lazyzcode` 19 文件=产品状态目录名
+  （设计内）、`.mimosa` 2 处=`package.json` 的 files 排除模式与其注释（设计内）、`acfufu` 1 处=`package.json`
+  的 repository/homepage URL（元数据必需）——三处均非泄露。
+- docs-preview：**58 页 / 247 本地链接 / 断链 0**；锚点 **en 22/22 · zh 22/22**。
 
 ### 本版移交说明（为什么 6–11 不在目标循环内）
 

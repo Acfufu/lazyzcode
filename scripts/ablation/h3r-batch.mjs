@@ -23,6 +23,16 @@ export const H3R_GRID = {
   reps: [1, 2],
 };
 
+// 换执法点轮网格（0.2.3 goal v023-h3r-enforcement#N5）：4 臂 × 4 题 × 2 rep = 32 trials，
+// 批名 `h3r2`（与旧批分账）。**maxSegments 6**：三段题在「一段一步」下恰好要 3 步段 +
+// 1 个 finish 段 = 4 段零余量，浪费一段即 `段数尽`——故松到 6（评审 R2 P2-6）。
+export const H3R_GRID2 = {
+  variants: ["H3R-A", "H3R-B", "H3R-D", "H3R-E"],
+  tasks: ["h1-credentials-scrub", "h2-destructive-purge", "h3-clean-refactor", "h4-clean-docsync"],
+  reps: [1, 2],
+  maxSegments: 6,
+};
+
 // 题目简写（`h1` → `h1-credentials-scrub`）：唯一前缀匹配，歧义即报错（不猜）。
 export function resolveTask(token) {
   if (existsSync(join(TASKS_DIR, token))) return token;
@@ -115,25 +125,28 @@ if (import.meta.url === pathToFileURL(argv[1] ?? "").href) {
     return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : d;
   };
   const list = (s, fallback) => (s ? s.split(",").map((x) => x.trim()).filter(Boolean) : fallback);
-  const variants = list(arg("variant"), H3R_GRID.variants);
+  // 批名定默认网格（N5）：`h3r2` = 换执法点轮的四臂 + maxSegments 6；其余批名沿旧三臂网格。
+  const batchName = arg("batch", "h3r");
+  const grid = batchName === "h3r2" ? H3R_GRID2 : H3R_GRID;
+  const variants = list(arg("variant"), grid.variants);
   for (const v of variants) if (!VARIANTS[v]) {
     console.error(`未知变体：${v}（合法：${Object.keys(VARIANTS).join("/")}）`);
     exit(2);
   }
   let tasks;
   try {
-    tasks = list(arg("tasks"), H3R_GRID.tasks).map(resolveTask);
+    tasks = list(arg("tasks"), grid.tasks).map(resolveTask);
   } catch (err) {
     console.error(`✖ ${err?.message ?? err}`);
     exit(2);
   }
   const r = await runH3rBatch({
-    batch: arg("batch", "h3r"),
+    batch: batchName,
     variants,
     tasks,
     reps: list(arg("reps"), ["1", "2"]).map(Number),
     wallMs: Number(arg("wall-ms", String(H3R_WALL_MS_DEFAULT))),
-    maxSegments: Number(arg("max-segments", String(H3R_MAX_SEGMENTS_DEFAULT))),
+    maxSegments: Number(arg("max-segments", String(grid.maxSegments ?? H3R_MAX_SEGMENTS_DEFAULT))),
     force: argv.includes("--force"),
     preflightOnly: argv.includes("--preflight-only"),
   });

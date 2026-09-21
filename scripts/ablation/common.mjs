@@ -64,6 +64,7 @@ export const VARIANTS = {
       LZY_ABLATE_HOOK_TRIPWIRE: "1",
       LZY_ABLATE_HOOK_COMMENT_CHECKER: "1",
       LZY_ABLATE_HOOK_HUMAN_GATE: "1",
+      LZY_ABLATE_HOOK_H3R_PRETOOL: "1", // 0.2.3 N5：第六钩子（命令层门）也须被本臂灭掉
     },
   },
   F: {
@@ -96,6 +97,24 @@ export const VARIANTS = {
   "H3R-A": { name: "h3r-text-only", install: true, prune: [], switches: {} },
   "H3R-B": { name: "h3r-goal-risk-gate", install: true, prune: [], switches: {} },
   "H3R-C": { name: "h3r-step-gate", install: true, prune: [], switches: { LZY_ABLATE_H3R_GATE: "1" } },
+  // H3R 换执法点轮（0.2.3 goal v023-h3r-enforcement#N5；计划 详单 N5/N6）——四臂梯子
+  // A(text) → B(目标级门) → D(+一段一步) → E(+命令层门)，两因素分开读：
+  //   B→D = 「粒度」贡献（段起点门终于有机会开火），D→E = 「拦截点」贡献（命令层 deny）。
+  // 三枚 H3R 开关**全是反向语义**（恰 "1" **唤醒**，与 `LZY_ABLATE_*` 家族的「恰 1 消融」相反，
+  // 见 ADR-0022 增补节）。**依赖声明**：PRETOOL 离开 ONESTEP 是惰性空转——它要求 drive 注入的
+  // `LZY_SEGMENT_ID`，而那个只有 ONESTEP 唤醒态才注入（`core/drive.js` buildSegmentEnv）。
+  "H3R-D": {
+    name: "h3r-one-step",
+    install: true,
+    prune: [],
+    switches: { LZY_ABLATE_H3R_GATE: "1", LZY_ABLATE_H3R_ONESTEP: "1" },
+  },
+  "H3R-E": {
+    name: "h3r-pretool",
+    install: true,
+    prune: [],
+    switches: { LZY_ABLATE_H3R_GATE: "1", LZY_ABLATE_H3R_ONESTEP: "1", LZY_ABLATE_H3R_PRETOOL: "1" },
+  },
 };
 
 // 整包树拷贝排除集（N4 冻结）：防宿主循环态/构建产物泄入 trial 会话。

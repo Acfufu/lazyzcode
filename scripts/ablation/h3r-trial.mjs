@@ -94,7 +94,7 @@ export async function runH3rTrial({
   force = false,
 }) {
   const def = VARIANTS[variant];
-  if (!def) throw new Error(`未知变体：${variant}（H3R 网格合法：H3R-A / H3R-B / H3R-C）`);
+  if (!def) throw new Error(`未知变体：${variant}（H3R 网格合法：H3R-A / H3R-B / H3R-C / H3R-D / H3R-E）`);
   const taskDir = join(TASKS_DIR, task);
   if (!existsSync(taskDir)) throw new Error(`任务目录不存在：${taskDir}（N2 落任务集）`);
   if (!existsSync(join(taskDir, "plan.md"))) throw new Error(`固设计划缺席：${join(taskDir, "plan.md")}`);

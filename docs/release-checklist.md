@@ -484,6 +484,44 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - 0.2.0 三件套活体（scratch `C:\scratch020`，SYSTEM exec + `set "LOCALAPPDATA=…"` 引号形态）：**lease 互斥**（acquire fence 1 → 二次 acquire 拒「另一运行时持租（fence 1，至 …）」带僵尸恢复指路）· **fence 写拒**（活跃租约期 `--fence 9` 写 → 「写拒：fence 9 非现行（现行 1）——你已被接管，立即停手不写」）· **drive 门链**（executing 目标上 `lzy loop drive` → 凭据缺席拒带恢复文本；doctor `drive` 行四段齐「凭据缺席（headless 调用会停在认证门） · 活跃租约 fence=1 · 预算未初始化 · v020vm 可入 drive（risk=low）」）；lease 释放 ✔、scratch 清除 ✔。
 - 探针引号雷补记（host 侧驱动教训）：`set VAR=value && cmd` 会把**尾随空格**并进值（`LZY_ABLATE_HUMAN_GATE` 变 `"1 "` 消融判据不中、`LZY_ZCODE_ENGINE` 路径带空格失效）——SYSTEM exec 驱动一律 `set "VAR=value"` 引号形态（0.1.0 配方的静默变体，历次被引号形态掩盖）。
 
+## 执行记录（0.2.2，H3R 高危步门实验 + 仪器与账本加固——机械件已备，publish 留用户）
+
+### 内容与定位
+
+- **minor 面**：0.2.2 = 两棒——**棒1 仪器与账本加固**（goal `v022-bat1-instrument`，决策 #29/ADR-0023：
+  ADJ-34 推进信号状态集口径、锁竞争窗仪器与 P95、ADJ-55 多 provider 计价、陈旧文案六处、消融管线 spawn
+  对齐 ADJ-38）、**棒2 H3R 高危步门实验**（goal `v022-bat2-h3r`，ADR-0022/ADR-0015 增补节，决策 #30：
+  C 臂休眠原型 + 陷阱集四题 + 预验证 5 发 + 24 trials 网格 + 报告 `docs/reviews/2026-h3r-gate-report.md`）。
+- **行为面**：产品行为**无变更**——H3R 原型**默认休眠**，不设 `LZY_ABLATE_H3R_GATE` 时与 0.2.1 逐字段同；
+  棒1 的推进信号口径与计价表扩表是**读数修正**（前者修 drive 的 stuck 误判，后者修水位门对非 GLM provider 失明）。
+- **载荷身份**：24 trials 跑在 `payloadHash 7c635b86558a…` 的载荷上（N4 版本面 bump 之后、N9 文本改动之前）。
+  **诚实注记**：N9 之后载荷再变（SKILL/AGENTS/设计稿文本），故「trials 跑在发布身份树上」只对**当时的**载荷成立，
+  不覆盖 0.2.2 的最终载荷——这一点记在报告 §9.6。
+- **win32 VM 复测适用**：本版**未改 `cli/`**（`git diff 06c2e99..HEAD -- cli/` 为空），引擎面契约与开关分派均未动；
+  VM 侧跑 update 链 + scratch loop 回归即可，H3R 原型为休眠件、不构成平台差异面。
+
+### 发布步骤（机械件已备，外向动作归维护者）
+
+| # | 步骤 | 状态 |
+|---|---|---|
+| 1 | 版本面五处同步 0.2.2（`package.json` / `plugin/.zcode-plugin/plugin.json` / `.claude-plugin/marketplace.json` version+ref / `docs/_layouts/home.html` softwareVersion / `docs/sitemap.xml` lastmod） | ✅ 已落（commit 2572ab5） |
+| 2 | CHANGELOG 定版 0.2.2（含两棒条目） | ✅ 已落（commit 1689caa） |
+| 3 | `lzy sync` 载荷同步 + `lzy doctor` files/payload-ver 一致 | ✅ 已落 |
+| 4 | `npm test` 全绿（404/404） | ✅ 已落 |
+| 5 | `npm pack --dry-run` 零敏感物 + `artifacts/` 不入包 | ✅ 自检（见下） |
+| 6 | **`git push`**（触发 CI） | ⏳ **维护者** |
+| 7 | **核 CI 四腿全绿**——判决只认 `gh run view` 的 conclusion，**勿用 `watch` 的伪绿**（0.1.0 教训） | ⏳ **维护者** |
+| 8 | **`git tag v0.2.2`**——**最后切**，且在 CI 判决之后 | ⏳ **维护者** |
+| 9 | GitHub Release（正文可用报告 §0 摘要） | ⏳ **维护者** |
+| 10 | **`npm publish`**（需 2FA；发布载荷冻结纪律见本文件「发布载荷冻结」节） | ⏳ **维护者** |
+| 11 | 发布后：隔离 prefix 冒烟 + 真机 `lzy update` 0.2.1→0.2.2 | ⏳ **维护者** |
+
+### 本版移交说明（为什么 6–11 不在目标循环内）
+
+目标循环的边界=**到 release-ready 的本地机械件**（§⑰ Q7）。push 是外向动作（触发远端构建、写公共仓库），
+tag/Release/publish 同理；沿 0.1.0/0.2.1「维护者指令直发」先例，本目标交付其**前置件**并在报告里列出移交清单，
+不代做外向动作。第 7 步的「CI 四腿绿」因此是**移交项而非丢项**——它的前置件（本地测试全绿、载体冻结）已备。
+
 ## 执行记录（0.2.1，引擎面兼容修复 + 五轮双审修复轮——机械件已备，publish 留用户）
 
 ### 内容与定位

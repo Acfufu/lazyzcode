@@ -509,12 +509,31 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 | 3 | `lzy sync` 载荷同步 + `lzy doctor` files/payload-ver 一致 | ✅ 已落 |
 | 4 | `npm test` 全绿（404/404） | ✅ 定版树实跑复核（node v22.23.1） |
 | 5 | `npm pack --dry-run` 零敏感物 + `artifacts/` 不入包 | ✅ 维护者侧复核（见下） |
-| 6 | **`git push`**（触发 CI） | ⏳ **维护者** |
-| 7 | **核 CI 四腿全绿**——判决只认 `gh run view` 的 conclusion，**勿用 `watch` 的伪绿**（0.1.0 教训） | ⏳ **维护者** |
-| 8 | **`git tag v0.2.2`**——**最后切**，且在 CI 判决之后 | ⏳ **维护者** |
-| 9 | GitHub Release（正文可用报告 §0 摘要） | ⏳ **维护者** |
-| 10 | **`npm publish`**（需 2FA；发布载荷冻结纪律见本文件「发布载荷冻结」节） | ⏳ **维护者** |
-| 11 | 发布后：隔离 prefix 冒烟 + 真机 `lzy update` 0.2.1→0.2.2 | ⏳ **维护者** |
+| 6 | **`git push`**（触发 CI） | ✅ 已落（`4c457ae..da9edb2`，26 提交） |
+| 7 | **核 CI 四腿全绿**——判决只认 `gh run view` 的 conclusion，**勿用 `watch` 的伪绿**（0.1.0 教训） | ✅ run 35644107015 · conclusion=success · 四腿逐格 success（node 22/24 × ubuntu/windows） |
+| 8 | **`git tag v0.2.2`**——**最后切**，且在 CI 判决之后 | ✅ `v0.2.2 = da9edb2`（=CI 绿判树） |
+| 9 | GitHub Release（正文可用报告 §0 摘要） | ✅ 已建（Latest；notes=Highlights/Fixed/Added/H3R 摘要/Notes/Coverage boundary/Upgrade） |
+| 10 | **`npm publish`**（需 2FA；发布载荷冻结纪律见本文件「发布载荷冻结」节） | ⏳ **用户**（2FA） |
+| 11 | 发布后：隔离 prefix 冒烟 + 真机 `lzy update` 0.2.1→0.2.2 | ⏳ **用户** |
+
+### 发布链实弹记录（2026-09-22，第 6–9 步；publish 待用户 2FA）
+
+- **push**：`4c457ae..da9edb2`，26 提交上远端（棒1 十提交 + 棒2 十提交 + 定版/记录提交）。本批 25 个目标提交
+  **首次过 windows 腿**（此前只存在于本地）——沿 0.2.1 先例属 win32 测试雷高危面，**本次零红**。
+- **CI**：run 35644107015 · `gh run view --json conclusion` = **success** · 四腿逐格 success（node 22/24 ×
+  ubuntu/windows）。判决未走 `watch`（0.1.0 伪绿教训）。
+- **tag**：`v0.2.2 = da9edb2`（**最后切**，落 CI 绿判树；推 tag 后即建 Release）。
+- **载荷核对（tag 树 == dry-run 逐字一致）**：`git archive v0.2.2` 于临时目录 `npm pack` → shasum
+  **`7244ea30a41b534232cc545fc2d26c412347e03f`**，与定版前 dry-run **逐字相同** ✔（载荷=tag 树而非工作树）。
+- **GitHub Release**：`v0.2.2` 已建、Latest、draft=false（notes 含 H3R 实验的机制结论与 9/12、15/24、3/24 三读数，
+  以及在 Notes 节如实标注「网格跑在版本面 bump 之后、N9 文本改动之前的载荷上」）。
+- **Pages**：push 触发的 pages-build-deployment（run 35644104849）**success**；站点活体复核 ——
+  首页 JSON-LD `"softwareVersion": "0.2.2"` 已上线，guide/en 含锁行内容。
+- **载荷冻结纪律（ADJ-15）偏差如实记账**：本批**定版提交（1689caa，CHANGELOG 定版）不是最后一个触碰随包文件的提交**
+  ——4b81ce4 其后仍改了 `plugin/skills/zw/SKILL.md`（12 行 H3R 词汇段）。实质要求（发布载荷 == tag 树载荷）由
+  「tag 最后切 + tag 树打包核对」保证，未受影响；顺序纪律的偏离记档，供下批对表（H3R 报告 §9.6 已同样记这条）。
+- **本记录节自身为 docs-only**：`docs/` 不在 npm files 白名单，tag 后写它不动载荷（沿 0.2.1「tag 后仅
+  release-checklist 动过」先例）。
 
 ### 发布前自检（维护者侧实跑，2026-09-22）
 
@@ -526,11 +545,14 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
   的 repository/homepage URL（元数据必需）——三处均非泄露。
 - docs-preview：**58 页 / 247 本地链接 / 断链 0**；锚点 **en 22/22 · zh 22/22**。
 
-### 本版移交说明（为什么 6–11 不在目标循环内）
+### 本版移交说明（目标循环止于第 5 步；第 6–9 步由维护者指令执行）
 
 目标循环的边界=**到 release-ready 的本地机械件**（§⑰ Q7）。push 是外向动作（触发远端构建、写公共仓库），
 tag/Release/publish 同理；沿 0.1.0/0.2.1「维护者指令直发」先例，本目标交付其**前置件**并在报告里列出移交清单，
 不代做外向动作。第 7 步的「CI 四腿绿」因此是**移交项而非丢项**——它的前置件（本地测试全绿、载体冻结）已备。
+
+这次移交**已由维护者指令执行**：第 6–9 步（push / CI 四腿绿 / tag / Release）按本清单 runbook 实弹完成，
+记录见上节；第 10–11 步（`npm publish` 2FA 与发后核验）留用户。
 
 ## 执行记录（0.2.1，引擎面兼容修复 + 五轮双审修复轮——机械件已备，publish 留用户）
 

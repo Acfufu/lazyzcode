@@ -49,8 +49,11 @@ README、CHANGELOG、`package.json` 的 files 清单——任何一项在 tag �
 
 - 发现漏改：不补丁 tag——按版本流转纪律 bump 后重走定版（新 tag 替换旧 tag 仅在
   尚未 publish 时允许；已 publish 一律进下一版）。
-- 定版提交（三体 bump+市场 manifest 钉+CHANGELOG 定版）必须是 tag 前最后一次触碰
-  随包文件的提交；tag 切在该提交上（runbook 既有订单）。
+- 定版提交（三体 bump+市场 manifest 钉+CHANGELOG 定版）为 tag 前最后一次触碰随包
+  文件，是**推荐顺序**；**实质不变量是「发布载荷 == tag 树载荷」**——由「tag 最后切 +
+  tag 树打包核对」保证（下一条的核对即它的机器面）。顺序出现偏离**须记账**（先例=0.2.2，
+  见本文件 0.2.2 节「发布链实弹记录」）；只有当实质不变量被破坏（tag 后动载荷且未重走
+  定版）才按上一条处置。
 - 发布后核对：`npm pack --dry-run` 清单 vs tag 树逐文件一致；doctor payload-ver
   内容级对照（样本 skills/zw/SKILL.md）双 ✔。
 

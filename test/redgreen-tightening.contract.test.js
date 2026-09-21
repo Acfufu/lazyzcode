@@ -89,6 +89,9 @@ test("INV-09：HEAVY 仅绿半 finish 拒且报文带恢复指路；绿后补红
   const red = dag.nodes.find((n) => n.kind === "evidence" && n.half === "red");
   const green = dag.nodes.find((n) => n.kind === "evidence" && n.half === "green");
   assert.ok(dag.edges.some((e) => e.type === "red_of" && e.from === red.id && e.to === green.id), "反向 red_of 指锚定绿");
+  // ADJ-10（0.2.1 五轮双审）：反向配对的节点 seq=**锚定绿的 seq**（展示代数与 red_of 边同代；
+  // 旧实现写 evidenceSeq 现值=锚绿代数+1，让 evidence list 的「红 gen2」与指向 gen1 的边互相矛盾）
+  assert.equal(red.seq, green.seq, "反向配对代数对齐锚定绿");
   const { goal } = finishLoop(d, createGit(d));
   assert.equal(goal.status, "done");
 });

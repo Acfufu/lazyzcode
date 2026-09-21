@@ -152,6 +152,22 @@ test("失败族：非零退出带 stderr 尾部；超时 SIGKILL 带 wall-clock 
     const r3 = await spawnHeadless({ prompt: "p", mode: "yolo", timeoutMs: 20_000, enginePath: garbage, cwd: dir });
     assert.equal(r3.ok, false);
     assert.match(r3.error, /--json 摘要解析失败/);
+
+    // spawn 失败族（ADJ-52，0.2.1 五轮双审：error 双监听合并为单监听后本族须照旧）：
+    // cwd 不存在 → spawn 事件 error（无 exit 可等）→ error 回调记因 + 50ms 短窗补结算，
+    // Promise 永不挂且报文点名启动失败。
+    const okEngine = makeFakeEngine(dir, {});
+    const t1 = Date.now();
+    const r4 = await spawnHeadless({
+      prompt: "p",
+      mode: "plan",
+      timeoutMs: 20_000,
+      enginePath: okEngine,
+      cwd: join(dir, "no-such-cwd"),
+    });
+    assert.equal(r4.ok, false);
+    assert.match(r4.error, /引擎进程启动失败/);
+    assert.ok(Date.now() - t1 < 5_000, "spawn 失败即结算（50ms 兜底语义不破），不挂到墙钟");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -2,11 +2,15 @@
 // spawn headless 会话推进一个 executing 目标，段间查 budget/lease/risk 三门，收束=
 // 步完成/预算尽/门拒/需人工，五因收束（除 done 外）自写 7 字段 handoff 快照干净交回。
 // 门序：executing 态 → risk（assertDriveEligible）→ 引擎 → 凭据 → lease（他租拒）→
-// 预算（缺席 init / 在场 restart 重开每-run 预算——「每次 drive 双硬顶」§⑮ Q4）。
+// 预算（缺席 init / 在场 restart 重开每-run 预算——§⑮ Q4）。
 // 段内 fence 注入（ADR-0020「drive 派生工人一律注入 fence」接线点）：段会话 env 带
 // LZY_RUNTIME_FENCE，段内一切 lzy 写经 guardFence fail-closed；本进程同 env 申报自身
-// handoff 写。points 侧活体归因不可行（cost.js 按小时桶读 billing DB），账本积分恒 0，
-// 积分执法=水位联动（rollingWaterlinePoints ≥ pointsBudget → 收束；ADR-0020 已知边界）。
+// handoff 写。
+// 双硬顶口径（ADJ-21，0.2.1 五轮双审·成立——口径歧义此前无处写明）：**墙钟=每-run 记账**
+//（spentMs 逐段累计，超顶拒=收束信号）；**积分=账号 5h 滚动水位阈值**（判据
+// rollingWaterlinePoints ≥ pointsBudget，读数缺席即不执法）——不是本 run 的消费累计：
+// 积分侧活体归因不可行（cost.js 按小时桶读 billing DB），故每段入账 points 恒 0。
+// 缺省 400 相对水位 1600 取四分之一（相对账号水位、非相对本 run 消耗）。
 // 退出码契约：0=done 或干净收束（run 契约正常完成）；1=门拒/段 infra 失败（尽力收束带
 // 快照后非零）。deps 可注入（run/rollingPoints/now/git）供离线契约测试（headless.js 先例）。
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -179,6 +183,10 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
       outcome = { ok, cause, handoff: null };
       console.log(`[drive] 收束：${cause}（目标已非 executing，无需交接快照）`);
     }
+    // ADJ-22（0.2.1 五轮双审·部分成立）：段败的可操作报文（headless.js 失败族恢复式文案）
+    // 原只落快照的「风险与坑」——无人值守链上没人去读工作区里的快照文件，stdout 只剩
+    //「段失败（exit=1）」。riskNote 在场即连带打印一行（同款 300 字符截断；快照路径照打）。
+    if (riskNote) console.log(`[drive] 原因：${String(riskNote).slice(0, 300)}`);
   };
 
   try {

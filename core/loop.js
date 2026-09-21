@@ -701,36 +701,60 @@ export function addSubject(cwd, path) {
   });
 }
 
+// 根已消失时的路径归一（ADJ-16，0.2.1 五轮双审）：对**最深存在的祖先**做 realpath
+//（吃掉 /tmp→/private/tmp、/var→/private/var 一类系统链接形态差——旧实现的分隔符边界
+// 后缀匹配对它永不触发：`/private/tmp/X` 里前缀后缀 `/tmp/X` 的上一字符是 "e" 不是 "/"），
+// 再拼回不存在的尾部；realpath 全程不可解析（不该发生）时按原样返回。
+function realpathWithMissingTail(p) {
+  const tail = [];
+  let head = p;
+  for (;;) {
+    try {
+      return join(realpathSync(head), ...tail);
+    } catch {
+      const parent = dirname(head);
+      if (parent === head) return p;
+      tail.unshift(basename(head));
+      head = parent;
+    }
+  }
+}
+
 // 中途移除 subject（仅 executing）：集合维护命令（评审 4 轮增补=missing 死锁出口：
 // 根永久消失时 remove 是 abandon 外唯一出路）。收窄与从未声明同信任级——不违「无逃生门」
 // （证据过期语义照走：移除后指纹变，全体 F 证据过期须重取）。
+// 匹配语义（ADJ-16，0.2.1 五轮双审）：主判据=「解析后路径相等」（两侧同一归一口径）；
+// 形态兜底只在候选条目自身的根已消失（realpath 失败）时启用——旧实现的两条无门槛后缀
+// 分支双向失真：把「以某 subject 真实路径为尾」的**另一个**真实目录（Time Machine/rsync
+// 备份镜像 `/Volumes/Backup/…/repo`）误判成该 subject 而删掉真条目并报出那个无关路径，
+// 而它声称要救的 /tmp 形态反不触发。返回值=被删条目本身（成功文案随之指向被删条目）。
 export function removeSubject(cwd, path) {
   requireGoalPreLock(cwd);
   return withLock(cwd, () => {
     guardFence(cwd);
     const goal = requireActive(cwd, "executing");
     const subjects = goal.subjects ?? [];
-    let rp;
-    try {
-      rp = realpathSync(resolve(cwd, path));
-    } catch {
-      rp = resolve(cwd, path); // 根已消失：按入参归一参与匹配
-    }
+    const rp = realpathWithMissingTail(resolve(cwd, path));
     let idx = subjects.indexOf(rp);
     if (idx === -1) {
-      // ADJ-39（0.0.10）：报错文案给的入参形态与存储 realpath 形态可分叉（/tmp→/private/tmp），
-      // 根消失时 realpath 又不可得——带分隔符边界的后缀匹配兜底，药方自洽。
       idx = subjects.findIndex((e) => {
-        if (e === rp || rp.endsWith(e)) return true;
-        return e.endsWith(rp) && (rp.endsWith("/") || e.charAt(e.length - rp.length - 1) === "/");
+        let live = true;
+        try {
+          realpathSync(e);
+        } catch {
+          live = false; // 该条目根已消失：形态兜底适用
+        }
+        if (live) return false; // 根仍在盘上=另一条真实路径，后缀/形态含糊匹配不得启用
+        return realpathWithMissingTail(e) === rp; // 与主判据同口径：解析后路径相等
       });
     }
     if (idx === -1) {
       throw new LoopError(`该路径不在 subject 集合：${rp}（当前集合 ${subjects.length} 项）`);
     }
+    const removed = subjects[idx];
     goal.subjects = subjects.filter((_, i) => i !== idx);
     writeGoal(cwd, goal);
-    return { goal, root: rp };
+    return { goal, removed };
   });
 }
 
@@ -1184,13 +1208,23 @@ function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal
       surface = { kind: "fingerprint", value: fp };
     }
   }
-  // 代数对齐绿半：红半瞄准的取证代数=绿半即将落地的同一代数（completeStep 的 captureGen
-  // 同源取 step.evidenceSeq ?? 1），配对真值由 red_of 边承载、seq 只作展示。
-  const seq = step.evidenceSeq ?? 1;
   // dag-first + 先账本后落盘（ADJ-24，0.0.10）：节点先入内存账本取 id（附件名带节点
   // 身份），附件拷贝失败即整命令拒、账本未落盘（不留半截附件）；saveDag 失败的残留
   // 附件属既有部分失败家族（无害孤儿，与 completeStep 的 writeGoal 失败同语义）。
   const dag = loadDag(cwd);
+  // 反向配对（0.1.0 棒B INV-09 恢复路径，ADR-0016）：绿落地后补录红/waive——若该步已有
+  // 现行锚定绿（findGreenByGeneration 代次语义=goal.json evidenceSeq-1，与 finish 检查
+  // 同源同一查找原语，孤儿 ghost 角两处自然收敛），当场加 red_of 指向它。pairReds 本体
+  // 不动：绿前录=原语义下次绿落地时配对；绿后录=反向配对立即成对（多条 red_of 合法、
+  // 最新为现行）。
+  const anchorGen = (step.evidenceSeq ?? 1) - 1;
+  const anchored = anchorGen >= 1 ? findGreenByGeneration(dag, goal.slug, id, anchorGen, goal.attempt) : null;
+  // 代数对齐绿半（ADJ-10，0.2.1 五轮双审）：红半瞄准的取证代数=绿半同一代数——绿前录红
+  // 取 completeStep 即将落地的 captureGen（step.evidenceSeq ?? 1）；绿后补录（INV-09
+  // 恢复路径）取**锚定绿的 seq**：原实现一律写 evidenceSeq 现值=锚绿代数+1，展示面
+  //（evidence list 的 genN）与 red_of 边的真值互相矛盾（门不受影响——配对真值在边上，
+  // pairReds 按 attempt 配对不读 seq）。
+  const seq = anchored ? anchored.seq : (step.evidenceSeq ?? 1);
   const node = appendEvidenceNode(dag, {
     slug: goal.slug,
     step: id,
@@ -1203,13 +1237,6 @@ function doRecordEvidenceHalf(cwd, git, id, { half, text, files, surfaceExternal
     ...(trimmedHarness ? { harnessHash: sha256Hex(trimmedHarness), harnessSpec: trimmedHarness } : {}),
   });
   if (surface) addCapturedOn(dag, node.id, surface);
-  // 反向配对（0.1.0 棒B INV-09 恢复路径，ADR-0016）：绿落地后补录红/waive——若该步已有
-  // 现行锚定绿（findGreenByGeneration 代次语义=goal.json evidenceSeq-1，与 finish 检查
-  // 同源同一查找原语，孤儿 ghost 角两处自然收敛），当场加 red_of 指向它。pairReds 本体
-  // 不动：绿前录=原语义下次绿落地时配对；绿后录=反向配对立即成对（多条 red_of 合法、
-  // 最新为现行）。
-  const anchorGen = (step.evidenceSeq ?? 1) - 1;
-  const anchored = anchorGen >= 1 ? findGreenByGeneration(dag, goal.slug, id, anchorGen, goal.attempt) : null;
   if (anchored) addEdge(dag, { type: "red_of", from: node.id, to: anchored.id });
   node.files = attachHalfFiles(cwd, goal, step, files, seq, half, node.id) ?? [];
   saveDag(cwd, dag);
@@ -1648,7 +1675,18 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
   }
   // 世系收口（0.1.0 棒B）：本代次落 completed（写序在 goal.json 前——fail-closed 同
   // dag-first：世系写失败=finish 拒、状态保持 executing；done 态重入重 finish 幂等重写）。
-  closeAttempt(cwd, { slug: goal.slug, n: goal.attempt, status: "completed" });
+  try {
+    closeAttempt(cwd, { slug: goal.slug, n: goal.attempt, status: "completed" });
+  } catch (e) {
+    // ADJ-07（0.2.1 五轮双审·部分成立）：写序「先证后态」为有意设计（done 绝不在
+    // LOOP_COMPLETE 落盘前被记录），但本步失败时报告与终验 attestation 已在盘、goal.json
+    // 仍 executing——三件表面互相矛盾。报文点名这一中间态与闭合动作（重跑 finish 幂等）。
+    throw new LoopError(
+      `世系收口失败（finish 未置 done，状态保持 executing）：报告/attestation 已在盘` +
+        `（.lazyzcode/evidence/${goal.slug}.report.md · .lazyzcode/attestations/）——` +
+        `重跑 lzy loop finish 完成状态提交即可闭合。原始错误：${e?.message ?? e}`,
+    );
+  }
   writeGoal(cwd, goal);
   return { goal, attestation };
 }
@@ -1725,6 +1763,13 @@ function readLzyVersion() {
 // v008#N6 拆分：buildReportLines（纯渲染）+ writeReportFile（tmp 落盘+rename 原子写，
 // 支持指定目标路径）+ writeGoalReport（finish 的锁内 writer 回调形态——接收内存中已置
 // done 的 goal 对象渲染，不从盘上重读，报告状态行=done）。
+// 写盘序注记（ADJ-07，0.2.1 五轮双审·部分成立）：finish 写序「先证后态」为有意设计
+// （报告/终验 attestation 先落盘、goal.json 最后提交），失败窗内报告状态行可能与
+// goal.json 相反。单独一行注记（不进状态行本身——formatHistory 的状态行解析就绑在
+// 该行上），且只在 done 态渲染：写盘序只在「本行说 done」时才有解释力。
+const REPORT_STATUS_ORDER_NOTE =
+  "（写盘序：LOOP_COMPLETE 证明先于状态提交；若本行 done 而 goal.json 仍 executing，重跑 lzy loop finish 即可闭合）";
+
 function buildReportLines(cwd, git, goal) {
   const done = goal.steps.filter((s) => s.status === "done").length;
   const current = git ? git.headTreeHash() : null;
@@ -1732,6 +1777,7 @@ function buildReportLines(cwd, git, goal) {
     `# 目标循环报告：${goal.slug} — ${goal.title}`,
     "",
     `- 状态 ${goal.status} · 创建 ${goal.createdAt} · 完成 ${goal.finishedAt ?? "—"}`,
+    ...(goal.status === "done" ? [REPORT_STATUS_ORDER_NOTE] : []),
     `- 计划 ${goal.planPath ?? "未采纳"} · 评审 ${goal.review ? `${goal.review.verdict}（${goal.review.by}）` : "未评审"}`,
     `- 基线 tree ${(goal.baseTreeHash ?? "未知").slice(0, 10)} · 当前 tree ${(current ?? "未知").slice(0, 10)} · 步骤 ${done}/${goal.steps.length}`,
     "",

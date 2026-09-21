@@ -9,9 +9,9 @@ import { test } from "node:test";
 process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createGit } from "../core/git.js";
@@ -35,6 +35,7 @@ const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
 const SUPPRESS_ENGINE = "/nonexistent-lzy-suppressed-engine";
 const HOME = mkdtempSync(join(tmpdir(), "lzy-v008-home-"));
+const IS_WIN = process.platform === "win32";
 
 function repo(prefix = "lzy-v008-") {
   const d = mkdtempSync(join(tmpdir(), prefix));
@@ -255,6 +256,45 @@ test("addSubject/removeSubject：planning 拒、校验镜像、幂等去重、�
   }
 });
 
+test("ADJ-16：remove 匹配=解析后路径相等——镜像尾形态不误删；根缺失+非 realpath 形态可删且返回被删条目", () => {
+  const d = repo();
+  const sib = repo("lzy-v008-sib-");
+  const mirrorRoot = mkdtempSync(join(tmpdir(), "lzy-adj16-mirror-"));
+  // 非 realpath 形态（macOS：tmpdir() 的 /var… 与存储 realpath 的 /private/var… 分叉；
+  // linux/win32 两形态相同，本腿退化为「根缺失 + 归一形态相等」——无平台分支断言）。
+  const sibForm = join(tmpdir(), basename(sib));
+  const sibReal = realpathSync(sib);
+  try {
+    registerGoal(d, "t", "title");
+    adoptPlan(d, writePlan(d), {});
+    startLoop(d, createGit(d));
+    addSubject(d, sibForm);
+    const stored = goalJson(d).subjects[0];
+    assert.equal(stored, sibReal, "存储形态=realpath 归一");
+    // ① 镜像尾形态不误删：另一个真实目录，其绝对路径以 subject 真实路径为尾（Time Machine/
+    // rsync 备份镜像的现实形态）。旧实现的无门槛 `rp.endsWith(e)` 分支会命中并删掉真条目。
+    // win32 分支：绝对路径必带盘符，另一真实目录的绝对路径不可能以它结尾（旧分支在该平台
+    // 天然不可达）——改取路径段拼接的合法形态，两平台同判「不在集合」。
+    const mirror = IS_WIN
+      ? join(mirrorRoot, ...sibReal.split(sep).filter((s) => s && !/^[A-Za-z]:$/.test(s)))
+      : join(mirrorRoot, sibReal);
+    mkdirSync(mirror, { recursive: true });
+    assert.throws(() => removeSubject(d, mirror), /不在 subject 集合/);
+    assert.equal(goalJson(d).subjects.length, 1, "镜像路径不得误删真 subject");
+    // ② 根缺失 + 非 realpath 形态可删（旧实现在此反不触发：/private 前缀差的上一字符是 e
+    // 非 /，分隔符边界后缀匹配永假）——两侧走同一归一口径（最深存在祖先 realpath + 缺失尾部）。
+    rmSync(sib, { recursive: true, force: true });
+    const r = removeSubject(d, sibForm);
+    assert.equal(r.removed, stored, "返回值=被删条目本身（非入参派生路径）");
+    assert.equal(goalJson(d).subjects.length, 0);
+    assert.throws(() => removeSubject(d, sibForm), /不在 subject 集合/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(sib, { recursive: true, force: true });
+    rmSync(mirrorRoot, { recursive: true, force: true });
+  }
+});
+
 test("CLI subject 面：add/remove/list + planning 态拒文案", () => {
   const d = repo();
   const sib = repo("lzy-v008-sib-");
@@ -268,7 +308,10 @@ test("CLI subject 面：add/remove/list + planning 态拒文案", () => {
     assert.match(cli(["loop", "subject", "add", sibPath], d).out, /subject 已加入/);
     assert.match(cli(["loop", "subject", "add", sibPath], d).out, /幂等跳过/);
     assert.match(cli(["loop", "subject", "list"], d).out, /subjects（1 项）/);
-    assert.match(cli(["loop", "subject", "remove", sibPath], d).out, /subject 已移除/);
+    const rm = cli(["loop", "subject", "remove", sibPath], d);
+    assert.match(rm.out, /subject 已移除/);
+    // ADJ-16：成功文案指向被删条目本身（存储 realpath 形态），不再报入参派生路径
+    assert.ok(rm.out.includes(realpathSync(sib)), `文案须指向被删条目：${rm.out}`);
     assert.match(cli(["loop", "subject", "list"], d).out, /subjects：空/);
   } finally {
     rmSync(d, { recursive: true, force: true });
@@ -447,6 +490,38 @@ test("writeReport 失败不置 done（目录占位注入，POSIX+win32 通杀）
     const tmps = readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"); // 无 .tmp 残留在 evidence/（rename 成功）
     assert.equal(existsSync(join(d, ".lazyzcode", "evidence", ".t.report.md")), false);
     assert.ok(tmps.length > 0);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ADJ-07（0.2.1 五轮双审·部分成立）：写序「先证后态」为有意设计，但失败窗内报告状态行
+// （done）与 goal.json（executing）互相矛盾——报文点名中间态与闭合动作，报告状态行下另起
+// 一行注记写盘序；重跑 finish 即闭合（本用例逐条活体钉住）。
+test("ADJ-07：closeAttempt 失败窗三件一致——报文带闭合动作、报告注记在场、重跑 finish 闭合", () => {
+  const d = repo();
+  try {
+    cycle(d); // N1/F1 全 done（报告由 CLI 面 writer 落盘，同 writeReport 注入用例轨）
+    const ap = join(d, ".lazyzcode", "loop", "attempt.json");
+    assert.ok(existsSync(ap), "世系账本注册即在场");
+    rmSync(ap);
+    mkdirSync(ap); // 目录占位注入（POSIX+win32 通杀，同 writeReport 注入法）→ 世系读 EISDIR
+    const r = cli(["loop", "finish"], d);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /世系收口失败（finish 未置 done，状态保持 executing）/);
+    assert.match(r.out, /报告\/attestation 已在盘/);
+    assert.match(r.out, /重跑 lzy loop finish 完成状态提交即可闭合/);
+    assert.equal(goalJson(d).status, "executing", "状态未提交（先证后态写序不变）");
+    // 失败窗盘面：报告（状态行=done）与终验 attestation 已在，goal.json 仍 executing
+    const report = readFileSync(join(d, ".lazyzcode", "evidence", "t.report.md"), "utf8");
+    assert.match(report, /^- 状态 done /m);
+    assert.match(report, /写盘序：LOOP_COMPLETE 证明先于状态提交/);
+    assert.match(report, /若本行 done 而 goal\.json 仍 executing，重跑 lzy loop finish 即可闭合/);
+    assert.equal(readdirSync(join(d, ".lazyzcode", "attestations")).filter((f) => f.endsWith(".json")).length, 1);
+    // 闭合：按报文指路清障（删除重建）后重跑 finish——幂等续完，状态提交
+    rmSync(ap, { recursive: true, force: true });
+    assert.equal(cli(["loop", "finish"], d).code, 0);
+    assert.equal(goalJson(d).status, "done");
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

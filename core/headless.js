@@ -150,6 +150,8 @@ export function spawnHeadless({
       sessionId: typeof s.sessionId === "string" ? s.sessionId : null,
       usage: s.usage ?? null,
       projection: s.projection ?? null,
+      // 引擎 --json 摘要全量原样回传（诊断面用）。渲染面注意（ADJ-52，0.2.1 五轮双审）：
+      // 该块来自引擎 stdout，须先剥 ANSI/控制字符再入终端/日志，否则可伪造 CLI 成功行。
       raw: s,
     };
   });
@@ -210,7 +212,14 @@ function defaultRun({ argv, cwd, env, timeoutMs }) {
       stderr += d;
     });
     child.on("error", (err) => {
+      // 单监听器（ADJ-52，0.2.1 五轮双审）：原实现同一 error 事件挂两个监听（一个记
+      // spawnError、一个起 50ms 兜底），语义冗余且让 timedOut 分支的 settle 优先级依赖
+      // 事件顺序。合并为一个：先记因，再起短窗兜底——个别平台 spawn 失败后 close 可能
+      // 迟到，error 后 50ms 补结算，Promise 永不挂。
       spawnError = err?.message ?? String(err);
+      setTimeout(() => {
+        settle({ exitCode: null, signal: null, spawnError });
+      }, 50).unref();
     });
     child.on("exit", (code, signal) => {
       // ADJ-38：exit 即结算（不等 close——close 依赖 stdio 关闭，可被后代拖住）。
@@ -231,12 +240,6 @@ function defaultRun({ argv, cwd, env, timeoutMs }) {
         ...(stdoutTruncated ? { stdoutTruncated: true } : {}),
         ...(stderrTruncated ? { stderrTruncated: true } : {}),
       });
-    });
-    // 防御兜底：个别平台 spawn 失败后 close 可能迟到——error 后短窗补结算，Promise 永不挂。
-    child.on("error", () => {
-      setTimeout(() => {
-        settle({ exitCode: null, signal: null, spawnError: spawnError ?? "进程启动失败" });
-      }, 50).unref();
     });
   });
 }

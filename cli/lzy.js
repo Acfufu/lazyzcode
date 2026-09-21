@@ -376,8 +376,11 @@ async function cmdLoop(args) {
               : `✔ subject 已在集合（幂等跳过）：${root}（共 ${goal.subjects.length} 项）`,
           );
         } else {
-          const { goal, root } = removeSubject(cwd, _[2]);
-          console.log(`✔ subject 已移除：${root}（剩 ${goal.subjects.length} 项）`);
+          // ADJ-16（0.2.1 五轮双审）：打印被删条目本身——入参形态可能与存储形态分叉
+          // （/tmp→/private/tmp），报入参派生路径会指向「另一个路径」（曾与实际被删的
+          // subject 不一致）。
+          const { goal, removed } = removeSubject(cwd, _[2]);
+          console.log(`✔ subject 已移除：${removed}（剩 ${goal.subjects.length} 项）`);
         }
         console.log("  集合变化=复合指纹变化：全体已录 F 证据过期，重取后才可 finish");
         return;

@@ -239,7 +239,27 @@ test("水位联动：rollingPoints ≥ pointsBudget→收束「积分预算尽�
   }
 });
 
-// ── ⑤ 无推进 stuck 收束 ─────────────────────────────────────────────────────
+// ── ⑤ 段败收束：可操作报文连带 stdout（ADJ-22） ──────────────────────────────
+test("ADJ-22：段失败收束时 headless 失败族文案连带打印 stdout（不再只落快照「风险与坑」）", async () => {
+  const d = executingRepo("lzy-drive-segfail-");
+  const run = () => ({ exitCode: 1, stdout: "", stderr: "boom: AUTH_EXPIRED at provider" });
+  try {
+    const { result, lines } = await captureStdout(() =>
+      runDrive(d, { maxSegments: 3 }, passDeps(run, { rollingPoints: 0 })),
+    );
+    assert.equal(result.ok, false, lines);
+    assert.match(lines, /收束：段失败（exit=1）/);
+    assert.match(lines, /handoff 快照：/);
+    // 原因行=riskNote 原文（含 headless 的恢复式文案与 stderr 尾部），不再只存在于快照里
+    assert.match(lines, /\[drive\] 原因：第 1 段 headless 调用失败：引擎 headless 调用非零退出（exit 1）。stderr 尾部：boom: AUTH_EXPIRED at provider/);
+    const marker = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "handoff.json"), "utf8"));
+    assert.match(readFileSync(marker.snapshot, "utf8"), /## 风险与坑\n第 1 段 headless 调用失败/, "快照面照旧在场");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ── ⑥ 无推进 stuck 收束 ─────────────────────────────────────────────────────
 test("连续两段零推进→stuck 收束（镜像 Stop 振数纪律）+快照交回", async () => {
   const d = executingRepo("lzy-drive-stuck-");
   try {
@@ -255,7 +275,7 @@ test("连续两段零推进→stuck 收束（镜像 Stop 振数纪律）+快照�
   }
 });
 
-// ── ⑥ initBudget restart 两半 ───────────────────────────────────────────────
+// ── ⑦ initBudget restart 两半 ───────────────────────────────────────────────
 test("restart 两半：持现行租 fence 重开成功（spent 归零）；无租/错 fence 拒；交互 budget init 拒重置回归钉", () => {
   const d = repo("lzy-drive-restart-");
   try {

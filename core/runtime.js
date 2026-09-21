@@ -18,8 +18,10 @@ export const RUNTIME_VERSION = 1;
 export const RUNTIME_FILE = "runtime.json";
 // lease TTL 缺省 15min（分钟级；heartbeat 续期；--ttl-ms 可覆盖）。
 export const DEFAULT_LEASE_TTL_MS = 15 * 60_000;
-// drive 预算缺省（定标+env 覆盖沿 waterline 先例）：墙钟 30min（低于闲时车道外生上限
-// 180min）、积分 400（警戒线 WATERLINE_POINTS=1600 的四分之一保守缺省，实测后调）。
+// drive 预算缺省（定标+env 覆盖沿 waterline 先例）：**墙钟=每-run 记账** 30min（低于闲时
+// 车道外生上限 180min）；**积分=账号 5h 滚动水位阈值**（ADJ-21，0.2.1 五轮双审·成立：
+// 该轴判据是 rollingWaterlinePoints ≥ 本值、读数缺席即不执法，不是本 run 消费累计）缺省
+// 400 = 水位 1600 的四分之一（相对账号水位而非相对本 run 消耗）保守缺省，实测后调。
 export const DEFAULT_DRIVE_WALLCLOCK_MS = 30 * 60_000;
 export const DEFAULT_DRIVE_POINTS = 400;
 

@@ -519,7 +519,7 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
    `payload`/`install`/`payload-ver`（缓存 15 版本目录 · CLI 0.2.1 一致）三 ✔ **且 `enabled` 行在本机 0.16.9 宿主 ✔**
    （本轮修复面的主场活体）。市场 manifest 的 pin 形态（ref vs sha）见第 11 步注记（ADJ-88）。
 
-### 发布链实弹记录（2026-09-21，机械件部分已执行；publish 待用户 2FA）
+### 发布链实弹记录（2026-09-21，全链收官）
 
 - **push**：22 提交上远端（`4ffa820..b99375f`）=修复轮 20 + ADJ-32 接线 + 定版 + win32 测试雷修复 1。发布提交无 `Goal:` 尾注（槽位被 done 态 `v021-r5-review-fix-ablation` 占用未动，沿 0.2.0/0.1.2 先例，账本 patrol 预期一条 warn）。
 - **CI 首跑红（windows 双腿）**：run 35552241062——ubuntu 双腿绿，windows node 24 **fail 1**、node 22 被 fail-fast 取消。唯一失败=`test/human-gate.contract.test.js:301` 的 cwd 漂移用例：对**钩子原始 stdout** 断言宿主根路径，而 raw stdout 是 JSON 信封，win32 路径的反斜杠在其中转义成 `\\`（darwin 无此面 ⇒ 本地恒绿）。**第八族 win32 测试雷**，判据同族=「本地绿 / CI 红 / 只在 win32」。注：本用例属 v021-engine-surface 新增，其 20 个提交此前只存在于本地，**从未过 windows 腿**——推上去才第一次被检验。
@@ -527,7 +527,23 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - **复跑四腿全绿**：run 35553016901（node 22/24 × ubuntu/windows 全 success；判决=`gh run view --json conclusion`，不认 watch 伪绿）。
 - **tag v0.2.1 最后切**：`= b99375f`（CI 绿判树）→ **GitHub Release**（notes=本节下方草稿逐字，Latest）。
 - **载荷核对**：`git archive v0.2.1 | tar -x` 于临时目录 `npm pack` → shasum `cedca6e5c16749697fab1983ef1069ab559e692a`，与定版前 dry-run **逐字一致** ✔（载荷=tag 树而非工作树）。
-- **仍未执行**：`npm publish <tarball>`（用户 2FA）→ 隔离 prefix 冒烟 + 真机 `lzy update` 0.2.0→0.2.1 + doctor `payload-ver`/`enabled` 双核对 + win32 VM 降档项。
+### 发后核验（2026-09-21，publish 用户 2FA，全过）
+
+- **registry 直证**：`dist-tags.latest=0.2.1`（curl HTTP 端点，无传播窗等待）；发布 shasum
+  `cedca6e5c16749697fab1983ef1069ab559e692a` 与 tag 树 tarball / 定版前 dry-run **三方逐字一致** ✔；
+  registry 元数据 `engines.node>=22`、`bin.lzy=cli/lzy.js` 无误；published `2026-09-21T02:19:19Z`。
+- **隔离 prefix 冒烟** ✔：`npm i -g lazyzcode@0.2.1 --prefix /tmp/lzy-smoke-021 --prefer-online` →
+  `lzy 0.2.1（插件载荷同版本）· 引擎 0.16.9`；载荷新面首发在案（装包内 `core/runtime.js` reclaim 7 处、
+  `plugin/skills/zw/SKILL.md` 速查行 1 处）。
+- **真机 `lzy update` 0.2.0→0.2.1 全链 EXIT=0**（「sync 已由新装子进程执行」=ADR-0012 活体）。
+- **doctor 全绿（EXIT=0）**：`payload` 0.2.1 · `install` 缓存 0.2.1 · `files` 逐文件 sha256 一致（15 文件）·
+  `payload-ver` 缓存 [0.0.1…0.2.1] **15 版本目录** · CLI 0.2.1 一致 · `drive` 行 ✔ · `headless` oauth。
+- **本轮修复面的主场活体（最重要的一格）**：本机=引擎 **0.16.9**，`plugins list --json` 实测首字符 `[`
+  （裸数组形态），引擎条目 `lazyzcode@lazyzcode-local · enabled:true · version 0.2.1`；`lzy status`/`lzy doctor`
+  的 `enabled` 行 **✔ `[enabled] skills:2 commands:0 hooks:5` 且退出码 0**——修复前该面在同款宿主上是
+  fail 级误报 + 退出码 1（0.2.0 记录在案的野外缺陷），绿半活体闭环。
+- **win32 VM 按预注降档**：该台引擎停在 0.16.5（本轮 bug 的**非**发作面），VM 侧只余 update 链 +
+  scratch loop 回归，非本版必要证据——如实记账，不作为发布门。
 
 ### GitHub Release notes 草稿（v0.2.1）
 

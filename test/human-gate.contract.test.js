@@ -297,8 +297,12 @@ test("钩子：cwd 漂移（宿主根在祖先）——报文点名宿主根绝�
   const r = hookRunAt(`批准 ${sha(PLAN1).slice(0, 8)}`, sub, s);
   assert.equal(r.code, 0);
   assert.ok(!r.out.includes("Human approval recorded for plan"));
-  assert.ok(r.out.includes("A goal loop was found at"));
-  assert.ok(r.out.includes(s.d)); // 宿主根绝对路径被点名（债 E 的修复本相）
+  // 报文比对走解码后的 additionalContext，不对原始 stdout 断言路径：raw stdout 是 JSON
+  // 信封，win32 路径的反斜杠在其中被转义成 `\\`（darwin 无此面，故本地恒绿）——直接
+  // `r.out.includes(<path>)` 是 win32 测试雷（CI windows 腿首跑即红，2026-09-21）。
+  const o = JSON.parse(r.out);
+  assert.ok(o.additionalContext.includes("A goal loop was found at"));
+  assert.ok(o.additionalContext.includes(s.d)); // 宿主根绝对路径被点名（债 E 的修复本相）
   assert.ok(!existsSync(approvalsDir(s)));
 });
 

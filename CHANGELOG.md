@@ -3,6 +3,66 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [0.2.2] - 2026-09-22
+
+### Added
+
+- **H3R high-risk-step gate prototype** (ADR-0022, goal `v022-bat2-h3r`): a
+  step-level human gate for unattended runs, shipped **dormant**. `core/h3r.js`
+  holds the judgment surface and `core/drive.js` checks it at the top of each
+  segment: if the next pending step's text matches the risk word list (or carries
+  an explicit `[risk:high]` marker), drive winds down cleanly before spawning —
+  no engine call, no tokens — and writes the 7-field handoff snapshot carrying the
+  recovery path. **Off unless `LZY_ABLATE_H3R_GATE` is exactly `"1"`, and that
+  switch WAKES the prototype rather than ablating it** — the inverse of the
+  `LZY_ABLATE_*` family's semantics, which is why ADR-0022 quotes the operative
+  pre-registration sentence. Default behavior is byte-identical to 0.2.1.
+- **Ablation trials can run through `lzy loop drive`** (`scripts/ablation/h3r-trial.mjs`,
+  `h3r-batch.mjs`): the harness had never exercised drive — every earlier batch
+  spawned the engine directly, while the H3R gate lives only in drive's segment
+  loop, so a drive-based base had to be built. Adds the `H3R-A`/`H3R-B`/`H3R-C` arm
+  variants, `extractH3rMetrics` (drive swallows the segment's `--json` summary, so
+  turns and usage are aggregated from the archived rollout instead) and `aggregateH3r`.
+- **Lock contention is observable** (goal `v022-bat1-instrument`): `withLock` now
+  records acquisitions, waits, wait-time total/max and timeouts into
+  `loop/metrics.json`, and a new `lzy doctor` `lock` row surfaces them. A probe
+  measured the real critical-section cost across this repo and three dogfood repos
+  (worst case 58.9 ms against the 5 s wait window — 0.012× of it).
+- **`docs/adr/0023`**: the multi-provider pricing convention — units stated in yuan
+  per million tokens, an enumerated table with sources, and the waterline SQL
+  generated from that table.
+
+### Fixed
+
+- **drive judged progress by a done-step jump alone**: a long step with commits and
+  evidence but no `step done` still read as zero progress and got wound down as
+  `stuck` after two segments. It now judges by the documented progress-signal state
+  set (done steps ∪ subject head trees ∪ evidence-ledger green nodes ∪
+  handoff/salvage registrations), implemented in `core/progress.js`. Dirty trees
+  are deliberately not a signal.
+- **The waterline watch was blind to non-GLM providers**: `core/cost.js`'s rolling
+  SQL recognized only two model names and counted everything else as zero, so on a
+  DeepSeek session both the 1600-point warning line and drive's 400-point budget
+  read as idle. The table is now enumerated with per-unit pricing and the SQL is
+  generated from it; the stale copy in `plugin/hooks/stop.js` was fixed alongside.
+- **The ablation harness's spawn had no wall-clock hard cap**: ADJ-38's fix had
+  reached `core/headless.js` but not the ablation pipeline; pipe `destroy`, exit
+  settlement and `durationMs` reporting now match core's.
+- The handoff-snapshot directory is enumerated and exempted from the doctor's scar
+  patrol, and six stale claims the code had outgrown were retired.
+
+### Notes
+
+- The H3R experiment's result is in `docs/reviews/2026-h3r-gate-report.md` and the
+  ablation ledger (`docs/ablation.md` #31). Headline: **the gate's mechanics work
+  but its enforcement point does not.** Verified working — a 2-second,
+  zero-engine-call stop with a clean 7-field snapshot and no bypass attempt when the
+  risky step is reachable at a segment boundary. Verified not working in the field —
+  15 of 24 grid trials finished the entire plan inside a single segment (despite the
+  segment prompt saying one step per segment), so a per-segment check gets no chance
+  to fire. Results are input to the machine-form decision; nothing is promoted or
+  downgraded automatically.
+
 ## [0.2.1] - 2026-09-21
 
 ### Added

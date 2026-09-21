@@ -25,7 +25,14 @@ import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvis
 import { WATERLINE_POINTS, rollingWaterline, rollingWaterlinePoints, waterlineScopeNote } from "./cost.js";
 import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
-import { assertDriveEligible, countLoopResidueTmp, readGoal, scanSessionFlags } from "./loop.js";
+import {
+  LOCK_WAIT_MS,
+  assertDriveEligible,
+  countLoopResidueTmp,
+  readGoal,
+  readMetrics,
+  scanSessionFlags,
+} from "./loop.js";
 import { loadRuntime } from "./runtime.js";
 import { createGit } from "./git.js";
 
@@ -806,6 +813,35 @@ async function checkRateLimit(push) {
 // drive 通道诊断（0.2.0 棒2，ADR-0020）：无人值守执行通道可用性一行多态——引擎缺席=
 // skip（沿 headless 行家法）；在场则拼 auth 两态+活跃租约态+预算态+现行 goal 的 drive
 // 资格。warn-only/skip 不翻退出码（运行形态非故障，零遥测本地只读）。
+// 锁竞争窗（0.2.2 棒1#N5，§⑩-4）：原预注册触发器是「狗粮中出现『finish 期间同目录命令
+// 报锁超时』的实例」，却一直没有观测手段——触发器等于「撞上才知道」。仪器落地后本行把它
+// 变成有计数可读。无样本=skip（不翻退出码，house 家法）；timeouts>0 即原触发条件命中，
+// 故给 warn。读数取下限：mergeMetrics 是无锁读-合-写近似计数（见 core/loop.js 的已知边界）。
+function checkLock(push, cwd) {
+  const m = readMetrics(cwd);
+  if (!m || typeof m.lock_acquisitions !== "number") {
+    push("lock", "skip", "无锁竞争样本（本仓尚无 lock_* 计数；跑过写命令后即有）");
+    return;
+  }
+  const acq = m.lock_acquisitions ?? 0;
+  const waits = m.lock_waits ?? 0;
+  const totalMs = m.lock_wait_ms_total ?? 0;
+  const maxMs = m.lock_wait_ms_max ?? 0;
+  const timeouts = m.lock_timeouts ?? 0;
+  const detail =
+    `获锁 ${acq} 次 · 需等待 ${waits} 次 · 等待合计 ${totalMs}ms · 最长 ${maxMs}ms · 超时 ${timeouts} 次` +
+    `（对照 LOCK_WAIT_MS ${LOCK_WAIT_MS}ms；无锁读-合-写近似计数=读数取下限）`;
+  if (timeouts > 0) {
+    push(
+      "lock",
+      "warn",
+      `${detail}——出现等待超时，§⑩-4 预注册触发条件命中（狗粮中出现「finish 期间同目录命令报锁超时」的实例）`,
+    );
+    return;
+  }
+  push("lock", "ok", detail);
+}
+
 function checkDrive(push, cwd) {
   const engine = findEngine();
   if (!engine) {
@@ -883,6 +919,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkHostGit(p, cwd),
     (p) => checkWaterline(p),
     (p) => checkOrphanWake(p, cwd),
+    (p) => checkLock(p, cwd),
     (p) => checkLedger(p, cwd),
     checkPlatform,
     checkHeadless,

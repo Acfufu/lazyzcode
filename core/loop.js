@@ -175,7 +175,8 @@ function writeAtomic(p, data, family) {
 // ②释放无归属校验（无条件 rmSync）——被抢锁后原持锁者退出会删掉新持锁者的锁，第三个
 // 进程即刻可入（互斥在同一窗口两度破，探针实测）→ owner.json 记 token，仅 token 相符才删。
 const LOCK_STALE_MS = 60_000; // 持锁者死亡（进程被杀）后锁可抢；须大于临界段上界（见上）
-const LOCK_WAIT_MS = 5_000;
+// 导出（0.2.2 棒1#N5）：doctor 的 lock 行与 P95 结清句要对照同一常量，不能各自抄数字。
+export const LOCK_WAIT_MS = 5_000;
 
 function sleepMs(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -186,12 +187,19 @@ export function withLock(cwd, fn) {
   const lock = join(loopDir(cwd), ".lock");
   mkdirSync(loopDir(cwd), { recursive: true });
   const deadline = Date.now() + LOCK_WAIT_MS;
+  // 竞争窗仪器（0.2.2 棒1#N5，§⑩-4 由「事件门控」升「可观测」）：等多久、等了多少次、
+  // 有几次等到放弃。字段语义——lock_acquisitions=成功获锁数、lock_waits=其中需等待的
+  // 获锁数（不含超时）、lock_wait_ms_total/max=等待时长、lock_timeouts=等到放弃的次数。
+  // 计时起点在循环之前（首次 mkdir 前的开销也算进来，与 deadline 同起点）。
+  const waitStartedAt = Date.now();
+  let waited = false;
   for (;;) {
     try {
       mkdirSync(lock); // mkdir 原子性：同刻只有一个进程能建成
       break;
     } catch (err) {
       if (err?.code !== "EEXIST") throw err;
+      waited = true;
       let ageMs = 0;
       try {
         ageMs = Date.now() - statSync(join(lock, "owner.json")).mtimeMs;
@@ -209,13 +217,17 @@ export function withLock(cwd, fn) {
         continue;
       }
       if (Date.now() > deadline) {
+        // 超时路径：从未获锁，故不记 acquisitions；等待时长照记（这是最贵的一次等待）
+        const waitedMs = Date.now() - waitStartedAt;
+        mergeMetrics(cwd, { add: { lock_timeouts: 1 }, max: { lock_wait_ms_max: waitedMs } });
         throw new LoopError(
-          "目标循环被另一进程持锁（等待超时）。确认没有并发 lzy 后可删除 .lazyzcode/loop/.lock",
+          `目标循环被另一进程持锁（等待超时，等待 ${waitedMs}ms）。确认没有并发 lzy 后可删除 .lazyzcode/loop/.lock`,
         );
       }
       sleepMs(50);
     }
   }
+  const waitMs = waited ? Date.now() - waitStartedAt : 0;
   const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   try {
     writeFileSync(
@@ -232,6 +244,12 @@ export function withLock(cwd, fn) {
     } catch {
       // owner 不可读=已被接管；保留现锁（不 rm），让新持有者自行释放。
     }
+    // 账本写在**释放之后**：写在临界段内会让仪器延长它所测量的那个窗口（自扰）。
+    // mergeMetrics 永不抛，故记账失败绝不阻断主路径。
+    mergeMetrics(cwd, {
+      add: { lock_acquisitions: 1, lock_waits: waited ? 1 : 0, lock_wait_ms_total: waitMs },
+      max: { lock_wait_ms_max: waitMs },
+    });
   }
 }
 
@@ -1862,6 +1880,34 @@ export function readMetrics(cwd) {
   return null;
 }
 
+// 累加/取最大语义的账本写（0.2.2 棒1#N5）：incMetrics 只会 +1，而锁竞争窗要记等待
+// **总时长**与**最大等待**。shape=`{add:{field:n}, max:{field:n}}`。沿 incMetrics 全套家法：
+// 无锁读-合-写、0600、原子 renameSync、**never-throw**（计数失败绝不阻断主路径）。
+// 已知边界（本棒 Known unknowns #2）：无锁读-合-写在并发下可丢增量（「≥ 语义」），而 **max
+// 在该语义下非单调安全**——丢增量的时刻恰是拥塞最重的时刻，即仪器盲区与其将被引用的
+// 现象正相关。故读数一律按**下限**解读，§⑩-4 结清句须标注该性质。
+export function mergeMetrics(cwd, patch) {
+  try {
+    const m = readMetrics(cwd) ?? {};
+    const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    for (const [field, n] of Object.entries(patch?.add ?? {})) {
+      m[field] = num(m[field]) + num(n);
+    }
+    for (const [field, n] of Object.entries(patch?.max ?? {})) {
+      m[field] = Math.max(num(m[field]), num(n));
+    }
+    m.updatedAt = new Date().toISOString();
+    const p = metricsPath(cwd);
+    mkdirSync(dirname(p), { recursive: true });
+    const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
+    writeFileSync(tmp, `${JSON.stringify(m, null, 2)}\n`, { mode: 0o600 });
+    renameSync(tmp, p);
+    return m;
+  } catch {
+    return null;
+  }
+}
+
 export function incMetrics(cwd, field) {
   try {
     const m = readMetrics(cwd) ?? {};
@@ -2118,6 +2164,16 @@ export function listHandoffSnapshots(cwd) {
   }
 }
 
+// 锁竞争窗读面（0.2.2 棒1#N5）：有样本才出行——无 lock_* 计数时不渲染，免制造噪声
+// （metricLine 的 skip 家法同源）。读数取下限：mergeMetrics 是无锁读-合-写近似计数。
+function lockLine(m) {
+  if (!m || typeof m.lock_acquisitions !== "number") return null;
+  return (
+    `  锁竞争：获锁 ${m.lock_acquisitions} 次 · 需等待 ${m.lock_waits ?? 0} 次 ·` +
+    ` 最长 ${m.lock_wait_ms_max ?? 0}ms · 超时 ${m.lock_timeouts ?? 0} 次（读数取下限）`
+  );
+}
+
 function salvageLine(cwd) {
   const stubs = listSalvageStubs(cwd);
   if (stubs.length === 0) return null;
@@ -2206,6 +2262,8 @@ export function formatStatus(cwd, git) {
     const m = readMetrics(cwd); // 放行计数跨 reset 永续——无 goal 恰是回看使用率的主时刻
     if (m) {
       out += `\n  放行计数：登记 ${m.registered ?? 0} · 消费 ${m.consumed ?? 0}（差值=reset 清理/坏标记，非损失）`;
+      const lock = lockLine(m);
+      if (lock) out += `\n${lock}`;
     }
     return out;
   }
@@ -2314,6 +2372,8 @@ export function formatStatus(cwd, git) {
     lines.push(
       `  放行计数：登记 ${metrics.registered ?? 0} · 消费 ${metrics.consumed ?? 0}（差值=reset 清理/坏标记，非损失）`,
     );
+    const lock = lockLine(metrics);
+    if (lock) lines.push(lock);
   }
   if (git && (goal.status === "executing" || goal.status === "done")) {
     // ADJ-09（0.2.1）：本段曾裸调 verifyEvidence（loadDag DagError / 账本-goal 分歧 LoopError

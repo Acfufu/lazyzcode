@@ -590,7 +590,7 @@ test("wake_noop 遥测（plan-v2 Phase 2-6）：零推进收场计数、有推�
   }
 });
 
-test("确定性钉：五钩子同状态双跑 stdout 逐字节一致（hook-lib 注入不变量）", () => {
+test("确定性钉：六钩子同状态双跑 stdout 逐字节一致（hook-lib 注入不变量）", () => {
   // 同一会话状态 → 同一字节输出（hook-lib.js 头注释不变量，GLM prompt cache 前缀比对敏感）。
   // 有状态钩子（trigger 认领写/tripwire warn-once/stop 计数）每轮重建同构状态目录——
   // 否则测到的是合法状态演进而非不确定性；五例都断言产出非空注入（防 {}=={} 空过）。
@@ -641,6 +641,24 @@ test("确定性钉：五钩子同状态双跑 stdout 逐字节一致（hook-lib 
         counterAt(d, "s", 0);
       },
       drive: (d) => hook("stop.js", { sessionId: "s", cwd: d }),
+    },
+    {
+      // 第六钩子（0.2.3 N9）：启动态 + 命中命令 ⇒ deny JSON。取命中面而非静默面，是为满足
+      // 本用例「非空注入」的防空过要求（`{}` 与空输出都证明不了确定性）。
+      name: "h3r-pretool.js",
+      seed: (d) => goalAt(d, "executing"),
+      drive: (d) =>
+        hook(
+          "h3r-pretool.js",
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "Bash",
+            tool_input: { command: "rm -rf build-cache" },
+            cwd: d,
+            session_id: "s",
+          },
+          { LZY_ABLATE_H3R_PRETOOL: "1", LZY_SEGMENT_ID: "1:seg-1", LZY_LOOP_DIR: join(d, ".lazyzcode", "loop") },
+        ),
     },
   ];
   for (const { name, seed, drive } of cases) {

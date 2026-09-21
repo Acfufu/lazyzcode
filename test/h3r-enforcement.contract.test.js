@@ -42,6 +42,14 @@ function hook(input, extraEnv = {}) {
   return { code: r.status, out: (r.stdout ?? "").trim() };
 }
 
+// 非命中契约：exit 0 且**无判定输出**。`{}`（hook-lib failOpen 形态，comment-checker 先例）
+// 与空输出都是合法静默；**有 hookSpecificOutput 才算判定**——断言钉这个语义，别钉字节。
+function assertSilent(r, label = "") {
+  assert.equal(r.code, 0, `${label} 应 exit 0：${r.out}`);
+  const parsed = r.out === "" ? {} : JSON.parse(r.out);
+  assert.equal(parsed.hookSpecificOutput, undefined, `${label} 非命中不得有判定：${r.out}`);
+}
+
 function bashCall(command, cwd) {
   return { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, cwd, session_id: "s" };
 }
@@ -127,12 +135,11 @@ test("一段一步：跨 run 残留段标不误伤（他 fence 的 segment.json 
 });
 
 // ── ③ PreToolUse 门原型 ───────────────────────────────────────────────────────
-test("钩子：休眠（无开关）⇒ 空输出 exit 0、无标记", () => {
+test("钩子：休眠（无开关）⇒ 无判定输出、无标记", () => {
   const d = scratch("lzy-h3r-hookoff-");
   try {
     const r = hook(bashCall("rm -rf build-cache", d), { LZY_SEGMENT_ID: "1:seg-1", LZY_LOOP_DIR: loopDir(d) });
-    assert.equal(r.code, 0);
-    assert.equal(r.out, "", "休眠零输出（默认行为逐字段同）");
+    assertSilent(r, "休眠");
     assert.equal(existsSync(hitFile(d)), false);
   } finally {
     cleanup(d);
@@ -143,8 +150,7 @@ test("钩子：有关闭但无段标（交互形态）⇒ 不判（车道边界=
   const d = scratch("lzy-h3r-hookinteractive-");
   try {
     const r = hook(bashCall("rm -rf build-cache", d), { LZY_ABLATE_H3R_PRETOOL: "1", LZY_SEGMENT_ID: null, LZY_LOOP_DIR: loopDir(d) });
-    assert.equal(r.code, 0);
-    assert.equal(r.out, "", "无段标=非 drive 派生 ⇒ 免门");
+    assertSilent(r, "无段标=非 drive 派生");
     assert.equal(existsSync(hitFile(d)), false);
   } finally {
     cleanup(d);
@@ -176,7 +182,7 @@ test("钩子：唤醒 + 段标 + 命中 ⇒ deny JSON（形状钉死）+ 标记�
   }
 });
 
-test("钩子：唤醒 + 段标 + 干净命令 ⇒ 无输出（不误停）", () => {
+test("钩子：唤醒 + 段标 + 干净命令 ⇒ 不误停（无判定输出）", () => {
   const d = scratch("lzy-h3r-hookclean-");
   try {
     const r = hook(bashCall("npm test -- --test-name-pattern=h3r", d), {
@@ -184,8 +190,7 @@ test("钩子：唤醒 + 段标 + 干净命令 ⇒ 无输出（不误停）", () 
       LZY_SEGMENT_ID: "3:seg-2",
       LZY_LOOP_DIR: loopDir(d),
     });
-    assert.equal(r.code, 0);
-    assert.equal(r.out, "");
+    assertSilent(r, "干净命令");
     assert.equal(existsSync(hitFile(d)), false);
   } finally {
     cleanup(d);
@@ -196,24 +201,20 @@ test("钩子：记账面排除（lzy CLI 与提交管道不判）——步标题
   const d = scratch("lzy-h3r-hookbook-");
   try {
     const env = { LZY_ABLATE_H3R_PRETOOL: "1", LZY_SEGMENT_ID: "3:seg-2", LZY_LOOP_DIR: loopDir(d) };
-    const a = hook(bashCall(`node ${CLI} step done N2 --note "执行 rm -rf build-cache/"`, d), env);
-    assert.equal(a.out, "", `lzy 记账调用不判：${a.out}`);
-    const b = hook(bashCall('git commit -qm "purge: rm -rf build-cache", ', d), env);
-    assert.equal(b.out, "", `提交管道不判：${b.out}`);
-    const c = hook(bashCall("lzy loop status", d), env);
-    assert.equal(c.out, "");
+    assertSilent(hook(bashCall(`node ${CLI} step done N2 --note "执行 rm -rf build-cache/"`, d), env), "lzy 记账调用");
+    assertSilent(hook(bashCall('git commit -qm "purge: rm -rf build-cache"', d), env), "提交管道");
+    assertSilent(hook(bashCall("lzy loop status", d), env), "裸 lzy");
     assert.equal(existsSync(hitFile(d)), false);
   } finally {
     cleanup(d);
   }
 });
 
-test("钩子：失败边界——畸形 stdin 静默 exit 0；标记不可写仍 deny", () => {
+test("钩子：失败边界——畸形 stdin 静默；标记不可写仍 deny", () => {
   const d = scratch("lzy-h3r-hookfail-");
   try {
     const bad = hook("not-json-at-all", { LZY_ABLATE_H3R_PRETOOL: "1", LZY_SEGMENT_ID: "1:seg-1", LZY_LOOP_DIR: loopDir(d) });
-    assert.equal(bad.code, 0, "畸形 stdin 不炸（fail-open 由引擎侧承担）");
-    assert.equal(bad.out, "");
+    assertSilent(bad, "畸形 stdin 不炸");
     // 标记落点不可写：把 LZY_LOOP_DIR 指到一个「文件下面」，mkdir 必失败
     const blocker = join(d, "blocker");
     writeFileSync(blocker, "x\n");
@@ -248,10 +249,9 @@ test("标记消费：本段 segmentId ⇒ 干净收束（因含 PreToolUse + exi
   writeFileSync(join(d, "p.md"), "- [N1] 一步\n");
   cli(["loop", "plan", "p.md"]);
   cli(["loop", "start"]);
-  const line = (x, ...rest) => rest.join(" ");
   const lines = [];
   const orig = console.log;
-  console.log = (...a) => lines.push(line(a));
+  console.log = (...a) => lines.push(a.join(" "));
   let seenSegmentId = null;
   const run = (x) => {
     seenSegmentId = x.env.LZY_SEGMENT_ID ?? null;
@@ -262,6 +262,10 @@ test("标记消费：本段 segmentId ⇒ 干净收束（因含 PreToolUse + exi
     );
     return { exitCode: 0, stdout: "{}", stderr: "" };
   };
+  const savedOne = process.env.LZY_ABLATE_H3R_ONESTEP;
+  const savedPre = process.env.LZY_ABLATE_H3R_PRETOOL;
+  process.env.LZY_ABLATE_H3R_ONESTEP = "1";
+  process.env.LZY_ABLATE_H3R_PRETOOL = "1";
   try {
     const result = await runDrive(
       d,
@@ -284,6 +288,10 @@ test("标记消费：本段 segmentId ⇒ 干净收束（因含 PreToolUse + exi
     assert.equal(existsSync(hitFile(d)), false, "标记已消费");
   } finally {
     console.log = orig;
+    if (savedOne === undefined) delete process.env.LZY_ABLATE_H3R_ONESTEP;
+    else process.env.LZY_ABLATE_H3R_ONESTEP = savedOne;
+    if (savedPre === undefined) delete process.env.LZY_ABLATE_H3R_PRETOOL;
+    else process.env.LZY_ABLATE_H3R_PRETOOL = savedPre;
     cleanup(d);
   }
 });
@@ -308,6 +316,7 @@ test("标记消费：他段 segmentId ⇒ 收束因不变且标记被清（不�
   const step = (d0) => {
     const goal = JSON.parse(readFileSync(join(loopDir(d0), "goal.json"), "utf8"));
     goal.steps = goal.steps.map((s) => ({ ...s, status: "done" }));
+    goal.status = "done"; // 终态由 status 判（同 drive.contract 的 markAllSteps{finish:true} 家法）
     writeFileSync(join(loopDir(d0), "goal.json"), `${JSON.stringify(goal, null, 2)}\n`);
   };
   let call = 0;
@@ -321,6 +330,8 @@ test("标记消费：他段 segmentId ⇒ 收束因不变且标记被清（不�
   const lines = [];
   const orig = console.log;
   console.log = (...a) => lines.push(a.join(" "));
+  const savedPre = process.env.LZY_ABLATE_H3R_PRETOOL;
+  process.env.LZY_ABLATE_H3R_PRETOOL = "1"; // 消费路径的唤醒开关（他段标记的处置同受它管）
   try {
     const result = await runDrive(
       d,
@@ -335,6 +346,8 @@ test("标记消费：他段 segmentId ⇒ 收束因不变且标记被清（不�
     assert.equal(existsSync(hitFile(d)), false, "他段标记被清");
   } finally {
     console.log = orig;
+    if (savedPre === undefined) delete process.env.LZY_ABLATE_H3R_PRETOOL;
+    else process.env.LZY_ABLATE_H3R_PRETOOL = savedPre;
     cleanup(d);
   }
 });

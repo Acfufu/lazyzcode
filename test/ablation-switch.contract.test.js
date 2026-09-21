@@ -293,3 +293,26 @@ test("HOOK_COMMENT_CHECKER：关=TODO 注入提示；开={}静默", () => {
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+test("HOOK_H3R_PRETOOL：关=命中即 deny；开={}静默（E 臂整层消融的第六枚）", () => {
+  const d = scratch("lzy-abl-hhp-");
+  try {
+    const inp = {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "rm -rf build-cache" },
+      cwd: d,
+      session_id: "s",
+    };
+    const armed = { LZY_ABLATE_H3R_PRETOOL: "1", LZY_SEGMENT_ID: "1:seg-1", LZY_LOOP_DIR: join(d, ".lazyzcode", "loop") };
+    // 关半=启动态（唤醒开关 + 段标都在场）：必须出 deny——否则「关」这一半没有意义
+    const idle = JSON.parse(hookRun("h3r-pretool.js", inp, armed).out);
+    assert.equal(idle.hookSpecificOutput?.permissionDecision, "deny");
+    // 开半=家族消融面：恰 "1" ⇒ {} 静默（连 deny 都不给，这才是「灭了」）
+    const ablated = hookRun("h3r-pretool.js", inp, { ...armed, LZY_ABLATE_HOOK_H3R_PRETOOL: "1" });
+    assert.equal(ablated.code, 0);
+    assert.equal(ablated.out, "{}");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

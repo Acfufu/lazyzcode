@@ -175,7 +175,8 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
   const windDown = (ok, cause, riskNote, { skipHandoff = false } = {}) => {
     if (skipHandoff) {
       // ADJ-25：租约失效/被接管的收束——不写交接（写会被 fencing 守卫拒，且接管者自负
-      // 责）；只打印接管指示，非零退出。
+      // 责）；只打印接管指示，非零退出。**唯一调用点=段界心跳失败**：风险门拒走正常收束
+      // 通道（0.2.2 报告 §7 修——两类事不同轴，只有前者写盘会被 fencing 拒）。
       outcome = { ok, cause, handoff: null };
       console.log(`[drive] 收束：${cause}——已被接管/租约失效，不写交接（接管者负责续跑）`);
       return;
@@ -228,12 +229,25 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
     let prevProgress = progressSignature(cwd, goal, null);
 
     for (let seg = 1; seg <= maxSegments; seg++) {
-      // 段首段间三门（ADJ-20：risk 门原只查入口一次，7 处文档/prompt 承诺段间复核）；
-      // 心跳失败=租约失效/被接管——ADJ-25：必须走收束通道（原实现异常穿出 runDrive：
-      // 无快照、无 marker、租约残留、段账不入账）。
+      // 段首段间三门（ADJ-20：risk 门原只查入口一次，7 处文档/prompt 承诺段间复核）。
+      // 两轴分开收束（0.2.2 报告 §7 / goal v023-followup#N2）：risk 门拒与租约失效不是
+      // 同一件事——前者本 drive 仍持租，写交接合法且是 ADR-0022 停摆契约要求的形态；
+      // 后者写盘会被 fencing 拒，只能不写。收束因串保持「段间门拒（<轴原文>）」不变
+      // （消融仪器的分类判据读它，scripts/ablation/extract-metrics.mjs）。
       try {
         const freshGoal = readGoal(cwd);
         if (freshGoal) assertDriveEligible(freshGoal);
+      } catch (err) {
+        windDown(
+          false,
+          `段间门拒（${(err?.message ?? err).slice(0, 200)}）`,
+          "本目标因风险升级需人工确认：请在交互会话确认后按计划推进（交互会话天然免门，是恢复路径，ADR-0020/0022）",
+        );
+        break;
+      }
+      // 心跳失败=租约失效/被接管——ADJ-25：必须走收束通道（原实现异常穿出 runDrive：
+      // 无快照、无 marker、租约残留、段账不入账），且这条轴只能走 skipHandoff。
+      try {
         withLock(cwd, () => heartbeatLease(cwd, lease.fence, { ttlMs: LEASE_TTL_MS }));
       } catch (err) {
         windDown(false, `段间门拒（${(err?.message ?? err).slice(0, 200)}）`, undefined, { skipHandoff: true });

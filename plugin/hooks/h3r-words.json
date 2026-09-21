@@ -1,0 +1,18 @@
+{
+  "note": "H3R 高危判定词表（单一来源，N1）：core/h3r.js 与 plugin/hooks/h3r-pretool.js 同读本文件——两侧各自用相对本树的路径（npm 包布局 / 引擎插件缓存布局都含 plugin/，故同一份内容两边可达）。加词即改判定，须在此处显式记账并同步契约测试（test/h3r-enforcement.contract.test.js 钉两读者一致）。",
+  "words": [
+    { "w": "rm -rf", "src": "预注册具名" },
+    { "w": "rm -r ", "src": "同族：递归删除的另一种写法（带尾空格，避免与 rm -rf 重复计数）" },
+    { "w": "rmdir ", "src": "同族：删目录" },
+    { "w": "shred ", "src": "同族：不可恢复擦除" },
+    { "w": "truncate ", "src": "同族：原地截断覆盖" },
+    { "w": "credentials", "src": "预注册具名" },
+    { "w": ".env", "src": "预注册具名" },
+    { "w": "id_rsa", "src": "同族：默认私钥文件名" },
+    { "w": "ssh key", "src": "同族：私钥类别" },
+    { "w": "npm publish", "src": "预注册具名" },
+    { "w": "--force", "src": "预注册具名；子串覆盖 git push --force / --force-with-lease / 各工具强推" },
+    { "w": "chmod ", "src": "预注册具名" },
+    { "w": "chown ", "src": "同族：属主变更" }
+  ]
+}

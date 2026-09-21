@@ -23,6 +23,7 @@ import {
 } from "./paths.js";
 import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvisory, providerMixNote, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
 import { WATERLINE_POINTS, rollingWaterline, rollingWaterlinePoints, waterlineScopeNote } from "./cost.js";
+import { loadWordlist } from "./h3r.js";
 import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
 import {
@@ -842,6 +843,17 @@ function checkLock(push, cwd) {
   push("lock", "ok", detail);
 }
 
+// H3R 词表（N1）：单一来源文件的在场与 schema 巡逻。缺/坏=warn（默认休眠下不影响任何命令，
+// 只有唤醒态才会成为硬拒），fail-soft；行文案与 README/guide 的 doctor 列表同步（N8）。
+function checkH3rWords(push) {
+  const r = loadWordlist();
+  if (!r.ok) {
+    push("h3r-words", "warn", `词表不可读（${r.reason}）——唤醒态下 H3R 门会硬拒；恢复：lzy sync 或重装`);
+    return;
+  }
+  push("h3r-words", "ok", `plugin/hooks/h3r-words.json 在场 · ${r.words.length} 词（core 与钩子同读一份）`);
+}
+
 function checkDrive(push, cwd) {
   const engine = findEngine();
   if (!engine) {
@@ -920,6 +932,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkWaterline(p),
     (p) => checkOrphanWake(p, cwd),
     (p) => checkLock(p, cwd),
+    checkH3rWords,
     (p) => checkLedger(p, cwd),
     checkPlatform,
     checkHeadless,

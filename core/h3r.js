@@ -12,30 +12,39 @@
 // 边界（诚实面）：词表是**子串匹配**，不是命令解析器——它能被改写规避（`rm -fr`、
 // 变量拼接、脚本里间接调用），也不理解上下文（注释里提到 `--force` 同样命中）。本原型
 // 测的是「机器层能否在段循环里看见计划书上的高危字样并干净停手」，不是「能否识破规避」。
-import { nextStep } from "./loop.js";
+import { readFileSync } from "node:fs";
+import { nextStep, LoopError } from "./loop.js";
 
-// 词表每词带来源注释。前六枚是设计稿预注册的具名词（`docs/design-h3r-experiment.md`
-// 「风险词表」行：`rm -rf` / `credentials` / `.env` / `--force` / `npm publish` / `chmod`），
-// 其余为同族补充；**加词即改判定**，须在此处显式记账并同步契约测试。
-export const H3R_WORDLIST = [
-  // 破坏面（不可逆删除/覆盖）
-  "rm -rf", // 预注册具名
-  "rm -r ", // 同族：递归删除的另一种写法（带尾空格，避免与 "rm -rf" 重复计数）
-  "rmdir ", // 同族：删目录
-  "shred ", // 同族：不可恢复擦除
-  "truncate ", // 同族：原地截断覆盖
-  // 凭据面（读取/搬运认证物料）
-  "credentials", // 预注册具名
-  ".env", // 预注册具名
-  "id_rsa", // 同族：默认私钥文件名
-  "ssh key", // 同族：私钥类别
-  // 不可逆发布/强推面
-  "npm publish", // 预注册具名
-  "--force", // 预注册具名；子串覆盖 git push --force / --force-with-lease / 各工具强推
-  // 权限面
-  "chmod ", // 预注册具名
-  "chown ", // 同族：属主变更
-];
+// 词表**单一来源**（0.2.3 N1）：判定词与来源住在 `plugin/hooks/h3r-words.json`，CLI 侧与
+// 钩子侧各按本树相对路径同读一份（npm 包与引擎插件缓存都含 plugin/）。原内联数组已迁走——
+// `plugin/hooks/stop.js` 的陈旧副本教训 + 本文件「绝不另写内联副本让两处漂移」的家法。
+// **惰性加载**：读取只发生在唤醒路径（休眠时 `h3rStopVerdict` 提前返回，不触文件），
+// 故一个坏 JSON 不会让任一 `lzy` 命令（含 doctor）在非唤醒场景下不可用。
+const WORDS_URL = new URL("../plugin/hooks/h3r-words.json", import.meta.url);
+let cache = null;
+
+// 非抛错读（doctor / 契约测试用）：返回 {ok:true, words} 或 {ok:false, reason}。
+export function loadWordlist() {
+  if (cache) return cache;
+  try {
+    const parsed = JSON.parse(readFileSync(WORDS_URL, "utf8"));
+    const words = Array.isArray(parsed?.words)
+      ? parsed.words.map((x) => x?.w).filter((w) => typeof w === "string" && w !== "")
+      : [];
+    if (words.length === 0) throw new Error("words 缺席、为空或 schema 非法");
+    cache = { ok: true, words };
+  } catch (err) {
+    cache = { ok: false, reason: err?.message ?? String(err) };
+  }
+  return cache;
+}
+
+// 抛错读（唤醒路径用）：词表不可用=载荷不完整，显式拒并给恢复式指路，绝不静默降级为空表。
+export function h3rWordlist() {
+  const r = loadWordlist();
+  if (!r.ok) throw new LoopError(`载荷词表缺失/损坏（${r.reason}）——重跑 lzy sync 或重装`);
+  return r.words;
+}
 
 // 显式升格通道：计划项自带该标记即停，与词表命中走同一条 matches 通道（设计稿
 // 「计划项显式标注高危为额外升格通道」）。
@@ -51,7 +60,7 @@ export function h3rArmed(env = process.env) {
 export function h3rMatches(text) {
   const hay = String(text ?? "").toLowerCase();
   if (hay === "") return [];
-  const hits = H3R_WORDLIST.filter((w) => hay.includes(w.toLowerCase()));
+  const hits = h3rWordlist().filter((w) => hay.includes(w.toLowerCase()));
   if (hay.includes(H3R_STEP_MARKER)) hits.push(H3R_STEP_MARKER);
   return hits;
 }

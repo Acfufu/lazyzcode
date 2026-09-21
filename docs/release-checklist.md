@@ -513,8 +513,8 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 | 7 | **核 CI 四腿全绿**——判决只认 `gh run view` 的 conclusion，**勿用 `watch` 的伪绿**（0.1.0 教训） | ✅ run 35644107015 · conclusion=success · 四腿逐格 success（node 22/24 × ubuntu/windows） |
 | 8 | **`git tag v0.2.2`**——**最后切**，且在 CI 判决之后 | ✅ `v0.2.2 = da9edb2`（=CI 绿判树） |
 | 9 | GitHub Release（正文可用报告 §0 摘要） | ✅ 已建（Latest；notes=Highlights/Fixed/Added/H3R 摘要/Notes/Coverage boundary/Upgrade） |
-| 10 | **`npm publish`**（需 2FA；发布载荷冻结纪律见本文件「发布载荷冻结」节） | ⏳ **用户**（2FA） |
-| 11 | 发布后：隔离 prefix 冒烟 + 真机 `lzy update` 0.2.1→0.2.2 | ⏳ **用户** |
+| 10 | **`npm publish`**（需 2FA；发布载荷冻结纪律见本文件「发布载荷冻结」节） | ✅ 用户 2FA 已发（registry 直证见下） |
+| 11 | 发布后：隔离 prefix 冒烟 + 真机 `lzy update` 0.2.1→0.2.2 | ✅ 全过 + win32 VM 复测闭环（见下两节） |
 
 ### 发布链实弹记录（2026-09-22，第 6–9 步；publish 待用户 2FA）
 
@@ -535,6 +535,49 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - **本记录节自身为 docs-only**：`docs/` 不在 npm files 白名单，tag 后写它不动载荷（沿 0.2.1「tag 后仅
   release-checklist 动过」先例）。
 
+### 发后核验（2026-09-22，publish 用户 2FA，全过）
+
+- **registry 直证**：`dist-tags.latest=0.2.2`（curl HTTP 端点为真相源）。**CDN 传播窗实测≈2 分钟**——发布后
+  首查仍 `latest=0.2.1` 且 `0.2.2` 未现，15s 轮询到第 8 次才现（与 0.1.2 记录的 ≈2 分钟一致，0.0.9 的「数分钟」为
+  同一现象的另一侧读法）；`npm view` 的缓存滞后另算。
+- **载荷三方逐字一致** ✔：registry shasum `7244ea30a41b534232cc545fc2d26c412347e03f` == 定版前 dry-run ==
+  tag 树打包 tarball；integrity `sha512-2i6nqS8iH5mv0KzPMd1c54J7DbC+UFFf41M+KcW/aM04Hqh+4PBrnuu31sPCcKtoIdbekKGUQR8k3d53YhjT/Q==`
+  与 dry-run 输出一致。registry 元数据 `engines.node>=22`、`bin.lzy=cli/lzy.js` 无误；published
+  `2026-09-21T19:55:01.425Z`（=本地 09-22 03:55，CHANGELOG 日期 2026-09-22 成立，无需重提）。
+- **隔离 prefix 冒烟** ✔：`npm i -g lazyzcode@0.2.2 --prefix /tmp/lzy-smoke-022 --prefer-online` →
+  `lzy 0.2.2（插件载荷同版本） · 引擎 0.16.9` EXIT=0。
+- **真机 `lzy update` 0.2.1→0.2.2 全链 EXIT=0**（「sync 已由新装子进程执行」=ADR-0012 活体）。
+  **环境注记**：本机全局安装落在 **node v24.19.0** 的全局根下（本会话默认 node 是 v22.23.1，`npm ls -g` 在后者下为空）
+  ——多版本环境下 `lzy` 走哪份全局包取决于 PATH 里的 node；狗粮须先对齐版本再跑。
+- **附带活体读数（该面首次在案）**：更新前版本行自报「lzy 0.2.1（**插件载荷 0.2.2 与 CLI 不同**——跑 lzy sync）」
+  ——ADR-0012 中间态自名的**反向形态**（载荷**领先** CLI）：历次记录的都是「CLI 已升、缓存版本目录尚未落位」，
+  这次是**本仓自举 `lzy sync` 把载荷推到 0.2.2 而全局 CLI 仍 0.2.1**。两个方向都能自名，该面本轮取得对称证据。
+- **`lzy doctor` EXIT=0**：`payload` 0.2.2 · `install` 缓存 0.2.2 · `files` 15 文件逐文件 sha256 一致 ·
+  `enabled` ✔（0.16.9 宿主）· `payload-ver` 缓存 `[0.0.1…0.2.2]` **16 版本目录** · CLI 0.2.2 一致 ·
+  `drive` ✔（oauth · 无活跃租约）· `headless` oauth · `platform` 候选命中。
+- **载荷冻结内容级复核** ✔：repo `plugin/` vs 引擎缓存（缓存布局=plugin/ 内容在缓存根）**6 样本 sha256 全 MATCH**
+  （skills/zw/SKILL.md、hooks stop/trigger/hook-lib/hooks.json、agents/qa-executor.md）；缓存 manifest 钉
+  `"version": "0.2.2"`；随包 SKILL 携带 0.2.2 新面（`loop drive` ×4、`H3R` ×2、`LZY_ABLATE_H3R_GATE` ×1）。
+
+### win32 VM 复测（2026-09-22，Windows 11 aarch64，引擎缺席=SYSTEM 上下文既知态）
+
+- **台态与 update 链**：VM 全局停在 `lazyzcode@0.2.0`（C:\Tools\node）→ `lzy update` **0.2.0→0.2.2 EXIT=0**
+  （「sync 已由新装子进程执行」=ADR-0012 的 win32 ComSpec 链再次活体）。
+- **doctor**：`payload` 0.2.2 · `install` 缓存 0.2.2 · `files` 15 文件一致 · `payload-ver`
+  `[0.0.7…0.2.0, 0.2.2]` · CLI 0.2.2 一致；**`lock` 行首次在该 VM 出现**（三态之「无锁竞争样本」读数）；
+  `drive`/`platform`/`enabled` = 引擎缺席态（SYSTEM 上下文既知形态，非缺陷）。
+- **scratch loop 全链（含人权门正规通道）**：register（`--tier light`）→ `loop plan` 被人权门拦下并出短码
+  `73daed8b` → **UPS 钩子经 stdin JSON 写批准记录**（`73daed8b-vmsess022-*.json`）→ 重采纳过门（快照
+  sha256 `73daed8b9e…`）→ `start`（基线 tree `14c2a82755`）→ `step done N1` → `evidence red F1`
+  （`n2 · red · gen1` · 指纹 `33a7a0c70b`）→ 改动提交（尾注 `Goal: vms022#F1`）→ `step done F1`
+  （绿半 · 指纹 `83a3403e4c`）→ `loop finish`（完整性闸门过 + **终验 attestation**
+  `vms022-20260921T200538Z.json`）→ `evidence list` **manifest 配对可见**（计划 n1 · planHash `73daed8b9e` ·
+  F1 绿 gen1 新鲜 / 红 n2 gen1）→ `loop reset` 后 **attestation 存活** + salvage 存根记账（尾注提交 1）。
+- **两条本轮新取的读法**：①**ASCII 批准句 `approve <短码>` 首次活体**（历次只验过中文「批准」，正则 approve 分支
+  此前无实弹；本次驱动完全绕开 cmd 的 GBK 中文编码雷，配方可复用）；②人权门对 **LIGHT 同样生效**（文档口径，
+  本轮首次以「被拦→正规通道批准→过门」三段在 win32 上走完）。
+- 收尾：scratch 目录已删、VM 已停回未启动态（两 VM 状态与开工前一致）。
+
 ### 发布前自检（维护者侧实跑，2026-09-22）
 
 - `npm test` **404/404**（node v22.23.1，定版树实跑，0 fail）。
@@ -552,7 +595,8 @@ tag/Release/publish 同理；沿 0.1.0/0.2.1「维护者指令直发」先例，
 不代做外向动作。第 7 步的「CI 四腿绿」因此是**移交项而非丢项**——它的前置件（本地测试全绿、载体冻结）已备。
 
 这次移交**已由维护者指令执行**：第 6–9 步（push / CI 四腿绿 / tag / Release）按本清单 runbook 实弹完成，
-记录见上节；第 10–11 步（`npm publish` 2FA 与发后核验）留用户。
+第 10–11 步由用户 `npm publish`（2FA）与维护者侧发后核验收口——**1–11 全步已闭环**（记录见上四节：
+发布链实弹 / 发后核验 / win32 VM 复测 / 发布前自检）。
 
 ## 执行记录（0.2.1，引擎面兼容修复 + 五轮双审修复轮——机械件已备，publish 留用户）
 

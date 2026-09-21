@@ -174,7 +174,12 @@ function writeAtomic(p, data, family) {
 // 超时、abandon/reset 的 writeSalvageStub 两发固定 10s 上界），stale 线 10s 过紧 → 60s；
 // ②释放无归属校验（无条件 rmSync）——被抢锁后原持锁者退出会删掉新持锁者的锁，第三个
 // 进程即刻可入（互斥在同一窗口两度破，探针实测）→ owner.json 记 token，仅 token 相符才删。
-const LOCK_STALE_MS = 60_000; // 持锁者死亡（进程被杀）后锁可抢；须大于临界段上界（见上）
+// 同为导出（0.2.2 棒1#N7）：P95 结清句要与锁三常量同尺对照，不能各自抄数字。
+export const LOCK_STALE_MS = 60_000; // 持锁者死亡（进程被杀）后锁可抢；须大于临界段上界（见上）
+// finish 完整性闸门的共享墙钟预算：原为 doFinishLoop 内的局部常量（逐根 git spawn 共享），
+// 0.2.2 棒1#N7 提为模块级并导出——它是「临界段能有多长」的上界之一，P95 探针与医生读面
+// 都要与同尺对照；formatStatus 的即时报文同用一个源。
+export const GATE_BUDGET_MS = 8_000;
 // 导出（0.2.2 棒1#N5）：doctor 的 lock 行与 P95 结清句要对照同一常量，不能各自抄数字。
 export const LOCK_WAIT_MS = 5_000;
 
@@ -1631,7 +1636,6 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
   // headTrees 采集声明在开关外：消融态空 Map，attestation 侧走「缺值回退直读」防御分支。
   const gateHeadTrees = new Map();
   if (!ablated("LZY_ABLATE_INTEGRITY")) {
-    const GATE_BUDGET_MS = 8_000;
     const gateStart = Date.now();
     for (const root of [cwd, ...(goal.subjects ?? [])]) {
       const remaining = GATE_BUDGET_MS - (Date.now() - gateStart);
@@ -2291,7 +2295,7 @@ export function formatStatus(cwd, git) {
   // 工作树脏净读数（ADJ-42，0.0.10）：SKILL 教「先读 status 的 dirt 再领 finish」——
   // 把该读面做真：脏列前 3 路径+药方（finish 完整性闸门会拦）。
   if (git) {
-    const it = createGit(cwd).integrity(8_000);
+    const it = createGit(cwd).integrity(GATE_BUDGET_MS); // 同源：与 finish 闸门共享预算常量
     if (it.state === "clean") lines.push(`  工作树 清洁（tree ${(it.headTree ?? "").slice(0, 10)}）`);
     else if (it.state === "dirty") {
       const sample = (it.paths ?? []).slice(0, 3).join(" ");

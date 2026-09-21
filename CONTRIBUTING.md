@@ -20,7 +20,7 @@ ZCode reads it automatically, and so should you before opening a PR:
 
 | Path | What lives there |
 | --- | --- |
-| `plugin/` | Skills (`zw`, `init-deep`), five hooks (via the `run-hook` launcher), three read-only agent roles |
+| `plugin/` | Skills (`zw`, `init-deep`), six hooks (via the `run-hook` launcher), three read-only agent roles |
 | `core/` | Shared logic: loop state machine, invalidation DAG, attempt lineage, evidence, install/sync |
 | `cli/` | The `lzy` CLI |
 | `test/` | Contract tests (`node:test`, zero dependencies) |

@@ -34,7 +34,7 @@ CLI that owns the loop state, and a state directory your project keeps.
   <g fill="var(--muted)" text-anchor="middle" font-size="11.5">
     <text x="115" y="124">desktop app · zcode.cjs</text>
     <text x="420" y="88">skills/zw · orchestration text</text>
-    <text x="420" y="107">hooks ×5 · via the run-hook launcher</text>
+    <text x="420" y="107">hooks ×6 · via the run-hook launcher</text>
     <text x="420" y="126">agents ×3 · read-only roles</text>
     <text x="720" y="83">goal-loop state machine</text>
     <text x="720" y="193" class="mono" font-weight="400">goal.json · plans · evidence</text>
@@ -161,7 +161,7 @@ substitute for the named F-item surface.
 
 ## Hook lifecycle
 
-Five hooks ride the engine's session timeline. All of them spawn through
+Six hooks ride the engine's session timeline. All of them spawn through
 `plugin/hooks/run-hook`, which resolves `node` from PATH, then nvm, then
 Homebrew on POSIX (Windows resolves the same manifest line to the
 `run-hook.cmd` twin via PATHEXT and falls back to nvm-windows/Program Files),

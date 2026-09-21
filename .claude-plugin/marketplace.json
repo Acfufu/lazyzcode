@@ -33,10 +33,10 @@
       "displayName_i18n": {
         "zh-CN": "LazyZCode"
       },
-      "description": "A goal loop with a decision-complete plan gate, tree-hash-bound evidence, and a bounded Stop pull-back. Ships two skills (zw, init-deep), five hooks, three read-only agents. The loop state machine needs the lzy CLI: npm i -g lazyzcode.",
+      "description": "A goal loop with a decision-complete plan gate, tree-hash-bound evidence, and a bounded Stop pull-back. Ships two skills (zw, init-deep), six hooks, three read-only agents. The loop state machine needs the lzy CLI: npm i -g lazyzcode.",
       "description_i18n": {
-        "en": "A goal loop with a decision-complete plan gate, tree-hash-bound evidence, and a bounded Stop pull-back. Ships two skills (zw, init-deep), five hooks, three read-only agents. The loop state machine needs the lzy CLI: npm i -g lazyzcode.",
-        "zh-CN": "带决策完备计划门、tree-hash 证据绑定与有界 Stop 拉回的目标循环。随附两个技能（zw、init-deep）、五个钩子、三只只读代理。循环状态机需要 lzy CLI：npm i -g lazyzcode。"
+        "en": "A goal loop with a decision-complete plan gate, tree-hash-bound evidence, and a bounded Stop pull-back. Ships two skills (zw, init-deep), six hooks, three read-only agents. The loop state machine needs the lzy CLI: npm i -g lazyzcode.",
+        "zh-CN": "带决策完备计划门、tree-hash 证据绑定与有界 Stop 拉回的目标循环。随附两个技能（zw、init-deep）、六个钩子、三只只读代理。循环状态机需要 lzy CLI：npm i -g lazyzcode。"
       },
       "author": {
         "name": "Acfufu",

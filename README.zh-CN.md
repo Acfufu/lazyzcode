@@ -160,7 +160,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 注册校验）、node 版本下限、`hook-node` 解析（启动器的 node 回退链——POSIX
 nvm/homebrew、Windows nvm-windows/Program Files，专治 GUI 直启场景）、`lzy`
 PATH shim、载荷版本对照（`payload-ver`：缓存版本目录 vs CLI 自身
-`package.json`——ADR-0012 中间态自检）、`.lazyzcode/` 状态卫生、交接车道用量
+`package.json`——ADR-0012 中间态自检）、`.lazyzcode/` 状态卫生、H3R 词表载荷检查（`h3r-words`：CLI 与命令层钩子同读的一份词表——缺=warn，唤醒态下门会硬拒）、交接车道用量
 （`handoff-usage`：登记 vs 消费计数——差值=reset 清理/坏标记，非交接丢失）、
 可选代码索引探针（`codegraph`：用户级 MCP 配置 + CLI 可用性；缺席=skip，
 不翻退出码）、平台提示、GLM
@@ -190,7 +190,7 @@ stuck 停拉标记；零认领 = 资格制下无人会被拉回——warn-only�
 ## 使用内置工作流
 
 LazyZCode 该按它实际装了什么来评价：一个插件——两个技能（`zw`、`init-deep`）、
-五个钩子、三只只读代理——和一个 `lzy` CLI。
+六个钩子、三只只读代理——和一个 `lzy` CLI。
 
 ### 1. 触发词注入编排协议
 
@@ -337,7 +337,7 @@ Node ≥ 22、纯 ESM。
 
 ```
 lazyzcode/
-├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（5 个，经 run-hook 启动器）、agents/（3 只）
+├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（6 个，经 run-hook 启动器）、agents/（3 只）
 ├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、agentsmd、engine、git、paths、status、update、cost、dag、attempt、attest、runtime、drive、headless、hostdb
 ├── cli/      → lzy 入口（cli/lzy.js）+ 语法检查 worker
 ├── test/     → 契约测试（node:test 零依赖）+ GitHub Actions（node 22/24）
@@ -360,8 +360,8 @@ lazyzcode/
 
 它在你机器上跑什么、装在哪里、以及它刻意不防什么：
 
-- **钩子执行本地代码。** 五个生命周期事件运行本插件的本地 Node 脚本
-  （UserPromptSubmit、SessionStart、Stop、PostToolUse、PostToolUseFailure）；
+- **钩子执行本地代码。** 六个生命周期事件运行本插件的本地 Node 脚本
+  （UserPromptSubmit、SessionStart、Stop、PreToolUse、PostToolUse、PostToolUseFailure）；
   其输出是对模型的注入上下文，不是沙箱边界。
 - **安装落点是引擎官方插件缓存**——启用走引擎官方 CLI，LazyZCode 绝不写你的
   `config.json`。

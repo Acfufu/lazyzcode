@@ -75,7 +75,7 @@ LazyZCode 装四样东西：
 
 1. **一个插件**（`lazyzcode:zw`），技能文本承载完整编排协议——triage、tier
    选择、计划、执行、证据规则。
-2. **五个钩子**，接在引擎生命周期上：SessionStart（重注入循环状态）、
+2. **六个钩子**，接在引擎生命周期上：SessionStart（重注入循环状态）、
    UserPromptSubmit（触发词）、PostToolUse（注释轻提示）、PostToolUseFailure
    （同工具失败绊线）、Stop（有界续跑）。
 3. **三只只读代理**：`lazyzcode:explorer`、`lazyzcode:plan-reviewer`、
@@ -367,8 +367,8 @@ UTC+8 静态表、人工维护）标注重叠并给出计价安全窗。计价�
 引擎段、逐段推进 executing 目标。段间查门——运行持分钟级租约（单运行时互斥、
 心跳续期），每次运行配新开一份墙钟+积分预算，HIGH+ 风险目标在 spawn 之前就被
 机器拒。每段的 `lzy` 写都带本运行 fence 令牌——被接管的运行写路径 fail-closed
-停手，绝不污染循环状态。收束干净且可枚举：`done`、预算尽、段数尽、或连续两段
-零推进（stuck）——除 done 外的每次收束都由机器自写 7 字段交接快照并登记标记，
+停手，绝不污染循环状态。收束干净且可枚举：`done`、预算尽、段数尽、连续两段
+零推进（stuck）、高危步停摆（`h3r`）、或在工具边界被拦下的高危命令（`PreToolUse`）——除 done 外的每次收束都由机器自写 7 字段交接快照并登记标记，
 下一会话（或人工 `zw 继续`）从盘面接续。`lzy doctor` 的 `drive` 行报告本机通道
 可用性：
 
@@ -403,9 +403,9 @@ lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]
 | `trigger.js` | UserPromptSubmit | 分层触发匹配；命中发起则注入 zw 引导。 |
 | `comment-checker.js` | PostToolUse（Edit/Write） | 对新内容中的 `TODO`/`FIXME`/`XXX`/`HACK` 标记与调试残留（`console.log`、`console.debug`、`debugger`）做提示。每次至多 5 处、300 字符、只提示不阻断——且只在有开放目标循环的工作区生效。 |
 | `stop.js` | Stop | 循环开着时带剩余步骤上下文请求续跑（每会话至多 2 次）；一次性消费交接标记并放行（不耗预算）。 |
-| `tripwire.js` | PostToolUseFailure（`^mcp__`） | 同一 MCP 工具在 10 分钟窗内连续失败 2 次时提示一次（成功不重置连击，TTL 才重臂）——引向换工具或 `lzy loop handoff` 干净收尾；只提示不阻断，用户手动取消不计，仅在有开放目标时生效。 |
+| `h3r-pretool.js` | PreToolUse（Bash） | 命令层 H3R 门，**默认休眠**：只在无人值守 `lzy loop drive` 段内（drive 注入的 `LZY_SEGMENT_ID` 在场）且 `LZY_ABLATE_H3R_PRETOOL` 为 `1`（**反向开关**，与家族语义相反）时生效——命令文本命中 H3R 词表即 deny，并写命中标记供 drive 干净收束消费（7 字段快照、exit 0）。交互会话拿不到段标：构造上天然免门，且它就是恢复路径（ADR-0022）。 |
 
-五条命令都经 `plugin/hooks/run-hook` 启动：引擎用*自己的*环境拉起钩子，而
+六条命令都经 `plugin/hooks/run-hook` 启动：引擎用*自己的*环境拉起钩子，而
 GUI 直启的 ZCode 可能 PATH 里没有 `node`。一份清单服务两个平台家族——POSIX
 shell 执行无扩展名的 `run-hook` 脚本，Windows 的 cmd.exe 经 PATHEXT 把同一
 名字解析到 `run-hook.cmd` 孪生。启动器在 POSIX 兜底 nvm（取最高版本）与
@@ -511,6 +511,7 @@ lzy version                     打印版本
 | `ledger` | 提交账本巡逻：goal 起点后提交缺 `Goal:` 尾注的比例（warn，不翻退出码） |
 | `waterline` | 近 5h 滚动积分 vs 自参照警戒线（sqlite3 缺席时如实报降级） |
 | `orphan-wake` | 本仓 unbound wake automation 的空转巡逻（无挂载即 skip） |
+| `h3r-words` | H3R 词表载荷：在场、schema 合法、与 CLI 读者同序。缺 = warn——唤醒态下门会硬拒，绝不静默降级 |
 | `lock` | 锁竞争窗：获锁次数 / 其中需等待次数 / 等待合计与最长 / 等待超时次数（对照 `LOCK_WAIT_MS`；无样本 = skip；超时 >0 = §⑩-4 预注册触发条件命中，warn。读数为**下限**——无锁读-合-写近似计数，最可能丢增量的时刻正是拥塞最重的时刻） |
 | `platform` | 按平台报引擎候选命中态（命中=ok+引擎路径） |
 | `agents-md` | AGENTS.md 分层覆盖审计 + 地图落后提示（基点后覆盖域 ≥50 提交；根缺失 = `skip`；`lzy agents-md` 详单） |

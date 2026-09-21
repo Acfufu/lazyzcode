@@ -26,7 +26,7 @@ resolve_node() {
   fi
   NODE=""
   # nvm 候选按**版本序**取最大（V021-ADJ-57）：glob 是字典序，v9.x 残留会排在 v24.x 之后
-  #（"v9" > "v2x" 逐字节），旧 last-wins 因此选中 Node 9 → 五钩子解析即失败，且 exec 已替换
+  #（"v9" > "v2x" 逐字节），旧 last-wins 因此选中 Node 9 → 六钩子解析即失败，且 exec 已替换
   # shell，fail-open 通道不覆盖此路径。
   nvm_cands=""
   for cand in "${HOME:-}"/.nvm/versions/node/*/bin/node; do

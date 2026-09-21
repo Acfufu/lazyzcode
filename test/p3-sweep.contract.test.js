@@ -419,7 +419,7 @@ test("run-hook：nvm 候选按版本序取最大——v9 残留 + v24 并存时�
   const home = scratch();
   try {
     // 三个 nvm 候选，字典序最后 = v9.11.2（"v9" > "v2x" 逐字节）——旧 last-wins 选中它，
-    // Node 9 跑 ESM 钩子=解析即失败，五钩子全灭且此路径无 fail-open 日志。
+    // Node 9 跑 ESM 钩子=解析即失败，六钩子全灭且此路径无 fail-open 日志。
     for (const v of ["v9.11.2", "v20.11.0", "v24.19.0"]) {
       const bin = join(home, ".nvm", "versions", "node", v, "bin");
       mkdirSync(bin, { recursive: true });

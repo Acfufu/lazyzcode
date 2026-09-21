@@ -3,7 +3,7 @@
 // 注入确定性不变量（pisper-absorption#N1）：additionalContext 注入文本必须确定性——
 // 同一会话状态同字节输出：禁时间戳/随机数/不稳定迭代序进入注入文本；注入只追加、不改写既有对话。
 // 依据：GLM prompt cache 逐字节前缀比对，注入模板抖动=缓存全 miss 静默变贵（缓存折扣进 lzy loop cost 口径）。
-// 契约钉：test/hooks.contract.test.js「五钩子确定性钉」同状态双跑逐字节一致。
+// 契约钉：test/hooks.contract.test.js「六钩子确定性钉」同状态双跑逐字节一致。
 import {
   existsSync,
   mkdirSync,

@@ -33,7 +33,7 @@ LazyZCode 是边界分明的三块：引擎加载的插件、独占循环状态�
   <g fill="var(--muted)" text-anchor="middle" font-size="11.5">
     <text x="115" y="124">桌面端 · zcode.cjs</text>
     <text x="420" y="88">skills/zw · 编排文本</text>
-    <text x="420" y="107">hooks ×5 · 经 run-hook 启动器</text>
+    <text x="420" y="107">hooks ×6 · 经 run-hook 启动器</text>
     <text x="420" y="126">agents ×3 · 只读角色</text>
     <text x="720" y="83">目标循环状态机</text>
     <text x="720" y="193" class="mono" font-weight="400">goal.json · plans · evidence</text>
@@ -153,7 +153,7 @@ finish</code> 拒绝之；<code>lzy step done</code> 在重取证时重新绑定
 
 ## 钩子生命周期
 
-五个钩子骑在引擎的会话时间线上。它们全部经 `plugin/hooks/run-hook`
+六个钩子骑在引擎的会话时间线上。它们全部经 `plugin/hooks/run-hook`
 拉起：POSIX 按 PATH → nvm → Homebrew 顺序解析 `node`（Windows 经 PATHEXT
 把同一清单行解析到 `run-hook.cmd` 孪生，兜底 nvm-windows/Program Files），
 从 Dock 直启的

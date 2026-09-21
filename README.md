@@ -180,7 +180,7 @@ worker, including `hooks.json` registry validation), node version floor,
 POSIX, nvm-windows/Program Files on Windows — for GUI-launched sessions), the
 `lzy` PATH shim, a payload-version cross-check (`payload-ver`: the cached
 version directories versus the CLI's own `package.json` — the ADR-0012
-intermediate-state self-check), `.lazyzcode/` state hygiene, a handoff-lane
+intermediate-state self-check), `.lazyzcode/` state hygiene, an H3R word-list payload check (`h3r-words`: the one word list both the CLI and the command-layer hook read — missing = warn, the gate hard-rejects while awake), a handoff-lane
 usage counter (`handoff-usage`: registered versus consumed markers — a
 difference means reset cleanup or bad markers, never lost handoffs), an
 optional code-index probe (`codegraph`: user-level MCP config plus CLI
@@ -225,7 +225,7 @@ configuration surface.
 ## Use the built-in workflows
 
 LazyZCode should be judged by what it actually installs: one plugin — two
-skills (`zw`, `init-deep`), five hooks, three read-only agents — and the
+skills (`zw`, `init-deep`), six hooks, three read-only agents — and the
 `lzy` CLI.
 
 ### 1. Trigger words inject the protocol
@@ -396,7 +396,7 @@ machine). Zero npm dependencies, Node ≥ 22, pure ESM.
 
 ```
 lazyzcode/
-├── plugin/   → the lazyzcode plugin: skills/zw + skills/init-deep, hooks/ (5, via the run-hook launcher), agents/ (3)
+├── plugin/   → the lazyzcode plugin: skills/zw + skills/init-deep, hooks/ (6, via the run-hook launcher), agents/ (3)
 ├── core/     → shared logic: loop, installer, doctor, ratelimit, agentsmd, engine, git, paths, status, update, cost, dag, attempt, attest, runtime, drive, headless, hostdb
 ├── cli/      → the lzy entry (cli/lzy.js) + syntax-check worker
 ├── test/     → contract tests (node:test, zero deps) + GitHub Actions (node 22/24)
@@ -423,8 +423,8 @@ installs plugins and nothing else — enabling goes through the engine's officia
 What runs on your machine, where it installs, and what it deliberately does not
 defend against:
 
-- **Hooks execute local code.** Five lifecycle events run this plugin's local
-  Node scripts (UserPromptSubmit, SessionStart, Stop, PostToolUse,
+- **Hooks execute local code.** Six lifecycle events run this plugin's local
+  Node scripts (UserPromptSubmit, SessionStart, Stop, PreToolUse, PostToolUse,
   PostToolUseFailure); their output is injected context for the model, not a
   sandbox boundary.
 - **Install footprint is the engine's official plugin cache** — enabling flows

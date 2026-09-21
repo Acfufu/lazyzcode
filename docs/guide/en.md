@@ -84,7 +84,7 @@ LazyZCode installs four things:
 1. **One plugin** (`lazyzcode:zw`) whose skill text carries the full
    orchestration protocol — triage, tier selection, planning, execution, and
    evidence rules.
-2. **Five hooks** wired to the engine's lifecycle: SessionStart (re-inject
+2. **Six hooks** wired to the engine's lifecycle: SessionStart (re-inject
    loop state), UserPromptSubmit (trigger words), PostToolUse (comment
    advisory), PostToolUseFailure (same-tool failure tripwire), Stop
    (bounded continuation).
@@ -471,7 +471,7 @@ heartbeat), each run gets a fresh wall-clock + points budget, and HIGH+
 risk goals are machine-rejected before anything spawns. Every segment's `lzy`
 writes carry the run's fence token, so a taken-over run fails closed on write
 instead of corrupting loop state. Wind-down is clean and enumerated: `done`,
-budget exhausted, segments exhausted, or two zero-progress segments (stuck) —
+budget exhausted, segments exhausted, two zero-progress segments (stuck), the step gate stopping at a high-risk step (`h3r`), or a high-risk command denied at the tool boundary (`PreToolUse`) —
 every non-done wind-down writes the 7-field handoff snapshot itself and
 registers the marker for the next session. `lzy doctor`'s `drive` line reports
 the channel's availability on your machine:
@@ -510,9 +510,9 @@ findings come from the repository, not from the main agent's assumptions.
 | `trigger.js` | UserPromptSubmit | Stratified trigger matching; injects the zw bootstrap on invocation. |
 | `comment-checker.js` | PostToolUse (Edit/Write) | Advisory detection of `TODO`/`FIXME`/`XXX`/`HACK` markers and debug residue (`console.log`, `console.debug`, `debugger`) in new content. Capped at 5 hits, 300 characters, inject-only — and only active in workspaces with an open goal loop. |
 | `stop.js` | Stop | Requests continuation (max 2/session) with the remaining-steps context while a loop is open; consumes a registered handoff marker once and releases without spending the budget. |
-| `tripwire.js` | PostToolUseFailure (`^mcp__`) | Warns once when the same MCP tool fails twice inside a 10-minute window (successes don't reset the streak — the TTL does). Steers toward switching tools or closing cleanly via `lzy loop handoff`; inject-only, isInterrupt-exempt, only active with an open goal. |
+| `h3r-pretool.js` | PreToolUse (Bash) | The command-layer H3R gate, **dormant by default**: inside an unattended `lzy loop drive` segment (the drive-injected `LZY_SEGMENT_ID` is present) and awake only when `LZY_ABLATE_H3R_PRETOOL` is `1` — the inverse of the `LZY_ABLATE_*` family — it denies Bash commands whose text matches the H3R word list and writes the hit marker drive consumes for a clean wind-down (7-field snapshot, exit 0). Interactive sessions never carry a segment id: exempt by construction, and they are the recovery path (ADR-0022). |
 
-All five commands route through `plugin/hooks/run-hook`: the engine spawns
+All six commands route through `plugin/hooks/run-hook`: the engine spawns
 hooks with *its own* environment, and a GUI-launched ZCode may have no `node`
 on PATH. One manifest line serves both platform families — POSIX shells
 execute the extensionless `run-hook` script, while on Windows cmd.exe resolves
@@ -637,6 +637,7 @@ do.
 | `ledger` | Commit-ledger patrol: share of goal-era commits missing the `Goal:` trailer (warn, never flips the exit code) |
 | `waterline` | Rolling 5-hour point burn vs the self-calibrated nudge threshold (degraded note when sqlite3 is absent) |
 | `orphan-wake` | Idle-burn patrol for unbound wake automations anchored here (skip when none mounted) |
+| `h3r-words` | The H3R word-list payload: present, schema-valid, and the same order the CLI's reader yields. Missing = warn — while awake the gate hard-rejects instead of silently downgrading |
 | `lock` | Lock-contention window: acquisitions / how many had to wait / total and max wait / wait timeouts (measured against `LOCK_WAIT_MS`; skip with no samples; timeouts > 0 means §⑩-4's pre-registered trigger fired — warn). Readings are **lower bounds**: the counters ride a lock-free read-merge-write, and the moment a delta is most likely to be lost is the moment contention is heaviest |
 | `platform` | Engine-candidate notice per platform (ok + path when the desktop engine is found) |
 | `agents-md` | Layered AGENTS.md coverage audit + staleness hint (≥50 covered-dir commits since the map's last commit; skip when no root file; `lzy agents-md` for details) |

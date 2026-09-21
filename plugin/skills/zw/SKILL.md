@@ -543,8 +543,10 @@ between segments (HIGH+ risk never enters; a lease keeps a single runtime
 holder; each drive gets a fresh wall-clock cap; the points axis is an account-level 5h rolling-waterline threshold (not a per-run counter — the reading being unavailable means the gate simply does not fire), and every segment's
 lzy writes carry the run's fence token so a taken-over run fails closed on
 write instead of corrupting state. Wind-down is always clean and enumerated:
-`done`, wall clock exhausted, points budget exhausted, segments exhausted, or
-two consecutive zero-progress segments (stuck). Every non-done wind-down
+`done`, wall clock exhausted, points budget exhausted, segments exhausted,
+two consecutive zero-progress segments (stuck), the step gate stopping at a
+high-risk step (`h3r`), or a high-risk command denied at the tool boundary
+(`PreToolUse`). Every non-done wind-down
 authors the 7-field handoff snapshot itself and registers the handoff marker,
 so the next wake-up (or a human `zw 继续`) resumes from disk. Exit code 0 =
 done or clean wind-down; 1 = gate reject or segment failure. The host
@@ -597,15 +599,31 @@ otherwise is a lie about who enforces it.
 
 **High-risk steps (H3R).** The convention that a high-risk step (credential
 handling, irreversible deletion, force-push, publish) gets a human look before
-it runs is **still L0** — this skill's text. A machine form exists as a
-**dormant prototype** in the unattended lane only: `core/drive.js` checks the
-next pending step at each segment's start and, when the gate is awake, winds
-down cleanly instead of spawning (new cause `h3r`, ADR-0022). It is awake only
-when `LZY_ABLATE_H3R_GATE` is exactly `"1"` — the *inverse* of the
-`LZY_ABLATE_*` family — and dormant is the default, byte-identical to before.
-Do not call it a machine gate: while dormant it enforces nothing. Its measured
-limit matters when you lean on it — a segment that runs several steps in one go
-is never checked, so the gate only ever sees boundaries a segment stops at.
+it runs is **still L0** — this skill's text. Three **dormant prototypes** exist
+in the unattended lane only, and while asleep they enforce nothing:
+
+- **Segment-start gate** (`core/drive.js` + `core/h3r.js`): checks the next
+  pending step's text at each segment's start and winds down cleanly instead of
+  spawning (cause `h3r`). Awake only when `LZY_ABLATE_H3R_GATE` is exactly
+  `"1"` — the *inverse* of the `LZY_ABLATE_*` family.
+- **One-step-per-segment** (`lzy step done` + a run-unique segment id): when
+  drive injects `LZY_SEGMENT_ID` (only while `LZY_ABLATE_H3R_ONESTEP` is `"1"`),
+  a second `step done` inside the same segment is refused — this is what gives
+  the segment-start gate a boundary to see at all (measured: 15 of 24 trials
+  once ran a whole plan in one segment, so the check never fired).
+- **Command-layer gate** (`plugin/hooks/h3r-pretool.js`, PreToolUse/Bash): when
+  awake (`LZY_ABLATE_H3R_PRETOOL` is `"1"`) **and** the drive-injected segment
+  id is present, it denies Bash commands whose text matches the H3R word list
+  and writes a hit marker that drive consumes for a clean wind-down (7-field
+  snapshot, exit 0). Interactive sessions carry no segment id — exempt by
+  construction, and they are the recovery path. It is **inert without the
+  one-step switch** (no segment id ⇒ nothing to gate).
+
+Do not call any of them a machine gate while dormant (ADR-0022). Two honest
+limits: the word list is substring matching, not a command parser (it can be
+reworded around, and it excludes the repo's own `lzy`/`git commit` bookkeeping
+so step titles stay recordable); and a hook crash or timeout fails open on the
+engine side by contract.
 
 1. **[L0+L1]** Never write the user's `config.json`; plugin enabling flows only
    through the engine's official CLI (`lzy install` handles this — the CLI's

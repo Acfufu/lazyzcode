@@ -261,6 +261,56 @@ test("ADJ-22：段失败收束时 headless 失败族文案连带打印 stdout（
   }
 });
 
+// ── ⑤b 段界两轴分离：risk 门拒走正常收束 / 租约失效仍 skipHandoff（0.2.2 报告 §7 修复） ──
+test("段界 risk 门拒：走正常收束通道（快照落盘过 lint + 文案不再称『已被接管』）", async () => {
+  // 缺省 risk=low 过入口门；段内模型自升级（2026 实验 24 发里 3 发走过这条路径）。
+  const d = executingRepo("lzy-drive-segrisk-");
+  const run = () => {
+    const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    goal.risk = "high";
+    writeFileSync(goalJson(d), `${JSON.stringify(goal, null, 2)}\n`);
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+  try {
+    const { result, lines } = await captureStdout(() =>
+      runDrive(d, { maxSegments: 3 }, passDeps(run, { rollingPoints: 0 })),
+    );
+    assert.equal(result.ok, false, `门拒=非零退出语义（干净收束≠放行）：${lines}`);
+    assert.match(lines, /段间门拒（HIGH 风险目标禁入无人值守车道/, "拒因原文在场（分类轴不被改写）");
+    assert.ok(!/已被接管/.test(lines), `风险门拒不得复用接管文案：${lines}`);
+    assert.match(lines, /handoff 快照：.+（复归：zw 继续）/, "干净收束带快照路径");
+    assert.match(lines, /\[drive\] 原因：本目标因风险升级需人工确认/, "恢复指引连带 stdout（ADJ-22 家法）");
+    const marker = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "handoff.json"), "utf8"));
+    assert.ok(existsSync(marker.snapshot), "handoff 标记在场");
+    assert.deepEqual(lintHandoffSnapshot(readFileSync(marker.snapshot, "utf8")), [], "drive 自写快照过 7 字段 lint");
+    assert.ok(result.handoff, "收束结果带回快照路径");
+    assert.equal(loadRuntime(d).activeLease, null, "lease 已释放");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("段界租约失效：仍走 skipHandoff 通道（不写快照，接管文案在该面成立）", async () => {
+  const d = executingRepo("lzy-drive-segleaseloss-");
+  // 段内本运行时租约被外力释放 ⇒ 段界心跳必失败；此后写字会被 fencing 拒，故不写交接。
+  const run = (x) => {
+    withLock(d, () => releaseLease(d, Number(x.env.LZY_RUNTIME_FENCE)));
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+  try {
+    const { result, lines } = await captureStdout(() =>
+      runDrive(d, { maxSegments: 3 }, passDeps(run, { rollingPoints: 0 })),
+    );
+    assert.equal(result.ok, false, lines);
+    assert.match(lines, /段间门拒（/);
+    assert.match(lines, /已被接管\/租约失效，不写交接/, "接管文案在租约失效面是事实");
+    assert.ok(!existsSync(join(d, ".lazyzcode", "loop", "handoff.json")), "租约死=不写交接标记");
+    assert.equal(result.handoff, null);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
 // ── ⑥ 无推进 stuck 收束（状态集判据两半，0.2.2 棒1#N3/ADJ-34） ──────────────
 test("真惰性两段零推进→stuck 收束（镜像 Stop 振数纪律）+快照交回", async () => {
   const d = executingRepo("lzy-drive-stuck-");

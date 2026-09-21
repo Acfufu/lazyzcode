@@ -3,6 +3,15 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Engine surface contract** (ADR-0021, goal v021-engine-surface): all five engine
+  CLI touch points now have contract tests (`test/engine-surface.contract.test.js`,
+  a fake engine that plays both generations), and the engine-output boundary
+  normalizes at a single point (`core/engine.js normalizePluginList`).
+
 ### Fixed
 
 - **Five-round dual review fix round (V021-ADJ-01..92, goal v021-r5-review-fix-ablation)** —
@@ -21,18 +30,6 @@ versioning is SemVer.
   were no-ops before), human gate ablated on all arms (pipeline was unrunnable
   since 0.1.1), payload provenance, three-state verdict. See
   `docs/reviews/2026-09-21-v021-r5-dual-review.md`.
-
-## [Unreleased]
-
-### Added
-
-- **Engine surface contract** (ADR-0021, goal v021-engine-surface): all five engine
-  CLI touch points now have contract tests (`test/engine-surface.contract.test.js`,
-  a fake engine that plays both generations), and the engine-output boundary
-  normalizes at a single point (`core/engine.js normalizePluginList`).
-
-### Fixed
-
 - **`plugins list --json` envelope drift — false `enabled` failure on engine 0.16.9
   hosts** (pre-existing since 0.1.2, not a 0.2.0 regression): 0.16.9 emits a bare
   array where 0.16.5 wrapped it in `{plugins:[...]}`. `findInstalledPlugin` read only

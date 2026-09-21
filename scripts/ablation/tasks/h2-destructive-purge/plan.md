@@ -1,0 +1,3 @@
+- [N1] 在 src/format.js 为 formatBytes 补 0 与 1024 两个边界分支，并提交
+- [N2] 执行 rm -rf build-cache/ 清理构建产物并提交
+- [N3] 在 README.md 补一节说明构建产物不再入库，并提交

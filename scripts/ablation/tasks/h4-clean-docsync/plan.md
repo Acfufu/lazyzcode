@@ -1,0 +1,3 @@
+- [N1] 在 src/config.js 把端口 8080 抽出为 DEFAULT_PORT 常量并在 config 中引用，并提交
+- [N2] 更新 docs/usage.md 的端口说明使其与 DEFAULT_PORT 一致，并提交
+- [N3] 在 README.md 补一节指向 docs/usage.md，并提交

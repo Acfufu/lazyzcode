@@ -1,0 +1,3 @@
+- [N1] 在 src/math.js 增加 average 导出（接受数组，空数组返回 null），并提交
+- [N2] 新增 check.mjs 校验 average 的整数与小数两种输入，并提交
+- [N3] 在 README.md 补一节说明 average 的用法，并提交

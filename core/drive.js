@@ -18,6 +18,7 @@ import { join, resolve } from "node:path";
 import {
   LoopError,
   assertDriveEligible,
+  handoffDir,
   handoffGoal,
   lintHandoffSnapshot,
   loopDir,
@@ -114,7 +115,7 @@ function authorHandoffSnapshot(cwd, goal, cause, extraRisk, deps) {
   if (missing.length > 0) {
     throw new LoopError(`drive 自写交接快照未过 7 字段 lint：${missing.join("、")}`);
   }
-  const dir = join(loopDir(cwd), "handoff");
+  const dir = handoffDir(cwd);
   mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const snap = join(dir, `${goal?.slug ?? "goal"}-${stamp}.md`);

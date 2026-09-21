@@ -285,8 +285,11 @@ function checkLoopState(push, cwd) {
       // 账本（v009-bat1#N2，跨 reset 常驻，照 metrics.json 先例）、attempt.json 世系
       // 账本（0.1.0 棒B，跨 reset 常驻，同 dag.json 先例）、approvals/ 人权门批准
       // 记录族（0.1.1 goal1 ADR-0018，钩子写入 reset 不清，同 attempt.json 先例）、
-      // runtime.json 运行时账本（0.2.0 棒1 ADR-0020，跨 reset 常驻，同 dag.json 先例）
-      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json"]);
+      // runtime.json 运行时账本（0.2.0 棒1 ADR-0020，跨 reset 常驻，同 dag.json 先例）、
+      // handoff/ 交接快照（0.2.2 棒1：ADJ-23 落工作区且属 reset 不清家族——下一次唤起
+      // 要从盘上读续跑状态，故残留快照是正常残留而非可删残留。此前缺席 EXEMPT 使合法
+      // 快照被判「空壳疤痕」并被指路删除，见侦测记录）
+      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json", "handoff"]);
       scarEntries = entries;
       emptyScar = entries.length === 0 || entries.some((e) => !EXEMPT.has(e));
     } catch {
@@ -298,7 +301,7 @@ function checkLoopState(push, cwd) {
       // 人权门审计、snapshots/ 计划快照、salvage/ 存根、dag.json/attempt.json/runtime.json/
       // metrics.json）——照方执行=一次性删掉全部常驻账本。空目录才给 rm -r；含常驻项时
       // 只点名可删残留并列出将连带删除的常驻面。
-      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json"]);
+      const EXEMPT = new Set(["salvage", "metrics.json", "sessions", "snapshots", "dag.json", "attempt.json", "approvals", "runtime.json", "handoff"]);
       const transient = scarEntries.filter((e) => !EXEMPT.has(e));
       const residents = scarEntries.filter((e) => EXEMPT.has(e)).sort();
       if (scarEntries.length === 0) {

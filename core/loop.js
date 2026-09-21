@@ -2100,6 +2100,24 @@ export function listSalvageStubs(cwd) {
   }
 }
 
+// ── 交接快照（ADR-0009 / ADJ-23）：落工作区 `.lazyzcode/loop/handoff/`，属 reset 不清家族
+// （下一次唤起要从盘上读精确续跑状态，故 reset 保留内容；见 core/drive.js 的
+// authorHandoffSnapshot）。路径原本以字面量抄在 drive 侧，而枚举面（进度信号状态集、
+// doctor EXEMPT）需要同一个源——收归此处单点，防两处漂移。──
+export function handoffDir(cwd) {
+  return join(loopDir(cwd), "handoff");
+}
+
+export function listHandoffSnapshots(cwd) {
+  try {
+    return readdirSync(handoffDir(cwd))
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => f.slice(0, -".md".length));
+  } catch {
+    return [];
+  }
+}
+
 function salvageLine(cwd) {
   const stubs = listSalvageStubs(cwd);
   if (stubs.length === 0) return null;

@@ -46,7 +46,9 @@ test("register 落盘 risk：缺省 low/非法值拒/大小写归一", () => {
     assert.equal(g1.risk, "low");
     assert.throws(() => registerGoal(d, "t1b", "t", { risk: "bogus" }), /risk 不合法/);
     // 归一：清槽后大写 MED 落盘为 med
-    spawnSync("node", [CLI, "loop", "reset"], { cwd: d, env: { ...process.env, HOME } });
+    // 0.2.2 棒1#N9：裸 `node` 依赖 PATH 上有 node——PATH 无 node 的宿主上 reset 静默不跑，
+    // 用例随后因「槽位仍被占用」而红（表现为环境相关 flake）。改 process.execPath＝当前解释器。
+    spawnSync(process.execPath, [CLI, "loop", "reset"], { cwd: d, env: { ...process.env, HOME } });
     const g2 = registerGoal(d, "t1", "t", { risk: "MED" });
     assert.equal(g2.risk, "med");
   } finally {

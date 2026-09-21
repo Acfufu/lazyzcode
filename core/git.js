@@ -47,10 +47,9 @@ export function createGit(cwd) {
       const out = (r.stdout ?? "").trim();
       return /^[0-9a-f]{40,64}$/.test(out) ? out : null;
     },
-    // deprecated 别名（v008-integrity-kernel#N2 正名遗留）：一版后删，新代码一律 headTreeHash()。
-    treeHash() {
-      return this.headTreeHash();
-    },
+    // v008-integrity-kernel#N2 正名时留的旧名方法已按承诺删除（0.2.2 棒1#N9——注释原写
+    // 「一版后删」却跨了十几个版本；唯一消费方是契约测试，无外部迁移成本）。新代码一律
+    // 走 headTreeHash()，契约测试另钉「旧名不得回归」。
     // per-root 完整性原语（v008-integrity-kernel#N5）：返回可辨状态形状 {state, detail?}，
     // state ∈ clean | dirty | missing | error。missing=根不存在/非 git 仓/HEAD 不可解析
     // （不可验收）；error=fail-closed（git 进程错/非零退出码，含索引损坏——按拒处理）。

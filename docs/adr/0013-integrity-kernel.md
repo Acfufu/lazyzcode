@@ -27,7 +27,7 @@ ADR-0006:45 记名的多树绑定 deferred 备选（`--evidence-repo` 方案）�
 review 非 PASS 走 warn）；未声明兄弟仓对时效门不可见（声明纪律与 tier 自报
 同族）；复采纳快照哈希变更而评审文本未换=红线（机器双臂 warn：--review 未带
 或与存量 summary 逐字相同）。已知边界：闸门 git spawn 共享 8s 墙钟预算（<
-LOCK_STALE_MS 10s 留余量）仍有单根超时×多根的残差、闸门检查与并发提交间的
+LOCK_STALE_MS 60s 留余量〔ADJ-01 已抬高 stale 线，0.2.2 棒1#N9 随改〕）仍有单根超时×多根的残差、闸门检查与并发提交间的
 TOCTOU 窗口（ms 级，结局=对较旧树 finish 而非伪造）、report tmp 落盘窗口的
 kill -9 孤儿（history 按 `.report.md` 后缀过滤不受扰）、`VERDICT:` 标记形态是
 机器门载荷（parseVerdict 无标记回退串可 spoof——评审协议要求标记形态）。

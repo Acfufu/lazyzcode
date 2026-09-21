@@ -1630,7 +1630,8 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
   }
   // ── 第四拒：完整性闸门（P0-A 闭合，v008）——{host}∪subjects 任一根 dirty/missing/git
   // 错即拒，不提供任何绕过 flag（拍板③「无逃生门」）。git spawn 逐根顺序、共享 8s 墙钟
-  // 预算（< LOCK_STALE_MS 10s 留余量；单根超时/预算耗尽按 fail-closed 拒）。
+  // 预算（< LOCK_STALE_MS 60s 留余量：ADJ-01 已把 stale 线由 10s 抬到 60_000，注释随改；
+  // 单根超时/预算耗尽按 fail-closed 拒）。
   // LZY_ABLATE_INTEGRITY（ADR-0015）：开关开=整循环消融（脏树/缺根/git 错不再拦
   // finish，≈0.0.7 形态的一半；variant-F 与 ATTEST 合成完整 0.0.7 形态）。
   // headTrees 采集声明在开关外：消融态空 Map，attestation 侧走「缺值回退直读」防御分支。

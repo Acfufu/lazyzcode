@@ -578,18 +578,21 @@ export function contentAdvisory(stats) {
 
 // 平台高峰计价表（小时为 UTC+8 墙钟；days 为 UTC+8 周几 1=周一…5=周五；半开 [start,end)）
 // 维护时对照官方文档逐条更新并保留源：GLM https://docs.bigmodel.cn/cn/coding-plan/overview
-//   （高峰周一至五 14–18；另有「夜间畅用活动」2026-09-03 至 09-20 每日 23–09：ZCode 内
-//    GLM-5.3-Flash 额度消耗 0、Flash 经其他 Agent ×2、GLM-5.3 按标准规则——源
-//    docs.bigmodel.cn/cn/coding-plan/notice/event-glm-5.3-flash，记入 SAFE_WINDOW）
+//   （高峰周一至五 14–18。**已终活动不复述**：曾有夜间畅用活动（源见 core/cost.js 的
+//    OVERLAYS 注释与官方 notice 页），该条款按日期自门控在 OVERLAYS 内、过期自然回落；
+//    活动期字面量只留那一处，本表与 SAFE_WINDOW 文案都不再抄日期——抄一处就多一处会过期的
+//    用户可见声明，正是本轮清理的成因）
 // DeepSeek https://api-docs.deepseek.com/zh-cn/quick_start/pricing/（高峰周一至五 9–12 与 14–18）
 const PEAK_WINDOWS = [
   { label: "GLM", days: [1, 2, 3, 4, 5], start: 14, end: 18 },
   { label: "DeepSeek", days: [1, 2, 3, 4, 5], start: 9, end: 12 },
   { label: "DeepSeek", days: [1, 2, 3, 4, 5], start: 14, end: 18 },
 ];
-// 计价安全窗（每日，无周几维度）：GLM 夜间活动时段 ∩ 两家共同非高峰
-const SAFE_WINDOW_TEXT =
-  "计价安全窗：每日 23:00–09:00（GLM 夜间畅用活动至 09-20：ZCode 内 Flash 额度消耗 0，活动期条款以官方文档为准）";
+// 计价安全窗（每日，无周几维度）：两家共同非高峰时段。
+// 0.2.2 棒1#N9：原文案在 doctor schedule 行里广告一个已终的夜间活动及其截止日——用户可见
+// 的失效声明。活动期字面量只留 core/cost.js OVERLAYS 一处（按日期自门控、过期自然回落），
+// 此处只保留**不含活动期**的常驻事实，从此不随日期漂移。历史见 git 与该 OVERLAYS 注释。
+const SAFE_WINDOW_TEXT = "计价安全窗：每日 23:00–09:00（两家共同非高峰时段，时段表 UTC+8 人工维护）";
 
 // 纯 UTC 换算：now 对应的 UTC+8 小时与周几（day: 0=周日…6=周六）。与本地时区无关。
 export function utc8HourDay(now) {

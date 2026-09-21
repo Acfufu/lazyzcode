@@ -81,15 +81,16 @@ function cycle(d, { subjects = null, review = null, evidence = "ev" } = {}) {
   return goalJson(d);
 }
 
-// ── git.js：headTreeHash 正名/别名、per-root 工厂、integrity 三态原语 ──────────
-test("git: headTreeHash 正名与 deprecated 别名同值；per-root 工厂隔离", () => {
+// ── git.js：headTreeHash、per-root 工厂、integrity 三态原语 ────────────────────
+// 0.2.2 棒1#N9：deprecated 别名 treeHash() 已按承诺删除（原注释「一版后删」），本用例
+// 原断言「别名与正名同值」——改为钉「正名在、别名已不在」，防它日后被顺手加回来。
+test("git: headTreeHash 正名在、deprecated 别名已删；per-root 工厂隔离", () => {
   const d1 = repo();
   const d2 = repo();
   try {
     const h1 = createGit(d1).headTreeHash();
-    const alias = createGit(d1).treeHash();
     assert.match(h1, /^[0-9a-f]{40,64}$/);
-    assert.equal(alias, h1);
+    assert.equal(createGit(d1).treeHash, undefined, "别名已删，不得回归");
     writeFileSync(join(d2, "a.txt"), "different content → different tree\n");
     spawnSync("git", ["commit", "-qam", "c2"], { cwd: d2 });
     assert.notEqual(createGit(d2).headTreeHash(), h1);

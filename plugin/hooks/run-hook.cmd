@@ -6,7 +6,8 @@ rem Usage (hooks.json): "${ZCODE_PLUGIN_ROOT}/hooks/run-hook" <script.js> [args.
 rem   cmd.exe resolves the extensionless name to this .cmd twin via PATHEXT
 rem   (docs/design-crossplatform.md §1; schema has no per-OS fields).
 rem Discipline: when node cannot be resolved, log one line to %TEMP%\lzy-hook-launcher.log and
-rem   exit 0 (fail-open, never block the session). Mirrors run-hook.sh, including --print-node.
+rem   exit 0 (fail-open, never block the session). Mirrors the extensionless POSIX twin
+rem   `run-hook`, including --print-node.
 rem Style note: goto flow throughout - %PATH%/%APPDATA% may contain parentheses (x86) which
 rem   would break parse-time expansion inside parenthesized blocks; no delayed expansion either.
 rem nvm candidate order (V021-ADJ-57): the wildcard's last match used to win, but plain name

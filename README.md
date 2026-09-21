@@ -157,7 +157,7 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | Subjects | `lzy loop subject add <path> · remove · list` | Declare sibling repo roots for multi-tree goals (executing-only; validated git repos, no host containment) — any set change invalidates captured F evidence |
 | Tier | `lzy loop tier heavy` | One-way LIGHT→HEAVY upgrade; HEAVY adoption without a PASS review is machine-rejected (adoption-time gate) |
 | Risk | `lzy loop risk <level>` | One-way risk_class upgrade (low/med/high/restricted); HIGH+ barred from unattended lanes by the drive-entry gate (ADR-0020) |
-| Lease | `lzy loop lease acquire\|heartbeat\|release` | Run-level lease: minutes-scale mutex with heartbeat; fence token declares write paths (ADR-0020) |
+| Lease | `lzy loop lease acquire\|heartbeat\|release\|reclaim` | Run-level lease: minutes-scale mutex with heartbeat; fence token declares write paths; `reclaim` is the zombie-lease exit (auto when the holder pid is gone, `--force` when it is not) (ADR-0020) |
 | Budget | `lzy loop budget init\|spend\|remaining` | Drive budget: wall-clock + points double cap; over-cap reject = clean wind-down signal (ADR-0020) |
 | Drive | `lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]` | In-wake unattended execution channel: headless segments inside one wake, risk/lease/budget gates between segments, fence-tokened segment writes; wind-down authors the handoff snapshot itself; exit 0 = done or clean wind-down, 1 = gate reject / segment failure (ADR-0020) |
 | Step claims | `lzy loop claim [<id>] [--release]` | Anonymous per-step claiming for same-goal multi-worker runs: 48h mutex, blocked-step checks against plan `deps:` edges, `step done` auto-releases; bare form lists claimable steps |

@@ -46,6 +46,7 @@ import {
   formatBudget,
   heartbeatLease,
   initBudget,
+  reclaimLease,
   recordSpend,
   releaseLease,
 } from "../core/runtime.js";
@@ -491,7 +492,20 @@ async function cmdLoop(args) {
         console.log(r.released ? `✔ 租约已释放（fence ${fence}）` : "无活跃租约（幂等，无需释放）");
         return;
       }
-      throw new LoopError("用法：lzy loop lease acquire [--ttl-ms N] | heartbeat --fence <n> | release --fence <n>");
+      if (action === "reclaim") {
+        // 僵尸租约回收出口（ADJ-32，0.2.1）：SIGKILL 的 drive 留下活性租约，此后每次唤起被
+        // 「另一运行时持租」拒满一个 TTL——acquire 的拒绝报文指的就是本出口。持有者 pid 可判
+        // 且已死=直接回收；仍活或活性不可判=须 --force（人工确认后行使）。
+        requireGoalPreLock(cwd);
+        const r = withLock(cwd, () => reclaimLease(cwd, { force: f.force === true }));
+        console.log(
+          r.reclaimed
+            ? `✔ 租约已回收：fence ${r.fence}（${r.forced ? "--force 人工确认" : "持有进程已不存在"}）——下次 acquire 发新号`
+            : "无活跃租约（幂等，无需回收）",
+        );
+        return;
+      }
+      throw new LoopError("用法：lzy loop lease acquire [--ttl-ms N] | heartbeat --fence <n> | release --fence <n> | reclaim [--force]");
     }
     case "budget": {
       // 运行预算（0.2.0 棒1，ADR-0020）：init/spend/remaining——墙钟+积分双硬顶，
@@ -907,8 +921,11 @@ function printHelp() {
   lzy loop tier heavy                       tier 升级（只升不降；机器门=采纳时点，ADR-0013）
   lzy loop risk <level>                     risk_class 升级（0.2.0，ADR-0020）：low|med|high|
                                             restricted 只升不降；HIGH+ 拒入无人值守车道
-  lzy loop lease acquire|heartbeat|release  运行级认领（0.2.0，ADR-0020）：分钟级互斥+心跳续期；
-                                            fence 令牌申报写路径（--fence / LZY_RUNTIME_FENCE）
+  lzy loop lease acquire|heartbeat|release|reclaim
+                                            运行级认领（0.2.0，ADR-0020）：分钟级互斥+心跳续期；
+                                            fence 令牌申报写路径（--fence / LZY_RUNTIME_FENCE）；
+                                            reclaim=僵尸租约回收出口（持租进程已死自动回收，
+                                            仍活须 --force）
   lzy loop budget init|spend|remaining      运行预算（0.2.0，ADR-0020）：墙钟+积分双硬顶，
                                             超顶拒=drive 须干净收束的机器信号
   lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]

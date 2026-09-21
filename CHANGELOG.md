@@ -3,7 +3,7 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
-## [Unreleased]
+## [0.2.1] - 2026-09-21
 
 ### Added
 
@@ -23,7 +23,9 @@ versioning is SemVer.
   `installPathFor` dot-segment escape fixed (`..` could `rm -rf` the plugins root);
   headless wall clock is now a real hard stop (exit-based settle; measured 25x
   overrun before); drive re-checks risk/identity between segments and always winds
-  down through the handoff path; zombie leases get a `lease reclaim` exit; lease is
+  down through the handoff path; zombie leases get a `lzy loop lease reclaim` exit
+  (auto-reclaims when the holder pid is gone, needs `--force` when it is not — a
+  SIGKILLed drive used to lock every later wake out for a full TTL); lease is
   bound to its goal. Hooks: approval negation matrix, approval write-failure
   diagnostic, injected-text sanitization, version-order node selection. Ablation
   instrument: trial CLI now runs the variant tree (D/F/G/H machine-gate ablations

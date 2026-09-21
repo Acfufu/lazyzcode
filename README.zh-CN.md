@@ -139,7 +139,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | 证据主体 | `lzy loop subject add <路径> · remove · list` | 多树目标声明兄弟仓根（仅 executing；校验 git 仓/无包含关系）——集合变化使已录 F 证据全体过期 |
 | Tier | `lzy loop tier heavy` | LIGHT→HEAVY 单向升级；HEAVY 无 PASS 评审采纳被机器拒（采纳时点门） |
 | Risk | `lzy loop risk <level>` | risk_class 单向升级（low/med/high/restricted）；HIGH+ 由 drive 入口门拒入无人值守车道（ADR-0020） |
-| Lease | `lzy loop lease acquire\|heartbeat\|release` | 运行级认领：分钟级互斥+心跳续期；fence 令牌申报写路径（ADR-0020） |
+| Lease | `lzy loop lease acquire\|heartbeat\|release\|reclaim` | 运行级认领：分钟级互斥+心跳续期；fence 令牌申报写路径；`reclaim`=僵尸租约出口（持有进程已死自动回收，仍活须 `--force`）（ADR-0020） |
 | Budget | `lzy loop budget init\|spend\|remaining` | 运行预算：墙钟+积分双硬顶；超顶拒=干净收束信号（ADR-0020） |
 | Drive | `lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]` | 唤起内无人值守执行通道：一次唤起内 headless 段循环，段间查 risk/lease/预算三门，段内写带 fence 令牌；收束自写交接快照；退出码 0=done 或干净收束，1=门拒/段失败（ADR-0020） |
 | 步级认领 | `lzy loop claim [<id>] [--release]` | 同目标多工人的匿名步级认领：48h 互斥、按计划 `deps:` 依赖边做阻塞校验、`step done` 自动释放；无参列可认领集 |

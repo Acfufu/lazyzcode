@@ -658,7 +658,7 @@ tool). Aliases are equal — `zw` is the primary.
 | `lzy loop subject add/remove <path> · subject list` | declare/remove sibling repo roots (executing-only; any set change invalidates all F evidence) |
 | `lzy loop tier heavy` | tier upgrade, one-way (machine gate is adoption-time; ADR-0013) |
 | `lzy loop risk <level>` | risk_class upgrade, one-way (low|med|high|restricted; drive-entry gate rejects HIGH+; ADR-0020) |
-| `lzy loop lease acquire/heartbeat/release` | run-level lease: minutes-scale mutual exclusion, fence token for write-path declaration (ADR-0020) |
+| `lzy loop lease acquire/heartbeat/release/reclaim` | run-level lease: minutes-scale mutual exclusion, fence token for write-path declaration; `reclaim` = zombie-lease exit after a SIGKILLed drive (ADR-0020) |
 | `lzy loop budget init/spend/remaining` | drive budget: wall-clock + points double cap, over-cap reject = clean wind-down signal (ADR-0020) |
 | `lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]` | in-wake unattended execution channel (0.2.0, ADR-0020): headless segments inside one wake, gates between segments, wind-down authors the handoff snapshot itself; exit 0 = done or clean wind-down, 1 = gate reject/segment failure |
 | `lzy loop status` | progress, next step, evidence freshness |

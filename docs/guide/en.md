@@ -589,7 +589,8 @@ lzy loop subject list           list the subject set
 lzy loop tier heavy             tier upgrade, one-way (adoption-time machine gate)
 lzy loop claim [<id>] [--release]  per-step claim (multi-worker; blocked-step checks; 48h mutex)
 lzy loop risk <level>              risk_class upgrade (low|med|high|restricted; one-way; ADR-0020)
-lzy loop lease acquire|heartbeat|release  run-level lease (minutes-scale mutex; fence token; ADR-0020)
+lzy loop lease acquire|heartbeat|release|reclaim  run-level lease (minutes-scale mutex; fence token;
+                                  reclaim = zombie-lease exit; ADR-0020)
 lzy loop budget init|spend|remaining  drive budget (wall-clock + points double cap; ADR-0020)
 lzy loop status                 progress, next step, evidence freshness, tier/subjects/snapshot
 lzy loop verify                 evidence freshness audit (exit 1 = stale/unbound/no goal); per-tree head/dirty lines

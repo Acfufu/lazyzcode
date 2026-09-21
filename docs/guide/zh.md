@@ -464,7 +464,8 @@ lzy loop subject list           列 subject 集
 lzy loop tier heavy             tier 升级，只升不降（机器门=采纳时点）
 lzy loop claim [<id>] [--release]  步级认领（多工人；阻塞校验；48h 互斥）
 lzy loop risk <level>              risk_class 升级（low|med|high|restricted；只升不降；ADR-0020）
-lzy loop lease acquire|heartbeat|release  运行级认领（分钟级互斥；fence 令牌；ADR-0020）
+lzy loop lease acquire|heartbeat|release|reclaim  运行级认领（分钟级互斥；fence 令牌；
+                                  reclaim=僵尸租约出口；ADR-0020）
 lzy loop budget init|spend|remaining  运行预算（墙钟+积分双硬顶；ADR-0020）
 lzy loop status                 进度、下一步、证据新鲜度、tier/subjects/快照
 lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑定/无目标）；逐树头哈希/脏态行

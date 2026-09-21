@@ -20,6 +20,7 @@ import {
   heartbeatLease,
   initBudget,
   loadRuntime,
+  reclaimLease,
   recordSpend,
   releaseLease,
   RUNTIME_VERSION,
@@ -277,6 +278,7 @@ test("无 goal 前置门：lease/budget 写面拒且零疤痕（runtime.json 都
       ["loop", "lease", "acquire"],
       ["loop", "lease", "heartbeat", "--fence", "1"],
       ["loop", "lease", "release", "--fence", "1"],
+      ["loop", "lease", "reclaim"],
       ["loop", "budget", "init"],
       ["loop", "budget", "spend", "--ms", "1"],
     ]) {
@@ -286,6 +288,71 @@ test("无 goal 前置门：lease/budget 写面拒且零疤痕（runtime.json 都
     }
     assert.equal(existsSync(runtimeJson(d)), false, "无 goal 不留 runtime.json 空壳");
     assert.equal(existsSync(join(d, ".lazyzcode", "loop")), false, "连 loop/ 目录都不建（fail-fast 家法）");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ADJ-32（0.2.1）：僵尸租约回收出口——SIGKILL 的 drive 留下活性租约会把此后每次唤起拒满
+// 一个 TTL，acquire 的拒绝报文指的就是本出口。三态：持有者已死=直接回收；仍活/活性不可判
+// =须 --force；无活跃租约=幂等 no-op。fenceCounter 不回退（单调发号）。
+test("ADJ-32：reclaimLease 三态——活持有者须 --force、死 pid 自动回收、无租约幂等", () => {
+  const d = repo("lzy-runtime-reclaim-");
+  try {
+    // 无活跃租约=幂等 no-op（走 freshState，不落盘）
+    assert.deepEqual(reclaimLease(d), { reclaimed: false, reason: "无活跃租约" });
+    // 活持有者（本测试进程持有）→ 无 --force 拒，报文明示 --force 出口
+    withLock(d, () => acquireLease(d, { ttlMs: 60_000 }));
+    assert.throws(() => reclaimLease(d), /回收拒：持租进程 pid \d+ 仍存活/);
+    assert.throws(() => reclaimLease(d), /reclaim --force/);
+    assert.equal(loadRuntime(d).activeLease.fence, 1, "拒回收时租约原样在场");
+    const forced = reclaimLease(d, { force: true });
+    assert.deepEqual(forced, { reclaimed: true, fence: 1, forced: true });
+    assert.equal(loadRuntime(d).activeLease, null);
+    // 死 pid（spawnSync 返回即已回收）→ 无需 --force 自动回收
+    withLock(d, () => acquireLease(d, { ttlMs: 60_000 }));
+    const deadPid = spawnSync(process.execPath, ["-e", ""]).pid;
+    const st = loadRuntime(d);
+    st.activeLease.hostPid = deadPid;
+    saveRuntime(d, st);
+    const auto = reclaimLease(d);
+    assert.deepEqual(auto, { reclaimed: true, fence: 2, forced: false });
+    // 旧格式（无 hostPid=活性不可判）→ 同走 --force 支
+    withLock(d, () => acquireLease(d, { ttlMs: 60_000 }));
+    const st2 = loadRuntime(d);
+    delete st2.activeLease.hostPid;
+    saveRuntime(d, st2);
+    assert.throws(() => reclaimLease(d), /活性不可判/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ADJ-32 CLI 接线（本测试覆盖的是 0.2.1 修复轮的一个缺口：原实现只有 core 原语与错误
+// 文案，`lzy loop lease reclaim` 不可达——报文指路指向不存在的命令）。真实表面=stdout。
+test("ADJ-32 CLI 面：lease reclaim 接线（帮助/用法串/三态输出）", () => {
+  const d = repo("lzy-runtime-reclaim-cli-");
+  try {
+    assert.equal(lzy(["loop", "register", "rt", "--title", "t"], d).code, 0);
+    const help = lzy(["help"], d);
+    assert.match(help.out, /lzy loop lease acquire\|heartbeat\|release\|reclaim/);
+    let r = lzy(["loop", "lease", "bogus"], d);
+    assert.notEqual(r.code, 0);
+    assert.match(r.out, /reclaim \[--force\]/);
+    // CLI 取的租约：持有者=该条命令的进程，命令返回即已退出 → 自动回收（无需 --force）
+    assert.equal(lzy(["loop", "lease", "acquire", "--ttl-ms", "60000"], d).code, 0);
+    r = lzy(["loop", "lease", "reclaim"], d);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /租约已回收：fence 1（持有进程已不存在）/);
+    // 回收后 acquire 发新号（fenceCounter 单调不回退）
+    r = lzy(["loop", "lease", "acquire", "--ttl-ms", "60000"], d);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /fence 2/);
+    assert.equal(lzy(["loop", "lease", "reclaim"], d).code, 0);
+    // 幂等：再回收一次不翻码
+    r = lzy(["loop", "lease", "reclaim"], d);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /无活跃租约（幂等，无需回收）/);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

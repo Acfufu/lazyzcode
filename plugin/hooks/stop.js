@@ -43,14 +43,16 @@ import {
 // LZY_WATERLINE_POINTS。
 const WATERLINE_POINTS = 1600;
 const WATERLINE_WINDOW_MS = 5 * 3_600_000; // 警戒窗与滚动窗同宽，窗内每会话只警一次
-// 缺表口径（V021-ADJ-55，0.2.1 五轮双审）：CASE 表只认两枚 GLM model_id，表外模型
-//（deepseek/… 实测 6k+ 行）按 ELSE 0 计——同查一并取表外行数（unpriced），nudge 有行即
-// 标注「仅 GLM 计价」，免得把「未计价」读成「没消耗」；canonical=core/cost.js 同形 SQL。
+// 缺表口径（V021-ADJ-55 立于 0.2.1；**0.2.2 棒1#N8 双位点同步**）：计数只覆盖系数表内的
+// model_id，表外按 ELSE 0 计——同查一并取表外行数（unpriced），nudge 常驻标注计价范围，
+// 免得把「未计价」读成「没消耗」。**本 SQL 是 core/cost.js 生成 SQL 的手工孪生**（部署后
+// 脱离 core/，故不能 import）——改核心侧表时**必须**同步本处：单位=元/百万 token，匹配用
+// lower(model_id) 精确等值，非高峰由 ×0.5 时段规则承担（与 canonical 逐字同构）。
 const WATERLINE_SQL =
-  "SELECT ROUND(SUM(input_tokens/1e6*CASE model_id WHEN 'GLM-5.3-Flash' THEN 2.3 WHEN 'GLM-5.3' THEN 6.9 ELSE 0 END+" +
-  "cache_read_input_tokens/1e6*CASE model_id WHEN 'GLM-5.3-Flash' THEN 0.56 WHEN 'GLM-5.3' THEN 1.7 ELSE 0 END+" +
-  "output_tokens/1e6*CASE model_id WHEN 'GLM-5.3-Flash' THEN 8 WHEN 'GLM-5.3' THEN 24 ELSE 0 END),1) AS pts, " +
-  "SUM(CASE WHEN model_id IN ('GLM-5.3-Flash','GLM-5.3') THEN 0 ELSE 1 END) AS unpriced " +
+  "SELECT ROUND(SUM(input_tokens/1e6*CASE lower(model_id) WHEN 'glm-5.3-flash' THEN 2.3 WHEN 'glm-5.3' THEN 6.9 WHEN 'deepseek/deepseek-v4.1-flash' THEN 2 WHEN 'deepseek/deepseek-v4-flash' THEN 2 WHEN 'deepseek-v4.1-flash' THEN 2 ELSE 0 END+" +
+  "cache_read_input_tokens/1e6*CASE lower(model_id) WHEN 'glm-5.3-flash' THEN 0.56 WHEN 'glm-5.3' THEN 1.7 WHEN 'deepseek/deepseek-v4.1-flash' THEN 0.04 WHEN 'deepseek/deepseek-v4-flash' THEN 0.04 WHEN 'deepseek-v4.1-flash' THEN 0.04 ELSE 0 END+" +
+  "output_tokens/1e6*CASE lower(model_id) WHEN 'glm-5.3-flash' THEN 8 WHEN 'glm-5.3' THEN 24 WHEN 'deepseek/deepseek-v4.1-flash' THEN 8 WHEN 'deepseek/deepseek-v4-flash' THEN 8 WHEN 'deepseek-v4.1-flash' THEN 8 ELSE 0 END),1) AS pts, " +
+  "SUM(CASE WHEN lower(model_id) IN ('glm-5.3-flash','glm-5.3','deepseek/deepseek-v4.1-flash','deepseek/deepseek-v4-flash','deepseek-v4.1-flash') THEN 0 ELSE 1 END) AS unpriced " +
   "FROM model_usage WHERE status='completed' AND started_at>=(strftime('%s','now')-18000)*1000";
 
 function waterlineNudge() {
@@ -74,13 +76,12 @@ function waterlineNudge() {
     const parsed = JSON.parse(r.stdout.trim() || "[]");
     const pts = Number(parsed?.[0]?.pts);
     if (!Number.isFinite(pts) || pts <= threshold) return null;
-    // 缺表口径披露（V021-ADJ-55）：窗内表外模型行 ≥1 时如实标注「仅 GLM 计价」——
-    // 读数只覆盖 GLM-5.3 族，不标会把「未计价」读成「没消耗」（doctor 行同文案）。
+    // 缺表口径披露（V021-ADJ-55）：**常驻**——0.2.2 棒1#N8 起不再「有行才出声」（扩表后
+    // 窗内可能恰好没有表外模型，而「这是计价子集、读数是下界」不随窗口变）。文案与
+    // core/cost.js waterlineScopeNote 同源同形。
     const unpriced = Number(parsed?.[0]?.unpriced);
-    const scopeNote =
-      Number.isFinite(unpriced) && unpriced > 0
-        ? `（口径：仅 GLM-5.3 族计价，表外模型 ${unpriced} 行计 0——读数偏低）`
-        : "";
+    const tail = Number.isFinite(unpriced) && unpriced > 0 ? `，表外模型 ${unpriced} 行计 0` : "";
+    const scopeNote = `（口径：仅 GLM-5.3-Flash/GLM-5.3/DeepSeek-V4.1-Flash 计价${tail}——读数偏低；表外模型名见 lzy loop cost 未计价行）`;
     return (
       `[lzy] 水位警戒：本账号近 5h 滚动消耗约 ${pts} 积分${scopeNote}，超警戒线 ${threshold}` +
       `（自参照经验线，非池位百分比）。当前步收口后考虑交接收尾` +

@@ -9,11 +9,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  COEFFICIENTS,
+  MODEL_ALIASES,
+  WATERLINE_ROLLING_SQL,
+  coefficientFor,
   computePoints,
   overlayMultiplier,
   standingMultiplier,
   attributeGoalPoints,
   claimedSessionIds,
+  pricedScopeLabel,
   waterlineScopeNote,
 } from "../core/cost.js";
 
@@ -58,15 +63,65 @@ test("computePoints：系数×乘数、夜窗取代、未计价模型如实缺�
   assert.equal(Math.round(r.bySession.get("a") * 100) / 100, 4.6);
 });
 
-// ADJ-55（0.2.1 五轮双审·成立）：水位读数只覆盖 GLM-5.3 族——口径披露句=单一来源纯函数，
-// 表外零行不出声、有行如实计数（「未计价」不得渲染成「没消耗」）。canonical SQL 同时取
-// pts 与表外行数两列（stop.js 副本同形，hooks.contract 面活体钉 nudge 文案）。
-test("waterlineScopeNote：表外行 ≥1 才出声、行数如实、非法值静默（ADJ-55）", () => {
-  assert.equal(waterlineScopeNote(0), "");
-  assert.equal(waterlineScopeNote(undefined), "");
-  assert.equal(waterlineScopeNote(NaN), "");
-  assert.equal(waterlineScopeNote(1), "（口径：仅 GLM-5.3 族计价，表外模型 1 行计 0——读数偏低）");
+// ADJ-55（0.2.1 五轮双审·成立；0.2.2 棒1#N8 收口）：口径披露句=单一来源纯函数，现为
+// **常驻**——「这是计价子集、读数是下界」不随窗口变，故表外零行也出声（旧实现会整句消失）。
+// 表外有行时附行数；计价范围取静态系数表。canonical SQL 同时取 pts 与表外行数两列
+// （stop.js 副本同形，hooks.contract 面活体钉 nudge 文案）。
+test("waterlineScopeNote：常驻出声、行数如实、计价范围取自系数表（ADJ-55/N8）", () => {
+  for (const zero of [0, undefined, NaN]) {
+    const s = waterlineScopeNote(zero);
+    assert.match(s, /^（口径：仅 .* 计价——读数偏低；表外模型名见 lzy loop cost 未计价行）$/, `零行也须出声：${s}`);
+    assert.ok(!/\d+ 行计 0/.test(s), "零行不报行数");
+  }
+  assert.match(waterlineScopeNote(1), /表外模型 1 行计 0/);
   assert.match(waterlineScopeNote(6133), /表外模型 6133 行计 0/);
+  // 计价范围=系数表键（扩表后自动跟随，不再是写死的「GLM-5.3 族」）
+  assert.ok(waterlineScopeNote(1).includes(pricedScopeLabel()));
+  assert.match(pricedScopeLabel(), /DeepSeek-V4\.1-Flash/);
+});
+
+// 0.2.2 棒1#N8：扩表计价（ADR-0023）。三面——①归一化只做小写精确匹配，绝不模糊
+// （模糊会「猜」到不该计价的 model_id 上）；②主力 provider 的账本形态现在计得出非零；
+// ③水位 SQL 由表生成，故不存在「改了表忘了改 SQL」的半修窗口（ADJ-55 的原始成因）。
+test("N8 · coefficientFor：小写精确匹配、形态归一、绝不模糊", () => {
+  // 账本实见形态与规范名同解
+  for (const id of [
+    "deepseek/deepseek-v4.1-flash",
+    "deepseek-v4.1-flash",
+    "deepseek/deepseek-v4-flash",
+  ]) {
+    assert.deepEqual(coefficientFor(id), COEFFICIENTS["DeepSeek-V4.1-Flash"], id);
+  }
+  // 大小写形态归一到同一行（账本里 GLM 有大小写两种）
+  assert.deepEqual(coefficientFor("glm-5.3-flash"), COEFFICIENTS["GLM-5.3-Flash"]);
+  assert.deepEqual(coefficientFor("GLM-5.3-Flash"), COEFFICIENTS["GLM-5.3-Flash"]);
+  // 表外一律 null——不猜
+  for (const id of ["minimax-m2.7", "mimo-v2.5", "muse-spark-1.3-contributor",
+                    "new-provider/deepseek-v4.1-flash-experimental", "", null, undefined]) {
+    assert.equal(coefficientFor(id), null, String(id));
+  }
+});
+
+test("N8 · 扩表后主力 provider 计得出非零（水位门不再对真实用量空转）", () => {
+  const dayH = H("2026-09-13T15:00:00+08:00"); // 常设非高峰 → ×0.5
+  const r = computePoints([
+    row({ sid: "a", model: "deepseek/deepseek-v4.1-flash", h: dayH, it: 1_000_000, crt: 1_000_000, ot: 1_000_000 }),
+  ]);
+  // (2 + 0.04 + 8) / 1e6 × 1e6 × 0.5 = 5.02
+  assert.equal(Math.round(r.points * 100) / 100, 5.02, "扩表前此行为 0");
+  assert.equal(r.unpricedModels.size, 0, "已计价者不得再进表外集");
+});
+
+test("N8 · 水位 SQL 由系数表生成：别名与系数零漂移（ADJ-55 半修成因被封）", () => {
+  for (const alias of Object.keys(MODEL_ALIASES)) {
+    assert.ok(WATERLINE_ROLLING_SQL.includes(`'${alias}'`), `SQL 缺别名 ${alias}`);
+  }
+  for (const [key, c] of Object.entries(COEFFICIENTS)) {
+    for (const v of [c.input, c.cacheRead, c.output]) {
+      assert.ok(WATERLINE_ROLLING_SQL.includes(String(v)), `${key} 的系数 ${v} 未进 SQL`);
+    }
+  }
+  assert.ok(WATERLINE_ROLLING_SQL.includes("lower(model_id)"), "匹配须走 lower()（大小写归一同 coefficientFor）");
 });
 
 test("OR 归因：时间窗 ∩（目录=本仓 ∪ 认领会话）；claimedSessionIds 只认带 claimedAt 的会话文件", () => {

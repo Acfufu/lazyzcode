@@ -15,6 +15,7 @@
 // 快照后非零）。deps 可注入（run/rollingPoints/now/git）供离线契约测试（headless.js 先例）。
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { progressSignature, signatureKey } from "./progress.js";
 import {
   LoopError,
   assertDriveEligible,
@@ -52,10 +53,13 @@ export const DRIVE_SEGMENT_TIMEOUT_MS = HEADLESS_DEFAULT_TIMEOUT_MS;
 // lease TTL：max(缺省 15min, 2×段超时)——段间心跳制下给单段留足缓冲（已知未知②）。
 const LEASE_TTL_MS = Math.max(15 * 60_000, 2 * DRIVE_SEGMENT_TIMEOUT_MS);
 const STUCK_STREAK_LIMIT = 2; // 镜像 Stop 振数纪律：连续两段零推进→stuck 收束
-// 已知边界（ADJ-34，2026-09-21 五轮双审·部分成立）：推进信号只认 done 步数跳变（现状
-// 被契约测试钉为语义）——一步天然跨多段（首段探索/提交前被掐断）时会以 stuck 干净收束，
-// 代价是反复浪费唤起（安全侧：有快照）。扩展信号（新提交/脏树变化/证据入账）为增强项，
-// 未随本轮落地。
+// 推进判据=进度信号状态集（0.2.2 棒1#N3，ADR-0020 之后；ADJ-34 的修法）：
+// done 步数 ∪ subject 头树集（提交）∪ 证据账本绿节点数 ∪ handoff/salvage 登记数，
+// 任一前进即清零振数；不含脏树（只写不提交不算推进）。实现见 core/progress.js。
+// 背景（ADJ-34，2026-09-21 五轮双审·部分成立）：旧判据只认 done 步数跳变，于是
+// 「重活/长步」——有提交、有证据入账、步未翻 done——被判零推进，连续两段即走
+// `windDown(true, …)` **干净收束**；而 H3R 判据③要测的「干净挂起 + handoff」走的是
+// **同一个输出通道**，故 0.2.2 先修仪器再跑实验（棒1 先于棒2 的全部理由）。
 
 function doneCountOf(goal) {
   return (goal?.steps ?? []).filter((s) => s?.status === "done").length;
@@ -217,7 +221,9 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
     );
 
     const cliPath = resolve(process.argv[1] ?? "lzy");
-    let lastDoneCount = doneCountOf(goal);
+    // 段间持有上一段签名：既是「有无推进」的比较基，也是信号源瞬时故障时的沿用值
+    // （never-throw 契约的 prev——见 core/progress.js）。
+    let prevProgress = progressSignature(cwd, goal, null);
 
     for (let seg = 1; seg <= maxSegments; seg++) {
       // 段首段间三门（ADJ-20：risk 门原只查入口一次，7 处文档/prompt 承诺段间复核）；
@@ -282,15 +288,16 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         windDown(false, `目标已非本 drive 的 executing 目标（slug/状态换代：${fresh ? `${fresh.slug}/${fresh.status}` : "状态不可读"}）`);
         break;
       }
-      const dc = doneCountOf(fresh);
-      if (dc > lastDoneCount) {
-        noProgressStreak = 0;
-        lastDoneCount = dc;
-      } else {
+      // 状态集判据：签名不变才算零推进（提交/证据入账/交接登记任一前进即清零振数）
+      const cur = progressSignature(cwd, fresh, prevProgress);
+      if (signatureKey(cur) === signatureKey(prevProgress)) {
         noProgressStreak += 1;
+      } else {
+        noProgressStreak = 0;
       }
+      prevProgress = cur;
       if (noProgressStreak >= STUCK_STREAK_LIMIT) {
-        windDown(true, `无推进（stuck，连续 ${STUCK_STREAK_LIMIT} 段零步进）`);
+        windDown(true, `无推进（stuck，连续 ${STUCK_STREAK_LIMIT} 段零推进）`);
         break;
       }
       // 水位联动执法（积分侧；billing DB 滞后=已知边界，null=跳过并注记）。

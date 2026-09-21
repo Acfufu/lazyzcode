@@ -224,7 +224,9 @@ test("水位联动：rollingPoints ≥ pointsBudget→收束「积分预算尽�
   let call2 = 0;
   const progressRun = () => {
     call2 += 1;
-    if (call2 === 1) markFirstStepDone(d2); // 首段有推进→避开 stuck（本用例钉段数尽路径）
+    // 首段有推进→避开 stuck（本用例钉段数尽路径）。判据=进度信号状态集（0.2.2 棒1#N3）：
+    // 假引擎既不提交也不取证，唯一能推得动状态集的动作就是翻步，故此处仍须翻步。
+    if (call2 === 1) markFirstStepDone(d2);
     return { exitCode: 0, stdout: "{}", stderr: "" };
   };
   try {
@@ -259,17 +261,42 @@ test("ADJ-22：段失败收束时 headless 失败族文案连带打印 stdout（
   }
 });
 
-// ── ⑥ 无推进 stuck 收束 ─────────────────────────────────────────────────────
-test("连续两段零推进→stuck 收束（镜像 Stop 振数纪律）+快照交回", async () => {
+// ── ⑥ 无推进 stuck 收束（状态集判据两半，0.2.2 棒1#N3/ADJ-34） ──────────────
+test("真惰性两段零推进→stuck 收束（镜像 Stop 振数纪律）+快照交回", async () => {
   const d = executingRepo("lzy-drive-stuck-");
   try {
     const { result, lines } = await captureStdout(() =>
       runDrive(d, { maxSegments: 5 }, passDeps(null, { rollingPoints: 0 })),
     );
     assert.equal(result.ok, true, lines);
-    assert.match(lines, /无推进（stuck，连续 2 段零步进）/);
+    assert.match(lines, /无推进（stuck，连续 2 段零推进）/);
     assert.match(lines, /handoff 快照：/);
     assert.equal(loadRuntime(d).activeLease, null);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("重活/长步：段段有提交但步未翻 done→不得误判 stuck（ADJ-34 的修法本体）", async () => {
+  const d = executingRepo("lzy-drive-longstep-");
+  let seg = 0;
+  // 假引擎模拟「真推进」——每段落一次提交，但一次也不翻步（旧判据在此完全失明）
+  const committingRun = () => {
+    seg += 1;
+    const f = join(d, `work-${seg}.txt`);
+    writeFileSync(f, `work ${seg}\n`);
+    spawnSync("git", ["add", f], { cwd: d });
+    spawnSync("git", ["-c", "user.email=t@l", "-c", "user.name=t", "commit", "-qm", `seg ${seg}`], { cwd: d });
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  };
+  try {
+    const { result, lines } = await captureStdout(() =>
+      runDrive(d, { maxSegments: 4 }, passDeps(committingRun, { rollingPoints: 0 })),
+    );
+    assert.equal(result.ok, true, lines);
+    assert.ok(!/stuck/.test(lines), `有提交即非零推进，不得收 stuck。实得：${lines}`);
+    assert.match(lines, /收束：段数尽（4 段）/, "应跑满段数而非被 stuck 提前掐断");
+    assert.equal(seg, 4, "四段都真的跑了");
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

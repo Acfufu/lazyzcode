@@ -595,6 +595,18 @@ not machine law); **L1** = CLI machine gates (lzy enforces, no bypass flag);
 as a machine gate — a rule the model can only promise is L0, and saying
 otherwise is a lie about who enforces it.
 
+**High-risk steps (H3R).** The convention that a high-risk step (credential
+handling, irreversible deletion, force-push, publish) gets a human look before
+it runs is **still L0** — this skill's text. A machine form exists as a
+**dormant prototype** in the unattended lane only: `core/drive.js` checks the
+next pending step at each segment's start and, when the gate is awake, winds
+down cleanly instead of spawning (new cause `h3r`, ADR-0022). It is awake only
+when `LZY_ABLATE_H3R_GATE` is exactly `"1"` — the *inverse* of the
+`LZY_ABLATE_*` family — and dormant is the default, byte-identical to before.
+Do not call it a machine gate: while dormant it enforces nothing. Its measured
+limit matters when you lean on it — a segment that runs several steps in one go
+is never checked, so the gate only ever sees boundaries a segment stops at.
+
 1. **[L0+L1]** Never write the user's `config.json`; plugin enabling flows only
    through the engine's official CLI (`lzy install` handles this — the CLI's
    own write face stays on the registry/cache, not session-driven).

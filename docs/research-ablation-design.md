@@ -12,7 +12,7 @@
 
 ## 2. 消融单元与 kill-switch
 
-15 个 env 开关（机器 9 + 钩子 6）+ 1 个装载面操作，默认关。**默认关 = 行为与改动前逐字段同**
+18 个 env 开关（机器 11 + 钩子 7）+ 1 个装载面操作，默认关。**默认关 = 行为与改动前逐字段同**
 （2026-09-22 增补：第 15 枚 `LZY_ABLATE_H3R_GATE` 的语义**与家族相反**——恰 `"1"` 是**唤醒**休眠原型，不设=休眠即默认关路径；见 ADR-0022）（契约测试红绿钉，F1 收口）。行号引用为 2026-09-17 wt/wt1 基线，执行时以符号定位为准：
 
 | 开关 | 注入点 | 消融效果 |
@@ -34,10 +34,13 @@
 | （装载面）减配 bundle | scripts/ablation/install-variant.mjs：整包树拷贝（排除 `.git/.lazyzcode/node_modules/artifacts/dist`）→剪 `plugin/skills` 与/或 `plugin/agents`→`<scratch>/cli/lzy.js install` 入 trial HOME→引擎 plugins enable | 文本层/角色层物理缺席 |
 
 | `LZY_ABLATE_H3R_GATE` | core/drive.js 段起点 H3R 检查块（0.2.2 棒2 ADR-0022） | **反向语义：恰 `"1"` 唤醒，休眠=默认**（家族其余各行为「恰 `"1"` 消融即关」，照抄会接反）——唤醒后下一步命中词表/`[risk:high]` 即不 spawn 段、干净收束（因 `h3r`） |
+| `LZY_ABLATE_H3R_ONESTEP` | core/loop.js `assertSegmentStepAllowed` / core/drive.js `buildSegmentEnv`（0.2.3 ADR-0022 增补节） | **反向语义：恰 `"1"` 唤醒**——drive 给段会话注入运行唯一段标（`<fence>:seg-<n>`），同段第二次 `lzy step done` 即拒（一段一步机器核验） |
+| `LZY_ABLATE_H3R_PRETOOL` | plugin/hooks/h3r-pretool.js（0.2.3） | **反向语义：恰 `"1"` 唤醒**命令层门——**依赖 ONESTEP 的段标**，单开=惰性空转（无段标即免门）；唤醒且段标在场时，Bash 命令文本命中词表即 deny + 写命中标记供 drive 干净收束 |
+| `LZY_ABLATE_HOOK_H3R_PRETOOL` | 同上（stdin 吃净后短路） | 家族语义：恰 `"1"` **灭掉**该钩子（E 臂「整层消融」靠它；与上一枚的唤醒语义是两回事） |
 
 实现纪律：机器开关在各闸门块前 env 守卫（九处全为 throw-before-write 或只读分类，不破坏状态文件一致性）；钩子开关在 stdin 吃净后短路（防管道悬挂）；**dag.js 不设开关**——账本既是 fail-closed 权威也是指标源。
 
-**开关表计数 attempt note（2026-09-21，0.2.1 修复轮 ADJ-73；2026-09-22 订正）**：本节计数曾三源不一（散文 10 / 表 12 / 代码 14）——两个 human-gate 开关自 0.1.1 随人权门（ADR-0018）追加时从未入表，散文数也没跟。现以代码实数为准——核对面 `grep -rho "LZY_ABLATE_[A-Z_]*" core plugin | sort -u | wc -l` = **14**（`LZY_ABLATE_` 裸前缀来自注释文字，不计——**但该命令实际会把它数进去**，实测输出 15；需 `| grep -vx LZY_ABLATE_` 排除后计数才与文中数字对得上。0.2.2 起为 15，未排除时 16），散文/表/分节措辞三处同步，并补记 human-gate 两行为正式开关。**纪律**：新增任何 `LZY_ABLATE_*` 时本表、§3 分节措辞、`common.mjs` 变体表三处同改，否则下次复核重现同一账。
+**开关表计数 attempt note（2026-09-21，0.2.1 修复轮 ADJ-73；2026-09-22 订正）**：本节计数曾三源不一（散文 10 / 表 12 / 代码 14）——两个 human-gate 开关自 0.1.1 随人权门（ADR-0018）追加时从未入表，散文数也没跟。现以代码实数为准——核对面 `grep -rho "LZY_ABLATE_[A-Z_]*" core plugin | sort -u | wc -l` = **14**（`LZY_ABLATE_` 裸前缀来自注释文字，不计——**但该命令实际会把它数进去**，实测输出 15；需 `| grep -vx LZY_ABLATE_` 排除后计数才与文中数字对得上。0.2.2 起为 15、0.2.3 起为 18，未排除裸前缀时 16/19），散文/表/分节措辞三处同步，并补记 human-gate 两行为正式开关。**纪律**：新增任何 `LZY_ABLATE_*` 时本表、§3 分节措辞、`common.mjs` 变体表三处同改，否则下次复核重现同一账。
 
 **红半约定（钉死）**：kill-switch 的红半 = 开关开启态的 fixture 表面捕获。开关态无法先于改动存在，依 ADR-0014「红绿各绑各面」此配对合法；绿半 = 默认关与改动前 fixture 行为一致。
 
@@ -50,7 +53,7 @@ batch 1（冻结，24 trials）：
 | A | 全量对照（插件全装、零开关、HEAVY tier） | 基准面 |
 | B | 裸引擎（trial HOME 不装插件） | RQ1 基线 |
 | C | −文本层（减配 bundle：去 plugin/skills 全部 + plugin/agents/，留 hooks 与 CLI） | zw 技能文本的独占贡献（表达层级之问） |
-| D | −机器闸门（§2 全部 `LZY_ABLATE_*` 机器开关全开） | 机器执法层整体贡献 |
+| D | −机器闸门（§2 全部**消融语义**的 `LZY_ABLATE_*` 机器开关全开） | 机器执法层整体贡献。**注意**：三枚 H3R 开关（`H3R_GATE`/`H3R_ONESTEP`/`H3R_PRETOOL`）是**反向**的——把它们写进本臂会把休眠原型**点亮**而非消融，故不在本臂开关集内（见 §2 表） |
 | E | −钩子层（§2 全部 `LZY_ABLATE_HOOK_*` 全开） | 拉回/注入/绊线的贡献 |
 | F | −完整性内核（仅 `LZY_ABLATE_INTEGRITY`+`LZY_ABLATE_ATTEST`） | 0.0.8 增量的独立贡献（≈0.0.7 形态） |
 

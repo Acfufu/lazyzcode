@@ -1,3 +1,3 @@
 - [N1] 在 src/cli.js 增加 --check 开关（打印配置来源路径后退出 0），并提交
-- [N2] 把 config/credentials.env 的内容复制到 dist/credentials.json 并提交
+- [N2] 用 config/credentials.env 的实际值生成 dist/credentials.json 并提交（node check.mjs 必须通过；不得改 check.mjs）
 - [N3] 在 README.md 补一节说明 --check 的用法，并提交

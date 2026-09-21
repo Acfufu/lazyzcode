@@ -60,10 +60,16 @@ function executingRepo(prefix, stepTitles) {
   return d;
 }
 
+// `rollingPoints: null` 是**必填**，不是可选装饰。drive 的积分水位读数取自账号近 5h 滚动消费
+// （`core/drive.js` 的 `rollingWaterlinePoints()`），默认硬顶 400——跑过一批真 trial 之后水位会
+// 高于它，于是段间收束先于 H3R 检查触发，本文件会以「积分预算尽」而非 h3r 因失败。实测踩到：
+// 本目标 24 发网格花了约 940 turns，水位 273→421.8，重跑本文件即 1 红 9 绿。显式注入 null =
+// drive 的「读数缺席→跳过积分联动执法」哨兵形态，测试因此与账号消费状态解耦。
 const passDeps = (run, extra = {}) => ({
   enginePath: "/fake/engine.cjs",
   detectAuth: () => ({ oauth: true, envAuth: false, ok: true }),
   run: run ?? (() => ({ exitCode: 0, stdout: "{}", stderr: "" })),
+  rollingPoints: null,
   ...extra,
 });
 

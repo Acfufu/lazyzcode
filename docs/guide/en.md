@@ -637,6 +637,7 @@ do.
 | `ledger` | Commit-ledger patrol: share of goal-era commits missing the `Goal:` trailer (warn, never flips the exit code) |
 | `waterline` | Rolling 5-hour point burn vs the self-calibrated nudge threshold (degraded note when sqlite3 is absent) |
 | `orphan-wake` | Idle-burn patrol for unbound wake automations anchored here (skip when none mounted) |
+| `lock` | Lock-contention window: acquisitions / how many had to wait / total and max wait / wait timeouts (measured against `LOCK_WAIT_MS`; skip with no samples; timeouts > 0 means §⑩-4's pre-registered trigger fired — warn). Readings are **lower bounds**: the counters ride a lock-free read-merge-write, and the moment a delta is most likely to be lost is the moment contention is heaviest |
 | `platform` | Engine-candidate notice per platform (ok + path when the desktop engine is found) |
 | `agents-md` | Layered AGENTS.md coverage audit + staleness hint (≥50 covered-dir commits since the map's last commit; skip when no root file; `lzy agents-md` for details) |
 | `rate-limit` | GLM plan 429 pressure from the last 2 days of engine logs |

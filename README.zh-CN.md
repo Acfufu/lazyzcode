@@ -179,7 +179,9 @@ stuck 停拉标记；零认领 = 资格制下无人会被拉回——warn-only�
 （`host-git`：非 git 时 warn 带 `git init` 指路——证据绑定 git 树，ADR-0019），
 提交账本覆盖率（`ledger`：goal 起点后缺 `Goal:` 尾注的提交——warn-only）、水位行（`waterline`：
 近 5h 滚动积分对比自参照警戒线，sqlite3 缺席时如实报降级原因）与本仓 unbound wake 的
-空转巡逻（`orphan-wake`，无挂载即 skip），以及
+空转巡逻（`orphan-wake`，无挂载即 skip）与锁竞争窗行（`lock`：获锁次数 / 需等待次数 /
+等待合计与最长 / 等待超时次数，对照 `LOCK_WAIT_MS`——无样本 = skip，出现等待超时 =
+§⑩-4 预注册触发条件命中而 warn；读数为下限），以及
 无人值守的错峰窗口建议（`schedule`，实测集中段反推并对照声明式计价高峰表核对
 重叠——数据沉默时 skip，绝不拍脑袋）与 headless 驱动行（`headless`：引擎探针+凭据两态〔oauth credentials 文件或桌面注入 env〕——引擎缺席=skip、凭据缺席=warn-only，0.1.0），以及
 0.2.0 的无人值守执行通道行（`drive`：凭据两态、活跃租约、运行预算、现行目标是否可入 drive；ADR-0020）。全程本地、零遥测、

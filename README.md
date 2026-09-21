@@ -213,6 +213,9 @@ commit-ledger coverage (`ledger`: goal-era commits missing the `Goal:` trailer �
 a `waterline` line (rolling 5-hour point burn vs the self-calibrated nudge threshold, plus
 its fail-open reason when sqlite3 is absent) and an `orphan-wake` idle-burn patrol for
 unbound wake automations anchored here (skip when no mounts),
+a `lock` contention line (lock acquisitions, how many had to wait, total and max wait,
+and wait timeouts, measured against `LOCK_WAIT_MS` — skip without samples, warn once a
+wait times out; readings are lower bounds),
 and a suggested off-peak window for
 unattended runs (`schedule`, derived from the same measured concentration
 data and cross-checked against declared platform pricing peaks — skipped,

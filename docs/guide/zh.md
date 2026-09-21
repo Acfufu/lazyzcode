@@ -511,6 +511,7 @@ lzy version                     打印版本
 | `ledger` | 提交账本巡逻：goal 起点后提交缺 `Goal:` 尾注的比例（warn，不翻退出码） |
 | `waterline` | 近 5h 滚动积分 vs 自参照警戒线（sqlite3 缺席时如实报降级） |
 | `orphan-wake` | 本仓 unbound wake automation 的空转巡逻（无挂载即 skip） |
+| `lock` | 锁竞争窗：获锁次数 / 其中需等待次数 / 等待合计与最长 / 等待超时次数（对照 `LOCK_WAIT_MS`；无样本 = skip；超时 >0 = §⑩-4 预注册触发条件命中，warn。读数为**下限**——无锁读-合-写近似计数，最可能丢增量的时刻正是拥塞最重的时刻） |
 | `platform` | 按平台报引擎候选命中态（命中=ok+引擎路径） |
 | `agents-md` | AGENTS.md 分层覆盖审计 + 地图落后提示（基点后覆盖域 ≥50 提交；根缺失 = `skip`；`lzy agents-md` 详单） |
 | `rate-limit` | 近 2 日引擎日志的 GLM 套餐 429 压力 |

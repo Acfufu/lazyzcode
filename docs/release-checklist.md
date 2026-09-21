@@ -484,7 +484,88 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - 0.2.0 三件套活体（scratch `C:\scratch020`，SYSTEM exec + `set "LOCALAPPDATA=…"` 引号形态）：**lease 互斥**（acquire fence 1 → 二次 acquire 拒「另一运行时持租（fence 1，至 …）」带僵尸恢复指路）· **fence 写拒**（活跃租约期 `--fence 9` 写 → 「写拒：fence 9 非现行（现行 1）——你已被接管，立即停手不写」）· **drive 门链**（executing 目标上 `lzy loop drive` → 凭据缺席拒带恢复文本；doctor `drive` 行四段齐「凭据缺席（headless 调用会停在认证门） · 活跃租约 fence=1 · 预算未初始化 · v020vm 可入 drive（risk=low）」）；lease 释放 ✔、scratch 清除 ✔。
 - 探针引号雷补记（host 侧驱动教训）：`set VAR=value && cmd` 会把**尾随空格**并进值（`LZY_ABLATE_HUMAN_GATE` 变 `"1 "` 消融判据不中、`LZY_ZCODE_ENGINE` 路径带空格失效）——SYSTEM exec 驱动一律 `set "VAR=value"` 引号形态（0.1.0 配方的静默变体，历次被引号形态掩盖）。
 
-## 0.2.1 执行记录（目标循环 goal v021-engine-surface，2026-09-20）
+## 执行记录（0.2.1，引擎面兼容修复 + 五轮双审修复轮——机械件已备，publish 留用户）
+
+### 内容与定位
+
+- **patch 面**：0.2.1 = 三件——引擎面契约（goal v021-engine-surface，ADR-0021：0.16.9 宿主 `enabled`
+  行 fail 级误报闭环 + 五引擎面契约测试）、五轮双审修复轮（goal v021-r5-review-fix-ablation：92 条
+  判定发现 P1x10/P2x27/P3x55 全处置，报告 `docs/reviews/2026-09-21-v021-r5-dual-review.md`）、
+  真消融 batch 3 全网格重跑报告。
+- **行为修复非 docs-only**：**win32 VM 复测适用但降档**——本轮的野外修复面只存在于引擎 **0.16.9** 宿主；
+  VM 引擎停在 0.16.5（该台 `enabled` 行本已 ✔，不受 bug 影响），故 VM 侧只跑 update 链 + scratch loop 回归，
+  0.16.9 修复面以宿主（本机）活体为准，发布记录如实注明。
+- **发布准备期补洞（ADJ-32 CLI 接线）**：修复轮给 SIGKILL 僵尸租约落了 core 原语与指路文案，但
+  `lzy loop lease reclaim` 未接进 CLI——**报文指路指向一条不可达命令**（评审报告的 ADJ-32 处置行写的是
+  「`lzy loop lease reclaim` 出口」）。定版前接线补齐（cli 分派 + 帮助/用法串 + 双语 README/guide/SKILL
+  五面就地折入既有 Lease 行 + 契约测试 2 例：原语三态与 CLI 三态），三面计数位点零漂移。
+
+### Runbook（按序）
+
+1. **push main**：修复轮 20 提交 + ADJ-32 接线 + 定版提交随行上远端（全部带 `Goal:` 尾注，定版提交除外——沿 0.2.0/0.1.2 先例）。
+2. **版本五处同步**（同批提交）：`package.json` / `plugin/.zcode-plugin/plugin.json` /
+   `.claude-plugin/marketplace.json`（version+ref→v0.2.1）/ `docs/_layouts/home.html` softwareVersion /
+   `docs/sitemap.xml`（homepage + guide 双语三页 lastmod→2026-09-21）；CHANGELOG `[0.2.1] - 2026-09-21` 定版。
+3. **发布前验证**（定版树实跑）：`npm test` **375/375**；`npm publish --dry-run` **40 文件 / 246.1 kB /
+   shasum `cedca6e5c16749697fab1983ef1069ab559e692a`**；tarball 零 `.mimosa`/`.lazyzcode`/`docs/`/`acfufu`/`sess_`
+   命中（随包面 `plugin/` 内容级 `sess_` 扫描 0）；docs-preview **53 页 / 锚点双语 22-22 / 断链 0**；
+   `lzy sync` 缓存 0.2.1 目录含新载荷文案（reclaim 行 grep 实证）。
+4. **CI 四腿绿**（判决=gh run view conclusion，永不认 watch 伪绿）→ **tag v0.2.1 最后切** →
+   GitHub Release（notes 三节：Highlights / Coverage boundary / Upgrade）。
+5. **publish（用户 2FA）**：载荷=从 tag 树打包的 tarball（`npm pack` 于 tag 树），`npm publish <tarball>`；
+   发后隔离 prefix 冒烟 `npm i -g lazyzcode@0.2.1 --prefer-online`（npm12 EALLOWREMOTE 绕法）→ `lzy --version` 应 0.2.1。
+6. **发后核验**：registry `dist-tag latest=0.2.1`（curl HTTP 端点为真相源，CDN 传播窗 ~1min，npm view 缓存更滞后）；
+   发布 shasum 与 dry-run 逐字一致；真机 `lzy update` 0.2.0→0.2.1 全链 EXIT=0；`lzy doctor`
+   `payload`/`install`/`payload-ver`（缓存 15 版本目录 · CLI 0.2.1 一致）三 ✔ **且 `enabled` 行在本机 0.16.9 宿主 ✔**
+   （本轮修复面的主场活体）。市场 manifest 的 pin 形态（ref vs sha）见第 11 步注记（ADJ-88）。
+
+### GitHub Release notes 草稿（v0.2.1）
+
+```markdown
+## Highlights
+
+- **Engine surface: envelope drift fixed** (ADR-0021). Engine 0.16.9 emits
+  `plugins list --json` as a bare array where 0.16.5 wrapped it in
+  `{plugins:[…]}`. `lzy status` / `lzy doctor` read only the wrapped shape, so on
+  0.16.9 hosts the `enabled` row reported `引擎未列出该插件` and exited 1 even
+  though the plugin was installed and enabled. The normalizer accepts both
+  envelopes at one boundary; unrecognized shapes still land `fail` rather than
+  being downgraded to a warning. All five engine CLI touch points now carry
+  contract tests against a fake engine that plays both generations.
+- **Five-round dual review fix round** — 92 adjudicated findings (P1x10, P2x27,
+  P3x55) across core, hooks and the ablation instrument. Load-bearing ones:
+  `readGoal` errno discrimination (a corrupt `goal.json` is no longer silently
+  overwritten by `register`); cross-process lock ownership token with a 60s stale
+  line; lineage-ledger duplicate-`n` / `n:null` poisoning closed; the installer's
+  `installPathFor` dot-segment escape fixed (`..` could delete the plugins root);
+  headless wall clock is now a real hard stop (exit-based settle — a measured 25x
+  overrun before); `drive` re-checks risk and identity between segments and always
+  winds down through the handoff path; the `--fence` declaration channel rejects
+  empty/bare/scientific-notation forms instead of silently passing them through.
+- **Zombie lease recovery**. A SIGKILLed `lzy loop drive` left a live lease behind,
+  locking every later wake out for a full TTL with "another runtime holds the
+  lease". `lzy loop lease reclaim` is now the first-class exit: it auto-reclaims
+  when the holder process is gone, and requires `--force` when it is still alive.
+  The acquire rejection names it.
+- **Human gate: approvals stop failing silently** (debt E). When the model had
+  `cd`'d away, a 「批准 …」 reply produced no output at all. Each case now emits a
+  diagnostic — naming the goal's host root via a read-only, depth-bounded probe.
+  Approval recording is unchanged and strict-cwd semantics are untouched.
+
+## Coverage boundary
+
+Live evidence covers **arm64** guests (Parallels VMs on an Apple Silicon host). x64
+coverage follows the official ZCode download matrix (three platforms × dual arch) by
+documentation; the detection paths are architecture-independent (environment-based).
+
+## Upgrade
+
+From 0.0.10 and newer: `lzy update` (spawns a fresh child process to deploy the new
+plugin payload). From older versions: manual two-step (`npm i -g lazyzcode && lzy
+install`). Requires the ZCode desktop app (logged in), Node ≥ 22, git.
+```
+
+## 0.2.1 目标循环记录（goal v021-engine-surface，2026-09-20）
 
 主题=**兼容修复**（grill-with-docs 九问拍板；H3R 实验归下一弧）。十步全收口、HEAVY 硬管线三轮评审 PASS
 （R1 退回 3 项必修+7 条警示全修 → R2 过门 → 警示七条全收后 R3 复核过门），快照 `582ba30244…`。

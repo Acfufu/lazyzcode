@@ -12,7 +12,7 @@ rem Style note: goto flow throughout - %PATH%/%APPDATA% may contain parentheses 
 rem   would break parse-time expansion inside parenthesized blocks; no delayed expansion either.
 rem nvm candidate order (V021-ADJ-57): the wildcard's last match used to win, but plain name
 rem   order puts a v9 residue after v24 ("v9" > "v2x" bytewise) => Node 9 ran the ESM hooks and
-rem   all five hooks died with no fail-open log on that path. Now every %APPDATA%\nvm\* dir is
+rem   all six hooks died with no fail-open log on that path. Now every %APPDATA%\nvm\* dir is
 rem   scored by its v<major>.<minor>.<patch> name through a zero-padded sort key (equal-width
 rem   digits => string compare == version compare) and the highest one wins. Fallback semantics
 rem   when a dir name carries no parseable version: it still gets a padded key, so plain string

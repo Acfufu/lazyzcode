@@ -562,8 +562,8 @@ LazyZCode **没有配置文件**。一切皆推导：
 
 LazyZCode 在你机器上跑什么、装在哪里、以及它刻意不防什么：
 
-- **钩子执行本地代码。** 五个生命周期事件会运行本插件的本地 Node 脚本
-  （UserPromptSubmit、SessionStart、Stop、PostToolUse、PostToolUseFailure）。
+- **钩子执行本地代码。** 六个生命周期事件会运行本插件的本地 Node 脚本
+  （UserPromptSubmit、SessionStart、Stop、PreToolUse、PostToolUse、PostToolUseFailure）。
   其输出是对模型的**注入上下文**——模型读到的引导，不是沙箱边界。
 - **安装落点是引擎官方插件缓存。** `lzy install` 把载荷落到那里，启用走引擎
   官方 CLI；LazyZCode **绝不写你的 `config.json`**（红线 1）。

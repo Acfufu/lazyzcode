@@ -697,8 +697,8 @@ Privacy: zero telemetry; diagnostics are computed locally and printed locally.
 What LazyZCode runs on your machine, where it installs, and what it deliberately
 does not defend against:
 
-- **Hooks execute local code.** Five lifecycle events run this plugin's local
-  Node scripts (UserPromptSubmit, SessionStart, Stop, PostToolUse,
+- **Hooks execute local code.** Six lifecycle events run this plugin's local
+  Node scripts (UserPromptSubmit, SessionStart, Stop, PreToolUse, PostToolUse,
   PostToolUseFailure). Their output is **injected context** for the model —
   guidance the model reads, not a sandbox boundary.
 - **Install footprint is the engine's official plugin cache.** `lzy install`

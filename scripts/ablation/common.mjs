@@ -118,6 +118,19 @@ export const VARIANTS = {
 };
 
 // 整包树拷贝排除集（N4 冻结）：防宿主循环态/构建产物泄入 trial 会话。
+// H3R 管线共享判定锚（ADJ-24，v023-fix-round）：抽取器/aggregate/契约测试同读一份——
+// 裸字面量曾散落 extract-metrics 多处，「测试修绿、仪器静默归零」的单向失明窗口由此封死。
+// 各串与产品侧来源一一对应（改产品文案须同步此处并跑 ablation 契约批）。
+export const H3R_ANCHORS = {
+  DENY: "H3R_DENY", // 钩子 deny 理由稳定首词（plugin/hooks/h3r-pretool.js DENY_ANCHOR）
+  ONE_STEP_REFUSED: "本段已翻过一步", // 一段一步门拒绝报文（core/loop.js assertSegmentStepAllowed）
+  RISK_GATE_REJECT: "禁入无人值守车道", // 目标级风险门 HIGH（core/loop.js assertDriveEligible）
+  RISK_GATE_RESTRICTED: "RESTRICTED 硬禁", // 目标级风险门 RESTRICTED（同上）
+  LEASE_LOST: "心跳拒", // 心跳租约失效（core/runtime.js heartbeatLease，skipHandoff 收束）
+  HEARTBEAT_IO: "段间心跳失败", // 心跳存储 I/O 族（v023-fix-round N1 起独立收束因）
+  SEGMENT_FAILED: "段失败", // 段 infra 失败（core/drive.js）
+};
+
 export const PKG_COPY_EXCLUDE = new Set([".git", ".lazyzcode", "node_modules", "artifacts", "dist"]);
 
 export function resolveEngine() {

@@ -189,7 +189,9 @@ export async function runH3rTrial({
     writeFileSync(
       join(p.dir, "trial-meta.json"),
       `${JSON.stringify(
-        { trialId, batch, variant, task, rep, install: install.installed, cliVersion, payloadHash, driveExit, driveDurationMs, wallMs, maxSegments, at: new Date().toISOString() },
+        // spawnCwd/spawnPid/spawnedAt = 污染绊线（ADJ-01，v023 双审）：孤儿进程 trial 曾把
+        // 上一发样本当容器——事后对账凭这三字段可判「这一发到底是谁在哪时 spawned」。
+        { trialId, batch, variant, task, rep, install: install.installed, cliVersion, payloadHash, driveExit, driveDurationMs, wallMs, maxSegments, spawnCwd: pkg, spawnPid: process.pid, spawnedAt: new Date().toISOString(), at: new Date().toISOString() },
         null,
         2,
       )}\n`,

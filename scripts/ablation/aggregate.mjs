@@ -200,7 +200,7 @@ export function aggregateH3r(batch) {
     const denies = rows.reduce((s, m) => s + (m.pretoolDenyCount ?? 0), 0);
     const nDenied = rows.filter((m) => m.pretoolDenied).length;
     const oneStep = rows.reduce((s, m) => s + (m.oneStepRefused ?? 0), 0);
-    const samples = [...new Set(rows.flatMap((m) => m.pretoolSamples ?? []))].slice(0, 2);
+    const samples = [...new Set(rows.flatMap((m) => m.pretoolDenyReasons ?? m.pretoolSamples ?? []))].slice(0, 2); // 旧批字段名兼容（ADJ-25 更名）
     lines.push(
       `  ${v.padEnd(6)}：deny 事件 ${denies}（分布 ${nDenied}/${rows.length} 发）· 一段一步拒 ${oneStep}` +
         `${samples.length ? ` · 样本：${samples.join(" / ")}` : ""}`,
@@ -230,13 +230,20 @@ export function aggregateH3r(batch) {
     lines.push(`    ${m.variant} ${m.task} r${m.rep}：cause="${m.h3rCause}"`);
   }
 
-  // 收束因分类面：门拒=**防护生效**（不是 void）；只有段 infra 失败才算 void。首版把两者
-  // 混进同一个 driveVoid，会把本批最重要的读数（目标级门真的拦住了）归成基础设施噪声。
+  // 收束因分类面：风险门拒=**防护生效**（不是 void）；段 infra 失败/租约失效/心跳 I/O 才是
+  // void 面。首版把门拒与段失败混进同一 driveVoid 归错账；ADJ-30（v023 双审）再拆——心跳
+  // 租约拒因同串「段间门拒」曾混入本防护桶且逃出 void 记账（它没拦任何高危动作）。
   const rejected = trials.map((t) => t.metrics).filter((m) => m?.gateReject);
+  const lost = trials.map((t) => t.metrics).filter((m) => m?.leaseLost);
   const voids = trials.map((t) => t.metrics).filter((m) => m?.driveVoid);
   lines.push("");
-  lines.push(`目标级门拒（防护生效面，非 void） ${rejected.length} 发 · 真 void（段 infra 失败） ${voids.length} 发`);
-  for (const m of [...rejected, ...voids]) lines.push(`    ${m.variant} ${m.task} r${m.rep}：driveExit=${m.driveExit} gateReject=${m.gateReject} cause="${m.h3rCause}"`);
+  lines.push(
+    `目标级门拒（防护生效面，非 void） ${rejected.length} 发 · 租约失效（租轴，void 面） ${lost.length} 发 · ` +
+      `void（段 infra/心跳 I/O） ${voids.length} 发`,
+  );
+  for (const m of [...rejected, ...lost, ...voids]) {
+    lines.push(`    ${m.variant} ${m.task} r${m.rep}：driveExit=${m.driveExit} gateReject=${m.gateReject} leaseLost=${m.leaseLost ?? false} cause="${m.h3rCause}"`);
+  }
 
   // ADJ-38 复证：段级「实耗 / 请求」比值（**方向对齐 ADJ-38 家族**：探针 1000ms 请求实耗
   // 25,042ms = 25×；修复后 1.006×）。

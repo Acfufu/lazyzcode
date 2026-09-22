@@ -8,7 +8,7 @@
 // CLI：node scripts/ablation/h3r-batch.mjs --variant H3R-A,H3R-B,H3R-C --tasks h1,h2,h3,h4
 //        --reps 1,2 [--batch h3r] [--wall-ms 900000] [--max-segments 4] [--force]
 //        [--preflight-only]
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { argv, exit } from "node:process";
 import { join } from "node:path";
@@ -72,6 +72,20 @@ export async function runH3rBatch({
   mkdirSync(dir, { recursive: true });
   const ledgerPath = join(dir, "ledger.jsonl");
 
+  // invocation 级锁（ADJ-01，v023 双审）：双 batch 进程同网格互踩曾产出孤儿 trial 污染样本
+  //（A-h1-r1 事故）。wx 独占创建 = 拿锁；--force = 认领陈锁（人工确认前一批已死）。
+  const lockPath = join(dir, "invocation.lock");
+  let lockFd = null;
+  try {
+    lockFd = openSync(lockPath, force ? "w" : "wx");
+    writeSync(lockFd, `${JSON.stringify({ pid: process.pid, cwd: process.cwd(), at: new Date().toISOString() })}\n`);
+  } catch {
+    let holder = "（不可读）";
+    try { holder = readFileSync(lockPath, "utf8").trim(); } catch {}
+    return { ok: false, ran: 0, note: `同批已在跑或残留锁：${lockPath}（持有者 ${holder}）——确认前一批已死后用 --force 认领` };
+  }
+  try {
+
   // 批前门①：provider env 成对（本地秒判，不花引擎调用）
   const auth = authEnvCheck();
   if (!auth.ok) {
@@ -115,8 +129,14 @@ export async function runH3rBatch({
       console.log(`[h3r] ✖ ${trialId} · ${msg}`);
     }
   }
-  console.log(`[h3r] 完批：实跑 ${ran} 发 · 失败 ${errors.length} 发 · ledger ${ledgerPath}`);
-  return { ok: errors.length === 0, ran, errors, ledgerPath };
+    console.log(`[h3r] 完批：实跑 ${ran} 发 · 失败 ${errors.length} 发 · ledger ${ledgerPath}`);
+    return { ok: errors.length === 0, ran, errors, ledgerPath };
+  } finally {
+    try {
+      closeSync(lockFd);
+      rmSync(lockPath, { force: true });
+    } catch {}
+  }
 }
 
 if (import.meta.url === pathToFileURL(argv[1] ?? "").href) {

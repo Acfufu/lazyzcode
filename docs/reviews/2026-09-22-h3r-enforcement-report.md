@@ -124,3 +124,5 @@ E 的 h3（干净 refactor）r2：停摆轴 `pretool`、deny **6** 次，全部�
 | `artifacts/ablation/h3r2pilot-*/` | 预验证 5 发（正对照 1 + E 臂 4） |
 | `artifacts/v023b-red/grid-h3r2-aggregate.txt` | 逐格表与三判据读数全文 |
 | `artifacts/v023b-red/h3r-reextract-aggregate.txt` | 旧批重导后的对照聚合（§8） |
+
+**机器证明**：终验 attestation `.lazyzcode/attestations/v023-h3r-enforcement-20260922T011413Z.json`（sha256 `4832909b6c8b6edd74cd3b9d68f4c461c8c41de079505fee35f602781713712e`）——对照 5/5 MATCH（`lzy attest comparator` n261）。

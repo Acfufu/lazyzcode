@@ -104,6 +104,7 @@ export async function runFastPair({
   force = false,
 } = {}) {
   if (arm !== "dual" && arm !== "serial") throw new Error(`--arm 须为 dual|serial，得到 ${arm}`);
+  const taskId = task; // 计划槽位 slug=任务 id（worker prompt 与 register 共用）
   const def = VARIANTS[variant];
   const taskDir = join(TASKS_DIR, task);
   if (!def) throw new Error(`未知变体：${variant}`);
@@ -293,13 +294,15 @@ export async function runFastPair({
   return row;
 }
 
-// ── 对照表（F1 的表面：本 runner 自身输出，aggregate.mjs 不动）。
-function report() {
+// ── 对照表（F1 的表面：本 runner 自身输出，aggregate.mjs 不动）。--batch 过滤正式批
+//（pilot 行留在账本里做证据，但不进表）。
+function report(batch = null) {
   const ledgerPath = join(OUT_ROOT, "fast-ledger.jsonl");
   const rows = (readFileSync(ledgerPath, "utf8") || "")
     .split("\n")
     .filter(Boolean)
-    .map((l) => JSON.parse(l));
+    .map((l) => JSON.parse(l))
+    .filter((r) => !batch || r.batch === batch);
   const byTask = new Map();
   for (const r of rows) {
     if (!byTask.has(r.task)) byTask.set(r.task, []);
@@ -323,7 +326,7 @@ import { pathToFileURL } from "node:url";
 if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
   try {
     if (flag("report")) {
-      report();
+      report(arg("batch", "fast"));
     } else {
       const task = arg("task");
       if (!task || !arg("arm")) {

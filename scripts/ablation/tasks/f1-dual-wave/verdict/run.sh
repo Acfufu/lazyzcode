@@ -21,5 +21,6 @@ eq("test-a.mjs exit 0", ta.status === 0);
 eq("test-b.mjs exit 0", tb.status === 0);
 process.exit(bad > 0 ? 1 : 0);
 ' || fails=$((fails+1))
-if [ -n "$(git status --porcelain)" ]; then echo "FAIL tree dirty"; fails=$((fails+1)); else echo "ok tree clean"; fi
+# .lazyzcode/ 自身不计脏（决策 #14 家法：循环状态目录不进洁净面）。
+if [ -n "$(git status --porcelain | grep -v '^?? \.lazyzcode/$')" ]; then echo "FAIL tree dirty"; fails=$((fails+1)); else echo "ok tree clean"; fi
 exit $fails

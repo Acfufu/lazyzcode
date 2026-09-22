@@ -13,6 +13,7 @@
 // 变量拼接、脚本里间接调用），也不理解上下文（注释里提到 `--force` 同样命中）。本原型
 // 测的是「机器层能否在段循环里看见计划书上的高危字样并干净停手」，不是「能否识破规避」。
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { nextStep, LoopError } from "./loop.js";
 
 // 词表**单一来源**（0.2.3 N1）：判定词与来源住在 `plugin/hooks/h3r-words.json`，CLI 侧与
@@ -20,14 +21,21 @@ import { nextStep, LoopError } from "./loop.js";
 // `plugin/hooks/stop.js` 的陈旧副本教训 + 本文件「绝不另写内联副本让两处漂移」的家法。
 // **惰性加载**：读取只发生在唤醒路径（休眠时 `h3rStopVerdict` 提前返回，不触文件），
 // 故一个坏 JSON 不会让任一 `lzy` 命令（含 doctor）在非唤醒场景下不可用。
-const WORDS_URL = new URL("../plugin/hooks/h3r-words.json", import.meta.url);
+// LZY_H3R_WORDS_FILE（v023-fix-round N1）：测试/探针 seam——指向替代词表文件（含故意
+// 损坏形态）以钉「唤醒态词表不可判」的收口行为；**惰性求值**（每次 loadWordlist 现读
+// env），缺省产线路径逐字节不变。
+function wordsUrl() {
+  return process.env.LZY_H3R_WORDS_FILE
+    ? pathToFileURL(process.env.LZY_H3R_WORDS_FILE)
+    : new URL("../plugin/hooks/h3r-words.json", import.meta.url);
+}
 let cache = null;
 
 // 非抛错读（doctor / 契约测试用）：返回 {ok:true, words} 或 {ok:false, reason}。
 export function loadWordlist() {
   if (cache) return cache;
   try {
-    const parsed = JSON.parse(readFileSync(WORDS_URL, "utf8"));
+    const parsed = JSON.parse(readFileSync(wordsUrl(), "utf8"));
     const words = Array.isArray(parsed?.words)
       ? parsed.words.map((x) => x?.w).filter((w) => typeof w === "string" && w !== "")
       : [];

@@ -9,7 +9,7 @@
 // fence 执法边界（ADR-0020 已知边界四项之一）：opt-in 申报制——不带 fence 的调用
 // （交互人类）恒放行；带 fence 的调用（drive 派生工人）必须与现行租约相符。钩子侧写面、
 // resetLoop、runtime.json 自身写者（budget init/spend）不在本守卫面——边界逐项入 ADR。
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { WATERLINE_POINTS } from "./cost.js";
@@ -108,7 +108,10 @@ export function loadRuntime(cwd) {
     text = readFileSync(p, "utf8");
   } catch (err) {
     if (err && err.code === "ENOENT") return null;
-    throw new RuntimeError(`runtime 账本不可读（${err?.code ?? err?.message ?? err}）：${p}。${RECOVERY}`);
+    throw Object.assign(
+      new RuntimeError(`runtime 账本不可读（${err?.code ?? err?.message ?? err}）：${p}。${RECOVERY}`),
+      { code: "RUNTIME_IO" }, // ADJ-19（v023 双审）：drive 段界心跳的 I/O 族分派判据
+    );
   }
   let obj;
   try {
@@ -188,6 +191,18 @@ export function acquireLease(cwd, { ttlMs, slug = null } = {}) {
     );
   }
   const now = Date.now();
+  // ADJ-35（v023 双审）：fenceCounter 归零（人工删 runtime.json 的文档化恢复路径）会让
+  // 新 run 重发已用过的 fence——同 `<fence>:seg-<n>` 段标撞上盘面残留的 segment.json /
+  // h3r-hit.json，一段一步门误拒首步（fail-safe 方向、下段自愈，但白耗一段）。凡盘面
+  // 还有段标残留而 counter 已归零，即以时间派生高位重基（只向上，单调性保持）；无残留
+  // 的常规路径不触发（fence 从 1 起的既有语义与全部契约钉不变）。标记名与 loop.js/
+  // drive.js 保持一致，勿单方改。
+  if (!(state.fenceCounter > 0)) {
+    const ld = dirname(runtimePath(cwd));
+    if (existsSync(join(ld, "segment.json")) || existsSync(join(ld, "h3r-hit.json"))) {
+      state.fenceCounter = Math.floor(now / 60_000);
+    }
+  }
   state.fenceCounter += 1;
   state.activeLease = {
     fence: state.fenceCounter,
@@ -220,17 +235,26 @@ export function reclaimLease(cwd, { force = false } = {}) {
 }
 
 // 心跳续期：fence 不符/租约已过期= fail-closed 拒（已被接管或死租——工人须停手）。
+// 两拒均打 LEASE_TAKEN 码（ADJ-19，v023 双审）：drive 段界心跳据此与存储 I/O 族分派
+// （接管=不写交接 skipHandoff；I/O=带快照收束+回收指引）。loadRuntime 的不可读侧打
+// RUNTIME_IO 码（下同）。
 export function heartbeatLease(cwd, fence, { ttlMs } = {}) {
   const ttl = Number.isInteger(ttlMs) && ttlMs > 0 ? ttlMs : DEFAULT_LEASE_TTL_MS;
   const state = loadRuntime(cwd) ?? freshState();
   if (!leaseActive(state.activeLease)) {
-    throw new RuntimeError(
-      "心跳拒：无活跃租约（已释放或过期）——你已被接管或租约已死，立即停手不写（fencing 语义）",
+    throw Object.assign(
+      new RuntimeError(
+        "心跳拒：无活跃租约（已释放或过期）——你已被接管或租约已死，立即停手不写（fencing 语义）",
+      ),
+      { code: "LEASE_TAKEN" },
     );
   }
   if (state.activeLease.fence !== fence) {
-    throw new RuntimeError(
-      `心跳拒：fence ${fence} 非现行（现行 ${state.activeLease.fence}）——你已被接管，立即停手不写（fencing 语义）`,
+    throw Object.assign(
+      new RuntimeError(
+        `心跳拒：fence ${fence} 非现行（现行 ${state.activeLease.fence}）——你已被接管，立即停手不写（fencing 语义）`,
+      ),
+      { code: "LEASE_TAKEN" },
     );
   }
   state.activeLease.heartbeatAt = new Date().toISOString();

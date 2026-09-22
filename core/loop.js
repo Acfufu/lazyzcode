@@ -93,7 +93,9 @@ const ablated = (name) => process.env[name] === "1";
 // LZY_RUNTIME_FENCE env；申报制语义见 runtime.js assertFenceIfPresent（缺席=交互
 // 直通不读账本，在场=必须与现行活跃租约相符，失效=已被接管→停手不写）。
 // 消融开关 LZY_ABLATE_FENCE 恰 "1" 绕过（两半契约 ablation-switch 同款）。
-// 已知边界（ADR-0020 并列四项）：钩子侧写面、resetLoop（删 runtime.json 本体）、
+// 已知边界（ADR-0020 并列四项）：钩子侧写面、resetLoop（不在本守卫面；runtime.json 跨
+// reset 保留——fenceCounter 单调与僵尸 fence 识别都依赖它，见 runtime.js ADJ-12 注；
+// ADJ-36 订正于 v023-fix-round，旧句「删 runtime.json 本体」是 0.2.0 旧语义残留）、
 // runtime.json 自身写者、未申报的机器写——均不在本守卫面。
 export function guardFence(cwd) {
   if (ablated("LZY_ABLATE_FENCE")) return;
@@ -481,15 +483,21 @@ export function assertDriveEligible(goal) {
   if (ablated("LZY_ABLATE_RISK_GATE")) return { eligible: true };
   const risk = goal?.risk ?? "low";
   if (risk === "high") {
-    throw new LoopError(
-      `HIGH 风险目标禁入无人值守车道：${goal.slug}（risk=high，ADR-0020）——` +
-        `请在人工会话推进（drive/无人值守唤起均被本门拒）`,
+    throw Object.assign(
+      new LoopError(
+        `HIGH 风险目标禁入无人值守车道：${goal.slug}（risk=high，ADR-0020）——` +
+          `请在人工会话推进（drive/无人值守唤起均被本门拒）`,
+      ),
+      { code: "RISK_HIGH" }, // ADJ-32：drive 段界恢复指引按码分流（报文原文不变）
     );
   }
   if (risk === "restricted") {
-    throw new LoopError(
-      `RESTRICTED 硬禁：${goal.slug}（risk=restricted）——仅人工收窄计划范围后 reset 并重注册可解` +
-        `（风险轴随新目标重评；本门无逃生 flag，ADR-0020）`,
+    throw Object.assign(
+      new LoopError(
+        `RESTRICTED 硬禁：${goal.slug}（risk=restricted）——仅人工收窄计划范围后 reset 并重注册可解` +
+          `（风险轴随新目标重评；本门无逃生 flag，ADR-0020）`,
+      ),
+      { code: "RISK_RESTRICTED" },
     );
   }
   return { eligible: true, risk };
@@ -1023,9 +1031,11 @@ function doStartLoop(cwd, git) {
   goal.startedAt = new Date().toISOString();
   goal.baseTreeHash = git ? git.headTreeHash() : null;
   writeGoal(cwd, goal);
-  // 段标是**运行态**（N2）：开跑即清——上一 run 的残留不得参与本 run 的一段一步判定
-  // （段标本身带 fence 前缀已防误伤，这里是第二道保险，也让“残留”不跨 goal 存活）。
+  // 段标双件是**运行态**（N2；ADJ-04 扩 h3r-hit.json，v023-fix-round）：开跑即清——上一
+  // run 的残留不得参与本 run 的一段一步判定与收束因分类（段标本身带 fence 前缀已防误伤，
+  // 这里是第二道保险，也让“残留”不跨 goal 存活）。
   rmSync(join(loopDir(cwd), "segment.json"), { force: true });
+  rmSync(join(loopDir(cwd), "h3r-hit.json"), { force: true, recursive: true });
   return goal;
 }
 
@@ -1116,7 +1126,8 @@ function recordSegmentStep(cwd, id) {
 
 function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = null, harness = null } = {}) {
   guardFence(cwd);
-  assertSegmentStepAllowed(cwd, id);
+  // ADJ-33（v023 双审）：步存在性校验先于一段一步门——拼错步 id 得「无此步骤」，不被
+  // 误报成「本段已翻过一步」（后者会把接手者引去查段纪律而非拼写）。
   // done 态恢复白名单（ADJ-10 出口，0.0.10）：done 目标的账本分歧曾把报错给的恢复命令
   // （step done rebind）反拒成死端——rebind 类命令放行，重 finish 落新 attestation。
   const goal = requireActive(cwd, "executing", "done");
@@ -1126,6 +1137,7 @@ function doCompleteStep(cwd, git, id, { note = null, evidence = null, files = nu
       `无此步骤：${id}（现有：${goal.steps.map((s) => s.id).join(" ") || "无"}）`,
     );
   }
+  assertSegmentStepAllowed(cwd, id);
   const rebinding = step.status === "done";
   // 长度上限：状态文件要常驻且每次 status/verify 重解析，巨串入账会让全流程变慢（评审 R2-9；
   // 上限对齐项目自身纪律——note 同 comment-checker 的 300，evidence 容忍一段 stdout 摘录）。
@@ -2155,6 +2167,17 @@ function cleanupLoopResidue(cwd) {
     // 交接标记（ADR-0009）随目标清理：残留会让下一个 executing 目标的首个 Stop 被误放行（评审 P2）。
     rmSync(join(dir, "handoff.json"), { force: true });
   } catch {}
+  // 段标双件（ADJ-04，v023 双审）：reset 一并清——此前 segment.json 只随 start 清、
+  // h3r-hit.json 更无任何命令级清理路径（doctor EXEMPT 注释「reset 随之消失」的前提失实）。
+  // recursive 对「标记变目录」病态形态兜底（ADJ-02 同族）。
+  for (const name of ["segment.json", "h3r-hit.json"]) {
+    try {
+      if (existsSync(join(dir, name))) {
+        rmSync(join(dir, name), { force: true, recursive: true });
+        cleaned++;
+      }
+    } catch {}
+  }
   return cleaned;
 }
 

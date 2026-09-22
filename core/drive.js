@@ -14,7 +14,7 @@
 // 缺省 400 相对水位 1600 取四分之一（相对账号水位、非相对本 run 消耗）。
 // 退出码契约：0=done 或干净收束（run 契约正常完成）；1=门拒/段 infra 失败（尽力收束带
 // 快照后非零）。deps 可注入（run/rollingPoints/now/git）供离线契约测试（headless.js 先例）。
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { progressSignature, signatureKey } from "./progress.js";
 import {
@@ -142,26 +142,49 @@ function buildSegmentEnv(fence, seg, cwd) {
   return env;
 }
 
-// 命中标记（N4）读取与消费：相符=消费并回摘要；不符/损坏=删除并回 null（他 run 残留与
-// 伪造标记都不得改收束因）。调用方须已持锁（与段账同址）。
+// 命中标记（N4）读取与消费：**rename 原子序**（ADJ-03，v023 双审）——先 rename 到消费
+// 中间名再读清：钩子晚于消费点的写落在新文件（带它自己的段标），下段消费时因段标不符
+// 被清，不再与 drive 的 rm 互相硬删；「段尾微秒竞窗」收窄为「消费点后的晚到写」（宽度
+// ≤段间隙，fail-open 方向：丢的只是收束因分类，PreToolUse deny 本体已发生）。消费中间
+// 名走既有 `h3r-hit.json.` tmp 家族（孤儿可见可清，观测/清扫两面同表）。相符=回摘要；
+// 不符/损坏/目录形态/缺席=null。伪造面（ADJ-18）：段标相符的伪造标记**可以**改写收束
+// 因分类——防伪边界=记账不裁决（ADR-0022），此处只保证「他 run 残留与无段标伪造不可消费」。
 function takeH3rHit(cwd, segmentId) {
   const file = join(loopDir(cwd), "h3r-hit.json");
+  const consumed = `${file}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    renameSync(file, consumed);
+  } catch {
+    return null; // 缺席=无标记（ENOENT 为主）
+  }
   let raw = null;
   try {
-    raw = JSON.parse(readFileSync(file, "utf8"));
+    raw = JSON.parse(readFileSync(consumed, "utf8"));
   } catch {
-    raw = null;
+    raw = null; // 损坏/目录形态（EISDIR）：静默当空（ADJ-02①的源级根治）
   }
-  if (!raw || typeof raw !== "object") {
-    rmSync(file, { force: true }); // 坏/缺席：静默清（force 对不存在路径无害）
-    return null;
-  }
-  rmSync(file, { force: true });
+  rmSync(consumed, { force: true, recursive: true });
+  if (!raw || typeof raw !== "object") return null;
   if (raw.segmentId !== segmentId) return null;
   return {
     matched: Array.isArray(raw.matched) && raw.matched.length > 0 ? raw.matched : ["(未记)"],
     command: typeof raw.command === "string" ? raw.command : "(未记)",
   };
+}
+
+// 段界门拒的恢复指引分流（ADJ-32，v023 双审）：「确认后按计划推进」只对 HIGH 成立——
+// RESTRICTED 的唯一出口=人工收窄范围+reset 重注册（risk 只升不降，无降档命令）；
+// goal 不可读=状态修复/恢复出口 reset（doResetLoop 对损坏态容错）。误导性处方会把
+// 无人值守收束后的接管者引去死路。
+function riskGuidance(err) {
+  const msg = String(err?.message ?? err);
+  if (err?.code === "RISK_RESTRICTED" || msg.startsWith("RESTRICTED")) {
+    return "RESTRICTED 硬禁无降档出口：请在人工会话收窄计划范围后 lzy loop reset 并重注册（风险轴随新目标重评，ADR-0020）";
+  }
+  if (err?.code === "RISK_HIGH" || msg.startsWith("HIGH")) {
+    return "本目标因风险升级需人工确认：请在交互会话确认后按计划推进（交互会话天然免门，是恢复路径，ADR-0020/0022）";
+  }
+  return "目标状态不可读（损坏）——恢复：lzy doctor 诊断；先备份再 lzy loop reset 清除后重新注册（损坏态可被 reset 容错清除）";
 }
 
 export async function runDrive(cwd, opts = {}, deps = {}) {
@@ -210,21 +233,43 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
   const windDown = (ok, cause, riskNote, { skipHandoff = false } = {}) => {
     if (skipHandoff) {
       // ADJ-25：租约失效/被接管的收束——不写交接（写会被 fencing 守卫拒，且接管者自负
-      // 责）；只打印接管指示，非零退出。**唯一调用点=段界心跳失败**：风险门拒走正常收束
-      // 通道（0.2.2 报告 §7 修——两类事不同轴，只有前者写盘会被 fencing 拒）。
+      // 责）；只打印接管指示，非零退出。**唯一调用点=段界心跳失败（LEASE_TAKEN 族）**：
+      // 风险门拒走正常收束通道（0.2.2 报告 §7 修——两类事不同轴，只有前者写盘会被
+      // fencing 拒）。
       outcome = { ok, cause, handoff: null };
       console.log(`[drive] 收束：${cause}——已被接管/租约失效，不写交接（接管者负责续跑）`);
       return;
     }
-    const fresh = readGoal(cwd);
+    // ADJ-02（v023 双审）：收束通道自身不可抛——readGoal 护栏（goal 损坏=无快照可写，
+    // 如实降级并注记）+ 快照写护栏（fencing 拒/盘面失败=降级为无快照 outcome）。此前
+    // windDown 内部的二次抛穿会让异常穿出 runDrive：无快照、无 outcome、租约只剩
+    // finally 释放——「除 done 外各因自写快照」不变量（core/progress.js）被击穿。
+    let fresh = null;
+    try {
+      fresh = readGoal(cwd);
+    } catch (err) {
+      fresh = null;
+      console.log(
+        `[drive] 收束：${cause}——goal 状态不可读（${String(err?.message ?? err).slice(0, 160)}），无快照可写`,
+      );
+    }
     if (fresh && fresh.status === "executing") {
-      const { snap, treeHash } = authorHandoffSnapshot(cwd, fresh, cause, riskNote, deps);
-      handoffGoal(cwd, snap, treeHash);
-      outcome = { ok, cause, handoff: snap };
-      console.log(`[drive] 收束：${cause}——handoff 快照：${snap}（复归：zw 继续）`);
-    } else {
+      try {
+        const { snap, treeHash } = authorHandoffSnapshot(cwd, fresh, cause, riskNote, deps);
+        handoffGoal(cwd, snap, treeHash);
+        outcome = { ok, cause, handoff: snap };
+        console.log(`[drive] 收束：${cause}——handoff 快照：${snap}（复归：zw 继续）`);
+      } catch (err) {
+        outcome = { ok, cause, handoff: null };
+        console.log(
+          `[drive] 收束：${cause}——交接快照写失败（${String(err?.message ?? err).slice(0, 160)}），无快照可留`,
+        );
+      }
+    } else if (fresh) {
       outcome = { ok, cause, handoff: null };
       console.log(`[drive] 收束：${cause}（目标已非 executing，无需交接快照）`);
+    } else {
+      outcome = { ok, cause, handoff: null }; // readGoal 护栏已打印原因
     }
     // ADJ-22（0.2.1 五轮双审·部分成立）：段败的可操作报文（headless.js 失败族恢复式文案）
     // 原只落快照的「风险与坑」——无人值守链上没人去读工作区里的快照文件，stdout 只剩
@@ -273,19 +318,28 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         const freshGoal = readGoal(cwd);
         if (freshGoal) assertDriveEligible(freshGoal);
       } catch (err) {
-        windDown(
-          false,
-          `段间门拒（${(err?.message ?? err).slice(0, 200)}）`,
-          "本目标因风险升级需人工确认：请在交互会话确认后按计划推进（交互会话天然免门，是恢复路径，ADR-0020/0022）",
-        );
+        windDown(false, `段间门拒（${(err?.message ?? err).slice(0, 200)}）`, riskGuidance(err));
         break;
       }
-      // 心跳失败=租约失效/被接管——ADJ-25：必须走收束通道（原实现异常穿出 runDrive：
-      // 无快照、无 marker、租约残留、段账不入账），且这条轴只能走 skipHandoff。
+      // 心跳失败两族分派（ADJ-19，v023 双审）：接管族（runtime.js 打 LEASE_TAKEN 码，
+      // fencing 语义）=不写交接（写会被 fencing 拒，接管者自负责）；其余（存储 I/O 族
+      // RUNTIME_IO、账本损坏、未知）=本 drive 大概率仍持租——走带快照的干净收束并给
+      // 租约回收指引。此前一概按「已被接管」收束：定语违反事实+无快照+租约滞留 TTL
+      // 无人知（deps.heartbeatLease 注入=契约测试 seam，headless.js deps.run 先例）。
       try {
-        withLock(cwd, () => heartbeatLease(cwd, lease.fence, { ttlMs: LEASE_TTL_MS }));
+        withLock(cwd, () =>
+          (deps.heartbeatLease ?? heartbeatLease)(cwd, lease.fence, { ttlMs: LEASE_TTL_MS }),
+        );
       } catch (err) {
-        windDown(false, `段间门拒（${(err?.message ?? err).slice(0, 200)}）`, undefined, { skipHandoff: true });
+        if (err?.code === "LEASE_TAKEN") {
+          windDown(false, `段间门拒（${(err?.message ?? err).slice(0, 200)}）`, undefined, { skipHandoff: true });
+        } else {
+          windDown(
+            false,
+            `段间心跳失败（${String(err?.message ?? err).slice(0, 160)}）`,
+            "非接管的运行时失败（存储 I/O 族或账本不可读）——租约可能滞留至 TTL：恢复=lzy loop lease reclaim --force（或等待过期）；排查盘面（盘满/只读/权限）后重试",
+          );
+        }
         break;
       }
       // H3R 高危步门（0.2.2 棒2 原型，ADR-0022）：唤醒态下下一步命中词表/升格标记即停摆。
@@ -293,7 +347,19 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
       // （零引擎调用、零 token）。收束走 ok:true ⇒ 退出码 0 的干净通道（与 stuck/预算尽同族），
       // 快照经 windDown 自写 7 字段，恢复路径写进「风险与坑」。默认休眠时整块不执行，
       // 行为与 0.2.1 逐字段同（契约测试钉两半）。
-      const h3r = h3rStopVerdict(readGoal(cwd));
+      // ADJ-02②（v023 双审）：唤醒态词表不可判（损坏/缺席）曾是裸逃逸面——收口为 ok:true
+      // 干净收束（未 spawn、未执行任何步骤），恢复指引指向词表修复或退回休眠。
+      let h3r = null;
+      try {
+        h3r = h3rStopVerdict(readGoal(cwd));
+      } catch (err) {
+        windDown(
+          true,
+          `高危步停摆（H3R 门不可判）：${String(err?.message ?? err).slice(0, 200)}`,
+          "词表不可判（损坏/缺席）——恢复：重跑 lzy sync 修复载荷词表，或 unset LZY_ABLATE_H3R_GATE 退回休眠；本段未 spawn、未执行任何步骤",
+        );
+        break;
+      }
       if (h3r) {
         windDown(
           true,
@@ -344,14 +410,38 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         throw err;
       }
       // H3R 命令层命中标记（N4）：钩子在段内拦下高危命令时写 `loop/h3r-hit.json`（带段标）。
-      // **读+消费只在这里发生一次、且必定清除**（在 done/换代判之前）——他段残留与伪造标记
-      // 不留残骸；但**判定顺序**在 done 与身份换代之后（目标已完成或已换代时无须人工介入）。
-      // 读写在 withLock 内（与段账同址，避免与并发钩子写竞态）。休眠态不读，默认行为逐字段同。
-      const h3rHit =
-        process.env.LZY_ABLATE_H3R_PRETOOL === "1" ? withLock(cwd, () => takeH3rHit(cwd, `${lease.fence}:seg-${seg}`)) : null;
+      // **读+消费只在这里发生一次、且必定清除**（在 done/换代判之前）；判定顺序在 done 与
+      // 身份换代之后（目标已完成或已换代时无须人工介入）。休眠态不读，默认行为逐字段同。
+      // ADJ-03（v023 双审）：消费=rename 原子序——与钩子写的真防线是「rename 原子+段标
+      // 校验」，withLock 只对齐 lzy 侧写者（钩子写不持此锁，旧注释「避免与并发钩子写竞态」
+      // 夸大锁面，订正）。ADJ-18：段标相符的伪造标记可以改写收束因分类（防伪边界=记账
+      // 不裁决，ADR-0022）；此处只保证他 run 残留/无段标伪造不可消费。
+      // ADJ-02①兜底（v023 双审）：消费面残余可抛（盘面异常）收口为带快照收束，不再穿出。
+      let h3rHit = null;
+      if (process.env.LZY_ABLATE_H3R_PRETOOL === "1") {
+        try {
+          h3rHit = withLock(cwd, () => takeH3rHit(cwd, `${lease.fence}:seg-${seg}`));
+        } catch (err) {
+          windDown(
+            false,
+            `段间内部错误（h3r-hit 消费）：${String(err?.message ?? err).slice(0, 160)}`,
+            "标记消费失败（盘面异常）——排查 .lazyzcode/loop/ 权限后重试；本段已完成，无半途状态需善后",
+          );
+          break;
+        }
+      }
       // 终态判定 + 段间身份/进度检测（ADJ-24：原实现只看 done 与计数变化——目标被
       // abandon/reset 后仍继续 spawn，且 done 计数下降（换代）被当作「有推进」）。
-      const fresh = readGoal(cwd);
+      // ADJ-02③（v023 双审）：此处 readGoal 曾裸奔——段内 goal.json 损坏（或被并发破坏）
+      // 会让异常穿出 runDrive；收口到与段界门拒同通道（windDown 的 readGoal 护栏负责
+      // 「无快照可写」降级）。
+      let fresh = null;
+      try {
+        fresh = readGoal(cwd);
+      } catch (err) {
+        windDown(false, `段间门拒（${String(err?.message ?? err).slice(0, 200)}）`, riskGuidance(err));
+        break;
+      }
       if (fresh && fresh.status === "done" && fresh.slug === goal.slug) {
         outcome = { ok: true, cause: "done", handoff: null };
         console.log(`[drive] ✔ goal done（${fresh.slug}）——终验 attestation：.lazyzcode/attestations/`);
@@ -367,7 +457,7 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
       if (h3rHit) {
         windDown(
           true,
-          `工具调用被拒（PreToolUse 高危命令）：命中 ${h3rHit.matched.join("、")} · 命令 ${String(h3rHit.command).slice(0, 80)}`,
+          `工具调用被拒（PreToolUse 高危命令）：命中 ${h3rHit.matched.join("、")} · 命令 ${String(h3rHit.command).replace(/\s+/g, " ").slice(0, 80)}`,
           "本段已拦下高危命令（未执行）：请在交互会话读快照确认后按计划推进（交互会话天然免门，是恢复路径，ADR-0022）",
         );
         break;
@@ -401,8 +491,12 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
     if (lease) {
       try {
         withLock(cwd, () => releaseLease(cwd, lease.fence));
-      } catch {
-        // 已被接管时释放被拒（fencing 语义）——静默容忍，收束语义已完成。
+      } catch (err) {
+        // 已被接管时释放被拒（fencing 语义）属预期；存储失败则与心跳 I/O 族同源——
+        // ADJ-19：租约滞留 TTL 无人知是本条发现的一半，不再全量静默，留一行可 grep 痕迹。
+        console.log(
+          `[drive] lease 释放未成（${String(err?.message ?? err).slice(0, 120)}）——接管场景属预期；否则回收：lzy loop lease reclaim`,
+        );
       }
     }
     delete process.env.LZY_RUNTIME_FENCE;

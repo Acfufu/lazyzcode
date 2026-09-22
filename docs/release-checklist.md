@@ -506,7 +506,8 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - **真机 `lzy update` 0.2.2→0.2.3 全链 EXIT=0**；全局根定位=（未安装）分支走新装 0.2.3、新装子进程 sync（ADR-0012 再证）；PATH 首位 `lzy 0.2.3（插件载荷同版本）`；doctor 全绿 EXIT=0——`payload 0.2.3 · install 缓存 0.2.3 · files 17 文件 sha256 一致 · enabled hooks:6（第六钩子主场活体）· payload-ver 17 版本目录 · CLI 0.2.3 一致`。
 - **ADJ-07 补探收口**：第 2 发（0.2.3 载荷、180s 墙钟）同型 stall（"Model network request failed" retry 族，doctor 分族 transport/content 皆 0）——**INFRA-FAIL ×2 收口不再试**；「命令本体最终命运」维持不可裁，三处措辞（ADR-0022/钩子头注/SKILL）无需变更。
 - **narrative-checklist 帮助枚举订正**：账面 24→23（0.2.2 刷新把 lease 折行计两物理行；v0.2.2 树三源实证 23，913804e）。
-- **待办**：win32 VM 复测单（见 runbook 第 6 条）——维护者 VM 会话执行。
+- **win32 VM 复测闭环（2026-09-23，Win11 ARM64 build 26200，PD VM 经 `prlctl exec` 自驱动——首次不用人手贴命令）**：① registry 新装冒烟 ✔（隔离 prefix 0.2.3，CLI 0.2.3·缓存 0.2.2 跨版本读法如实）② update 链 ✔（降戳 0.2.2→`lzy update` EXIT=0→新装子进程 sync→0.2.3 载荷同版本；exec=SYSTEM 会话缓存落 systemprofile，沿 0.2.2 记录）③ **ADJ-23 护栏活体 ✔**：构造 `%APPDATA%\nvm\default\node.exe`（非数字目录）+ `v22.23.2\node.exe`（真版本目录），PATH 摘除 node 后 `run-hook.cmd --print-node` → 选中 **v22.23.2**、default 被护栏跳过（改前 default 以字母 key `ault…` 压过数字 key 当选），RC=0 ④ e2e ✔：`scripts/headless/e2e-loop.mjs` SKIP exit 0（认证门缺席=契约形态；0.2.2 已证全链）。VM 测试残留已清。教训=①：`set PATH=… & ` 尾随空格被 cmd set 原样吃进值——隔离 PATH 时写 `&` 紧贴。
+- **0.2.3 弧线遗留清点（收尾态）**：决策类仅剩 H3R 误停根解（命令解析器面）落地后再议升格（拍板见 ADR-0022 增补节 2026-09-23）；账本类无悬账（帮助枚举 23 已订正 913804e）。
 
 
 ## 执行记录（0.2.2，H3R 高危步门实验 + 仪器与账本加固——机械件已备，publish 留用户）

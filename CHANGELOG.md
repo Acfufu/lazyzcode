@@ -3,6 +3,37 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **H3R enforcement-point migration** (0.2.3 goal `v023-h3r-enforcement`):
+  the dormant high-risk-step prototype gains two machine faces in the
+  unattended lane — one-step-per-segment (`LZY_SEGMENT_ID`, shape-validated
+  `<int>:seg-<int>`, a second distinct `step done` in one segment is refused;
+  same-step evidence rebinds pass) and a command-layer gate
+  (`plugin/hooks/h3r-pretool.js`, PreToolUse/Bash, awake only with
+  `LZY_ABLATE_H3R_PRETOOL=1`) that denies word-list hits and writes the hit
+  marker drive consumes for a clean wind-down. Default behavior stays
+  byte-identical to 0.2.2.
+- **Fix-round hardening** (0.2.3 goal `v023-fix-round`): drive's wind-down
+  channel is non-throwing (the every-cause-authors-a-snapshot invariant holds
+  under corrupt state), heartbeat failures split by family (storage I/O no
+  longer mislabeled as takeover; snapshot + lease-reclaim guidance),
+  segment-boundary recovery guidance dispatches by cause (RESTRICTED's only
+  exit is narrow-and-re-register), reset/start sweep the segment markers, the
+  word list closes the `push -f` / `id_ed25519` / whitespace-evasion gaps,
+  and the ablation instruments count events echo-free (see the h3r report
+  errata: deny 13→4, one-step refusals 1199→11).
+
+### Notes
+
+- The sixth hook (`h3r-pretool.js`) is **dormant by default** and costs one
+  `run-hook` + node spawn per Bash tool call in every session (zero behavior
+  impact otherwise). Accounted here per the v023 dual review (ADJ-27); its
+  removal or default wake state is a maintainer decision after the experiment
+  review (ADR-0022).
+
 ## [0.2.2] - 2026-09-22
 
 ### Added

@@ -608,7 +608,9 @@ in the unattended lane only, and while asleep they enforce nothing:
   `"1"` — the *inverse* of the `LZY_ABLATE_*` family.
 - **One-step-per-segment** (`lzy step done` + a run-unique segment id): when
   drive injects `LZY_SEGMENT_ID` (only while `LZY_ABLATE_H3R_ONESTEP` is `"1"`),
-  a second `step done` inside the same segment is refused — this is what gives
+  a second `step done` inside the same segment is refused (re-recording the
+  *same* step id — the evidence-rebind path — passes; only a different step is
+  the second one) — this is what gives
   the segment-start gate a boundary to see at all (measured: 15 of 24 trials
   once ran a whole plan in one segment, so the check never fired).
 - **Command-layer gate** (`plugin/hooks/h3r-pretool.js`, PreToolUse/Bash): when

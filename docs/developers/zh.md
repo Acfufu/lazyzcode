@@ -165,31 +165,35 @@ ZCode（钩子环境没有 node）也能正常工作；解析结果由 `lzy doct
   <path d="M40 78 H800" stroke="var(--line-strong)" stroke-width="1.4"/>
   <g fill="var(--accent)">
     <circle cx="100" cy="78" r="7"/>
-    <circle cx="270" cy="78" r="7"/>
-    <circle cx="440" cy="78" r="7"/>
-    <circle cx="610" cy="78" r="7"/>
+    <circle cx="236" cy="78" r="7"/>
+    <circle cx="372" cy="78" r="7"/>
+    <circle cx="508" cy="78" r="7"/>
+    <circle cx="644" cy="78" r="7"/>
     <circle cx="780" cy="78" r="7"/>
   </g>
   <g fill="var(--text)" text-anchor="middle" font-weight="600" font-size="12.5" class="mono">
     <text x="100" y="52">SessionStart</text>
-    <text x="270" y="52">UserPromptSubmit</text>
-    <text x="440" y="52">PostToolUse</text>
-    <text x="610" y="52">PostToolUseFailure</text>
+    <text x="236" y="52">UserPromptSubmit</text>
+    <text x="372" y="52">PreToolUse</text>
+    <text x="508" y="52">PostToolUse</text>
+    <text x="644" y="52">PostToolUseFailure</text>
     <text x="780" y="52">Stop</text>
   </g>
   <g fill="var(--muted)" text-anchor="middle" font-size="11.5">
     <text x="100" y="106">向新会话重注入</text>
     <text x="100" y="123">循环状态</text>
-    <text x="270" y="106">触发词匹配 →</text>
-    <text x="270" y="123">注入 zw 引导</text>
-    <text x="440" y="106">comment-checker 轻提示</text>
-    <text x="440" y="123">（Edit / Write）</text>
-    <text x="610" y="106">同工具失败连击</text>
-    <text x="610" y="123">绊线告警一次</text>
+    <text x="236" y="106">触发词匹配 →</text>
+    <text x="236" y="123">注入 zw 引导</text>
+    <text x="372" y="106">命令层 H3R 门</text>
+    <text x="372" y="123">（休眠原型）</text>
+    <text x="508" y="106">comment-checker 轻提示</text>
+    <text x="508" y="123">（Edit / Write）</text>
+    <text x="644" y="106">同工具失败连击</text>
+    <text x="644" y="123">绊线告警一次</text>
     <text x="780" y="106">请求续跑</text>
     <text x="780" y="123">≤2 次 · 交接放行</text>
   </g>
-  <text x="420" y="165" fill="var(--faint)" text-anchor="middle" font-size="11.5">session-start.js · trigger.js · comment-checker.js · tripwire.js · stop.js — 全部经 run-hook 启动器拉起</text>
+  <text x="420" y="165" fill="var(--faint)" text-anchor="middle" font-size="11.5">session-start.js · trigger.js · comment-checker.js · h3r-pretool.js · tripwire.js · stop.js — 全部经 run-hook 启动器拉起</text>
 </svg>
 <figcaption>引擎暴露 7 个钩子事件和共享池 3 次 stop-continuation（后台通知
 同池扣减）；LazyZCode 每会话至多花 2 次，任何异常一律放行。</figcaption>

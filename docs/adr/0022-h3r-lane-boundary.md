@@ -54,7 +54,7 @@ H3R（高危步骤执行前的人权门，SOTA V3 门族）的**机器形态原�
 
 **决定**：在车道边界**不变**（仍只作用于无人值守的 `lzy loop drive` 段循环，交互会话仍是恢复路径）的前提下，H3R 的执法点自「段起点判下一步文本」前移两级：
 
-1. **一段一步机器核验**（`core/loop.js` + `LZY_SEGMENT_ID`）：drive 唤醒态给段会话注入运行唯一段标（`<fence>:seg-<n>`——`<fence>` 前缀是为跨 run 唯一，纯 `seg-<n>` 会被上一 run 残留误伤），`lzy step done` 在同段第二次调用时拒。**为什么必要**：0.2.2 实验实测 24 发里 15 发单段跑完全部步骤，段起点检查根本没机会开火——粒度不修，门等于不存在。
+1. **一段一步机器核验**（`core/loop.js` + `LZY_SEGMENT_ID`）：drive 唤醒态给段会话注入运行唯一段标（`<fence>:seg-<n>`——`<fence>` 前缀是为跨 run 唯一，纯 `seg-<n>` 会被上一 run 残留误伤），`lzy step done` 在同段第二次调用时拒（重录**同一**步 id 的取证 rebind 放行——实现 `prev.stepId !== id` 才拒，v023-fix-round ADJ-21 补记）。**为什么必要**：0.2.2 实验实测 24 发里 15 发单段跑完全部步骤，段起点检查根本没机会开火——粒度不修，门等于不存在。
 2. **命令层门**（`plugin/hooks/h3r-pretool.js`，PreToolUse/Bash）：命令文本命中词表即 deny + 写 `loop/h3r-hit.json`（带段标）；drive 读到**本段**标记才干净收束（7 字段快照，exit 0，收束因 `工具调用被拒（PreToolUse …）`）。他段/伪造标记只清不留——它不是「一行即停」的匿名杠杆。
 
 **开关语义（三枚，全为反向：恰 `"1"` 唤醒，休眠即默认关）**：`LZY_ABLATE_H3R_GATE`（0.2.2 已在账）、`LZY_ABLATE_H3R_ONESTEP`、`LZY_ABLATE_H3R_PRETOOL`；另有家族语义的 `LZY_ABLATE_HOOK_H3R_PRETOOL`（恰 `"1"` 灭掉该钩子，供 E 臂整层消融）。**依赖**：`H3R_PRETOOL` 离开 `H3R_ONESTEP` 是惰性空转（它要求 drive 注入的段标）；单开 PRETOOL 而读不到任何拦截，是设计使然，不是机制坏了。开关表与计数 prose 同批更新（`docs/research-ablation-design.md` §2/§3）。

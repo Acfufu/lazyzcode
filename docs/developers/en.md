@@ -173,31 +173,35 @@ works; the fallback path is reported by `lzy doctor`'s `hook-node` check.
   <path d="M40 78 H800" stroke="var(--line-strong)" stroke-width="1.4"/>
   <g fill="var(--accent)">
     <circle cx="100" cy="78" r="7"/>
-    <circle cx="270" cy="78" r="7"/>
-    <circle cx="440" cy="78" r="7"/>
-    <circle cx="610" cy="78" r="7"/>
+    <circle cx="236" cy="78" r="7"/>
+    <circle cx="372" cy="78" r="7"/>
+    <circle cx="508" cy="78" r="7"/>
+    <circle cx="644" cy="78" r="7"/>
     <circle cx="780" cy="78" r="7"/>
   </g>
   <g fill="var(--text)" text-anchor="middle" font-weight="600" font-size="12.5" class="mono">
     <text x="100" y="52">SessionStart</text>
-    <text x="270" y="52">UserPromptSubmit</text>
-    <text x="440" y="52">PostToolUse</text>
-    <text x="610" y="52">PostToolUseFailure</text>
+    <text x="236" y="52">UserPromptSubmit</text>
+    <text x="372" y="52">PreToolUse</text>
+    <text x="508" y="52">PostToolUse</text>
+    <text x="644" y="52">PostToolUseFailure</text>
     <text x="780" y="52">Stop</text>
   </g>
   <g fill="var(--muted)" text-anchor="middle" font-size="11.5">
     <text x="100" y="106">re-inject loop state</text>
     <text x="100" y="123">into fresh sessions</text>
-    <text x="270" y="106">trigger match →</text>
-    <text x="270" y="123">inject zw bootstrap</text>
-    <text x="440" y="106">comment-checker nudge</text>
-    <text x="440" y="123">(Edit / Write)</text>
-    <text x="610" y="106">tripwire: same-tool</text>
-    <text x="610" y="123">fail streak → warn once</text>
+    <text x="236" y="106">trigger match →</text>
+    <text x="236" y="123">inject zw bootstrap</text>
+    <text x="372" y="106">command-layer H3R gate</text>
+    <text x="372" y="123">(dormant prototype)</text>
+    <text x="508" y="106">comment-checker nudge</text>
+    <text x="508" y="123">(Edit / Write)</text>
+    <text x="644" y="106">tripwire: same-tool</text>
+    <text x="644" y="123">fail streak → warn once</text>
     <text x="780" y="106">request continuation</text>
     <text x="780" y="123">≤2 · handoff release</text>
   </g>
-  <text x="420" y="165" fill="var(--faint)" text-anchor="middle" font-size="11.5">session-start.js · trigger.js · comment-checker.js · tripwire.js · stop.js — all spawned via the run-hook launcher</text>
+  <text x="420" y="165" fill="var(--faint)" text-anchor="middle" font-size="11.5">session-start.js · trigger.js · comment-checker.js · h3r-pretool.js · tripwire.js · stop.js — all spawned via the run-hook launcher</text>
 </svg>
 <figcaption>The engine exposes 7 hook events and a shared pool of 3
 stop-continuations that background notifications also draw from; LazyZCode

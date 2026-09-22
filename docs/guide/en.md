@@ -85,9 +85,10 @@ LazyZCode installs four things:
    orchestration protocol — triage, tier selection, planning, execution, and
    evidence rules.
 2. **Six hooks** wired to the engine's lifecycle: SessionStart (re-inject
-   loop state), UserPromptSubmit (trigger words), PostToolUse (comment
-   advisory), PostToolUseFailure (same-tool failure tripwire), Stop
-   (bounded continuation).
+   loop state), UserPromptSubmit (trigger words), PreToolUse (command-layer
+   H3R gate — dormant prototype), PostToolUse (comment advisory),
+   PostToolUseFailure (same-tool failure tripwire), Stop (bounded
+   continuation).
 3. **Three read-only agents**: `lazyzcode:explorer`,
    `lazyzcode:plan-reviewer`, `lazyzcode:qa-executor`.
 4. **One CLI** (`lzy`) implementing the goal loop as a state machine that
@@ -471,7 +472,7 @@ heartbeat), each run gets a fresh wall-clock + points budget, and HIGH+
 risk goals are machine-rejected before anything spawns. Every segment's `lzy`
 writes carry the run's fence token, so a taken-over run fails closed on write
 instead of corrupting loop state. Wind-down is clean and enumerated: `done`,
-budget exhausted, segments exhausted, two zero-progress segments (stuck), the step gate stopping at a high-risk step (`h3r`), or a high-risk command denied at the tool boundary (`PreToolUse`) —
+budget exhausted, segments exhausted, two zero-progress segments (stuck) — plus two wind-down causes that exist only in the **dormant H3R prototype's lane** (they never fire with the prototype asleep): the step gate stopping at a high-risk step (`h3r`), or a high-risk command denied at the tool boundary (`PreToolUse`) —
 every non-done wind-down writes the 7-field handoff snapshot itself and
 registers the marker for the next session. `lzy doctor`'s `drive` line reports
 the channel's availability on your machine:
@@ -510,6 +511,7 @@ findings come from the repository, not from the main agent's assumptions.
 | `trigger.js` | UserPromptSubmit | Stratified trigger matching; injects the zw bootstrap on invocation. |
 | `comment-checker.js` | PostToolUse (Edit/Write) | Advisory detection of `TODO`/`FIXME`/`XXX`/`HACK` markers and debug residue (`console.log`, `console.debug`, `debugger`) in new content. Capped at 5 hits, 300 characters, inject-only — and only active in workspaces with an open goal loop. |
 | `stop.js` | Stop | Requests continuation (max 2/session) with the remaining-steps context while a loop is open; consumes a registered handoff marker once and releases without spending the budget. |
+| `tripwire.js` | PostToolUseFailure | Same-tool failure-streak tripwire: warns once when a tool keeps failing or firing off-target (the misfire-attractor escape hatch); inject-only. |
 | `h3r-pretool.js` | PreToolUse (Bash) | The command-layer H3R gate, **dormant by default**: inside an unattended `lzy loop drive` segment (the drive-injected `LZY_SEGMENT_ID` is present) and awake only when `LZY_ABLATE_H3R_PRETOOL` is `1` — the inverse of the `LZY_ABLATE_*` family — it denies Bash commands whose text matches the H3R word list and writes the hit marker drive consumes for a clean wind-down (7-field snapshot, exit 0). Interactive sessions carry no drive-injected segment id — exempt given env hygiene (the gate validates the `<int>:seg-<int>` shape, so a stray export degrades to no gate), and they are the recovery path (ADR-0022). |
 
 All six commands route through `plugin/hooks/run-hook`: the engine spawns

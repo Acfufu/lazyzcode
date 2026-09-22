@@ -397,7 +397,7 @@ machine). Zero npm dependencies, Node ≥ 22, pure ESM.
 ```
 lazyzcode/
 ├── plugin/   → the lazyzcode plugin: skills/zw + skills/init-deep, hooks/ (6, via the run-hook launcher), agents/ (3)
-├── core/     → shared logic: loop, installer, doctor, ratelimit, agentsmd, engine, git, paths, status, update, cost, dag, attempt, attest, runtime, drive, headless, hostdb
+├── core/     → shared logic: loop, installer, doctor, ratelimit, agentsmd, engine, git, paths, status, update, cost, dag, attempt, attest, runtime, drive, h3r, progress, headless, hostdb
 ├── cli/      → the lzy entry (cli/lzy.js) + syntax-check worker
 ├── test/     → contract tests (node:test, zero deps) + GitHub Actions (node 22/24)
 └── docs/     → research notes, ADRs, five review rounds, diagnostics

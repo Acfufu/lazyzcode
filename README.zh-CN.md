@@ -338,7 +338,7 @@ Node ≥ 22、纯 ESM。
 ```
 lazyzcode/
 ├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（6 个，经 run-hook 启动器）、agents/（3 只）
-├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、agentsmd、engine、git、paths、status、update、cost、dag、attempt、attest、runtime、drive、headless、hostdb
+├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、agentsmd、engine、git、paths、status、update、cost、dag、attempt、attest、runtime、drive、h3r、progress、headless、hostdb
 ├── cli/      → lzy 入口（cli/lzy.js）+ 语法检查 worker
 ├── test/     → 契约测试（node:test 零依赖）+ GitHub Actions（node 22/24）
 └── docs/     → 调研底稿、ADR、五轮评审、诊断记录

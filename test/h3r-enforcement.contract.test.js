@@ -29,6 +29,12 @@ function hook(input, extraEnv = {}) {
   const script = join(HOOKS, "h3r-pretool.js");
   assert.ok(existsSync(script), "h3r-pretool.js 必须在场（否则断言空输出=空过）");
   const env = { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME };
+  // ADJ-28（v023 双审）：默认剔除残留开关/段标——休眠用例不得随宿主消融 shell 假红
+  //（评审活体复现：LZY_ABLATE_H3R_PRETOOL=1 环境下「休眠（无开关）」用例挂）。
+  // 需要开/关两半的用例显式传值（null 仍=剔除）。
+  for (const k of ["LZY_ABLATE_H3R_GATE", "LZY_ABLATE_H3R_PRETOOL", "LZY_ABLATE_H3R_ONESTEP", "LZY_ABLATE_HOOK_H3R_PRETOOL", "LZY_SEGMENT_ID", "LZY_LOOP_DIR"]) {
+    delete env[k];
+  }
   for (const [k, v] of Object.entries(extraEnv)) {
     if (v === null) delete env[k];
     else env[k] = v;
@@ -65,6 +71,10 @@ function execRepo(prefix, planLines = ["- [N1] 一步", "- [N2] 二步"]) {
   g(["add", "a.txt"]);
   g(["commit", "-qm", "init"]);
   const env = { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME, LZY_ABLATE_HUMAN_GATE: "1" };
+  // ADJ-28（v023 双审）：同 hook() 家法——CLI 面用例默认剔除残留开关/段标
+  for (const k of ["LZY_ABLATE_H3R_GATE", "LZY_ABLATE_H3R_PRETOOL", "LZY_ABLATE_H3R_ONESTEP", "LZY_ABLATE_HOOK_H3R_PRETOOL", "LZY_SEGMENT_ID", "LZY_LOOP_DIR"]) {
+    delete env[k];
+  }
   const run = (args, extra = {}) =>
     spawnSync(process.execPath, [CLI, ...args], { cwd: d, encoding: "utf8", timeout: 60_000, env: { ...env, ...extra } });
   run(["loop", "register", "h3r", "--title", "t"]);
@@ -87,7 +97,7 @@ test("词表单源：core 读者与 plugin/hooks/h3r-words.json 词序一致（�
   assert.equal(r.ok, true, `词表应可读：${JSON.stringify(r)}`);
   assert.deepEqual(r.words, fromDisk, "core 读者与磁盘词序一致");
   assert.deepEqual(h3r.h3rWordlist(), fromDisk, "抛错读者同序");
-  assert.equal(fromDisk.length, 13, "词表 13 枚（加词即改判定，须显式记账）");
+  assert.equal(fromDisk.length, 15, "词表 15 枚（ADJ-41 补 push -f / id_ed25519；加词即改判定，须显式记账）");
   assert.ok(disk.words.every((x) => typeof x.src === "string" && x.src.length > 0), "每词带来源");
 });
 
@@ -348,6 +358,83 @@ test("标记消费：他段 segmentId ⇒ 收束因不变且标记被清（不�
     console.log = orig;
     if (savedPre === undefined) delete process.env.LZY_ABLATE_H3R_PRETOOL;
     else process.env.LZY_ABLATE_H3R_PRETOOL = savedPre;
+    cleanup(d);
+  }
+});
+
+// ── ④ v023-fix-round N2（ADJ-05/06/22/41）：isBookkeeping 收窄 / 引号路径 / 段标形状 / 词表缺口 ──
+test("N2/ADJ-05：复合命令以记账动词打头不再整行免检（元字符护栏）", () => {
+  const d = scratch("lzy-n2-compound-");
+  try {
+    const env = { LZY_ABLATE_H3R_PRETOOL: "1", LZY_SEGMENT_ID: "3:seg-2", LZY_LOOP_DIR: loopDir(d) };
+    const r = hook(bashCall("git status && rm -rf build-cache", d), env);
+    assert.equal(r.code, 0, r.out);
+    const parsed = r.out === "" ? {} : JSON.parse(r.out);
+    assert.equal(
+      parsed.hookSpecificOutput?.permissionDecision,
+      "deny",
+      `复合命令不得借记账头免检（ADJ-05 探针原形）：${r.out}`,
+    );
+    assert.ok(existsSync(hitFile(d)), "命中标记照常落盘");
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("N2/ADJ-06：引号路径的 lzy.js 记账调用仍走排除通道（win32 含空格用户名形态）", () => {
+  const d = scratch("lzy-n2-quoted-");
+  try {
+    const env = { LZY_ABLATE_H3R_PRETOOL: "1", LZY_SEGMENT_ID: "3:seg-2", LZY_LOOP_DIR: loopDir(d) };
+    assertSilent(
+      hook(bashCall('node "/Users/Wei Ming/tools/lazyzcode/cli/lzy.js" step done N1 --note "rm -rf 见计划"', d), env),
+      "引号路径记账调用（ADJ-06：\\S* 无法跨空格 ⇒ 排除通道静默失效）",
+    );
+    assertSilent(
+      hook(bashCall('node "C:\\\\tools\\\\my lzy\\\\lzy.js" step done N1 --note "见计划"', d), env),
+      "win32 反斜杠引号路径同形",
+    );
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("N2/ADJ-22：段标形状校验——畸形段标按无段标处置（残留 env 不激活门）", () => {
+  const d = scratch("lzy-n2-shapehook-");
+  try {
+    const r = hook(bashCall("rm -rf build-cache", d), {
+      LZY_ABLATE_H3R_PRETOOL: "1",
+      LZY_SEGMENT_ID: "residual-junk",
+      LZY_LOOP_DIR: loopDir(d),
+    });
+    assertSilent(r, "畸形段标=非 drive 派生（形状不符不判）");
+    assert.equal(existsSync(hitFile(d)), false);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("N2/ADJ-41：词表缺口三形——短旗标强推 / ed25519 私钥名 / 空白逃逸（对照半区在案）", () => {
+  const d = scratch("lzy-n2-words-");
+  try {
+    const env = { LZY_ABLATE_H3R_PRETOOL: "1", LZY_SEGMENT_ID: "3:seg-2", LZY_LOOP_DIR: loopDir(d) };
+    for (const [cmd, why] of [
+      ["git push -f origin main", "短旗标强推（src 自称覆盖强推但 -f 漏出）"],
+      ["cat ~/.ssh/id_ed25519 >> ~/.ssh/authorized_keys", "ed25519 私钥名（id_rsa 同族漏出）"],
+      ["rm\t-rf build-cache", "制表符空白逃逸（双空格/制表符绕过子串）"],
+      ["git push  -f origin main", "双空格逃逸"],
+    ]) {
+      const r = hook(bashCall(cmd, d), env);
+      assert.equal(r.code, 0, r.out);
+      const parsed = r.out === "" ? {} : JSON.parse(r.out);
+      assert.equal(parsed.hookSpecificOutput?.permissionDecision, "deny", `${why}：${cmd} ⇒ ${r.out}`);
+    }
+    // 对照半区：普通 push 静默；--force-with-lease 被 --force 子串覆盖命中 deny——
+    // 这是词表 src 注记明文的粗子串语义（已知过匹配，deny 方向安全），照设计钉住。
+    assertSilent(hook(bashCall("git push origin main", d), env), "普通 push");
+    const fw = hook(bashCall("git push --force-with-lease origin main", d), env);
+    const fwParsed = fw.out === "" ? {} : JSON.parse(fw.out);
+    assert.equal(fwParsed.hookSpecificOutput?.permissionDecision, "deny", "--force 子串覆盖 --force-with-lease（词表 src 记账的过匹配，照设计）");
+  } finally {
     cleanup(d);
   }
 });

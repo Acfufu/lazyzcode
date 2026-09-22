@@ -59,6 +59,6 @@ H3R（高危步骤执行前的人权门，SOTA V3 门族）的**机器形态原�
 
 **开关语义（三枚，全为反向：恰 `"1"` 唤醒，休眠即默认关）**：`LZY_ABLATE_H3R_GATE`（0.2.2 已在账）、`LZY_ABLATE_H3R_ONESTEP`、`LZY_ABLATE_H3R_PRETOOL`；另有家族语义的 `LZY_ABLATE_HOOK_H3R_PRETOOL`（恰 `"1"` 灭掉该钩子，供 E 臂整层消融）。**依赖**：`H3R_PRETOOL` 离开 `H3R_ONESTEP` 是惰性空转（它要求 drive 注入的段标）；单开 PRETOOL 而读不到任何拦截，是设计使然，不是机制坏了。开关表与计数 prose 同批更新（`docs/research-ablation-design.md` §2/§3）。
 
-**作用域为何现在是机器强制的**：门要求 `LZY_SEGMENT_ID` 在场，而该 env 只有 drive 唤醒态才会注入（`core/drive.js buildSegmentEnv`）——交互会话即使全局设了开关也拿不到段标，天然免门。这把 0.2.2 里靠 `LZY_ABLATE_H3R_GATE` 单开关约定的边界，抬成了构造上的边界。
+**作用域为何现在是机器强制的**：门要求 `LZY_SEGMENT_ID` 在场且形状合法（`<整数>:seg-<整数>`，v023-fix-round ADJ-22 增补的形状校验；该 env 只有 drive 唤醒态才会注入——`core/drive.js buildSegmentEnv`）。交互会话拿不到 drive 注入的段标，以免门为常态——前提是 env 卫生：残留的误配 export 曾能激活门，形状校验落地后降级为无门（本句由「构造上的边界」订正为「构造 + env 卫生」）。这把 0.2.2 里靠 `LZY_ABLATE_H3R_GATE` 单开关约定的边界，抬成了构造上的边界。
 
 **失败语义（诚实边界）**：钩子崩溃/超时/坏 schema 在引擎侧一律 fail-open（工具照常执行）；判定面是**命令文本的子串匹配**，且**排除仓库自身记账通道**（`lzy` CLI 与 `git commit|add|status`——否则步标题里的词表字样会把记录动作本身打成命中）；被排除通道是理论绕过轴，段内写者读到 env 后伪造匹配标记亦仍可能（门槛抬高，未根除，与段内自升级同信任级）。

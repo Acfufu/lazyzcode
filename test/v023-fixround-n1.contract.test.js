@@ -369,3 +369,64 @@ test("N1/回归钉：stuck 收束自写快照过 7 字段 lint（本批 windDown
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+// ── N2 批次追加（v023-fix-round#N2）─────────────────────────────────────────
+
+// ADJ-22 loop 侧：畸形段标按「无段标」处置——残留 env 不把一段一步门变成常量死锁
+test("N2/ADJ-22：畸形 LZY_SEGMENT_ID 在一段一步门按无段标处置（同段多步不被 junk 段标误拒）", () => {
+  const d = executingRepo("lzy-n2-shape-");
+  try {
+    const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    goal.steps[0].status = "done"; // N1 已翻
+    writeFileSync(goalJson(d), `${JSON.stringify(goal, null, 2)}\n`);
+    const r = lzy(["step", "done", "N2", "--note", "junk 段标下的第二步"], d, { LZY_SEGMENT_ID: "residual-junk" });
+    assert.equal(r.code, 0, `畸形段标不得激活一段一步门（实得）：${r.out}`);
+    assert.ok(!existsSync(join(loopDirOf(d), "segment.json")), "畸形段标不落段记录");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("N2/ADJ-22 对照半：合法形状段标的一段一步门照常执法", () => {
+  const d = executingRepo("lzy-n2-shapectl-");
+  try {
+    const r = lzy(["step", "done", "N1", "--note", "第一步"], d, { LZY_SEGMENT_ID: "42:seg-3" });
+    assert.equal(r.code, 0, r.out);
+    const r2 = lzy(["step", "done", "N2", "--note", "同段第二步"], d, { LZY_SEGMENT_ID: "42:seg-3" });
+    assert.equal(r2.code, 1, "合法段标同段第二步应拒");
+    assert.match(r2.out, /本段已翻过一步（N1）/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ADJ-29 休眠半区契约钉：PRETOOL 关 ⇒ 残留命中标记不被读不清（自愈路径的机器钉）
+test("N2/ADJ-29：休眠半区不消费残留标记（唤醒面下一段照常消费——两半同测）", async () => {
+  const d = executingRepo("lzy-n2-dormant-");
+  try {
+    // 段标配方：预领一次租确立 counter 后，预写「第二次 drive 的 fence」——休眠面
+    // （第一次 drive）不消费，唤醒面（第二次 drive）段标相符照常消费。
+    const l1 = withLock(d, () => acquireLease(d, { ttlMs: 60_000 }));
+    withLock(d, () => releaseLease(d, l1.fence));
+    writeFileSync(
+      join(loopDirOf(d), "h3r-hit.json"),
+      `${JSON.stringify({ segmentId: `${l1.fence + 2}:seg-1`, tool: "Bash", command: "rm -rf x", matched: ["rm -rf"], at: new Date().toISOString() }, null, 2)}\n`,
+    );
+    await withEnv({}, async () => {
+      const { result } = await captureStdout(() =>
+        runDrive(d, { maxSegments: 1 }, passDeps(null, { rollingPoints: 0 })),
+      );
+      assert.match(result.cause, /段数尽/, "休眠面不因残留标记收束");
+      assert.ok(existsSync(join(loopDirOf(d), "h3r-hit.json")), "休眠半区不得读/清残留标记");
+    });
+    // 对照半：唤醒面照常消费（标记被清+收束因改写）
+    await withEnv({ LZY_ABLATE_H3R_PRETOOL: "1" }, async () => {
+      const { result } = await captureStdout(() =>
+        runDrive(d, { maxSegments: 1 }, passDeps(null, { rollingPoints: 0 })),
+      );
+      assert.match(result.cause, /工具调用被拒/, "唤醒面消费残留标记（段标 1:seg-1 与本 run fence 相符时）");
+    });
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

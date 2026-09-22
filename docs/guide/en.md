@@ -510,7 +510,7 @@ findings come from the repository, not from the main agent's assumptions.
 | `trigger.js` | UserPromptSubmit | Stratified trigger matching; injects the zw bootstrap on invocation. |
 | `comment-checker.js` | PostToolUse (Edit/Write) | Advisory detection of `TODO`/`FIXME`/`XXX`/`HACK` markers and debug residue (`console.log`, `console.debug`, `debugger`) in new content. Capped at 5 hits, 300 characters, inject-only — and only active in workspaces with an open goal loop. |
 | `stop.js` | Stop | Requests continuation (max 2/session) with the remaining-steps context while a loop is open; consumes a registered handoff marker once and releases without spending the budget. |
-| `h3r-pretool.js` | PreToolUse (Bash) | The command-layer H3R gate, **dormant by default**: inside an unattended `lzy loop drive` segment (the drive-injected `LZY_SEGMENT_ID` is present) and awake only when `LZY_ABLATE_H3R_PRETOOL` is `1` — the inverse of the `LZY_ABLATE_*` family — it denies Bash commands whose text matches the H3R word list and writes the hit marker drive consumes for a clean wind-down (7-field snapshot, exit 0). Interactive sessions never carry a segment id: exempt by construction, and they are the recovery path (ADR-0022). |
+| `h3r-pretool.js` | PreToolUse (Bash) | The command-layer H3R gate, **dormant by default**: inside an unattended `lzy loop drive` segment (the drive-injected `LZY_SEGMENT_ID` is present) and awake only when `LZY_ABLATE_H3R_PRETOOL` is `1` — the inverse of the `LZY_ABLATE_*` family — it denies Bash commands whose text matches the H3R word list and writes the hit marker drive consumes for a clean wind-down (7-field snapshot, exit 0). Interactive sessions carry no drive-injected segment id — exempt given env hygiene (the gate validates the `<int>:seg-<int>` shape, so a stray export degrades to no gate), and they are the recovery path (ADR-0022). |
 
 All six commands route through `plugin/hooks/run-hook`: the engine spawns
 hooks with *its own* environment, and a GUI-launched ZCode may have no `node`
@@ -637,7 +637,7 @@ do.
 | `ledger` | Commit-ledger patrol: share of goal-era commits missing the `Goal:` trailer (warn, never flips the exit code) |
 | `waterline` | Rolling 5-hour point burn vs the self-calibrated nudge threshold (degraded note when sqlite3 is absent) |
 | `orphan-wake` | Idle-burn patrol for unbound wake automations anchored here (skip when none mounted) |
-| `h3r-words` | The H3R word-list payload: present, schema-valid, and the same order the CLI's reader yields. Missing = warn — while awake the gate hard-rejects instead of silently downgrading |
+| `h3r-words` | The H3R word-list payload: present, schema-valid, and the same order the CLI's reader yields. Missing = warn — awake-time behavior splits by reader: the drive-side gate hard-rejects (throws); the command-layer hook fails open (ADR-0022's failure semantics) |
 | `lock` | Lock-contention window: acquisitions / how many had to wait / total and max wait / wait timeouts (measured against `LOCK_WAIT_MS`; skip with no samples; timeouts > 0 means §⑩-4's pre-registered trigger fired — warn). Readings are **lower bounds**: the counters ride a lock-free read-merge-write, and the moment a delta is most likely to be lost is the moment contention is heaviest |
 | `platform` | Engine-candidate notice per platform (ok + path when the desktop engine is found) |
 | `agents-md` | Layered AGENTS.md coverage audit + staleness hint (≥50 covered-dir commits since the map's last commit; skip when no root file; `lzy agents-md` for details) |

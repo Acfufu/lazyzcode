@@ -31,12 +31,25 @@ function repo(prefix) {
   return d;
 }
 
+// ADJ-28（v023 双审）：基础 env 默认剔除 H3R 开关/段标残留——消融 shell 里跑测试不再假红；
+// 用例需要某开关时显式传值（null 仍=剔除）。
+const SCRUB_KEYS = ["LZY_ABLATE_H3R_GATE", "LZY_ABLATE_H3R_PRETOOL", "LZY_ABLATE_H3R_ONESTEP", "LZY_ABLATE_HOOK_H3R_PRETOOL", "LZY_SEGMENT_ID", "LZY_LOOP_DIR"];
+function baseEnv(extra = {}) {
+  const env = { ...process.env, HOME, USERPROFILE: HOME };
+  for (const k of SCRUB_KEYS) delete env[k];
+  for (const [k, v] of Object.entries(extra)) {
+    if (v === null) delete env[k];
+    else env[k] = v;
+  }
+  return env;
+}
+
 function lzy(args, cwd, env = {}) {
   const r = spawnSync(process.execPath, [CLI, ...args], {
     cwd,
     encoding: "utf8",
     timeout: 120_000,
-    env: { ...process.env, HOME, USERPROFILE: HOME, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE, ...env },
+    env: baseEnv({ LZY_ZCODE_ENGINE: SUPPRESS_ENGINE, ...env }),
   });
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
@@ -175,7 +188,7 @@ function hookRun(name, input, env = {}) {
     input: typeof input === "string" ? input : JSON.stringify(input),
     encoding: "utf8",
     timeout: 20_000,
-    env: { ...process.env, HOME, USERPROFILE: HOME, ...env },
+    env: baseEnv(env),
   });
   return { code: r.status, out: (r.stdout ?? "").trim() };
 }

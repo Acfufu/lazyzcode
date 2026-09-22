@@ -613,10 +613,11 @@ in the unattended lane only, and while asleep they enforce nothing:
   once ran a whole plan in one segment, so the check never fired).
 - **Command-layer gate** (`plugin/hooks/h3r-pretool.js`, PreToolUse/Bash): when
   awake (`LZY_ABLATE_H3R_PRETOOL` is `"1"`) **and** the drive-injected segment
-  id is present, it denies Bash commands whose text matches the H3R word list
-  and writes a hit marker that drive consumes for a clean wind-down (7-field
-  snapshot, exit 0). Interactive sessions carry no segment id — exempt by
-  construction, and they are the recovery path. It is **inert without the
+  id is present (shape-validated `<int>:seg-<int>` — a stray residual export
+  degrades to no gate), it denies Bash commands whose text matches the H3R word
+  list and writes a hit marker that drive consumes for a clean wind-down
+  (7-field snapshot, exit 0). Interactive sessions carry no drive-injected
+  segment id — exempt given env hygiene, and they are the recovery path. It is **inert without the
   one-step switch** (no segment id ⇒ nothing to gate).
 
 Do not call any of them a machine gate while dormant (ADR-0022). Two honest

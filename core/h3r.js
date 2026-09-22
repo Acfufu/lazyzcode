@@ -65,8 +65,10 @@ export function h3rArmed(env = process.env) {
 }
 
 // 子串匹配，大小写不敏感。返回命中的词表项（按词表顺序、去重），未命中返回空数组。
+// 匹配前空白归一（ADJ-41，v023 双审）：连续空白/制表符折成单空格——标题面的「rm␣␣-rf」
+// 逃逸与钩子命令面同轴封死。
 export function h3rMatches(text) {
-  const hay = String(text ?? "").toLowerCase();
+  const hay = String(text ?? "").replace(/\s+/g, " ").toLowerCase();
   if (hay === "") return [];
   const hits = h3rWordlist().filter((w) => hay.includes(w.toLowerCase()));
   if (hay.includes(H3R_STEP_MARKER)) hits.push(H3R_STEP_MARKER);

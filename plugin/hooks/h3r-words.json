@@ -9,9 +9,11 @@
     { "w": "credentials", "src": "预注册具名" },
     { "w": ".env", "src": "预注册具名" },
     { "w": "id_rsa", "src": "同族：默认私钥文件名" },
+    { "w": "id_ed25519", "src": "同族：ed25519 默认私钥文件名（ADJ-41，v023 双审补）" },
     { "w": "ssh key", "src": "同族：私钥类别" },
     { "w": "npm publish", "src": "预注册具名" },
-    { "w": "--force", "src": "预注册具名；子串覆盖 git push --force / --force-with-lease / 各工具强推" },
+    { "w": "--force", "src": "预注册具名；子串覆盖 git push --force / --force-with-lease / 各工具强推（短旗标 -f 曾漏出，ADJ-41 补 push -f 专词；两词的冗余覆盖在此记账）" },
+    { "w": "push -f", "src": "同族：短旗标强推（ADJ-41，v023 双审补；--force 子串对其不覆盖）" },
     { "w": "chmod ", "src": "预注册具名" },
     { "w": "chown ", "src": "同族：属主变更" }
   ]

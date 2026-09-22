@@ -848,12 +848,18 @@ function checkLock(push, cwd) {
   push("lock", "ok", detail);
 }
 
-// H3R 词表（N1）：单一来源文件的在场与 schema 巡逻。缺/坏=warn（默认休眠下不影响任何命令，
-// 只有唤醒态才会成为硬拒），fail-soft；行文案与 README/guide 的 doctor 列表同步（N8）。
+// H3R 词表（N1）：单一来源文件的在场与 schema 巡逻。缺/坏=warn（默认休眠下不影响任何命令），
+// fail-soft。唤醒态后果按读者分岔（ADJ-15，v023 双审订正——旧文案「门会硬拒」对钩子读者
+// 不成立：命令层钩子缺词表 failOpen 放行，drive 侧门才 throw 硬拒；ADR-0022 失败语义）；
+// 行文案与 README/guide 的 doctor 列表同步（N8）。
 function checkH3rWords(push) {
   const r = loadWordlist();
   if (!r.ok) {
-    push("h3r-words", "warn", `词表不可读（${r.reason}）——唤醒态下 H3R 门会硬拒；恢复：lzy sync 或重装`);
+    push(
+      "h3r-words",
+      "warn",
+      `词表不可读（${r.reason}）——唤醒态后果按读者分岔：drive 侧门硬拒（throw），命令层钩子 fail-open 放行（ADR-0022）。恢复：lzy sync 或重装`,
+    );
     return;
   }
   push("h3r-words", "ok", `plugin/hooks/h3r-words.json 在场 · ${r.words.length} 词（core 与钩子同读一份）`);

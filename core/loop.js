@@ -1092,6 +1092,12 @@ function attachEvidenceFiles(cwd, goal, step, files, seq = 1) {
 // 复用 `completeStep` 已持的临界区（**绝不嵌套 withLock**：`:1030` 已持锁，嵌套会自撞到
 // `LOCK_WAIT_MS` 再抛）；无段标（休眠 / 交互 / 非 drive）=恒直通，默认行为逐字段同。
 // 同 `stepId` 重录（rebind 取证路径）放行——那是重取证不是第二步。
+// 段标形状（ADJ-22，v023 双审）：只认 drive 注入形 `<整数>:seg-<整数>`——交互 shell 里
+// 残留的 `LZY_SEGMENT_ID`（手动实验/照抄 export 行后未清）按「无段标」处置。ADR-0022 的
+// 「交互会话构造上拿不到段标」据此降格为「以 env 卫生为前提」+ 本形状校验的机器半：
+// 误配会话不再把一段一步门变成常量死锁、不再被命令层门误罩。
+const SEGMENT_ID_SHAPE = /^\d+:seg-\d+$/;
+
 function segmentStepState(cwd) {
   try {
     const prev = JSON.parse(readFileSync(join(loopDir(cwd), "segment.json"), "utf8"));
@@ -1103,7 +1109,7 @@ function segmentStepState(cwd) {
 
 function assertSegmentStepAllowed(cwd, id) {
   const segmentId = process.env.LZY_SEGMENT_ID;
-  if (!segmentId) return;
+  if (!SEGMENT_ID_SHAPE.test(segmentId ?? "")) return;
   const prev = segmentStepState(cwd);
   if (prev && prev.segmentId === segmentId && prev.stepId && prev.stepId !== id) {
     throw new LoopError(
@@ -1115,7 +1121,7 @@ function assertSegmentStepAllowed(cwd, id) {
 
 function recordSegmentStep(cwd, id) {
   const segmentId = process.env.LZY_SEGMENT_ID;
-  if (!segmentId) return;
+  if (!SEGMENT_ID_SHAPE.test(segmentId ?? "")) return; // 畸形段标不落段记录（与门同判据）
   const file = join(loopDir(cwd), "segment.json");
   const tmp = `${file}.tmp`;
   writeFileSync(tmp, `${JSON.stringify({ segmentId, stepId: id, at: new Date().toISOString() }, null, 2)}\n`, {

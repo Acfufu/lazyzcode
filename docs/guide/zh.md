@@ -403,7 +403,7 @@ lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]
 | `trigger.js` | UserPromptSubmit | 分层触发匹配；命中发起则注入 zw 引导。 |
 | `comment-checker.js` | PostToolUse（Edit/Write） | 对新内容中的 `TODO`/`FIXME`/`XXX`/`HACK` 标记与调试残留（`console.log`、`console.debug`、`debugger`）做提示。每次至多 5 处、300 字符、只提示不阻断——且只在有开放目标循环的工作区生效。 |
 | `stop.js` | Stop | 循环开着时带剩余步骤上下文请求续跑（每会话至多 2 次）；一次性消费交接标记并放行（不耗预算）。 |
-| `h3r-pretool.js` | PreToolUse（Bash） | 命令层 H3R 门，**默认休眠**：只在无人值守 `lzy loop drive` 段内（drive 注入的 `LZY_SEGMENT_ID` 在场）且 `LZY_ABLATE_H3R_PRETOOL` 为 `1`（**反向开关**，与家族语义相反）时生效——命令文本命中 H3R 词表即 deny，并写命中标记供 drive 干净收束消费（7 字段快照、exit 0）。交互会话拿不到段标：构造上天然免门，且它就是恢复路径（ADR-0022）。 |
+| `h3r-pretool.js` | PreToolUse（Bash） | 命令层 H3R 门，**默认休眠**：只在无人值守 `lzy loop drive` 段内（drive 注入的 `LZY_SEGMENT_ID` 在场）且 `LZY_ABLATE_H3R_PRETOOL` 为 `1`（**反向开关**，与家族语义相反）时生效——命令文本命中 H3R 词表即 deny，并写命中标记供 drive 干净收束消费（7 字段快照、exit 0）。交互会话没有 drive 注入的段标——以免门为常态，前提是 env 卫生（门校验 `<整数>:seg-<整数>` 形状，残留 export 降级为无门），且它就是恢复路径（ADR-0022）。 |
 
 六条命令都经 `plugin/hooks/run-hook` 启动：引擎用*自己的*环境拉起钩子，而
 GUI 直启的 ZCode 可能 PATH 里没有 `node`。一份清单服务两个平台家族——POSIX
@@ -511,7 +511,7 @@ lzy version                     打印版本
 | `ledger` | 提交账本巡逻：goal 起点后提交缺 `Goal:` 尾注的比例（warn，不翻退出码） |
 | `waterline` | 近 5h 滚动积分 vs 自参照警戒线（sqlite3 缺席时如实报降级） |
 | `orphan-wake` | 本仓 unbound wake automation 的空转巡逻（无挂载即 skip） |
-| `h3r-words` | H3R 词表载荷：在场、schema 合法、与 CLI 读者同序。缺 = warn——唤醒态下门会硬拒，绝不静默降级 |
+| `h3r-words` | H3R 词表载荷：在场、schema 合法、与 CLI 读者同序。缺 = warn——唤醒态后果按读者分岔：drive 侧门硬拒（throw），命令层钩子 fail-open 放行（ADR-0022 失败语义） |
 | `lock` | 锁竞争窗：获锁次数 / 其中需等待次数 / 等待合计与最长 / 等待超时次数（对照 `LOCK_WAIT_MS`；无样本 = skip；超时 >0 = §⑩-4 预注册触发条件命中，warn。读数为**下限**——无锁读-合-写近似计数，最可能丢增量的时刻正是拥塞最重的时刻） |
 | `platform` | 按平台报引擎候选命中态（命中=ok+引擎路径） |
 | `agents-md` | AGENTS.md 分层覆盖审计 + 地图落后提示（基点后覆盖域 ≥50 提交；根缺失 = `skip`；`lzy agents-md` 详单） |

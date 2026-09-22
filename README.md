@@ -180,7 +180,8 @@ worker, including `hooks.json` registry validation), node version floor,
 POSIX, nvm-windows/Program Files on Windows — for GUI-launched sessions), the
 `lzy` PATH shim, a payload-version cross-check (`payload-ver`: the cached
 version directories versus the CLI's own `package.json` — the ADR-0012
-intermediate-state self-check), `.lazyzcode/` state hygiene, an H3R word-list payload check (`h3r-words`: the one word list both the CLI and the command-layer hook read — missing = warn; awake-time behavior splits by reader: the drive-side gate hard-rejects (throws), the command-layer hook fails open — ADR-0022's failure semantics), a handoff-lane
+intermediate-state self-check), `.lazyzcode/` state hygiene, an H3R word-list payload check (`h3r-words`: the one word list both the CLI and the command-layer hook read — missing = warn; awake-time behavior splits by reader: the drive-side gate hard-rejects (throws), the command-layer hook fails open — ADR-0022's failure semantics), an attestation-trailer
+check (`attest-trailer`: git-history `Lzy-Attestation:` trailers compared one-by-one against content sha256 of files in `.lazyzcode/attestations/` — dangling warn names each, warn-only), a handoff-lane
 usage counter (`handoff-usage`: registered versus consumed markers — a
 difference means reset cleanup or bad markers, never lost handoffs), an
 optional code-index probe (`codegraph`: user-level MCP config plus CLI

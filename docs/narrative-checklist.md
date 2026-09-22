@@ -21,7 +21,7 @@
 - [ ] tagline 与 NOTE 三节拍弧线在场。
 - [ ] 两技能自述（zw / init-deep）与 `plugin/skills/*/SKILL.md` frontmatter `description` 事实一致。
 - [ ] CLI 命令表齐全（快照 20 行，2026-09-18 v0.1.0 棒B 后；2026-09-19 0.1.1 goal1 目标循环行内容扩人权门句、行数不变，逐版计数账见下行「三面分记」；沿革 2026-09-16 增 update→又增 证据主体 subject/tier 两行）：install / sync / update / status / doctor / 目标循环 / 证据主体 subject / Tier / 步级认领 claim / 证据包 export / 交接 handoff / 跨仓清单 list / 目标谱系 history / 积分报表 cost / 证据账本 red·waive·list / 失效 DAG dependents·stale / 对照 attestation / attempt 世系 supersede·attempts / agents-md / uninstall——新命令进 `cli/lzy.js` 必须同批进双语表。
-- [ ] 「`lzy doctor` 都查什么」段与实跑输出一致（含 rate-limit / transport / content / band-by-provider / provider-mix / cost / schedule / agents-md / claims / host-git / ledger / waterline / orphan-wake / lock / hook-node / payload-ver / handoff-usage / codegraph / h3r-words / drive——核验：跑 `lzy doctor` 逐行对描述；2026-09-21 ADJ-78：drive/provider-mix/payload-ver/codegraph/handoff-usage 五线曾漏记，双语 README 已补；同日 0.2.2 棒1 新增 `lock` 行，guide 双语表 + README 双语段同批补入）。
+- [ ] 「`lzy doctor` 都查什么」段与实跑输出一致（含 rate-limit / transport / content / band-by-provider / provider-mix / cost / schedule / agents-md / claims / host-git / ledger / waterline / orphan-wake / lock / hook-node / payload-ver / handoff-usage / codegraph / h3r-words / attest-trailer / drive——核验：跑 `lzy doctor` 逐行对描述；2026-09-21 ADJ-78：drive/provider-mix/payload-ver/codegraph/handoff-usage 五线曾漏记，双语 README 已补；同日 0.2.2 棒1 新增 `lock` 行，guide 双语表 + README 双语段同批补入）。
 - [ ] 「之后的路 / Your next moves」承载记住 + 接着走两拍的入口（快速上手只教循环）。
 - [ ] 架构树与实际一致（skills 2、hooks 6 经 run-hook 启动器[win32 走 run-hook.cmd 孪生]、agents 3、core 模块清单）。
 - [ ] schedule 措辞口径：「限流实测 ∩ 计价高峰对照」（2026-09-10 起，双语 8 处；不许退回纯限流表述）。

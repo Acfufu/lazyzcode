@@ -353,8 +353,12 @@ test("终验 attestation：report 写失败=finish 拒且无残留；reset 存�
   assert.equal(readFileSync(join(d, ".lazyzcode", "attestations", attestationFiles(d)[0]), "utf8"), before, "reset 不清（历史证明）");
   const doc = cli(["doctor"], d);
   // 隔离 HOME 下 install/files 恒 fail 级（注册表/缓存缺席），doctor 退出码不可据此断言；
-  // 疤痕面只看：输出不出现 attestations 相关行（loop/ 外目录零疤痕接触）。
-  assert.doesNotMatch(doc.out, /疤痕|attestations/, "loop/ 外目录零疤痕接触");
+  // 疤痕面只看：疤痕措辞零出现（疤痕行由 state 行承载、恒含「疤痕」，本夹具 attestations
+  // 在 loop/ 外，疤痕巡逻本就不扫它）。v024-debt-bundle N3 起 doctor 新增 attest-trailer
+  // 尾注核验行——attestations 字样自此是诊断本体（尾注↔目录比对），故原断言
+  // /疤痕|attestations/ 收窄到疤痕维度，另钉尾注行在本形态（目录在场+零尾注）=ok。
+  assert.doesNotMatch(doc.out, /疤痕/, "loop/ 外目录零疤痕接触");
+  assert.match(doc.out, /attest-trailer.*无尾注记录/, "尾注核验行在场且零尾注态=ok");
 });
 
 // ── ⑧ doctor payload-ver 三态（债3）──────────────────────────────────────────

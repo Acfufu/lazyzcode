@@ -160,7 +160,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 注册校验）、node 版本下限、`hook-node` 解析（启动器的 node 回退链——POSIX
 nvm/homebrew、Windows nvm-windows/Program Files，专治 GUI 直启场景）、`lzy`
 PATH shim、载荷版本对照（`payload-ver`：缓存版本目录 vs CLI 自身
-`package.json`——ADR-0012 中间态自检）、`.lazyzcode/` 状态卫生、H3R 词表载荷检查（`h3r-words`：CLI 与命令层钩子同读的一份词表——缺=warn；唤醒态后果按读者分岔：drive 侧门硬拒（throw），命令层钩子 fail-open 放行——ADR-0022 失败语义）、交接车道用量
+`package.json`——ADR-0012 中间态自检）、`.lazyzcode/` 状态卫生、H3R 词表载荷检查（`h3r-words`：CLI 与命令层钩子同读的一份词表——缺=warn；唤醒态后果按读者分岔：drive 侧门硬拒（throw），命令层钩子 fail-open 放行——ADR-0022 失败语义）、attestation 尾注核验（`attest-trailer`：git 史 `Lzy-Attestation:` 尾注逐条对 `.lazyzcode/attestations/` 文件内容 sha256 比对——悬空 warn 逐条点名，warn-only）、交接车道用量
 （`handoff-usage`：登记 vs 消费计数——差值=reset 清理/坏标记，非交接丢失）、
 可选代码索引探针（`codegraph`：用户级 MCP 配置 + CLI 可用性；缺席=skip，
 不翻退出码）、平台提示、GLM

@@ -139,6 +139,29 @@ test("INV-08：红绿同 harness 过门；错配拒；缺省（未声明）不�
   assert.equal(g3.status, "done");
 });
 
+test("INV-08 现行红口径：红重录统一 harness 后旧代红不绊门（red_of 多条、最新为现行 §4#24）；现行红错配仍拒", () => {
+  const cycle = (d, greenHarness) => {
+    registerGoal(d, "t", "title", { tier: "heavy" });
+    adoptPlan(d, writePlan(d, "- [N1] x\n- [F1] v\n"), { review: "plan-reviewer: PASS — t" });
+    startLoop(d, createGit(d));
+    completeStep(d, createGit(d), "N1", { note: "x" });
+    recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "改前失败 v1", harness: "cmd v1" });
+    recordEvidenceHalf(d, createGit(d), "F1", { half: "red", text: "改前失败 v2（重录统一程序）", harness: "cmd v2" });
+    completeStep(d, createGit(d), "F1", { evidence: "绿半通过", harness: greenHarness });
+    recordComparatorAttestation(d, verdictFile(d, { slug: "t", items: [{ fid: "F1", verdict: "MATCH", generation: 1, basis: "吻合" }] }));
+  };
+  // 真实形态（v024-debt-bundle finish 活体）：首录红 harness v1 → 重录红 v2（统一）→ 绿 v2
+  // ⇒ finish 须过——append-only 账本上「按同一程序重录」的恢复路径必须可达，旧代红留账不执法。
+  const d = repo();
+  cycle(d, "cmd v2");
+  const { goal } = finishLoop(d, createGit(d));
+  assert.equal(goal.status, "done", "现行红（最新）与绿同源，旧代红不绊门");
+  // 对照半区：现行红错配照旧执法（最新红 v2 ≠ 绿 v1 → INV-08 拒）
+  const d2 = repo();
+  cycle(d2, "cmd v1");
+  assert.throws(() => finishLoop(d2, createGit(d2)), /INV-08.*harness 错配/, "现行红错配照旧执法");
+});
+
 test("harness 入账形态：节点带 harnessHash=harnessSpec 的 sha256；上限 300；waive 拒收", () => {
   const d = repo();
   heavyCycle(d, { red: true, redHarness: "cmd A", greenHarness: "cmd A" });

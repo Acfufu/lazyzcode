@@ -848,6 +848,75 @@ function checkLock(push, cwd) {
   push("lock", "ok", detail);
 }
 
+// 债三机器半（v024-debt-bundle N3）：attestation 尾注核验——git 史里的
+// `Lzy-Attestation: <sha256>` 尾注逐条对 `.lazyzcode/attestations/` 文件内容 sha256 比对
+//（尾注语义=attestation 文件内容哈希的篡改可见指针，zw SKILL 收尾段；文本半 L0 早已在，
+// 本行补机器半）。判定优先级四态钉死（§N3）：①尾注在场而目录缺席=悬空 warn 逐条点名；
+// ②目录缺席且零尾注=skip；③零尾注=ok「无尾注记录」；④全符=ok 行含核验条数（部分缺配
+// 沿 warn 路径点名缺哪条）。warn-only 不翻退出码（沿 doctor 缺席=skip 家法）。扫描窗按
+// 计划钉字面命令形态：`-50` 封顶的是**命中条数**非扫描深度（git --max-count 语义）——
+// 距 HEAD 很远的尾注仍可入窗，已知未知 #3 的「>50 漏扫」在字面形态下不成立。worktree
+// 各自持有自己的 .lazyzcode/，共享 git 史的尾注在本树无对应文件=悬空，正是本行要点名态。
+export function checkAttestationTrailer(push, cwd) { // 导出仅供夹具单测（同 checkLedger 家法）
+  const gitRun = spawnSync("git", ["log", "-50", "--format=%B", "--grep", "Lzy-Attestation:"], {
+    cwd,
+    shell: false,
+    timeout: 10_000,
+    encoding: "utf8",
+  });
+  if (gitRun.error || gitRun.status !== 0) {
+    push("attest-trailer", "skip", "git 不可用，尾注核验跳过");
+    return;
+  }
+  const trailers = [];
+  for (const m of (gitRun.stdout ?? "").matchAll(/Lzy-Attestation:\s*([0-9a-f]{64})/gi)) {
+    if (!trailers.includes(m[1].toLowerCase())) trailers.push(m[1].toLowerCase());
+  }
+  const dir = join(cwd, ".lazyzcode", "attestations");
+  const dirExists = existsSync(dir);
+  const short = (h) => h.slice(0, 8);
+  if (trailers.length === 0) {
+    if (!dirExists) {
+      push("attest-trailer", "skip", "无尾注记录且无 attestations 目录（两态皆空，无可核验面）");
+      return;
+    }
+    push("attest-trailer", "ok", "无尾注记录（ attestations 目录在场；尾注=L0 文本半，收尾提交按 zw SKILL 追加）");
+    return;
+  }
+  if (!dirExists) {
+    push(
+      "attest-trailer",
+      "warn",
+      `悬空尾注 ${trailers.length} 条而 .lazyzcode/attestations/ 目录缺席：${trailers.map(short).join(" ")}——共享 git 史的机器证明在本树无文件对应（worktree 各持 .lazyzcode/；reset 不清 attestations，主 checkout 持有则去主 checkout 核）`,
+    );
+    return;
+  }
+  const fileHashes = new Set();
+  try {
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".json")) continue;
+      try {
+        fileHashes.add(sha256File(join(dir, f)));
+      } catch {
+        // 单文件读不了不炸整行（fail-soft 家法）；缺配会在点名面暴露
+      }
+    }
+  } catch {
+    push("attest-trailer", "warn", `attestations 目录不可读：${dir}`);
+    return;
+  }
+  const missing = trailers.filter((h) => !fileHashes.has(h));
+  if (missing.length === 0) {
+    push("attest-trailer", "ok", `尾注 ${trailers.length}/${trailers.length} 与 attestations 目录全符（内容 sha256 逐条比对）`);
+    return;
+  }
+  push(
+    "attest-trailer",
+    "warn",
+    `尾注 ${trailers.length} 条中 ${missing.length} 条在 attestations 目录无对应文件：${missing.map(short).join(" ")}（悬空/跨树尾注；目录现存 ${fileHashes.size} 件）`,
+  );
+}
+
 // H3R 词表（N1）：单一来源文件的在场与 schema 巡逻。缺/坏=warn（默认休眠下不影响任何命令），
 // fail-soft。唤醒态后果按读者分岔（ADJ-15，v023 双审订正——旧文案「门会硬拒」对钩子读者
 // 不成立：命令层钩子缺词表 failOpen 放行，drive 侧门才 throw 硬拒；ADR-0022 失败语义）；
@@ -944,6 +1013,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkOrphanWake(p, cwd),
     (p) => checkLock(p, cwd),
     checkH3rWords,
+    (p) => checkAttestationTrailer(p, cwd),
     (p) => checkLedger(p, cwd),
     checkPlatform,
     checkHeadless,

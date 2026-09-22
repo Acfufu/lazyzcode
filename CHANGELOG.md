@@ -3,6 +3,35 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Findings ledger** (goal `v024-debt-bundle#N2`): machine-readable account of
+  dual-review dispositions at `docs/reviews/findings-ledger.jsonl` (schemaVersion 1;
+  all 41 findings of the 0.2.3 five-round dual review backfilled — later batches must
+  extend the pinned row count explicitly), with `scripts/findings-lint.mjs` schema
+  validation and a contract test.
+- **Attestation trailer verification** (debt-3 machine half, `v024-debt-bundle#N3`):
+  `lzy doctor` gains an `attest-trailer` row — git-history `Lzy-Attestation:` trailers
+  are compared one-by-one against content sha256 of files in `.lazyzcode/attestations/`
+  (four-state verdict: dangling warn naming each / skip / ok no-trailers / ok all-match);
+  warn-only, never flips the exit code.
+- **Provenance-ready assertion** (debt-5, `v024-debt-bundle#N4`): decision of 2026-09-23
+  keeps the maintainer-2FA publish channel (no provenance artifacts); the new
+  `scripts/provenance-ready.mjs` mechanically asserts the migration-ready metadata triad
+  (normalized repository URL, name, version triad) and the release checklist gains an
+  explicit provenance-boundary step.
+
+### Fixed
+
+- **H3R command-layer gate parser root-fix** (ADR-0022 pre-registered promotion trigger,
+  `v024-debt-bundle#N1`): substring matching upgraded to segment + token-sequence
+  matching — two-word false positives (`ssh keys`, `npm publish-dry`) cleaned,
+  quote/backslash hiding and escape-space bypasses sealed, parse ambiguity
+  (unbalanced quotes/parens/backticks) fails closed to deny. `matched` keeps its shape
+  and a `detail` field is added; dormant semantics unchanged field-for-field.
+
 ## [0.2.3] - 2026-09-23
 
 ### Added

@@ -6,12 +6,14 @@
 // 开关也拿不到段标，天然免门（交互会话就是恢复路径）。开关的反向语义 + 「PRETOOL 依赖
 // ONESTEP 的段标、单开=惰性空转」这一条，ADR-0022 增补节与开关表同批记录。
 //
-// 判定面=Bash 工具的命令文本（大小写不敏感子串；词表单一来源 `plugin/hooks/h3r-words.json`，
-// 与 `core/h3r.js` 同读一份；匹配前空白归一，多空格/制表符不再逃逸——ADJ-41）。命中 ⇒ 写
-// `loop/h3r-hit.json`（带段标；drive 按段校验后 rename 原子消费）+ 返 **deny**——不是 ask：
-// 无人值守没有批准者，ask 会挂住（`core/drive.js` 同族理由）。伪造面（ADJ-18，对齐 ADR-0022
-// 口径）：段标相符的伪造标记**可以**改写收束因分类（防伪边界=记账不裁决）；他段残留与
-// 无段标伪造不可消费。
+// 判定面=Bash 工具的命令文本（分段+词元序列匹配，v024-debt-bundle N1 根解；词表单一
+// 来源 `plugin/hooks/h3r-words.json`，与 `core/h3r.js` 同读一份）。子串语义的三类误报/
+// 绕过由词元边界封堵：双词形吃进复数/连字子串（「ssh keys」「npm publish-dry」）、引号内
+// 藏词。解析歧义（引号/括号/反引号不平衡）⇒ fail-closed deny（休眠原型无生产影响，保守
+// 方向与家族红线一致）。命中 ⇒ 写 `loop/h3r-hit.json`（带段标；drive 按段校验后 rename
+// 原子消费）+ 返 **deny**——不是 ask：无人值守没有批准者，ask 会挂住（`core/drive.js`
+// 同族理由）。伪造面（ADJ-18，对齐 ADR-0022 口径）：段标相符的伪造标记**可以**改写收束
+// 因分类（防伪边界=记账不裁决）；他段残留与无段标伪造不可消费。
 //
 // 失败语义（诚实边界，报告记账；ADJ-07 订正）：非命中路径静默 exit 0；坏 stdin → 引擎按
 // 空判定处置（fail-open）；**进程崩溃/超时/非 0 退出**在引擎侧为 `throw ToolExecutionFailed
@@ -61,12 +63,79 @@ function wordlist() {
   }
 }
 
-const matchedWords = (command, words) => {
-  // ADJ-41（v023 双审）：匹配前空白归一——连续空白/制表符折成单空格，封「rm␣␣-rf」
-  // 「rm\t-rf」形的子串逃逸；deny 理由与标记里的命令文本保持原样（取证面不修饰）。
-  const hay = command.trim().replace(/\s+/g, " ").toLowerCase();
-  return words.filter((w) => hay.includes(w.toLowerCase()));
-};
+// ── N1（v024-debt-bundle，ADR-0022 升格触发件）：解析面根解 ──────────────────────
+// 段切分：shell 元字符（§N1 清单）；词元切分：空白+引号（按引号/空白切——引号是切分点，
+// 「cat "ssh key"」藏词形态落在相邻词元上照常命中）+ 反斜杠（封「ssh\ key」转义空格绕过）
+// + 圆括号（子壳/替换残余「(rm -rf x)」的词元边界；非段界，纯词元面——全部封堵方向的
+// 加宽，无新放行面）。
+const SEGMENT_SPLIT = /&&|\|\||[;&|`\n]|\$\(/;
+const TOKEN_SPLIT = /[\s"'\\()]+/;
+
+// 解析歧义（§N1.4 fail-closed 判据）：三条不平衡任一在场=无法无歧义解析。合法命令在
+// shell 本身就解析不过，保守拦截不损失真面。
+function parseAmbiguityReason(command) {
+  if ((command.match(/["']/g) ?? []).length % 2 === 1) return "quotes";
+  if ((command.match(/`/g) ?? []).length % 2 === 1) return "backtick";
+  if ((command.match(/\(/g) ?? []).length !== (command.match(/\)/g) ?? []).length) return "parens";
+  return null;
+}
+
+// 单词形走词元包含：路径内嵌（~/.ssh/id_rsa、~/.config/credentials.json）、后缀家族
+//（credentials.json / .env.local）、旗标形态（--force-with-lease）等真实敏感面不因词元化
+// 漏出——单词形与旧子串语义逐字段同（--force 覆盖 --force-with-lease 的过匹配是词表 src
+// 记账的照设计保留，既有契约钉）。多词形走相邻词元精确序列：ssh keys / npm publish-dry
+// 不再被双词形的子串误吃（§N1 点名误报形，红绿对照钉）。
+function wordHit(lowerTokens, wordTokens) {
+  if (wordTokens.length === 1) return lowerTokens.some((t) => t.includes(wordTokens[0]));
+  for (let i = 0; i + wordTokens.length <= lowerTokens.length; i += 1) {
+    if (wordTokens.every((w, j) => lowerTokens[i + j] === w)) return true;
+  }
+  return false;
+}
+
+// rm 族删除目标词元抽取（detail 机器可判读面，为升格 B 拍板供数据）：命中词首词元 ∈
+// rm/rmdir/shred 时，取匹配尾之后的非旗标词元（≤3；truncate 的首参是旗标/尺寸，目标
+// 抽取不可靠，不入族）。
+const DELETION_HEADS = new Set(["rm", "rmdir", "shred"]);
+function deletionTargets(tokens, lowerTokens, hitWords, wordTokenList) {
+  const targets = [];
+  for (const { word, tokens: wt } of wordTokenList) {
+    if (!hitWords.includes(word) || !DELETION_HEADS.has(wt[0])) continue;
+    for (let i = 0; i + wt.length <= lowerTokens.length; i += 1) {
+      if (!wt.every((w, j) => lowerTokens[i + j] === w)) continue;
+      for (let k = i + wt.length; k < tokens.length && targets.length < 3; k += 1) {
+        if (lowerTokens[k].startsWith("-")) continue;
+        if (!targets.includes(tokens[k])) targets.push(tokens[k]);
+      }
+      break;
+    }
+  }
+  return targets;
+}
+
+function analyzeCommand(command, words) {
+  const reason = parseAmbiguityReason(command);
+  const wordTokenList = words.map((w) => ({ word: w, tokens: w.toLowerCase().split(/\s+/).filter(Boolean) }));
+  const segments = command
+    .split(SEGMENT_SPLIT)
+    .map((s) => s.trim())
+    .filter((s) => s !== "")
+    .slice(0, 8)
+    .map((seg) => {
+      const tokens = seg.split(TOKEN_SPLIT).filter(Boolean);
+      const lowerTokens = tokens.map((t) => t.toLowerCase());
+      const hits = wordTokenList.filter(({ tokens: wt }) => wordHit(lowerTokens, wt)).map(({ word }) => word);
+      const segInfo = { text: seg.slice(0, 80), hits };
+      const targets = deletionTargets(tokens, lowerTokens, hits, wordTokenList);
+      if (targets.length > 0) segInfo.targets = targets;
+      return segInfo;
+    });
+  return {
+    matched: [...new Set(segments.flatMap((s) => s.hits))],
+    parse: reason ? { ok: false, reason } : { ok: true },
+    segments,
+  };
+}
 
 try {
   const input = readStdinJson();
@@ -88,8 +157,20 @@ try {
   if (isBookkeeping(command)) failOpen();
   const words = wordlist();
   if (!words || words.length === 0) failOpen();
-  const matched = matchedWords(command, words);
-  if (matched.length === 0) failOpen();
+  const analysis = analyzeCommand(command, words);
+  // §N1.4：词零命中且解析无歧义 ⇒ 放行；歧义在场均 deny（fail-closed）。
+  if (analysis.matched.length === 0 && analysis.parse.ok) failOpen();
+  // matched 保形（字符串数组，core/drive.js takeH3rHit 按 join 渲染、零改动）：歧义态
+  // 无真实命中词，落诚实占位词——detail.parse 承载机器真相。
+  const matched = analysis.matched.length > 0 ? analysis.matched : ["(解析歧义)"];
+  // 结构化明细（deny 理由附加段 + h3r-hit.json detail 键，纯加字段）。
+  const detailNote = analysis.parse.ok
+    ? analysis.segments
+        .filter((s) => s.hits.length > 0)
+        .map((s) => `段「${s.text}」命中 ${s.hits.join("/")}${s.targets?.length ? `（目标 ${s.targets.join(" ")}）` : ""}`)
+        .join("；")
+        .slice(0, 300)
+    : `命令无法无歧义解析（${analysis.parse.reason}），保守拦截`;
 
   // 命中：先落标记（drive 据此走干净收束 + 7 字段快照），再 deny。
   const loopDir = process.env.LZY_LOOP_DIR || join(inputCwd(input) ?? process.cwd(), ".lazyzcode", "loop");
@@ -100,7 +181,14 @@ try {
     writeFileSync(
       tmp,
       `${JSON.stringify(
-        { segmentId, tool: input.tool_name, command: command.slice(0, CMD_MAX), matched, at: new Date().toISOString() },
+        {
+          segmentId,
+          tool: input.tool_name,
+          command: command.slice(0, CMD_MAX),
+          matched,
+          detail: { parse: analysis.parse, segments: analysis.segments },
+          at: new Date().toISOString(),
+        },
         null,
         2,
       )}\n`,
@@ -115,7 +203,7 @@ try {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
       permissionDecisionReason:
-        `${DENY_ANCHOR} 需人工确认（H3R）：命令命中高危面（${matched.join("、")}）——` +
+        `${DENY_ANCHOR} 需人工确认（H3R）：命令命中高危面（${matched.join("、")}）——明细：${detailNote}。` +
         `本门只作用于无人值守 drive 段循环（ADR-0022），请交回人工会话确认`,
       additionalContext:
         "停手，不要改写命令绕过；本段将由 drive 干净收束并写交接快照，恢复=在交互会话读快照按计划推进。",

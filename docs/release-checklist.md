@@ -504,6 +504,8 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - **CDN 传播新数据点**：latest 元数据 ~60s 翻转；**tarball 边缘 ~4.5min**（元数据先翻、tarball 后到——隔离冒烟首跑即撞 404，轮询至 200 后过；比 0.2.2 的 ≈2min 慢一倍，同为传播窗族非发布事故）。
 - **隔离 prefix 冒烟 ✔**：`npm i -g lazyzcode@0.2.3 --prefix /tmp/lzy-smoke-023 --prefer-online` → `lzy 0.2.3（插件载荷同版本）· 引擎 0.16.9`；载荷新面抽检三发在案（core/loop.js SEGMENT_ID_SHAPE ×3、词表 15 词、hooks/h3r-pretool.js）。
 - **真机 `lzy update` 0.2.2→0.2.3 全链 EXIT=0**；全局根定位=（未安装）分支走新装 0.2.3、新装子进程 sync（ADR-0012 再证）；PATH 首位 `lzy 0.2.3（插件载荷同版本）`；doctor 全绿 EXIT=0——`payload 0.2.3 · install 缓存 0.2.3 · files 17 文件 sha256 一致 · enabled hooks:6（第六钩子主场活体）· payload-ver 17 版本目录 · CLI 0.2.3 一致`。
+- **ADJ-07 补探收口**：第 2 发（0.2.3 载荷、180s 墙钟）同型 stall（"Model network request failed" retry 族，doctor 分族 transport/content 皆 0）——**INFRA-FAIL ×2 收口不再试**；「命令本体最终命运」维持不可裁，三处措辞（ADR-0022/钩子头注/SKILL）无需变更。
+- **narrative-checklist 帮助枚举订正**：账面 24→23（0.2.2 刷新把 lease 折行计两物理行；v0.2.2 树三源实证 23，913804e）。
 - **待办**：win32 VM 复测单（见 runbook 第 6 条）——维护者 VM 会话执行。
 
 

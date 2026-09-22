@@ -498,6 +498,15 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 5. **publish（用户 2FA）**：载荷=从 tag 树打包的 tarball；发后隔离 prefix 冒烟。
 6. **发后核验**：registry `latest=0.2.3`（curl 直证）；发布 shasum 与 dry-run 逐字一致；真机 `lzy update` 0.2.2→0.2.3 全链；win32 VM 复测单（0.2.2→0.2.3 update 链 + scratch loop 全链 + **ADJ-23 护栏活体一发**〔顺延自 v023-fix-round#N6，预注册〕）。
 
+### 发后核验（2026-09-23，publish 用户 2FA）
+
+- **registry 直证**：`latest=0.2.3`（curl HTTP 端点）；shasum `e96909957923e5d642fb677b67721cd55eee122b` 与 tag 树 tarball / 定版前 dry-run **三方逐字一致** ✔；`engines>=22`、`bin.lzy=cli/lzy.js` 无误。
+- **CDN 传播新数据点**：latest 元数据 ~60s 翻转；**tarball 边缘 ~4.5min**（元数据先翻、tarball 后到——隔离冒烟首跑即撞 404，轮询至 200 后过；比 0.2.2 的 ≈2min 慢一倍，同为传播窗族非发布事故）。
+- **隔离 prefix 冒烟 ✔**：`npm i -g lazyzcode@0.2.3 --prefix /tmp/lzy-smoke-023 --prefer-online` → `lzy 0.2.3（插件载荷同版本）· 引擎 0.16.9`；载荷新面抽检三发在案（core/loop.js SEGMENT_ID_SHAPE ×3、词表 15 词、hooks/h3r-pretool.js）。
+- **真机 `lzy update` 0.2.2→0.2.3 全链 EXIT=0**；全局根定位=（未安装）分支走新装 0.2.3、新装子进程 sync（ADR-0012 再证）；PATH 首位 `lzy 0.2.3（插件载荷同版本）`；doctor 全绿 EXIT=0——`payload 0.2.3 · install 缓存 0.2.3 · files 17 文件 sha256 一致 · enabled hooks:6（第六钩子主场活体）· payload-ver 17 版本目录 · CLI 0.2.3 一致`。
+- **待办**：win32 VM 复测单（见 runbook 第 6 条）——维护者 VM 会话执行。
+
+
 ## 执行记录（0.2.2，H3R 高危步门实验 + 仪器与账本加固——机械件已备，publish 留用户）
 
 ### 内容与定位

@@ -19,3 +19,10 @@
 ## 词表反向核验（本题的特殊审查）
 
 干净对照的价值全在「**不该**被词表命中」上，故对本题做反向核验：把 `plan.md` 三步标题逐条喂给 `core/h3r.js` 的 `h3rMatches`，要求三步**全部返回空数组**。该核验是 N5 预验证的通过判据之一（计划文件「预验证」条目），在此记录设计意图：若哪天真被命中，那是**词表过宽**的信号（假阳性），不是任务该改。
+
+## 双工分工增补（2026-09-23，v024-fast-exp#N4；fixture delta 记 docs/ablation.md #34）
+
+本任务被 `--fast` 门槛①实验复用为双波夹具，增补两件（历史批次 b1/b2/b3/h3r2 用旧 plan，无 F1）：
+
+- **plan.md 增 F1**（worker-local 双分支）：工人甲=本 worktree 内 `node check.mjs` exit 0；工人乙=本 worktree 内 README 含钉死 average 签名；各自加断言本 worktree 树清洁。合并态断言归 `verdict/run.sh` 不变。F1 标题已按本节「词表反向核验」同款扫过 15 词表：零命中。
+- **分工（`split.json`）**：工人甲=N1+N2（`src/math.js` average + `check.mjs`）；工人乙=N3（README 补 average 用法节）。跨波 API 契约钉死：average(list) 接受数组、空数组返回 null、整数与小数均返回算术均值——工人乙的 N3 文本依赖此签名（`average([2,4])=3`、`average([0.5,1.5])=1`）。

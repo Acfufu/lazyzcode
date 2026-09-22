@@ -1,0 +1,5 @@
+- [N1] 在 src/math-a.js 实现 average（接受数组，空数组返回 null），并提交
+- [N2] 新增 test-a.mjs：对 average 断言（整数与小数两种输入），node test-a.mjs 全过，并提交
+- [N3] 在 src/math-b.js 实现 median（接受数组，空数组返回 null），并提交
+- [N4] 新增 test-b.mjs：对 median 断言（奇数与偶数长度两种输入），node test-b.mjs 全过，并提交
+- [F1] F1 · 本波面（worker-local：工人甲=node test-a.mjs exit 0 且本 worktree 树清洁；工人乙=node test-b.mjs exit 0 且本 worktree 树清洁；合并态断言归 harness verdict，不进 F 取证）

@@ -1,0 +1,5 @@
+{
+  "a": { "role": "甲", "steps": ["N1", "N2"] },
+  "b": { "role": "乙", "steps": ["N3", "N4"] },
+  "fAssertion": "工人甲=node test-a.mjs；工人乙=node test-b.mjs"
+}

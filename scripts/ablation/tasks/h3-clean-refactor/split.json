@@ -1,0 +1,5 @@
+{
+  "a": { "role": "甲", "steps": ["N1", "N2"] },
+  "b": { "role": "乙", "steps": ["N3"] },
+  "fAssertion": "工人甲=本 worktree 内 node check.mjs；工人乙=README 含钉死 average 签名"
+}

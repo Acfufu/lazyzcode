@@ -58,7 +58,7 @@
 
 | 位点 | 快照值 | 核验 |
 | --- | --- | --- |
-| 钩子数 | 5 | `python3 -c "import json;print(len(json.load(open('plugin/hooks/hooks.json'))['hooks']))"`；全文档面 `grep -rn '四个\|four\|（4 个\|(4,' README.md README.zh-CN.md docs/`（注意「其余四钩」类契约句的合法误中） |
+| 钩子数 | 6（2026-09-22 v023：PreToolUse 命令层门入列，5→6） | `python3 -c "import json;print(len(json.load(open('plugin/hooks/hooks.json'))['hooks']))"`；全文档面 `grep -rn 'five hooks\|五个钩子\|hooks ×5\|hooks/ (5\|hooks/（5\|Five lifecycle\|五个生命周期' README.md README.zh-CN.md docs/ CONTRIBUTING.md .claude-plugin/marketplace.json`（历史记录面 CHANGELOG / release-checklist 旧节不计） |
 | guide 锚点 | en 22 + zh 22 | `grep -c '^## ' docs/guide/en.md docs/guide/zh.md` + docs-preview 锚点检查 |
 | 首页特性卡 | 6 | `grep -c 'class="feature"' docs/_layouts/home.html` |
 | 技能数 | 2 | `ls plugin/skills/`；对双语 README 自述句 |

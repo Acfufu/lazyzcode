@@ -487,6 +487,17 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - 0.2.0 三件套活体（scratch `C:\scratch020`，SYSTEM exec + `set "LOCALAPPDATA=…"` 引号形态）：**lease 互斥**（acquire fence 1 → 二次 acquire 拒「另一运行时持租（fence 1，至 …）」带僵尸恢复指路）· **fence 写拒**（活跃租约期 `--fence 9` 写 → 「写拒：fence 9 非现行（现行 1）——你已被接管，立即停手不写」）· **drive 门链**（executing 目标上 `lzy loop drive` → 凭据缺席拒带恢复文本；doctor `drive` 行四段齐「凭据缺席（headless 调用会停在认证门） · 活跃租约 fence=1 · 预算未初始化 · v020vm 可入 drive（risk=low）」）；lease 释放 ✔、scratch 清除 ✔。
 - 探针引号雷补记（host 侧驱动教训）：`set VAR=value && cmd` 会把**尾随空格**并进值（`LZY_ABLATE_HUMAN_GATE` 变 `"1 "` 消融判据不中、`LZY_ZCODE_ENGINE` 路径带空格失效）——SYSTEM exec 驱动一律 `set "VAR=value"` 引号形态（0.1.0 配方的静默变体，历次被引号形态掩盖）。
 
+## 执行记录（0.2.3，H3R 执法点迁移 + 修复轮——机械件已备，publish 留用户）
+
+### Runbook（按序）
+
+1. **push main**：0.2.3 待发弧 23 提交（goal v023-followup + v023-h3r-enforcement + v023-dual-review + v023-fix-round）+ 定版提交随行（定版提交无 `Goal:` 尾注——槽位被 done 态 `v023-fix-round` 占用，沿 0.2.0/0.2.1/0.2.2 先例）。
+2. **版本五处同步**（同批提交）：`package.json` / `plugin/.zcode-plugin/plugin.json` / `.claude-plugin/marketplace.json`（version+ref→v0.2.3）/ `docs/_layouts/home.html` softwareVersion / `docs/sitemap.xml`（三处 lastmod→2026-09-23）；CHANGELOG `[0.2.3] - 2026-09-23` 定版；narrative-checklist 0.2.3 定版刷新行（基线 404→446，五面零漂移——`git diff v0.2.2..HEAD -- cli/` 为空实证）。
+3. **发布前验证**（定版树实跑 2026-09-23）：`npm test` **446/446**；surface 3/3（三体 0.2.3 一致）；`npm publish --dry-run` **44 文件 / 271.2 kB / shasum `e96909957923e5d642fb677b67721cd55eee122b`**；tarball 敏感扫描（`.mimosa`/`.lazyzcode`/`docs/`/`acfufu`/`sess_`）**0 命中**；docs-preview **62 页 / 断链 0 / 锚点双语 22-22**；`lzy sync` 缓存 0.2.3 目录 17 文件 sha256 一致、doctor `payload`/`install`/`files`/`payload-ver`（17 版本目录 · CLI 0.2.3）四 ✔。
+4. **CI 四腿绿**（判决=gh run view conclusion）→ **tag v0.2.3 最后切** → GitHub Release（notes 三节）。
+5. **publish（用户 2FA）**：载荷=从 tag 树打包的 tarball；发后隔离 prefix 冒烟。
+6. **发后核验**：registry `latest=0.2.3`（curl 直证）；发布 shasum 与 dry-run 逐字一致；真机 `lzy update` 0.2.2→0.2.3 全链；win32 VM 复测单（0.2.2→0.2.3 update 链 + scratch loop 全链 + **ADJ-23 护栏活体一发**〔顺延自 v023-fix-round#N6，预注册〕）。
+
 ## 执行记录（0.2.2，H3R 高危步门实验 + 仪器与账本加固——机械件已备，publish 留用户）
 
 ### 内容与定位

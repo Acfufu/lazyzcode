@@ -413,6 +413,134 @@ test("N2/ADJ-22：段标形状校验——畸形段标按无段标处置（残�
   }
 });
 
+// ── ⑤ v024-debt-bundle N1：命令层门解析面根解（分段+词元序列匹配，ADR-0022 升格触发件）──
+// 红绿对照钉三形：误报清理形（子串语义命中、词元语义必须干净——改前跑本组即红半取证）；
+// 保留命中形（改前改后都必须 deny，既有覆盖零回退）；契约冻结形（matched 保形 / H3R_DENY
+// 首词 / detail 纯加字段，core/drive.js 与 scripts/ablation/common.mjs 零改动可续读）。
+const N1_ENV = (d) => ({ LZY_ABLATE_H3R_PRETOOL: "1", LZY_SEGMENT_ID: "3:seg-2", LZY_LOOP_DIR: loopDir(d) });
+
+test("N1 解析面：词元边界序列——子串误报形必须干净（改前=红半取证）", () => {
+  const d = scratch("lzy-n1-tokenfalse-");
+  try {
+    for (const [cmd, why] of [
+      ['grep "ssh keys" authorized_hosts', "双词形 ssh key 吃进 ssh keys 的子串（§N1 点名误报形）"],
+      ["echo npm publish-dry", "npm publish 吃进 publish-dry 的子串（§N1 点名误报形）"],
+      ["echo ssh keys ls", "无引号复数同形"],
+      ["git push --dry-run origin main", "防回退护栏：--dry-run 非强推非发布"],
+    ]) {
+      assertSilent(hook(bashCall(cmd, d), N1_ENV(d)), `${why}：${cmd}`);
+    }
+    assert.equal(existsSync(hitFile(d)), false, "误报形不得留命中标记");
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("N1 解析面：词表 15 词正例各一改前改后都命中（覆盖零回退）", () => {
+  const d = scratch("lzy-n1-positives-");
+  try {
+    const cases = [
+      ["rm -rf build-cache", "rm -rf"],
+      ["rm -r old-dir", "rm -r "],
+      ["rmdir empty-dir", "rmdir "],
+      ["shred secret.txt", "shred "],
+      ["truncate -s 0 big.log", "truncate "],
+      ["cp credentials.json backup/", "credentials"],
+      ["cat .env", ".env"],
+      ["cat ~/.ssh/id_rsa", "id_rsa"],
+      ["cat ~/.ssh/id_ed25519", "id_ed25519"],
+      ['cp "client ssh key" backup/', "ssh key"],
+      ["npm publish", "npm publish"],
+      ["git push --force origin main", "--force"],
+      ["git push -f origin main", "push -f"],
+      ["chmod 600 ~/.ssh/id_rsa", "chmod "],
+      ["chown root:root /var/log/app", "chown "],
+    ];
+    for (const [cmd, word] of cases) {
+      const r = hook(bashCall(cmd, d), N1_ENV(d));
+      assert.equal(r.code, 0, r.out);
+      const parsed = r.out === "" ? {} : JSON.parse(r.out);
+      assert.equal(parsed.hookSpecificOutput?.permissionDecision, "deny", `正例须命中：${cmd} ⇒ ${r.out}`);
+      const marker = JSON.parse(readFileSync(hitFile(d), "utf8"));
+      assert.ok(Array.isArray(marker.matched) && marker.matched.includes(word), `matched 保形且含原词「${word}」：${JSON.stringify(marker.matched)}`);
+      rmSync(hitFile(d), { force: true });
+    }
+    const r = hook(bashCall("Git Push -F origin main", d), N1_ENV(d));
+    const parsed = r.out === "" ? {} : JSON.parse(r.out);
+    assert.equal(parsed.hookSpecificOutput?.permissionDecision, "deny", "大小写归一保留（非小写形态一枚）");
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("N1 解析面：复合元字符非豁免形照旧命中（分段后各段独立判）", () => {
+  const d = scratch("lzy-n1-compound-");
+  try {
+    for (const cmd of [
+      "cat a | shred b",
+      "echo hi && rm -rf build-cache",
+      "echo $(rm -rf build-cache)",
+      "git status; chmod 777 /etc/hosts",
+    ]) {
+      const r = hook(bashCall(cmd, d), N1_ENV(d));
+      const parsed = r.out === "" ? {} : JSON.parse(r.out);
+      assert.equal(parsed.hookSpecificOutput?.permissionDecision, "deny", `复合形须命中：${cmd} ⇒ ${r.out}`);
+      rmSync(hitFile(d), { force: true });
+    }
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("N1 解析面：契约冻结——matched 保形 / H3R_DENY 首词 / detail 纯加字段（rm 族目标抽取）", () => {
+  const d = scratch("lzy-n1-freeze-");
+  try {
+    const r = hook(bashCall("rm -rf build-cache dist", d), N1_ENV(d));
+    const parsed = JSON.parse(r.out);
+    const spec = parsed.hookSpecificOutput;
+    assert.match(spec.permissionDecisionReason, /^H3R_DENY /, "稳定首词冻结（仪器锚）");
+    assert.match(spec.permissionDecisionReason, /rm -rf/, "命中词仍在理由内");
+    const marker = JSON.parse(readFileSync(hitFile(d), "utf8"));
+    assert.ok(Array.isArray(marker.matched) && typeof marker.matched[0] === "string", "matched 保持字符串数组（drive.js takeH3rHit 零改动可读）");
+    assert.ok(marker.detail, "detail 加字段在场");
+    assert.equal(marker.detail.parse.ok, true);
+    assert.ok(Array.isArray(marker.detail.segments) && marker.detail.segments.length > 0);
+    assert.ok(marker.detail.segments.some((s) => s.hits.includes("rm -rf")), "分段命中词结构化");
+    const seg = marker.detail.segments.find((s) => s.hits.includes("rm -rf"));
+    assert.ok(Array.isArray(seg.targets) && seg.targets.includes("build-cache") && seg.targets.includes("dist"), `rm 族删除目标词元抽取：${JSON.stringify(seg.targets)}`);
+  } finally {
+    cleanup(d);
+  }
+});
+
+test("N1 解析面：解析歧义 fail-closed——不平衡引号/括号/反引号 ⇒ deny（改前=红半取证）", () => {
+  const d = scratch("lzy-n1-ambiguous-");
+  try {
+    for (const [cmd, why] of [
+      ['echo "unclosed', "双引号不平衡"],
+      ["echo 'unclosed", "单引号不平衡"],
+      ["echo $(date", "命令替换括号不平衡"],
+      ["echo `date", "反引号不平衡"],
+    ]) {
+      const r = hook(bashCall(cmd, d), N1_ENV(d));
+      const parsed = r.out === "" ? {} : JSON.parse(r.out);
+      assert.equal(parsed.hookSpecificOutput?.permissionDecision, "deny", `${why} 保守拦截：${cmd} ⇒ ${r.out}`);
+      assert.match(parsed.hookSpecificOutput.permissionDecisionReason, /^H3R_DENY /);
+      const marker = JSON.parse(readFileSync(hitFile(d), "utf8"));
+      assert.equal(marker.detail.parse.ok, false, `detail.parse 记歧义：${cmd}`);
+      rmSync(hitFile(d), { force: true });
+    }
+    // 对照：平衡的子壳/替换形不得误判为解析歧义（(rm -rf x) 靠词元切分照常命中）
+    const ok = hook(bashCall("(rm -rf build-cache)", d), N1_ENV(d));
+    const okParsed = JSON.parse(ok.out);
+    assert.equal(okParsed.hookSpecificOutput.permissionDecision, "deny");
+    const marker = JSON.parse(readFileSync(hitFile(d), "utf8"));
+    assert.equal(marker.detail.parse.ok, true, "平衡括号不误报歧义");
+  } finally {
+    cleanup(d);
+  }
+});
+
 test("N2/ADJ-41：词表缺口三形——短旗标强推 / ed25519 私钥名 / 空白逃逸（对照半区在案）", () => {
   const d = scratch("lzy-n2-words-");
   try {

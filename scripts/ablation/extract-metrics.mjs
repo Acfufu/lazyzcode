@@ -151,6 +151,9 @@ export function extractMetrics(trialId) {
     payloadHash: meta.payloadHash ?? null, // 载荷身份（ADJ-74）：这格量的是哪份载荷
     engineExit: meta.engineExit ?? null,
     engineKilled: meta.engineKilled ?? null,
+    // 门槛①（v024-fast-exp#N1）：墙钟透传——trial-meta 由 run-trial 持久化，此处直通进指标行
+    legDurationsMs: meta.legDurationsMs ?? null,
+    totalDurationMs: meta.totalDurationMs ?? null,
   };
   mkdirSync(p.dir, { recursive: true });
   writeFileSync(p.metrics, `${JSON.stringify(m, null, 2)}\n`);
@@ -380,6 +383,8 @@ export const METRIC_REQUIRED_KEYS = [
   "evidenceCount",
   "attestationPresent",
   "payloadHash",
+  "legDurationsMs",
+  "totalDurationMs",
 ];
 
 export function missingMetricKeys(m) {

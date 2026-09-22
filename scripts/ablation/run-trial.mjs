@@ -230,6 +230,7 @@ export async function runTrial({
 
   const summaries = [];
   const stdoutParts = [];
+  const legDurationsMs = []; // 门槛①（v024-fast-exp#N1）：逐 leg 墙钟——spawnEngine 本就返回 durationMs，此前被丢弃
   let resume = null;
   let engineExit = null;
   let engineKilled = false;
@@ -248,6 +249,7 @@ export async function runTrial({
         pathEnv: childPath, // 变体 CLI 优先于宿主全局 lzy（ADJ-81）
       });
       stdoutParts.push(`===== leg ${i + 1}${resume ? ` (resume ${resume})` : ""} exit=${r.code ?? "?"} signal=${r.signal ?? "-"} =====\n${r.stdout}\n[stderr]\n${r.stderr}\n`);
+      legDurationsMs.push(r.durationMs ?? null);
       engineExit = r.code;
       engineKilled = engineKilled || r.killed;
       const s = parseEngineSummary(r.stdout);
@@ -266,7 +268,7 @@ export async function runTrial({
     const payloadHash = computePayloadHash(pkg).hash;
     writeFileSync(
       join(p.dir, "trial-meta.json"),
-      `${JSON.stringify({ trialId, batch, variant, task, rep, tierHint: effHint, install: install.installed, cliVersion, payloadHash, engineExit, engineKilled, legs: legs.length, at: new Date().toISOString() }, null, 2)}\n`,
+      `${JSON.stringify({ trialId, batch, variant, task, rep, tierHint: effHint, install: install.installed, cliVersion, payloadHash, engineExit, engineKilled, legs: legs.length, legDurationsMs, totalDurationMs: legDurationsMs.reduce((a, b) => a + (b ?? 0), 0), at: new Date().toISOString() }, null, 2)}\n`,
     );
     const metrics = extractMetrics(trialId);
     return { trialId, verdictExit, metrics, payloadHash, cliVersion };

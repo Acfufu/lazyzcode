@@ -9,8 +9,9 @@
 3. `npm publish --dry-run` —— 逐项确认：
    - 文件清单只含 `cli/ core/ plugin/ + README/LICENSE/CHANGELOG/package.json`；
    - 输出中 grep 不到 `.mimosa`、`.lazyzcode`、`docs/`、`acfufu`、`sess_` 任何一处。
-4. `npm publish`（首个版本不带 dist-tag，默认 latest）。
-5. 换环境冒烟：`npm i -g lazyzcode && lzy --version && lzy doctor`。
+4. **provenance 边界**：本机 2FA 直发不产生 provenance（npm 该能力仅 CI OIDC 发布生效）；若迁 CI 发布（GitHub Actions OIDC+npm trusted publishing 配置），publish 命令加 `--provenance`，包页显 Verified 标——迁移本身须另行拍板。发布前跑 `node scripts/provenance-ready.mjs`（exit 0 = 包元数据 provenance-ready：repository 归一化指向本仓、name、版本三体一致）。
+5. `npm publish`（首个版本不带 dist-tag，默认 latest）。
+6. 换环境冒烟：`npm i -g lazyzcode && lzy --version && lzy doctor`。
 
 ## GitHub 公开仓库
 

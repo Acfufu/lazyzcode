@@ -13,8 +13,10 @@
 // 口径）：段标相符的伪造标记**可以**改写收束因分类（防伪边界=记账不裁决）；他段残留与
 // 无段标伪造不可消费。
 //
-// 失败语义（诚实边界，报告记账）：任何非命中路径静默 exit 0；钩子崩溃/超时/坏 schema 在
-// 引擎侧**一律 fail-open**（工具照常执行）。标记写失败**不阻断 deny**——拦截是主目的，
+// 失败语义（诚实边界，报告记账；ADJ-07 订正）：非命中路径静默 exit 0；坏 stdin → 引擎按
+// 空判定处置（fail-open）；**进程崩溃/超时/非 0 退出**在引擎侧为 `throw ToolExecutionFailed
+// (recoverable:true)` + stderr/stdout 预览——模型可见错误面，非静默放行；命令本体最终命运
+// 不可裁（活体探针 INFRA-FAIL，2026-09-22）。标记写失败**不阻断 deny**——拦截是主目的，
 // 收束由 drive 的预算/段账兜底。
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

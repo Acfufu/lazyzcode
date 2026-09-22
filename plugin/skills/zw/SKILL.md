@@ -625,8 +625,10 @@ in the unattended lane only, and while asleep they enforce nothing:
 Do not call any of them a machine gate while dormant (ADR-0022). Two honest
 limits: the word list is substring matching, not a command parser (it can be
 reworded around, and it excludes the repo's own `lzy`/`git commit` bookkeeping
-so step titles stay recordable); and a hook crash or timeout fails open on the
-engine side by contract.
+so step titles stay recordable); and a hook crash or timeout surfaces to the
+model as a recoverable tool error on the engine side (never a silent pass;
+whether the command itself ran is not guaranteed either way — ADR-0022's
+failure semantics, corrected by the v023 fix round).
 
 1. **[L0+L1]** Never write the user's `config.json`; plugin enabling flows only
    through the engine's official CLI (`lzy install` handles this — the CLI's

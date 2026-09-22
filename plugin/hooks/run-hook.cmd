@@ -15,8 +15,9 @@ rem   order puts a v9 residue after v24 ("v9" > "v2x" bytewise) => Node 9 ran th
 rem   all six hooks died with no fail-open log on that path. Now every %APPDATA%\nvm\* dir is
 rem   scored by its v<major>.<minor>.<patch> name through a zero-padded sort key (equal-width
 rem   digits => string compare == version compare) and the highest one wins. Fallback semantics
-rem   when a dir name carries no parseable version: it still gets a padded key, so plain string
-rem   order decides (an unversioned name loses to a real version); with no nvm candidate at all
+rem   when a dir name carries no parseable version: the dir is SKIPPED as a candidate (ADJ-23,
+rem   v023-fix-round: a letter-leading padded key would beat every numeric key under IF string
+rem   compare, inverting the documented order); with no nvm candidate at all
 rem   the fixed system path below is used. The chosen binary stays observable via --print-node
 rem   (lzy doctor hook-node row).
 setlocal
@@ -69,6 +70,9 @@ for /f "tokens=1,2,3 delims=." %%a in ("%VER%") do set "MAJ=%%a" & set "MIN=%%b"
 if not defined MAJ set "MAJ=0"
 if not defined MIN set "MIN=0"
 if not defined PAT set "PAT=0"
+rem ADJ-23 guard: any non-digit token (nvm-windows default/residual dirs) skips the candidate -
+rem its padded key would start with a letter and win every IF string compare against numeric keys.
+echo %MAJ%%MIN%%PAT%| findstr /r "^[0-9][0-9]*$" >nul || exit /b 0
 set "MAJP=0000%MAJ%"
 set "MAJP=%MAJP:~-4%"
 set "MINP=0000%MIN%"

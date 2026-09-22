@@ -1680,7 +1680,17 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
             `恢复：lzy evidence red ${s.id} --evidence <改前态失败取证>（绿后补录=反向配对即过）或 lzy evidence waive-red ${s.id} --reason <一行豁免>`,
         );
       }
+      // red_of 多条合法、**最新为现行**（§4#24 口径）：harness 冻结对现行红执法——
+      // append-only 账本上「红或绿按同一程序重录」的恢复路径要求旧代红让位（v024-
+      // debt-bundle finish 活体：首录红旧程序串永久绊门=恢复路径死路）。waived 不带
+      // harness，照旧不核。
+      const currentRed = halves
+        .filter((n) => n.half === "red")
+        .slice()
+        .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0) || a.at - b.at)
+        .at(-1);
       for (const h of halves) {
+        if (h.half === "red" && h !== currentRed) continue; // 非现行红：历史留账，不执法
         if (h.half === "red" && h.harnessHash && anchor.harnessHash && h.harnessHash !== anchor.harnessHash) {
           throw new LoopError(
             `HEAVY harness 冻结（INV-08）：F 项 ${s.id} 红绿两半 harness 错配` +

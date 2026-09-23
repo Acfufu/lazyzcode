@@ -127,6 +127,19 @@ M2 试点执行序 lazyzcode → openchamber → zpigeon-ios；今晚探针序 �
 - 结论：`step done` 重绑路径确实把「指纹重锚」当「证据现行」而不复跑断言——workers 波末屏障（drive.js:1172-1211）以该调用把整合候选的失败断言洗成新鲜证据。反例冻结为 M2 退役该路径的红面输入。
 - 保真边界：本反例在屏障的**精确调用形态**上成立（explorer 核对屏障 shell 的即此命令形态）；全 workers 波活体复现（真引擎两工人）留 M2 退役工作顺带完成，不在 M0 展开。
 
-## 9. 迁移样本（N7）
+## 9. 迁移样本（N7，只读，2026-09-24 凌晨）
 
-（待 N7 填充）
+- 隔离样本：`v030-fixtures/migration-sample-src/`——v024-fix-round 的 reset 残档全族复制（attestation `v024-fix-round-20260923T145524Z.json`、计划快照、salvage 盘点、证据包报告、approvals 全量），零写回旧格式。
+- CLI 只读面活体：`lzy loop list --root <样本目录>` → 「锚下没有仓持有 .lazyzcode/loop/goal.json」——复制态如实报**非活体目标**（goal.json 已随 reset 清除，迁移=派生视图非接管，不回填）。
+- 旧记录 → 0.3.0 语义映射样本（v024-fix-round 实物）：
+
+| 旧记录族（实物字段） | 旧语义 | 0.3.0 新语义解释 | 提权禁止点 |
+| --- | --- | --- | --- |
+| approvals `4eba8410-*.json`（version 1 · slug · planHash 全量 · at · sessionId） | UPS 钩子在真实用户消息上写的**计划采纳**批准（slug+planHash 双键，ADR-0018） | 授权对象是执行计划（planHash），非需求契约（contractHash，ADR-0024）——新协议下计划在契约边界内自主演进 | 旧 approval 不得重放为契约授权；新契约须全新 UPS 批准 |
+| attestation（slug · planHash 4eba84107231 · 指纹 d84733cf15c0 · at） | LOOP_COMPLETE 机器证明（0.0.9 语义） | 原样保留为历史，按旧版本语义读取 | 旧 attestation ≠ 新 A/B/C 交付终点的完成证据；不伪造新回执 |
+| snapshots `v024-fix-round.md` | 采纳时点计划快照（review 绑哈希） | 契约草案素材源：F 项断言→验收项草案、非目标→非目标草案——产出「待确认需求契约」 | 转换产物须经用户新批准才成已授权待办；旧 planHash 批准不升级 |
+| salvage `v024-fix-round.md` | reset 盘点（可回收工件） | 只读迁移输入；未提交改动清单转新 goal 继承脏树清单 | salvage ≠ 授权；接手仍走契约批准 |
+| evidence `v024-fix-round.report.md` | 证据包导出（reset 不清） | 旧证据按原绑定（复合指纹 d84733cf15c0）原义解释；范围档资格须重新建立（ADR-0025） | 旧证据不自动获得范围复用资格 |
+| goal.json（缺席） | —（reset 已清） | CLI 如实报非活体；迁移=显式工具做只读导出/转换（§2 事实 5：迁移机器不存在，本样本即 M1 迁移工具的设计输入） | 无 goal 出口报恢复式错误，不静默接管 |
+
+- 契约草案头样本（自快照派生，**未授权**态）：`task: v024-fix-round · 已归档`；`acceptance_draft: 快照 F1–F10 断言逐条`；`endpoint: A（历史事实：已完成）`；`authorization: NONE——历史 attestation 只证 LOOP_COMPLETE，不构成任何新工作授权`。

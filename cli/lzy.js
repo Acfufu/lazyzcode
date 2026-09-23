@@ -544,7 +544,15 @@ async function cmdLoop(args) {
         wallMs: f["wall-ms"] != null && f["wall-ms"] !== "" ? Number.parseInt(f["wall-ms"], 10) : null,
         maxSegments: f["max-segments"] != null && f["max-segments"] !== "" ? Number.parseInt(f["max-segments"], 10) : undefined,
         mode: typeof f.mode === "string" ? f.mode : undefined,
-        workers: f["workers"] != null && f["workers"] !== "" ? Number.parseInt(f["workers"], 10) : f.fast != null ? 2 : null,
+        // --fast 糖≡workers 2（保留 fast 拍板 2026-09-23）。ADJ-21（v024 双审）：原判据
+        // `f.fast != null` 把显式 `--fast=false` 也算「在场」⇒ 反转进 workers 2（无人值守
+        // 脚本里的「明确关掉」被读成「开」，自动化解 ~2× 计价）。现只认在场且非显式假。
+        workers:
+          f["workers"] != null && f["workers"] !== ""
+            ? Number.parseInt(f["workers"], 10)
+            : f.fast === true || f.fast === "1" || f.fast === "true"
+              ? 2
+              : null,
       });
       if (!r.ok) process.exitCode = 1;
       return;
@@ -932,10 +940,13 @@ function printHelp() {
   lzy loop budget init|spend|remaining      运行预算（0.2.0，ADR-0020）：墙钟+积分双硬顶，
                                             超顶拒=drive 须干净收束的机器信号
   lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]
+                 [--workers N] [--fast]
                                             无人值守执行通道（0.2.0，ADR-0020）：单唤起内
                                             headless 段循环推进 executing 目标；段间三门
                                             （risk/lease/预算）+水位联动；收束自写 handoff
-                                            快照交回（退出码 0=done 或干净收束，1=门拒/段失败）
+                                            快照交回（退出码 0=done 或干净收束，1=门拒/段失败）；
+                                            --workers N=多工人波编排（ADR-0026：LIGHT only，
+                                            HEAVY 入口拒；--fast≡--workers 2，--fast=false=单工人）
   lzy loop subject add <path>               声明兄弟仓根入 subject 集（仅 executing；校验 git 仓/
                                             与宿主无包含；集合变化=全体 F 证据过期须重取）
   lzy loop subject remove <path>            移除 subject（missing 死锁出口；证据过期语义照走）

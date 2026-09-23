@@ -32,6 +32,33 @@ versioning is SemVer.
 
 ### Fixed
 
+- **0.2.4 dual-review fix round** (goal `v024-fix-round`; 39 findings of the v024
+  five-round dual review, `docs/reviews/2026-09-23-v024-dual-review.md`, all closed):
+  the workers lane's wind-down phase is now integrity-preserving — subjects are
+  unlinked before their worktrees are deleted (a clean non-done wind-down no longer
+  leaves dangling roots that make every later `finish` hard-reject), dirty worker
+  worktrees survive with their branches and are named in the handoff snapshot, and
+  run-directory deletion is authorised solely by the owner sentinel the run writes;
+  the wave barrier re-anchors only when the subject head-tree set actually moved and
+  passes the previous green's `--harness` through (INV-08 had been silently vacuous
+  on every rebound green, and the mechanical re-anchor made the stuck wind-down
+  unreachable); HEAVY goals are refused at the workers entry instead of dead-ending
+  at `finish`; step claims this run strands are released and the snapshot names the
+  command; wall-clock accounting moved after the merge so a budget-exhausted
+  wind-down keeps the wave's output; the assembly phase, worker-log archive and
+  cleanup phase are all guarded; `--fast=false` no longer means workers 2; the H3R
+  parser's four lexical gaps (segment truncation, bookkeeping-prefix newline, quote
+  parity, mid-word quotes) are closed; `lzy evidence list` and the doctor
+  `attest-trailer`/workers rows report what the machines actually check. See
+  ADR-0026.
+- **INV-08 harness freeze narrowed to the current red half** (goal `v024-debt-bundle`
+  follow-up, commit 125bbdd; ADJ-16 of the v024 dual review — this user-visible
+  main-path behaviour fix had no release note): on an append-only ledger the
+  first-recorded red pins the gate forever if the recording procedure changes, which
+  makes "re-record both halves with the same program" a dead recovery path (the
+  warning pointed at a command that could not clear it). The freeze now judges only
+  the latest current red of the pairing; a genuinely mismatched current red still
+  rejects.
 - **H3R command-layer gate parser root-fix** (ADR-0022 pre-registered promotion trigger,
   `v024-debt-bundle#N1`): substring matching upgraded to segment + token-sequence
   matching — two-word false positives (`ssh keys`, `npm publish-dry`) cleaned,

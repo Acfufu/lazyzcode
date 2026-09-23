@@ -679,3 +679,22 @@ test("⑱装配相中途失败：回滚已建物、自写快照、零波派发�
     rmSync(wt, { recursive: true, force: true });
   }
 });
+
+// ── ⑲--fast=false 语义（ADJ-21，v024-fix-round#N8）───────────────────────────
+test("⑲CLI：--fast=false 显式关=单工人（不得反转进 workers 2）", () => {
+  const r = repo("lzy-dw-fasting-", { planning: true }); // planning 仓：两径错误消息不同
+  try {
+    withEnv({ ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: ENV_FILE }, () => {
+      // 两径在 planning 仓都停在状态门，但 workers 径的文案不同（「——无人值守边界不变」）——
+      // 以此判别走了哪条径（⑪ 家法的收严版）。
+      const off = r.lzy(["loop", "drive", "--fast=false"]);
+      const offOut = `${off.stdout}${off.stderr}`;
+      assert.doesNotMatch(offOut, /无人值守边界不变/, `--fast=false 不应进 workers 径；实得 ${offOut}`);
+      assert.match(offOut, /绝不立新计划/, "--fast=false 应走单工人径");
+      const on = r.lzy(["loop", "drive", "--fast"]);
+      assert.match(`${on.stdout}${on.stderr}`, /无人值守边界不变/, "--fast 裸旗标仍须进 workers 径");
+    });
+  } finally {
+    rmSync(r.dir, { recursive: true, force: true });
+  }
+});

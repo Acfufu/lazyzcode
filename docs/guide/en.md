@@ -478,8 +478,16 @@ registers the marker for the next session. `lzy doctor`'s `drive` line reports
 the channel's availability on your machine:
 
 ```
-lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]
+lzy loop drive [--wall-ms N] [--max-segments N] [--mode m] [--workers N | --fast]
 ```
+
+**Workers (0.2.4).** `lzy loop drive --workers N` (or the `--fast` sugar, N=2) runs N worker
+chains per wave on sibling worktrees: steps are split by the claim gate, each worker commits
+inside its own worktree, and the wave ends with a merge back plus a barrier re-anchor of all
+evidenced F items. A merge conflict winds down cleanly and leaves the branches for a human.
+Entry requires env-auth and the H3R wake switches to be off; the measured cost is turns ≈2×
+with small tasks possibly slowing down — read the experiment report
+(`docs/reviews/2026-fast-exp-report.md` §1.3) before enabling.
 
 The host automation stays the only scheduled wake face — drive is what runs
 once awake (and what you can run yourself in an unattended window).

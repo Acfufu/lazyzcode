@@ -7,6 +7,13 @@ versioning is SemVer.
 
 ### Added
 
+- **`lzy loop drive --workers N` / `--fast`** (goal `v024-fast-scheduler#N1`): multi-worker
+  wave orchestration on sibling worktrees — claim-based step split, wave-terminal merge with
+  barrier re-anchor of all evidenced F items, `merge-conflict` clean wind-down cause, startup
+  reclaim keeping unmerged branches, env-auth + H3R-wake-off entry preconditions, wall clock
+  accrues max per wave; `--fast` ≡ `--workers 2`. Measured turns ≈2× — see
+  `docs/reviews/2026-fast-exp-report.md`. Also: doctor `drive` row reports workers leftovers;
+  contract group (12 cases) + real-engine e2e (`scripts/headless/e2e-drive-workers.mjs`).
 - **Findings ledger** (goal `v024-debt-bundle#N2`): machine-readable account of
   dual-review dispositions at `docs/reviews/findings-ledger.jsonl` (schemaVersion 1;
   all 41 findings of the 0.2.3 five-round dual review backfilled — later batches must

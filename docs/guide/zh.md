@@ -375,8 +375,14 @@ UTC+8 静态表、人工维护）标注重叠并给出计价安全窗。计价�
 可用性：
 
 ```
-lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]
+lzy loop drive [--wall-ms N] [--max-segments N] [--mode m] [--workers N | --fast]
 ```
+
+**workers 波编排（0.2.4）。** `lzy loop drive --workers N`（糖 `--fast`≡N=2）每波在兄弟
+worktree 上拉起 N 条工人链：步按认领门分派，工人各自在自己的 worktree 提交，波终 merge
+回宿主并对全部已取证 F 项屏障重锚。合并冲突走干净收束、分支留人工。入口前提=env-auth
+且 H3R 唤醒开关关闭；实测代价 turns≈2×、小任务可能反慢——启用前读实验报告
+（`docs/reviews/2026-fast-exp-report.md` §1.3）。
 
 宿主自动化仍是**唯一定时唤起面**——drive 是醒着之后跑的东西（也是你在无人值守
 窗口里可以自己跑的）。

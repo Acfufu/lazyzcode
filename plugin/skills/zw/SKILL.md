@@ -536,7 +536,7 @@ suggests the off-peak window measured from your own 429 data, cross-checked
 against declared pricing peaks (a hand-maintained table) with a safe-window
 note.
 
-Since 0.2.0 a wake-up has an **in-wake execution channel**: `lzy loop drive`
+Since 0.2.4 `lzy loop drive --workers N` (sugar `--fast` ≡ 2) runs N worker chains per wave on sibling worktrees — env-auth required, H3R wake switches must be off, and the measured cost is turns ≈2× with small tasks possibly slowing down; waves merge back with a barrier re-anchor of all evidenced F items, and a merge conflict winds down cleanly leaving branches for a human. Since 0.2.0 a wake-up has an **in-wake execution channel**: `lzy loop drive`
 (ADR-0020) spawns headless engine segments inside one wake and pushes the
 executing goal segment by segment — risk/lease/budget gates are checked
 between segments (HIGH+ risk never enters; a lease keeps a single runtime
@@ -705,6 +705,7 @@ tool). Aliases are equal — `zw` is the primary.
 | `lzy loop lease acquire/heartbeat/release/reclaim` | run-level lease: minutes-scale mutual exclusion, fence token for write-path declaration; `reclaim` = zombie-lease exit after a SIGKILLed drive (ADR-0020) |
 | `lzy loop budget init/spend/remaining` | drive budget: wall-clock + points double cap, over-cap reject = clean wind-down signal (ADR-0020) |
 | `lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]` | in-wake unattended execution channel (0.2.0, ADR-0020): headless segments inside one wake, gates between segments, wind-down authors the handoff snapshot itself; exit 0 = done or clean wind-down, 1 = gate reject/segment failure |
+| `lzy loop drive --workers N` · `--fast` | multi-worker wave orchestration (0.2.4, keep-fast decision): N≥2 runs N worker chains on sibling worktrees (worktree-as-subject, claim-based step split, wave-terminal merge + barrier re-anchor of all evidenced F items); `--fast` ≡ `--workers 2`; wave = segment, wall clock accrues max (not sum); entry requires env-auth and H3R switches off; measured cost: turns ≈2× — disclose before use (docs/reviews/2026-fast-exp-report.md) |
 | `lzy loop status` | progress, next step, evidence freshness |
 | `lzy step done <ID> [--note] [--evidence] [--evidence-file …]` | complete a step (F requires evidence; files bound by sha256) |
 | `lzy loop verify` | evidence freshness report (exit 1 when stale/unbound evidence **or no goal exists**) |

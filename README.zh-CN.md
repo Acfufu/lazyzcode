@@ -142,6 +142,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | Lease | `lzy loop lease acquire\|heartbeat\|release\|reclaim` | 运行级认领：分钟级互斥+心跳续期；fence 令牌申报写路径；`reclaim`=僵尸租约出口（持有进程已死自动回收，仍活须 `--force`）（ADR-0020） |
 | Budget | `lzy loop budget init\|spend\|remaining` | 运行预算：墙钟+积分双硬顶；超顶拒=干净收束信号（ADR-0020） |
 | Drive | `lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]` | 唤起内无人值守执行通道：一次唤起内 headless 段循环，段间查 risk/lease/预算三门，段内写带 fence 令牌；收束自写交接快照；退出码 0=done 或干净收束，1=门拒/段失败（ADR-0020） |
+| Drive workers | `lzy loop drive --workers N` · `--fast` | 多工人波编排（0.2.4）：N 条工人链在兄弟 worktree 并行，认领制分派步，波终 merge+证据重锚；`--fast` ≡ `--workers 2`；前提 env-auth 且 H3R 唤醒开关关闭；实测 turns≈2×——启用前读实验报告 |
 | 步级认领 | `lzy loop claim [<id>] [--release]` | 同目标多工人的匿名步级认领：48h 互斥、按计划 `deps:` 依赖边做阻塞校验、`step done` 自动释放；无参列可认领集 |
 | 证据包 | `lzy loop export` | 重导出证据包（`<slug>.report.md`）；`finish` 时亦自动归档 |
 | 红绿 manifest | `lzy evidence red <Fid> --evidence … · waive-red <Fid> --reason · list` | 双证据机器账本：红半绑自己的面（缺省复合指纹、`--surface` 外部表面）；waive=一行豁免的机器形态；绿半 `step done` 即镜像；`list` 读按 F manifest |

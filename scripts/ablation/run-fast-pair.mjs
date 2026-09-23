@@ -214,6 +214,13 @@ export async function runFastPair({
       mergeOps.push({ branch: w.branch, ok: g.status === 0, ms: Date.now() - m0 });
       if (g.status !== 0) conflicts = true;
     }
+    // ADJ-31（v024 双审）：产品 drive 在冲突时 abort 并中断（不继续 merge 后续分支、不推进
+    // 重锚/finish）；runner 原实现冲突后仍继续合并并往下走，语义与产品不一致（会把「冲突态
+    // 下仍能 finish」这类伪结论写进实验账）。
+    if (conflicts) {
+      git(repo, ["merge", "--abort"]);
+      writeFileSync(join(dir, "merge-log.txt"), `${mergeOps.map((m) => JSON.stringify(m)).join("\n")}\nmerge-aborted=true\n`);
+    }
   }
   writeFileSync(join(dir, "merge-log.txt"), mergeOps.map((m) => JSON.stringify(m)).join("\n") || "serial 臂无 merge");
 
@@ -236,11 +243,17 @@ export async function runFastPair({
   const fIds = (JSON.parse(readFileSync(join(taskDir, "plan.json"), "utf8") ?? "{}").fIds) ?? ["F1"];
   let mergeBarrierRebinds = 0;
   if (arm === "dual" && !conflicts) {
-    for (const fid of fIds) {
+    // ADJ-31 第二半：产品屏障只重锚**已取证**的 F 项（`s.kind==="F" && s.evidence`）；runner
+    // 原实现无此在场守卫，可对从未取证的 F 项写「首 done 代打」绿（注水），并把 finishOk
+    // 推向假绿。现行按 goal.json 的 evidence 在场筛选（缺 F 项的臂如实记 0 上界）。
+    const goalNow = JSON.parse(readFileSync(join(repo, ".lazyzcode", "loop", "goal.json"), "utf8"));
+    const byId = new Map((goalNow.steps ?? []).map((s) => [s.id, s]));
+    const evidenced = fIds.filter((fid) => byId.get(fid)?.kind === "F" && byId.get(fid)?.evidence);
+    for (const fid of evidenced) {
       const r = lzy(repo, ["step", "done", fid, "--evidence", "merge-barrier rebind：终态组装（两 worktree 合流）后复合指纹重锚——runner 代跑，非工人取证"], { pathEnv: childPath });
       if (r.status === 0) mergeBarrierRebinds++;
     }
-    writeFileSync(join(dir, "rebind-log.txt"), `mergeBarrierRebinds=${mergeBarrierRebinds}/${fIds.length}`);
+    writeFileSync(join(dir, "rebind-log.txt"), `mergeBarrierRebinds=${mergeBarrierRebinds}/${evidenced.length}（候选 ${fIds.length}·在场守卫后）`);
   }
   let finishOk = false;
   const fin = lzy(repo, ["loop", "finish"], { pathEnv: childPath, timeout: 120_000 });

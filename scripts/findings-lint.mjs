@@ -7,6 +7,10 @@
 import { readFileSync } from "node:fs";
 
 const SEVERITIES = new Set(["P0", "P1", "P2", "P3"]);
+// ADJ-27（v024 双审）：`landed` 原判据只验「非空且 ≠ open」——`"OPEN"`/`"tbd"`/散文串照过，
+// 「fixed 有提交指针」这条机器承诺名存实亡。现行须为提交 sha 形态（7-40 位十六进制）；
+// 且 batch 必须出现在 meta 行的 scope 文本里（批次与范围句脱钩时无人发现）。
+const LANDED_RE = /^[0-9a-f]{7,40}$/;
 const VERDICTS = new Set(["成立", "部分成立", "证伪"]);
 const DISPOSITIONS = new Set(["fixed", "deferred", "wontfix", "waived"]);
 const REQUIRED = ["id", "batch", "severity", "verdict", "disposition", "landed", "source"];
@@ -26,12 +30,15 @@ if (lines.length === 0) {
 
 const errors = [];
 const seen = new Set();
+const batches = new Set();
+let metaScope = "";
 let findings = 0;
 
 const checkRow = (obj, n, isMeta) => {
   if (isMeta) {
     if (typeof obj.scope !== "string" || obj.scope.trim() === "") errors.push(`L${n}: meta 行缺 scope 范围句`);
     if (obj.schemaVersion !== 1) errors.push(`L${n}: meta 行 schemaVersion 必须=1`);
+    if (typeof obj.scope === "string") metaScope = obj.scope;
     return;
   }
   for (const k of REQUIRED) {
@@ -44,8 +51,9 @@ const checkRow = (obj, n, isMeta) => {
     if (seen.has(obj.id)) errors.push(`L${n}: id 重复：${obj.id}`);
     seen.add(obj.id);
   }
-  if (obj.disposition === "fixed" && (typeof obj.landed !== "string" || obj.landed.trim() === "" || obj.landed === "open")) {
-    errors.push(`L${n}: disposition=fixed 须带非 open 的 landed 提交指针`);
+  if (typeof obj.batch === "string") batches.add(obj.batch);
+  if (obj.disposition === "fixed" && !LANDED_RE.test(String(obj.landed ?? "").trim())) {
+    errors.push(`L${n}: disposition=fixed 的 landed 须为提交 sha 形态（7-40 位十六进制），实际：${JSON.stringify(obj.landed)}`);
   }
   if (obj.disposition && obj.disposition !== "fixed" && obj.landed !== "open") {
     errors.push(`L${n}: disposition=${obj.disposition} 的 landed 须记 open（实际：${obj.landed}）`);
@@ -71,6 +79,14 @@ lines.forEach((line, i) => {
   if (!isMeta) findings += 1;
   checkRow(obj, n, isMeta);
 });
+
+// batch ↔ meta scope 绑定（ADJ-27）：每个批次的标签必须出现在 meta 的范围句里——新批次
+// 回填时若忘了扩写 scope，批次与范围句脱钩而无人发现（行数钉挡得住行数，挡不住这个）。
+for (const b of batches) {
+  if (!metaScope.includes(b)) {
+    errors.push(`batch「${b}」未出现在 meta scope 文本里——回填新批次须同步扩写首行范围句`);
+  }
+}
 
 if (errors.length > 0) {
   console.error(`[findings-lint] ${file} 不合规（${errors.length} 处）：`);

@@ -73,6 +73,12 @@ if (planR.status !== 0) {
 }
 lzy(["loop", "start"]);
 
+// 清理断言的基线快照（ADJ-24）：原实现自算 `fast-${stamp}` 预测 runId——跨秒即断言对象不存在，
+// 于是无论清理相是否生效都「绿」（单向假绿）。现行按**旁观根差分**判：跑前记条目集，跑后只看
+// **新增的**形符 runDir 是否为零（不含归档 `.logs`，那是设计上保留的）。
+const wtRoot = join(dirname(d), basename(d) + "-fast");
+const RUN_DIR_RE = /^fast-\d{14}(-\d+)?$/;
+const beforeEntries = existsSync(wtRoot) ? readdirSync(wtRoot) : [];
 const driveR = lzy(["loop", "drive", "--workers", "2", "--max-segments", "4", "--wall-ms", "1500000"]);
 console.log(`[e2e-drive-workers] drive exit=${driveR.status}`);
 console.log((driveR.stdout ?? "").split("\n").filter((l) => l.includes("[drive]")).join("\n"));
@@ -87,7 +93,10 @@ eq("goal done", goal.status === "done");
 eq("steps 4/4 done", (goal.steps ?? []).every((s) => s.status === "done"));
 eq("attestation 在场", readdirSync(join(d, ".lazyzcode", "attestations")).filter((f) => f.endsWith(".json")).length > 0);
 eq("三产物合流", ["n1.txt", "n2.txt", "n3.txt"].every((f) => existsSync(join(d, f))));
-eq("workers 残留已清（done 清理相）", !existsSync(join(dirname(d), basename(d) + "-fast", `fast-${stamp}`)));
+eq(
+  "workers 残留已清（done 清理相；按旁观根差分判新增形符 runDir=0）",
+  (existsSync(wtRoot) ? readdirSync(wtRoot) : []).filter((n) => RUN_DIR_RE.test(n) && !beforeEntries.includes(n)).length === 0,
+);
 
 console.log(checks.join("\n"));
 if (!keep) rmSync(base, { recursive: true, force: true });

@@ -87,10 +87,20 @@ function runRound({ repo, k, m }) {
         wallMs: Date.now() - t0,
         waits: (after.lock_waits ?? 0) - (before.lock_waits ?? 0),
         waitMsTotal: (after.lock_wait_ms_total ?? 0) - (before.lock_wait_ms_total ?? 0),
-        waitMsMax: after.lock_wait_ms_max ?? 0,
+        // ADJ-32（v024 双审）：`lock_wait_ms_max` 是**运行终身最大值**（mergeMetrics 取 max 语义）
+        // ——K=8 的读数里含 K=2/K=4 轮的历史峰，归因失真（方向保守：报大不报小）。现按轮取差：
+        // 本轮 max 只能由「本轮记录的等待」产生；历史峰 ≥ 本轮真值，故若历史峰不大于跑前值，
+        // 说明本轮没刷新过峰 ⇒ 本轮 max 记 0（保守）与「跑前值未变」两读数一并留存。
+        waitMsMaxLifetime: after.lock_wait_ms_max ?? 0,
+        waitMsMaxStalePeak: (after.lock_wait_ms_max ?? 0) === (before.lock_wait_ms_max ?? 0),
+        waitMsMax: (after.lock_wait_ms_max ?? 0) === (before.lock_wait_ms_max ?? 0) ? 0 : (after.lock_wait_ms_max ?? 0),
         timeouts: (after.lock_timeouts ?? 0) - (before.lock_timeouts ?? 0),
         spendOk: outs.reduce((a, o) => a + (o?.ok ?? 0), 0),
         spendFail: outs.reduce((a, o) => a + Math.max(o?.fail ?? 0, 0), 0),
+        // ADJ-32 第二半：工人进程崩溃（close 时无 JSON 输出 ⇒ 上面记 {ok:0, fail:-1}）此前被
+        // `Math.max(fail,0)` 抹成 0，看板上完全隐形。现行单列崩溃计数与名单（谁的输出不可解析）。
+        crashed: outs.filter((o) => (o?.fail ?? 0) < 0).length,
+        crashIdx: outs.map((o, i) => ((o?.fail ?? 0) < 0 ? i : -1)).filter((i) => i >= 0),
       });
     }
   });
@@ -131,7 +141,10 @@ if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
   for (const k of kList) {
     const row = await runRound({ repo, k, m });
     rows.push(row);
-    console.log(`K=${row.k} M=${row.m} | waits=${row.waits} waitMsTotal=${row.waitMsTotal} waitMsMax=${row.waitMsMax} timeouts=${row.timeouts} | wallMs=${row.wallMs} spend ok=${row.spendOk} fail=${row.spendFail}`);
+    console.log(
+      `K=${row.k} M=${row.m} | waits=${row.waits} waitMsTotal=${row.waitMsTotal} waitMsMax=${row.waitMsMax}` +
+        `${row.waitMsMaxStalePeak ? "（未刷新峰：本轮真值≤历史峰）" : ""} timeouts=${row.timeouts} | wallMs=${row.wallMs} spend ok=${row.spendOk} fail=${row.spendFail} crashed=${row.crashed}${row.crashed ? `［${row.crashIdx.join(",")}］` : ""}`,
+    );
   }
   const doc = spawnSync(process.execPath, [CLI, "doctor"], {
     cwd: repo,

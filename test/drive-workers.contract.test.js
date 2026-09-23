@@ -698,3 +698,74 @@ test("⑲CLI：--fast=false 显式关=单工人（不得反转进 workers 2）",
     rmSync(r.dir, { recursive: true, force: true });
   }
 });
+
+// ── ⑳收束族覆盖（ADJ-25，v024-fix-round#N12）─────────────────────────────────
+test("⑳工人段失败：收束因=工人段失败 + !ok + 快照在场 + 分支保留（本波不组装）", async () => {
+  const r = repo("lzy-dw-segfail-");
+  const d = r.dir;
+  try {
+    const run = ({ argv }) => {
+      const wid = /工人 w(\d+)/.exec(String(argv[argv.indexOf("--prompt") + 1] ?? ""))?.[1] ?? "?";
+      if (wid === "1") return { exitCode: 1, stdout: "", stderr: "probe: worker 1 died" };
+      return { exitCode: 0, stdout: `${JSON.stringify({ sessionId: "s" })}`, stderr: "" };
+    };
+    const { result, lines } = await captureStdout(() => runDrive(d, { workers: 2, maxSegments: 2 }, passDeps(run)));
+    assert.equal(result.ok, false, "工人段失败属非干净收束");
+    assert.match(result.cause, /工人段失败/);
+    assert.ok(result.handoff, "失败收束须自写快照");
+    assert.match(lines, /产出留在各工人分支（未合并/, "报文须如实（不再声称『已按 merge 相保留』）");
+    const branches = spawnSync("git", ["-C", d, "branch", "--format", "%(refname:short)"], { encoding: "utf8" }).stdout ?? "";
+    assert.match(branches, /-w1/, "工人分支保留（!ok 不清理）");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(siblingRoot(d), { recursive: true, force: true });
+  }
+});
+
+test("⑳b 屏障重锚前置读失败：账本损坏 ⇒ fail-closed 收束（不静默写无 harness 新绿）", async () => {
+  const r = repo("lzy-dw-dagbroken-", { steps: ["- [N1] x", "- [N2] y", "- [N3] z", "- [F1] f"] });
+  const d = r.dir;
+  try {
+    const done = r.lzy(["step", "done", "F1", "--evidence", "初版取证（夹具）", "--harness", "npm test"]);
+    assert.equal(done.status, 0, `F1 基线取证应成功：${done.stdout}${done.stderr}`);
+    // 破坏账本（写坏 JSON）：重锚前置读须 fail-closed 收束，而不是静默不带 harness 重锚
+    writeFileSync(join(d, ".lazyzcode", "loop", "dag.json"), "{ broken\n");
+    const { result, lines } = await captureStdout(() =>
+      runDrive(d, { workers: 2, maxSegments: 2 }, passDeps(fakeWorker({ mutate: (cwd, wid) => fakeAddFile(wid)(cwd) }))),
+    );
+    assert.equal(result.ok, false, "账本不可读=非干净收束");
+    assert.match(result.cause, /屏障重锚前置读失败/, `实得 ${result.cause}`);
+    assert.match(lines, /fail-closed|恢复/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(siblingRoot(d), { recursive: true, force: true });
+  }
+});
+
+test("⑳c 无 pending 步 ⇒ drive 自走 finish 链收口（done + 清理相）", async () => {
+  const r = repo("lzy-dw-finishchain-", { steps: ["- [N1] x", "- [N2] y"] });
+  const d = r.dir;
+  try {
+    // 夹具的 plan.md 等未跟踪文件会让 finish 的完整性闸门拒（dirty 根）——先提交干净
+    spawnSync("git", ["-C", d, "add", "-A"], { encoding: "utf8" });
+    spawnSync("git", ["-C", d, "-c", "user.email=t@l", "-c", "user.name=t", "commit", "-qm", "fixture plan"], { encoding: "utf8" });
+    // 假工人用真 CLI 收口自己被分派的步 ⇒ 下一波 pendingCount===0 ⇒ drive 自走 finish
+    const run = ({ argv }) => {
+      const prompt = String(argv[argv.indexOf("--prompt") + 1] ?? "");
+      const m = prompt.match(/只做你被分派的步：([^\n]+)/);
+      for (const id of (m?.[1] ?? "").match(/N\d/g) ?? []) {
+        spawnSync(process.execPath, [CLI, "step", "done", id, "--note", "probe 假工人收口"], { cwd: d, encoding: "utf8", timeout: 60_000 });
+      }
+      return { exitCode: 0, stdout: `${JSON.stringify({ sessionId: "s" })}`, stderr: "" };
+    };
+    const { result, lines } = await captureStdout(() => runDrive(d, { workers: 2, maxSegments: 3 }, passDeps(run)));
+    assert.equal(result.ok, true);
+    assert.equal(result.cause, "done", `实得 ${result.cause}`);
+    assert.match(lines, /✔ goal done/);
+    const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    assert.equal(goal.status, "done", "drive 须自走 finish 链把目标收口");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(siblingRoot(d), { recursive: true, force: true });
+  }
+});

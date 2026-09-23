@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkAttestationTrailer } from "../core/doctor.js";
@@ -116,15 +116,17 @@ test("尾注核验边界（ADJ-28）：内容被改动=措辞点两成因；大�
   } finally {
     rmSync(lower, { recursive: true, force: true });
   }
-  const unreadable = fixtureRepo("lzy-attest-noread-", { attestFiles: [content] });
+  // 不可读分支的可移植触发器：把该路径做成**普通文件**（readdirSync 抛 ENOTDIR）。
+  // 早先用 chmod 000 —— win32 忽略 POSIX 目录位，读取照常成功，于是该支在 windows 腿红
+  // （2026-09-23 0.2.4 定版二跑）；「形态异常」正是 doctor 文案里已覆盖的成因，跨平台确定性。
+  const unreadable = fixtureRepo("lzy-attest-noread-", { attestFiles: [] });
   try {
-    chmodSync(join(unreadable, ".lazyzcode", "attestations"), 0o000);
+    mkdirSync(join(unreadable, ".lazyzcode"), { recursive: true });
+    writeFileSync(join(unreadable, ".lazyzcode", "attestations"), "not a directory\n");
     const [row] = runCheck(unreadable);
-    // 目录不可读：有尾注时报 warn（且不炸）；无尾注时同走 warn 分支
     assert.equal(row.state, "warn", row.detail);
-    assert.match(row.detail, /目录不可读/);
+    assert.match(row.detail, /目录不可读（权限\/形态异常）/);
   } finally {
-    chmodSync(join(unreadable, ".lazyzcode", "attestations"), 0o755);
     rmSync(unreadable, { recursive: true, force: true });
   }
 });

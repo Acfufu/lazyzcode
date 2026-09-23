@@ -834,7 +834,7 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
         windDownW(
           false,
           `finish 失败（exit=${fin.status}）`,
-          (fin.stdout ?? fin.stderr ?? "").trim().slice(0, 300) ||
+          `${(fin.stdout ?? "").trim()}${(fin.stderr ?? "").trim()}`.slice(0, 300) ||
             "finish 闸门拒（常=某 subject 脏：工人 worktree 留了未提交物）——人工清理该 worktree 或走 ADR-0013 remove+re-anchor 出口后重试",
         );
         break;

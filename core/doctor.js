@@ -3,7 +3,7 @@
 // hook 脚本语法自检（spawn 形态沿 engine.js/git.js 安全形态，见 checkHooks）。
 // 单项异常 fail-soft=warn，诊断自身故障不翻转退出码。
 import { readdirSync, readFileSync, existsSync, realpathSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
 import { createEngineCli } from "./engine.js";

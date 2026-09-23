@@ -684,6 +684,16 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
   let outcome = null;
   const workers_ = []; // {i, worktree, branch, home, subjectAdded, resume}
 
+  // 工人 worktree 脏态盘点（单一源：收束快照的风险节与清理相的保留判据同读一份）。
+  // 三态：干净 / 有未提交改动 / 不可判（git 不可用或非 git 目录——**fail-closed 保留**，
+  // 与完整性闸门同向：判不了就不删）。
+  const workerDirtInventory = () =>
+    workers_.map((w) => {
+      const st = gitRun(w.worktree, ["status", "--porcelain"]);
+      const state = st.status !== 0 ? "不可判" : (st.stdout ?? "").trim() !== "" ? "有未提交改动" : "干净";
+      return { w, state };
+    });
+
   const windDownW = (ok, cause, riskNote) => {
     let fresh = null;
     try {
@@ -691,9 +701,21 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
     } catch {
       fresh = null;
     }
+    // 保存物进快照（ADJ-03/ADJ-34，v024-fix-round#N1）：清理相在本函数之后才跑（:992），
+    // 被保留的工人 worktree 是唯一「未提交内容还在哪」的指针——不进快照就没有恢复仪表。
+    // subject 摘除会使本 run 内取证的 F 半随指纹换代失效，同批告知接手会话。
+    const inv = workerDirtInventory().filter((x) => x.state !== "干净");
+    const cleanupWillRun = ok && cause !== "merge-conflict";
+    const extra = inv.length > 0
+      ? `工人 worktree 盘点（有未提交改动/判不了者一律保留、内容不删）：${inv.map((x) => `w${x.w.i}=${x.state}（${x.w.worktree}）`).join("；")}` +
+        (cleanupWillRun
+          ? "；清理相将摘除本 run 声明的工人 subject——本 run 内取证的 F 项证据随之失效，接手会话须重取后 finish"
+          : "")
+      : null;
+    const note = [riskNote, extra].filter(Boolean).join("；") || undefined;
     if (fresh && fresh.status === "executing") {
       try {
-        const { snap, treeHash } = authorHandoffSnapshot(cwd, fresh, cause, riskNote, deps);
+        const { snap, treeHash } = authorHandoffSnapshot(cwd, fresh, cause, note, deps);
         handoffGoal(cwd, snap, treeHash);
         outcome = { ok, cause, handoff: snap };
         console.log(`[drive] 收束：${cause}——handoff 快照：${snap}（复归：zw 继续）`);
@@ -705,25 +727,58 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
       outcome = { ok, cause, handoff: null };
       console.log(`[drive] 收束：${cause}`);
     }
-    if (riskNote) console.log(`[drive] 原因：${String(riskNote).slice(0, 300)}`);
+    if (note) console.log(`[drive] 原因：${String(note).slice(0, 300)}`);
   };
 
   // 清理相（只发生在 finish+attestation 之后的 done，或 ok:true 干净收束；merge-conflict
-  // 与 !ok 一律不清理——分支/worktree 留人工）。**subject 不移除**：removeSubject 是
-  // executing-only 门（core/loop.js），done 后不可调——subject 条目留在 done goal 里惰性
-  // 存在（reset 清槽时随槽消失）；计划 §N2 的「subject remove」在实现期据此订正，证据
-  // 不依赖被移除 subject 的意图以「从不移除」更强形式成立。
-  const cleanupPhase = () => {
-    for (const w of workers_) {
-      gitRun(cwd, ["worktree", "remove", w.worktree]);
-      const del = gitRun(cwd, ["branch", "-d", w.branch]); // 已合并才删得动（-d 语义兜底）
-      if (del.status !== 0) console.log(`[drive] 清理：分支 ${w.branch} 保留（未合并，salvage 族）`);
-      rmSync(w.home, { recursive: true, force: true });
-    }
+  // 与 !ok 一律不清理——分支/worktree 留人工）。
+  // ADJ-01/03 重写（v024 五轮双审·修复轮）：
+  // ① **subject 先摘**：工人 worktree 是本 run 装配相声明的 subject——不摘就删树=悬空根，
+  //    该目标此后的 finish 被完整性闸门恒拒且逐轮累积（ADR-0013）；摘除只在 executing
+  //    窗口合法（removeSubject 是 executing-only，core/loop.js）。
+  // ② **脏树保命**：有未提交物（或脏态不可判）的 worktree 连同分支/home 一律保留并在台账
+  //    点名——原实现 worktree remove 失败不查 → branch -d 误报「未合并」→ rmSync(runDir)
+  //    把未提交内容一并强删。
+  // ③ **runDir 条件删**：零保留物才整体删（保留物都在 runDir 之下）。
+  // 全相不可抛：outcome 已定，抛出会把到手的收束炸成 exit 1（ADJ-09 同族）。
+  const cleanupPhase = (freshGoal) => {
+    const kept = [];
     try {
-      rmSync(runDir, { recursive: true, force: true });
-    } catch {
-      /* runDir 残留无害（宿主外，下轮启动回收兜底） */
+      const executing = freshGoal?.status === "executing";
+      const inv = new Map(workerDirtInventory().map((x) => [x.w.i, x.state]));
+      for (const w of workers_) {
+        if (executing && w.subjectAdded) {
+          const s = lzySpawn(cwd, cliPath, ["loop", "subject", "remove", w.worktree], lease.fence);
+          if (s.status !== 0) {
+            console.log(`[drive] 清理：subject 摘除未成（w${w.i}）——${String((s.stderr ?? s.stdout ?? "").trim()).slice(0, 160)}`);
+          }
+        }
+        const state = inv.get(w.i) ?? "不可判";
+        if (state !== "干净") {
+          kept.push(`w${w.i}（${state}）${w.worktree}`);
+          continue;
+        }
+        const rem = gitRun(cwd, ["worktree", "remove", w.worktree]);
+        if (rem.status !== 0) {
+          kept.push(`w${w.i}（worktree remove 失败）${w.worktree}`);
+          continue;
+        }
+        const del = gitRun(cwd, ["branch", "-d", w.branch]);
+        if (del.status !== 0) kept.push(`w${w.i}（分支未合并，salvage 族）${w.branch}`);
+        try {
+          rmSync(w.home, { recursive: true, force: true });
+        } catch {
+          kept.push(`w${w.i}（home 删除失败）${w.home}`);
+        }
+      }
+      if (kept.length === 0) rmSync(runDir, { recursive: true, force: true });
+      console.log(
+        kept.length === 0
+          ? `[drive] 清理：工人 worktree 与分支全清、runDir 已删（${runId}）`
+          : `[drive] 清理：保留 ${kept.length} 项待人工（未提交内容一律不删）：${kept.join("；")}`,
+      );
+    } catch (err) {
+      console.log(`[drive] 清理：异常中断（${String(err?.message ?? err).slice(0, 160)}）——残留见兄弟根 ${wtRoot}`);
     }
   };
 
@@ -972,6 +1027,19 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
         windDownW(true, `波数尽（${maxSegments} 波）`);
       }
     }
+    // 清理相在**租约内**执行：摘 subject 是经 CLI 的写命令，fence 申报须与现行租约相符——
+    // 释放后再摘会被 guardFence 拒（fencing 语义，ADR-0020），于是悬空根原样留着（ADJ-01
+    // 的「修了但仍悬空」形态）。done 路径的 finish/attestation 已在本循环内完成，故清理
+    // 仍在终态之后。
+    if (outcome?.ok && outcome.cause !== "merge-conflict") {
+      let freshForCleanup = null;
+      try {
+        freshForCleanup = readGoal(cwd);
+      } catch {
+        freshForCleanup = null; // 读不了=按非 executing 处置（不摘 subject，只做保守清理）
+      }
+      cleanupPhase(freshForCleanup);
+    }
   } finally {
     if (lease) {
       try {
@@ -989,6 +1057,10 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
   }
   // 清理相：done 或 ok:true 干净收束（merge-conflict 除外）→ subject remove+worktree
   // remove+分支 -d+home 删除（finish+attestation 已在前——证据不依赖被移除 subject）。
-  if (outcome.ok && outcome.cause !== "merge-conflict") cleanupPhase();
+  // 清理相：见上方循环尾的租约内调用点（ok:true 且非 merge-conflict）。此处只兜底
+  // 打印残留指针，不再重复清理。
+  if (outcome?.ok && outcome.cause !== "merge-conflict" && workers_.length > 0) {
+    console.log(`[drive] 清理相已在租约内完成；残余指针：兄弟根 ${wtRoot}`);
+  }
   return outcome;
 }

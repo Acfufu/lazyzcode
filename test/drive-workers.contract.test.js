@@ -158,7 +158,7 @@ test("②N=1 冻结：显式 workers:1 与缺省 outcome 逐字段同；不建�
 });
 
 // ── ③装配+清理相 ──────────────────────────────────────────────────────────────
-test("③装配与清理：run 中兄弟 worktree 在场；收束后 runDir 清、logs 留、subject 随 goal 惰性存", async () => {
+test("③装配与清理：run 中兄弟 worktree 在场；收束后 runDir 清、logs 留、subject 被摘除（ADJ-01）", async () => {
   const r = repo("lzy-dw-assemble-");
   const d = r.dir;
   try {
@@ -178,6 +178,43 @@ test("③装配与清理：run 中兄弟 worktree 在场；收束后 runDir 清�
     const after = siblingEntries(d);
     assert.ok(!after.some((e) => /^fast-\d{14}$/.test(e)), "清理相后 runDir 已清");
     assert.ok(after.some((e) => e.endsWith(".logs")), "logs 目录留待下轮回收");
+    const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    assert.deepEqual(goal.subjects ?? [], [], "收束相须摘除本 run 声明的工人 subject（否则悬空根恒拒 finish，ADJ-01）");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(siblingRoot(d), { recursive: true, force: true });
+  }
+});
+
+// ── ③b 收束相完整性（ADJ-01/03，v024-fix-round#N1）────────────────────────────
+test("③b 非 done 收束清理相：subject 摘除、脏 worktree 连同未提交物保留并点名、干净 worktree 删除", async () => {
+  const r = repo("lzy-dw-cleanup-");
+  const d = r.dir;
+  try {
+    // w1 留未提交物（合规真工人会提交——受控假工人构造 ADJ-03 形态）；w2 零动作
+    const run = ({ argv, cwd }) => {
+      const wid = /工人 w(\d+)/.exec(String(argv[argv.indexOf("--prompt") + 1] ?? ""))?.[1] ?? "?";
+      if (wid === "1") writeFileSync(join(cwd, "uncommitted.txt"), "salvage\n");
+      return { exitCode: 0, stdout: `${JSON.stringify({ sessionId: `sess-w${wid}` })}`, stderr: "" };
+    };
+    const { lines } = await captureStdout(() =>
+      runDrive(d, { workers: 2, maxSegments: 2 }, passDeps(run)),
+    );
+    const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    assert.equal(goal.status, "executing", "夹具应停在非 done 的干净收束");
+    assert.deepEqual(goal.subjects ?? [], [], "①收束相摘除本 run 的工人 subject");
+    const entries = siblingEntries(d);
+    const runDirName = entries.find((e) => /^fast-\d{14}(-\d+)?$/.test(e));
+    assert.ok(runDirName, `②有保留物时 runDir 不得整体删除；实得 ${JSON.stringify(entries)}`);
+    const kept = join(siblingRoot(d), runDirName);
+    assert.ok(existsSync(join(kept, "w1", "uncommitted.txt")), "②脏 worktree 的未提交物必须保留");
+    assert.ok(!existsSync(join(kept, "w2")), "③干净 worktree 应被删除");
+    assert.match(lines, /\[drive\] 清理：/, "清理相须留一行台账");
+    assert.match(lines, /w1/, "台账须点名被保留的工人");
+    const hd = join(d, ".lazyzcode", "loop", "handoff");
+    const snaps = readdirSync(hd).sort();
+    const snapText = readFileSync(join(hd, snaps.at(-1)), "utf8");
+    assert.match(snapText, /w1/, "④收束快照须点名被保留的 worktree（恢复仪表）");
   } finally {
     rmSync(d, { recursive: true, force: true });
     rmSync(siblingRoot(d), { recursive: true, force: true });

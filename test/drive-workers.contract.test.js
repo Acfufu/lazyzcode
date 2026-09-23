@@ -18,6 +18,14 @@ import { runDrive } from "../core/drive.js";
 import { loadRuntime } from "../core/runtime.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
+// env-auth 与上一条同理：workers 径入口要求 `ZCODE_*_PROVIDER_CONFIG_FILE` 指向非空实文件
+// （ADR-0026/ADJ-23）。**这是非被测面的公共前提**——旧的隐式依赖是「宿主机恰好由桌面端注入了
+// 该 env」：本机全绿、CI（无桌面注入）全红（2026-09-23 0.2.4 定版首跑 4 腿中 ubuntu-24 腿红、
+// 余腿 fail-fast cancelled，`⑱/⑳/⑳b/⑳c` 等 worker 用例整族挂）。被测面=「缺席/0 字节/次候选」
+// 三态，由 ⑦ 与 ⑯ 用 withEnv 显式构造（withEnv 会先删本模块级默认值）。
+// 真正断言 env-auth 缺席的用例仍在 withEnv({}) 里跑（见 ⑦）。
+process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE = join(mkdtempSync(join(tmpdir(), "lzy-dw-provenv-")), "provider.json");
+writeFileSync(process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE, "{}\n");
 const CLI = join(ROOT, "cli", "lzy.js");
 const SUPPRESS_ENGINE = "/nonexistent-lzy-suppressed-engine";
 const HOME = mkdtempSync(join(tmpdir(), "lzy-dw-home-"));

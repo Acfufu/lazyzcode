@@ -22,7 +22,7 @@ test("已提交 findings ledger 过 lint：exit 0 + 行数 80", () => {
   assert.match(r.stdout, /80 findings/, `行数 80 输出须在场：${r.stdout}`);
 });
 
-test("畸形夹具：坏 JSON / 缺必填 / 枚举外 / id 重复 / fixed 缺指针 / 缺 meta 首行 ⇒ 全部非零", () => {
+test("畸形夹具：坏 JSON / 缺必填 / 枚举外 / id 重复 / fixed 缺指针 / landed 非 sha / batch 脱离 meta / 缺 meta 首行 ⇒ 全部非零", () => {
   const d = mkdtempSync(join(tmpdir(), "lzy-findings-lint-"));
   try {
     const meta = JSON.stringify({ record: "meta", schemaVersion: 1, scope: "测试夹具" });
@@ -40,6 +40,10 @@ test("畸形夹具：坏 JSON / 缺必填 / 枚举外 / id 重复 / fixed 缺指
       ["fixed-open-landed", `${meta}\n${JSON.stringify({ ...JSON.parse(good), id: "V9-ADJ-01", landed: "open" })}\n`],
       ["deferred-with-commit", `${meta}\n${JSON.stringify({ ...JSON.parse(good), id: "V9-ADJ-01", disposition: "deferred", landed: "abc1234" })}\n`],
       ["no-meta-first", `${good}\n`],
+      // ADJ-27（v024-fix-round#N9）：landed 须 sha 形态、batch 须出现在 meta scope
+      ["fixed-prose-landed", `${meta}\n${JSON.stringify({ ...JSON.parse(good), id: "V9-ADJ-01", landed: "OPEN" })}\n`],
+      ["fixed-shortsha", `${meta}\n${JSON.stringify({ ...JSON.parse(good), id: "V9-ADJ-01", landed: "abc12" })}\n`],
+      ["batch-not-in-meta", `${meta}\n${JSON.stringify({ ...JSON.parse(good), id: "V9-ADJ-01", batch: "other-batch", disposition: "deferred", landed: "open" })}\n`],
     ];
     for (const [name, content] of cases) {
       const f = join(d, `${name}.jsonl`);

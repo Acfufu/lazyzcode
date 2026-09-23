@@ -566,3 +566,30 @@ test("N2/ADJ-41：词表缺口三形——短旗标强推 / ed25519 私钥名 / 
     cleanup(d);
   }
 });
+
+// ── N1 解析面四修（v024-fix-round#N6，ADJ-06/07/08/09）──────────────────────
+// 四条=改前态实测的机械绕过/误停（红半：artifacts/v024-fix-round/F3-red.txt 四对照 0/4）。
+const WAKE = { LZY_ABLATE_H3R_PRETOOL: "1", LZY_SEGMENT_ID: "424242:seg-1" };
+
+test("N1/ADJ-06：段数不截断——第 9 段起的高危词照旧命中（改前：.slice(0,8) 静默放行）", () => {
+  const cmd = [...Array(8)].map((_, i) => `echo s${i + 1}`).concat("rm -rf /tmp/lzy-probe").join(" && ");
+  const r = hook(bashCall(cmd, "/tmp"), WAKE);
+  assert.match(r.out, /H3R_DENY/, "9 段复合（第 9 段含 rm -rf）必须命中");
+});
+
+test("N1/ADJ-07：记账前缀 + 换行复合不再整行免检（改前：元字符类漏 \\n）", () => {
+  const r = hook(bashCall("git status\nrm -rf /tmp/lzy-probe", "/tmp"), WAKE);
+  assert.match(r.out, /H3R_DENY/, "换行是 shell 分隔符，记账豁免不得整行放行");
+});
+
+test("N1/ADJ-08：引号配对扫描——合法撇号引号不误停、未闭合仍 fail-closed（改前：合计奇偶）", () => {
+  assertSilent(hook(bashCall(`echo "it's fine"`, "/tmp"), WAKE), "合法引号命令");
+  assert.match(hook(bashCall(`echo "abc`, "/tmp"), WAKE).out, /H3R_DENY/, "未闭合引号仍须 fail-closed");
+});
+
+test("N1/ADJ-09：词中引号不再劈词（shell 忠实流；改前：引号即切分点 ⇒ 字节等价逃逸）", () => {
+  assert.match(hook(bashCall(`npm pub"lish" --tag next`, "/tmp"), WAKE).out, /H3R_DENY/, "npm pub\\\"lish\\\"");
+  assert.match(hook(bashCall(`git push --for"ce" origin main`, "/tmp"), WAKE).out, /H3R_DENY/, "git push --for\\\"ce\\\"");
+  // 反向：引号藏词形态（流 A 命中）不回归
+  assert.match(hook(bashCall(`cat "ssh key"`, "/tmp"), WAKE).out, /H3R_DENY/, "双词形藏词仍命中");
+});

@@ -38,13 +38,16 @@ const CMD_MAX = 300;
 // ADJ-06（v023 双审）：`node \S*lzy.js` 的 `\S*` 无法跨越空格——win32 全局装路径含空格
 // 用户名时引号形态静默失效；`("[^"]*"|\S*)` 两形并列（引号内允许空格）。
 // 边界如实记账：把高危命令藏进被排除通道是理论绕过轴（元字符护栏把复合形态堵死后，
-// 该轴收窄为「单条记账命令文本内嵌词表字样」的误伤面，由 deny 的子串匹配兜底）。
+// 该轴收窄为「单条记账命令文本内嵌词表字样」的误伤面，由 deny 的词元匹配兜底——ADJ-34
+// 订正：判定面自 v024-debt-bundle#N1 起已不是裸子串，故此处不再写「子串匹配」。
 function isBookkeeping(command) {
   const c = command.trim();
   // ADJ-05 元字符护栏：链接（&、&&、|、||）、分号、重定向（<、>）、命令替换（`、$(`)
   // 任一在场即不豁免——记账豁免只服务「单条记账命令」本形。`$` 后非 `(` 不误伤
   //（提交信息含 $VAR 的合法记账形态）。
-  if (/[&|;<>`]|\$\(/.test(c)) return false;
+  // ADJ-07：元字符类补换行/回车——换行是 shell 分隔符，`git status\nrm -rf …` 曾被整行免检
+  // （记账豁免只服务「单条记账命令」本形；`\r` 同族，win32 行尾/粘贴形态）。
+  if (/[&|;<>`\n\r]|\$\(/.test(c)) return false;
   if (/^git\s+(commit|add|status)\b/.test(c)) return true;
   if (/^lzy\b/.test(c)) return true;
   if (/^node\s+("[^"]*lzy\.js"|\S*cli[\\/]lzy\.js\b)/.test(c)) return true;
@@ -69,12 +72,90 @@ function wordlist() {
 // + 圆括号（子壳/替换残余「(rm -rf x)」的词元边界；非段界，纯词元面——全部封堵方向的
 // 加宽，无新放行面）。
 const SEGMENT_SPLIT = /&&|\|\||[;&|`\n]|\$\(/;
+// 词元流 A（沿用）：空白/引号/反斜杠/圆括号皆为切分点——`cat "ssh key"` 的藏词形态落成相邻
+// 词元 [ssh, key]，词表双词形照常命中。
 const TOKEN_SPLIT = /[\s"'\\()]+/;
 
-// 解析歧义（§N1.4 fail-closed 判据）：三条不平衡任一在场=无法无歧义解析。合法命令在
-// shell 本身就解析不过，保守拦截不损失真面。
+// 词元流 B（shell 忠实流，ADJ-09 新增）：引号**剥除但不切词**——`npm pub"lish"` 在 shell 里
+// 就是一个词 `publish`，旧流把它劈成 [pub, lish] 后词表双词形漏出（字节级等价逃逸：
+// `git push --for"ce"` 同理）。空白与未转义圆括号仍是切分点；反斜杠转义下一字符（字面保留）。
+// 两流任一命中即命中（并集只加宽检测面，不放行任何既有命中）。
+function shellTokens(seg) {
+  const out = [];
+  let cur = "";
+  let started = false;
+  let mode = null;
+  const flush = () => {
+    if (started) out.push(cur);
+    cur = "";
+    started = false;
+  };
+  for (let i = 0; i < seg.length; i += 1) {
+    const ch = seg[i];
+    if (mode === "'") {
+      if (ch === "'") mode = null;
+      else {
+        cur += ch;
+        started = true;
+      }
+      continue;
+    }
+    if (ch === "\\") {
+      cur += seg[i + 1] ?? "";
+      started = true;
+      i += 1;
+      continue;
+    }
+    if (mode === '"') {
+      if (ch === '"') mode = null;
+      else {
+        cur += ch;
+        started = true;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      mode = ch;
+      started = true; // 空引号也构成一个词
+      continue;
+    }
+    if (/\s/.test(ch) || ch === "(" || ch === ")") {
+      flush();
+      continue;
+    }
+    cur += ch;
+    started = true;
+  }
+  flush();
+  return out;
+}
+
+// 解析歧义（§N1.4 fail-closed 判据）：任一不平衡=无法无歧义解析，保守拦截。
+// ADJ-08：原实现把 `"` 与 `'` 的**合计奇偶**当歧义判据——`echo "it's fine"`（引号合法、shell
+// 正常执行）合计三个引号被判奇而误停，头注「不损失真面」不实。现行按 shell 语义逐字符扫描：
+// 单引号内一切字面；双引号内单引号**不切换**状态（`"it's"` 合法）；反斜杠转义下一字符；
+// 收尾仍在引号内=未闭合。反引号/圆括号仍按合计判（不参与配对语义，用于发现截断形；
+// 引号内的反引号会被顺带计入，方向保守）。
 function parseAmbiguityReason(command) {
-  if ((command.match(/["']/g) ?? []).length % 2 === 1) return "quotes";
+  let mode = null; // null | '"' | "'"
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i];
+    if (mode === "'") {
+      if (ch === "'") mode = null;
+      continue;
+    }
+    if (ch === "\\") {
+      i += 1; // 转义：下一字符为字面（含引号本身）
+      continue;
+    }
+    if (mode === '"') {
+      if (ch === '"') mode = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") mode = ch;
+  }
+  if (mode === '"') return "double-quote";
+  if (mode === "'") return "single-quote";
   if ((command.match(/`/g) ?? []).length % 2 === 1) return "backtick";
   if ((command.match(/\(/g) ?? []).length !== (command.match(/\)/g) ?? []).length) return "parens";
   return null;
@@ -116,17 +197,27 @@ function deletionTargets(tokens, lowerTokens, hitWords, wordTokenList) {
 function analyzeCommand(command, words) {
   const reason = parseAmbiguityReason(command);
   const wordTokenList = words.map((w) => ({ word: w, tokens: w.toLowerCase().split(/\s+/).filter(Boolean) }));
+  // ADJ-06：原实现 `.slice(0, 8)` 静默截断——第 9 段起的高危词永不进入判定（填 8 段良性命令
+  // 即机械绕过：探针实跑 9 段放行 / 8 段 deny）。现行全量分段，无截断也无 truncated 标记需求。
   const segments = command
     .split(SEGMENT_SPLIT)
     .map((s) => s.trim())
     .filter((s) => s !== "")
-    .slice(0, 8)
     .map((seg) => {
       const tokens = seg.split(TOKEN_SPLIT).filter(Boolean);
       const lowerTokens = tokens.map((t) => t.toLowerCase());
-      const hits = wordTokenList.filter(({ tokens: wt }) => wordHit(lowerTokens, wt)).map(({ word }) => word);
+      const tokensB = shellTokens(seg);
+      const lowerTokensB = tokensB.map((t) => t.toLowerCase());
+      const hits = wordTokenList
+        .filter(({ tokens: wt }) => wordHit(lowerTokens, wt) || wordHit(lowerTokensB, wt))
+        .map(({ word }) => word);
       const segInfo = { text: seg.slice(0, 80), hits };
-      const targets = deletionTargets(tokens, lowerTokens, hits, wordTokenList);
+      const targets = [
+        ...new Set([
+          ...deletionTargets(tokens, lowerTokens, hits, wordTokenList),
+          ...deletionTargets(tokensB, lowerTokensB, hits, wordTokenList),
+        ]),
+      ].slice(0, 3);
       if (targets.length > 0) segInfo.targets = targets;
       return segInfo;
     });

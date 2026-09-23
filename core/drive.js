@@ -20,6 +20,7 @@ import { spawnSync } from "node:child_process";
 import { progressSignature, signatureKey } from "./progress.js";
 import {
   LoopError,
+  anchoredGreenFor,
   assertDriveEligible,
   handoffDir,
   handoffGoal,
@@ -29,6 +30,7 @@ import {
   readGoal,
   withLock,
 } from "./loop.js";
+import { loadDag } from "./dag.js";
 import {
   acquireLease,
   heartbeatLease,
@@ -91,6 +93,16 @@ function doneCountOf(goal) {
 
 function pendingStepsOf(goal) {
   return (goal?.steps ?? []).filter((s) => s?.status !== "done");
+}
+
+// 现行锚定绿的 harnessSpec（屏障重锚的原样透传源，ADJ-04）：代数与锚定判据单一源在
+// core/loop.js（anchoredGreenFor），本函数只做「读图 + 取字段」。**不可读即抛**——调用点
+// 包护栏并收束：静默返回 null 会让重锚写出无 harnessHash 的新绿，正是 ADJ-04 的机器门
+// 拆除形态，故 fail-closed。
+function anchoredHarnessSpec(cwd, goal, fid) {
+  const dag = loadDag(cwd);
+  if (!dag) return null; // 账本缺席（全新目标）＝无既有绿可透传
+  return anchoredGreenFor(dag, goal, fid)?.harnessSpec ?? null;
 }
 
 function composeSegmentPrompt(cwd, cliPath) {
@@ -1050,23 +1062,8 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
         break;
       }
 
-      // 屏障重锚：全部现行 F 项各一次（subject 集本 run 已变；首波即全锚既有绿）。
-      const freshAfter = readGoal(cwd);
-      for (const s of freshAfter?.steps ?? []) {
-        if (s.kind === "F" && s.evidence) {
-          const rb = lzySpawn(cwd, cliPath, ["step", "done", s.id, "--evidence", `wave-barrier rebind：workers 波 ${seg} 组装后复合指纹重锚（drive 代跑）`], lease.fence);
-          if (rb.status !== 0) {
-            windDownW(
-              false,
-              `屏障重锚失败（${s.id}，exit=${rb.status}）`,
-              (rb.stdout ?? rb.stderr ?? "").trim().slice(0, 300),
-            );
-          }
-        }
-      }
-      if (outcome) break; // 重锚通道内的收束
-
-      // 终态判定 + 进度/水位（与单工人同源）。
+      // 终态判定 + 屏障重锚 + 进度/水位。ADJ-14：readGoal 入护栏（原屏障前的裸奔读取会让
+      // goal.json 损坏直接把异常穿出波循环 ⇒ 无 outcome 无快照）。
       let after = null;
       try {
         after = readGoal(cwd);
@@ -1078,6 +1075,46 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
         outcome = { ok: true, cause: "done", handoff: null };
         console.log(`[drive] ✔ goal done（${after.slug}）`);
         break;
+      }
+      // 屏障重锚（**条件化**，ADJ-04/05）：只在本波 subject 头树集实变时才重锚。首波的实变
+      // 来自 subject 集本身（prevProgress 在装配前采集，只含宿主根），此后只有真实提交才会
+      // 移动它。旧实现无条件重锚 ⇒ ①每波机械追加绿节点，推进签名（greens 计数）恒涨，stuck
+      // 收束因结构性不可达（零推进也能烧满波预算还 exit 0）；②给从未在合并树上复跑的 F 项写
+      // 新绿且不传 --harness ⇒ 新绿无 harnessHash，INV-08 双在场判据恒假（机器门被自家编排
+      // 无声拆除）。
+      // 诚实边界：重锚 ≠ 复验——它把「已有取证」绑到本波新指纹，断言本身未在合并树上重跑。
+      // 该边界记入 ADR-0026 与对抗清单（升格条件=工人侧真复跑面立项）。
+      const preBarrier = progressSignature(cwd, after, prevProgress);
+      if (preBarrier.trees !== prevProgress.trees) {
+        for (const s of after?.steps ?? []) {
+          if (s.kind !== "F" || !s.evidence) continue;
+          let harness = null;
+          try {
+            harness = anchoredHarnessSpec(cwd, after, s.id);
+          } catch (err) {
+            windDownW(
+              false,
+              `屏障重锚前置读失败（证据账本不可读）：${String(err?.message ?? err).slice(0, 160)}`,
+              "证据账本不可读——恢复：lzy doctor 核 dag 面后重跑（不带 --harness 静默重锚会重开 ADJ-04 的口，故 fail-closed）",
+            );
+            break;
+          }
+          const rbArgs = ["step", "done", s.id, "--evidence", `wave-barrier rebind：workers 波 ${seg} 组装后复合指纹重锚（drive 代跑，未复跑断言）`];
+          if (harness) rbArgs.push("--harness", harness); // harnessSpec 原样透传：INV-08 冻结不因重锚失效
+          const rb = lzySpawn(cwd, cliPath, rbArgs, lease.fence);
+          if (rb.status !== 0) {
+            windDownW(
+              false,
+              `屏障重锚失败（${s.id}，exit=${rb.status}）`,
+              (rb.stdout ?? rb.stderr ?? "").trim().slice(0, 300),
+            );
+            break;
+          }
+        }
+        if (outcome) break; // 重锚通道内的收束
+        console.log(`[drive] 波 ${seg}/${maxSegments}：屏障重锚完成（subject 头树集实变）`);
+      } else {
+        console.log(`[drive] 波 ${seg}/${maxSegments}：subject 头树集未变——跳过屏障重锚（不制造机械推进）`);
       }
       const cur = progressSignature(cwd, after, prevProgress);
       if (signatureKey(cur) === signatureKey(prevProgress)) noProgressStreak += 1;

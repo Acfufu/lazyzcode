@@ -104,6 +104,19 @@ function fakeWorker({ ms = 0, mutate = null } = {}) {
     return { exitCode: 0, stdout: `${JSON.stringify({ sessionId: `sess-fake-w${wid}`, status: "idle" })}`, stderr: "" };
   };
 }
+// 异步假工人（⑨/⑨c 用）：Atomics.wait 忙等会**阻塞事件循环** ⇒ 两名工人实为串行，实测耗时
+// 互相吃掉（w1=900 的那波被量成 1606=900+700）——于是「墙钟取 max 不 sum」在该夹具下根本
+// 不可观测，这正是旧 ⑨ 断言窗失效的第二个原因（ADJ-18，v024-fix-round#N3）。异步 await 让
+// 两工人真并发，max 口径与 sum 口径才分得开（1800 vs 3200）。
+function fakeWorkerAsync({ ms = 0, mutate = null } = {}) {
+  return async ({ argv, cwd }) => {
+    if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms));
+    const prompt = String(argv[argv.indexOf("--prompt") + 1] ?? "");
+    const wid = /工人 w(\d+)/.exec(prompt)?.[1] ?? "?";
+    if (mutate) mutate(cwd, wid, argv);
+    return { exitCode: 0, stdout: `${JSON.stringify({ sessionId: `sess-fake-w${wid}`, status: "idle" })}`, stderr: "" };
+  };
+}
 // 在 worktree 内提交一个新文件（w<tag>.txt，跨工人不相交——merge 必成）。
 function fakeAddFile(tag) {
   return (cwd) => {
@@ -395,11 +408,15 @@ test("⑧H3R 唤醒开关在场拒入 workers（ADR-0022 单链假设）", async
 });
 
 // ── ⑨墙钟=max + 一波=一段 ─────────────────────────────────────────────────────
-test("⑨墙钟取 max 不 sum（每波 60ms/10ms → 两波 ≈120 不是 ≈140）；maxSegments=2 恰两波收束", async () => {
+test("⑨墙钟取 max 不 sum（每波 900ms/700ms → 两波 ≈1800 而非 sum≈3200）；maxSegments=2 恰两波收束", async () => {
   const r = repo("lzy-dw-wall-");
   try {
-    const slow = fakeWorker({ ms: 60 });
-    const fast = fakeWorker({ ms: 10 });
+    // ADJ-18（v024-fix-round#N3）：旧夹具 60ms/10ms 的两个假设（max≈120 / sum≈140）只差
+    // 20ms，而真实进程开销在负载下可达 +55ms（实测 175 越窗 ⇒ 既无判别力又 flaky）；且同步
+    // 假工人把两名工人串行化（见 fakeWorkerAsync 注），量到的是 sum 形。异步假 + 900/700：
+    // max 口径 1800、sum 口径 3200，相隔 1.4s ≫ 抖动。
+    const slow = fakeWorkerAsync({ ms: 900 });
+    const fast = fakeWorkerAsync({ ms: 700 });
     const pick = ({ argv, cwd, env, timeoutMs }) => {
       const prompt = String(argv[argv.indexOf("--prompt") + 1] ?? "");
       return (/工人 w1/.test(prompt) ? slow : fast)({ argv, cwd, env, timeoutMs });
@@ -409,13 +426,57 @@ test("⑨墙钟取 max 不 sum（每波 60ms/10ms → 两波 ≈120 不是 ≈14
     );
     assert.match(lines, /墙钟取 max=/);
     const spent = loadRuntime(r.dir)?.budget?.spentMs ?? 0;
-    assert.ok(spent >= 120, `spentMs 应 ≥120（两波 max 口径），实得 ${spent}`);
-    assert.ok(spent < 168, `spentMs 应 <168（max 而非 sum≈180+），实得 ${spent}`);
+    assert.ok(spent >= 1500, `spentMs 应 ≥1500（两波 max=900 口径 ≈1800），实得 ${spent}`);
+    assert.ok(spent < 2600, `spentMs 应 <2600（sum 口径 ≈3200），实得 ${spent}`);
     assert.match(lines, /波 2\/2/);
     assert.match(result.cause, /波数尽（2 波）/);
   } finally {
     rmSync(r.dir, { recursive: true, force: true });
     rmSync(siblingRoot(r.dir), { recursive: true, force: true });
+  }
+});
+
+// ── ⑨b 屏障条件化（ADJ-04/05，v024-fix-round#N3）─────────────────────────────
+test("⑨b 零变更波不重锚：F 证据不被改写、绿代数不涨、收束因=stuck（假推进根治）", async () => {
+  const r = repo("lzy-dw-noanchor-", { steps: ["- [N1] x", "- [N2] y", "- [N3] z", "- [F1] f"] });
+  const d = r.dir;
+  try {
+    const done = r.lzy(["step", "done", "F1", "--evidence", "初版取证（夹具）", "--harness", "npm test"]);
+    assert.equal(done.status, 0, `F1 基线取证应成功：${done.stdout}${done.stderr}`);
+    const { result, lines } = await captureStdout(() =>
+      runDrive(d, { workers: 2, maxSegments: 3 }, passDeps(fakeWorker())),
+    );
+    assert.match(lines, /未变——跳过屏障重锚/, "零变更波须打印跳过行");
+    assert.match(result.cause, /stuck/, `零推进应收束为 stuck；实得 ${result.cause}`);
+    // 重锚恰一次（首波 subject 集实变导致），此后零变更波不再重锚——代数不随波数累积
+    assert.equal((lines.match(/屏障重锚完成/g) ?? []).length, 1, "重锚次数应为 1（仅首波实变那次）");
+    const list = r.lzy(["evidence", "list"]).stdout ?? "";
+    assert.ok(!/gen3|gen4/.test(list), `零变更波不得再写新绿代数（实得：${list.replace(/\n/g, " ")}）`);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(siblingRoot(d), { recursive: true, force: true });
+  }
+});
+
+test("⑨c 实变波重锚恰一次且 harness 原样透传（INV-08 不因重锚变哑）", async () => {
+  const r = repo("lzy-dw-anchor2-", { steps: ["- [N1] x", "- [N2] y", "- [N3] z", "- [F1] f"] });
+  const d = r.dir;
+  const har = (out) => (String(out ?? "").match(/🔧([0-9a-f]{8})/) ?? [])[1];
+  try {
+    const done = r.lzy(["step", "done", "F1", "--evidence", "初版取证（夹具）", "--harness", "npm test"]);
+    assert.equal(done.status, 0, `F1 基线取证应成功：${done.stdout}${done.stderr}`);
+    const h1 = har(r.lzy(["evidence", "list"]).stdout);
+    assert.ok(h1, "基绿应带 harness 标记");
+    const { lines } = await captureStdout(() =>
+      runDrive(d, { workers: 2, maxSegments: 2 }, passDeps(fakeWorker({ mutate: (cwd, wid) => fakeAddFile(wid)(cwd) }))),
+    );
+    assert.match(lines, /屏障重锚完成（subject 头树集实变）/, "实变波须重锚");
+    const h2 = har(r.lzy(["evidence", "list"]).stdout);
+    assert.equal(h2, h1, `重锚新绿须与原绿同 harness（原 ${h1}，新 ${h2 ?? "缺"}）`);
+    assert.match(r.lzy(["evidence", "list"]).stdout ?? "", /gen2|gen3/, "重锚应产生新一代绿节点");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(siblingRoot(d), { recursive: true, force: true });
   }
 });
 

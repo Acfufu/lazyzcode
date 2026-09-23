@@ -1551,7 +1551,9 @@ function dirtyPathHint(paths) {
 
 // ── 6. 完成：全部步骤 done + F 项证据全部新鲜 ──────────────────────────────
 // F 项当前代次的锚定绿节点（evidenceSeq-1 家法，与 verifyEvidence/终验 attestation 同源）。
-function anchoredGreenFor(dag, goal, fid) {
+// 导出（v024-fix-round#N3）：workers 屏障重锚要读现行锚定绿的 harnessSpec 做原样透传——
+// 代数算式只此一份，drive 侧不复制（ADJ-39 同族纪律：谓词/算式多处复制必漂移）。
+export function anchoredGreenFor(dag, goal, fid) {
   const s = goal.steps.find((x) => x.id === fid);
   if (!s) return null;
   const gen = s.evidenceSeq ? s.evidenceSeq - 1 : 1;

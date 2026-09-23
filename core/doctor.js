@@ -981,10 +981,20 @@ function checkDrive(push, cwd) {
   } else {
     eligText = "无 executing 目标";
   }
+  // workers 面（v024-fast-scheduler#N2）：兄弟 `-fast` 根的残留 runDir 计数（宿主外，
+  // 疤痕巡逻不见；drive 启动自动回收，此处只报数——ADJ-23 同型风险不成立因在宿主外）。
+  let workersText = "";
+  try {
+    const sibling = join(dirname(resolve(cwd)), basename(resolve(cwd)) + "-fast");
+    const left = existsSync(sibling) ? readdirSync(sibling).length : 0;
+    workersText = ` · workers 残留 runDir ${left}`;
+  } catch {
+    workersText = "";
+  }
   push(
     "drive",
     auth.ok ? "ok" : "warn",
-    `drive 通道 · ${authText} · ${leaseText} · ${budgetText} · ${eligText}（lzy loop drive；ADR-0020）`,
+    `drive 通道 · ${authText} · ${leaseText} · ${budgetText} · ${eligText}${workersText}（lzy loop drive；ADR-0020）`,
   );
 }
 

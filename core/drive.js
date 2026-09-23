@@ -14,8 +14,9 @@
 // 缺省 400 相对水位 1600 取四分之一（相对账号水位、非相对本 run 消耗）。
 // 退出码契约：0=done 或干净收束（run 契约正常完成）；1=门拒/段 infra 失败（尽力收束带
 // 快照后非零）。deps 可注入（run/rollingPoints/now/git）供离线契约测试（headless.js 先例）。
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, existsSync, statSync, readdirSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 import { progressSignature, signatureKey } from "./progress.js";
 import {
   LoopError,
@@ -49,6 +50,12 @@ import { h3rStopVerdict } from "./h3r.js";
 
 export const DRIVE_MAX_SEGMENTS_DEFAULT = 6;
 export const DRIVE_MODE_DEFAULT = "yolo";
+// workers 波编排（v024-fast-scheduler#N1；保留 fast 拍板 2026-09-23）：
+// N≥2 走 runDriveWorkers 独立编排路径（兄弟 worktree + 认领制波分派 + 波终组装重锚），
+// N=1/缺省=本文件既有行为逐字段同（冻结契约，F1② 钉）。屏障重锚、一波=一段、
+// 墙钟取本波 max（并发不 sum）等口径见 runDriveWorkers 内注记与
+// docs/reviews/2026-fast-exp-report.md（实验底座）。
+export const DRIVE_WORKERS_ROOT_DIRNAME = "-fast"; // 兄弟根后缀：<dirname(host)>/<basename(host)>-fast/
 // 段超时上限（单段墙钟）；spawnHeadless 显式 mode 立场不变——drive 缺省 yolo（无人值守
 // 段必须免审批，build/edit 会在 PermissionRequest 上无人可批地停摆）。
 export const DRIVE_SEGMENT_TIMEOUT_MS = HEADLESS_DEFAULT_TIMEOUT_MS;
@@ -188,6 +195,17 @@ function riskGuidance(err) {
 }
 
 export async function runDrive(cwd, opts = {}, deps = {}) {
+  // workers 模式入口（v024-fast-scheduler#N1）：N≥2 走独立编排路径；N=1/缺省=现行行为
+  // 逐字段同（主路径零触碰）；≤0/非整数=用法错误即拒（ADJ-26 前置校验家法）。
+  // --fast 糖在入口直读（CLI 与 runDrive 直调两面同语义：fast≡workers 2）。
+  const workersOpt = opts.workers != null ? opts.workers : opts.fast === true ? 2 : null;
+  if (workersOpt != null) {
+    const w = Number(workersOpt);
+    if (!Number.isInteger(w) || w <= 0) {
+      throw new LoopError(`--workers 非法：${JSON.stringify(workersOpt)}——须为正整数（N=1 等价缺省单工人；N≥2 进入 workers 波编排）`);
+    }
+    if (w > 1) return runDriveWorkers(cwd, opts, deps, w);
+  }
   const maxSegments = Number.isInteger(opts.maxSegments) && opts.maxSegments > 0
     ? opts.maxSegments
     : DRIVE_MAX_SEGMENTS_DEFAULT;
@@ -508,5 +526,469 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
     windDown(false, "内部错误：循环无显式收束因退出");
     if (!outcome) outcome = { ok: false, cause: "内部错误：循环无显式收束因退出", handoff: null };
   }
+  return outcome;
+}
+
+// ══ workers 波编排（v024-fast-scheduler#N1/#N2；底座=v024-fast-exp 实验棒）════════
+// N≥2：每波把可认领 pending 步均分给 N 个工人链（各自兄弟 worktree+独立 HOME+独立
+// sessionId），波终 merge 回宿主+对全部已取证 F 项屏障重锚（复合指纹随 subject 集变化
+// 全体过期——首波即全锚）。一波=一段（maxSegments 计波）；墙钟累计=本波 max（并发不
+// sum）；预算/租约/风险门与单工人完全同源。收束因扩充 merge-conflict。N=1 永不进此径。
+
+const WORKER_CLAIM_TTL_MS = 48 * 60 * 60 * 1000; // 镜像 core/loop.js 步级认领 48h
+
+function claimFresh(step, now = Date.now()) {
+  const at = step?.claim?.at ? Date.parse(step.claim.at) : NaN;
+  return Number.isFinite(at) && now - at < WORKER_CLAIM_TTL_MS;
+}
+
+function blockedByLocal(step, goal) {
+  const deps = Array.isArray(step.deps) ? step.deps : [];
+  if (deps.length === 0) return [];
+  const byId = new Map(goal.steps.map((s) => [s.id, s]));
+  return deps.filter((d) => byId.get(d)?.status !== "done");
+}
+
+function waveSplit(goal, n) {
+  // 可认领集（未 done/认领未新鲜/依赖已满足）轮转均分，余数给首工人。deps 阻塞的步
+  // 不入本波分派（claim 门兜底双保险）。
+  const pool = (goal.steps ?? []).filter(
+    (s) => s.status !== "done" && !claimFresh(s) && blockedByLocal(s, goal).length === 0,
+  );
+  const groups = Array.from({ length: n }, () => []);
+  pool.forEach((s, i) => groups[i % n].push(s.id));
+  return groups;
+}
+
+function envAuthOk() {
+  // 有意对齐 detectHeadlessAuth 的 env 半（core/headless.js either-or）：任一 provider
+  // env 指向非空实文件即可（同带 workers 单 provider 足够；凭据文件不复制——见详单 §N2）。
+  for (const key of ["ZCODE_BUILTIN_PROVIDER_CONFIG_FILE", "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"]) {
+    const v = process.env[key];
+    if (v && v.length > 0) {
+      try {
+        return statSync(v).isFile();
+      } catch {
+        /* 落下一个候选继续判 */
+      }
+    }
+  }
+  return false;
+}
+
+function h3rWakeConflict() {
+  // workers 多链与 H3R 唤醒态的单链假设不兼容（段标/词表门按单链设计，ADR-0022）——
+  // 唤醒态任一开关在场即拒入 workers（休眠默认态零影响）。
+  for (const key of ["LZY_ABLATE_H3R_GATE", "LZY_ABLATE_H3R_ONESTEP", "LZY_ABLATE_H3R_PRETOOL"]) {
+    if (process.env[key] === "1") return key;
+  }
+  return null;
+}
+
+function gitRun(cwd, args) {
+  return spawnSync("git", args, { cwd, encoding: "utf8", shell: false, timeout: 60_000 });
+}
+
+function lzySpawn(cwd, cliPath, args, fence) {
+  return spawnSync(process.execPath, [cliPath, ...args], {
+    cwd,
+    encoding: "utf8",
+    shell: false,
+    timeout: 180_000,
+    env: { ...process.env, LZY_RUNTIME_FENCE: String(fence) },
+  });
+}
+
+function composeWorkerPrompt({ hostRoot, cliPath, worktree, branch, idx, total, stepIds }) {
+  return [
+    "zw 继续",
+    "",
+    `（无人值守 drive 工人段，workers=${total} 模式）你是工人 w${idx}（共 ${total}），在兄弟 worktree 工作：`,
+    `  worktree=${worktree}（分支 ${branch}，你的一切文件改动只落在这里并在此 git 提交）`,
+    `  目标槽在宿主根 ${hostRoot}（.lazyzcode/ 已就绪，目标 executing）。`,
+    "一切循环命令：先 `cd " + hostRoot + "`，再 `node " + cliPath + " <args>`（同版载荷；勿用全局 lzy）。",
+    "任务：",
+    `1. node ${cliPath} loop status 核对状态。`,
+    `2. 只做你被分派的步：${stepIds.join("、")}。动手前先 cd 宿主根 && node ${cliPath} loop claim <ID> 认领；被拒（已被认领/依赖阻塞）就先做你清单里其他步，稍后再试。`,
+    "3. 每步：在当前 worktree 完成并 git add+commit，然后 cd 宿主根 && node <CLI> step done <ID> --note …。",
+    `4. 你的分派步全部 done 后：若某 F 项的断言面在你的 worktree 内可核（如本波产出物），cd 宿主根 && node <CLI> step done <FID> --evidence "worker-w${idx} re-verify: <断言实际输出摘要>" 取证（同 id 重取证=合法 rebind）；核不了的 F 项跳过——波终由 drive 屏障重锚。`,
+    "红线：绝不注册新目标；绝不运行 lzy loop drive；绝不 reset/abandon；绝不改动宿主根的已跟踪文件；写命令已带 fence 环境（勿摘）；全程工具真实执行，不要问询；做完即收工退出。",
+  ].join("\n");
+}
+
+async function runDriveWorkers(cwd, opts, deps, workers) {
+  const maxSegments = Number.isInteger(opts.maxSegments) && opts.maxSegments > 0
+    ? opts.maxSegments
+    : DRIVE_MAX_SEGMENTS_DEFAULT;
+  const mode = opts.mode ?? DRIVE_MODE_DEFAULT;
+  const wallMs = Number.isFinite(opts.wallMs) && opts.wallMs > 0 ? opts.wallMs : null;
+  if (!HEADLESS_MODES.has(mode)) {
+    throw new LoopError(`--mode 非法：${JSON.stringify(mode)}——合法 ${[...HEADLESS_MODES].join("|")}`);
+  }
+  // ── workers 入口前提（详单 §N1：fail-closed，先于取租/建预算——ADJ-26 家法）。
+  const wakeKey = h3rWakeConflict();
+  if (wakeKey) {
+    throw new LoopError(
+      `workers 模式与 H3R 唤醒态互斥（${wakeKey}=1，ADR-0022 单链假设）：unset ${wakeKey} 后重试，或在休眠态使用 workers`,
+    );
+  }
+  if (!envAuthOk()) {
+    throw new LoopError(
+      "workers 模式要求 env-auth（ZCODE_*_PROVIDER_CONFIG_FILE 任一指向实文件）——凭据文件不复制到工人 HOME；恢复：桌面会话内跑 drive，或导出 provider 配置 env 后重试",
+    );
+  }
+
+  const goal = readGoal(cwd);
+  if (!goal) throw new LoopError(noGoalMessage(cwd));
+  if (goal.status !== "executing") {
+    throw new LoopError(`drive 只推进 executing 目标（现状 ${goal.status}）——无人值守边界不变`);
+  }
+  assertDriveEligible(goal);
+  if (!deps.enginePath && !findEngine()) {
+    throw new LoopError("引擎未找到——drive 段需 ZCode 桌面端引擎（装桌面端或设 LZY_ZCODE_ENGINE）");
+  }
+
+  const hostRoot = resolve(cwd);
+  const wtRoot = join(dirname(hostRoot), basename(hostRoot) + DRIVE_WORKERS_ROOT_DIRNAME);
+  const runId = `fast-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`;
+  const runDir = join(wtRoot, runId);
+  // CLI 路径可注入（deps.cliPath——契约测试 seam，deps.run 家法）：生产=本进程 CLI
+  //（argv[1]）；node --test 下 argv[1] 是测试文件自身，直接用会把测试当 CLI spawn。
+  const cliPath = deps.cliPath ?? resolve(process.argv[1] ?? "lzy");
+
+  // 启动回收：runId↔lease 关联（详单 §N2）——取租成功后，兄弟根下不属于本 runId 的
+  // 目录=无活跃租约的残留 → 整体删除+worktree prune；**只删已合并分支**（未合并残留
+  // 分支=salvage 族资产 ADR-0009，保留并在回收日志列清单）。
+  const reclaim = () => {
+    if (!existsSync(wtRoot)) return;
+    for (const name of readdirSync(wtRoot)) {
+      if (name === runId) continue;
+      const stale = join(wtRoot, name);
+      rmSync(stale, { recursive: true, force: true });
+      gitRun(cwd, ["worktree", "prune"]);
+      const merged = gitRun(cwd, ["branch", "--merged", "HEAD", "--format", "%(refname:short)"]);
+      for (const b of (merged.stdout ?? "").split("\n").map((x) => x.trim()).filter(Boolean)) {
+        if (b.startsWith("fast-")) gitRun(cwd, ["branch", "-d", b]);
+      }
+      const unmerged = gitRun(cwd, ["branch", "--no-merged", "HEAD", "--format", "%(refname:short)"]);
+      const left = (unmerged.stdout ?? "").split("\n").map((x) => x.trim()).filter((b) => b.startsWith("fast-"));
+      if (left.length > 0) console.log(`[drive] 回收：未合并工人分支保留（salvage 族，ADR-0009）：${left.join("、")}`);
+      console.log(`[drive] 启动回收：残留 run 目录 ${name} 已清（无活跃租约关联）`);
+    }
+  };
+
+  let lease = null;
+  let budget = null;
+  let spentMsLocal = 0;
+  let noProgressStreak = 0;
+  let outcome = null;
+  const workers_ = []; // {i, worktree, branch, home, subjectAdded, resume}
+
+  const windDownW = (ok, cause, riskNote) => {
+    let fresh = null;
+    try {
+      fresh = readGoal(cwd);
+    } catch {
+      fresh = null;
+    }
+    if (fresh && fresh.status === "executing") {
+      try {
+        const { snap, treeHash } = authorHandoffSnapshot(cwd, fresh, cause, riskNote, deps);
+        handoffGoal(cwd, snap, treeHash);
+        outcome = { ok, cause, handoff: snap };
+        console.log(`[drive] 收束：${cause}——handoff 快照：${snap}（复归：zw 继续）`);
+      } catch (err) {
+        outcome = { ok, cause, handoff: null };
+        console.log(`[drive] 收束：${cause}——快照写失败（${String(err?.message ?? err).slice(0, 160)}）`);
+      }
+    } else {
+      outcome = { ok, cause, handoff: null };
+      console.log(`[drive] 收束：${cause}`);
+    }
+    if (riskNote) console.log(`[drive] 原因：${String(riskNote).slice(0, 300)}`);
+  };
+
+  // 清理相（只发生在 finish+attestation 之后的 done，或 ok:true 干净收束；merge-conflict
+  // 与 !ok 一律不清理——分支/worktree 留人工）。**subject 不移除**：removeSubject 是
+  // executing-only 门（core/loop.js），done 后不可调——subject 条目留在 done goal 里惰性
+  // 存在（reset 清槽时随槽消失）；计划 §N2 的「subject remove」在实现期据此订正，证据
+  // 不依赖被移除 subject 的意图以「从不移除」更强形式成立。
+  const cleanupPhase = () => {
+    for (const w of workers_) {
+      gitRun(cwd, ["worktree", "remove", w.worktree]);
+      const del = gitRun(cwd, ["branch", "-d", w.branch]); // 已合并才删得动（-d 语义兜底）
+      if (del.status !== 0) console.log(`[drive] 清理：分支 ${w.branch} 保留（未合并，salvage 族）`);
+      rmSync(w.home, { recursive: true, force: true });
+    }
+    try {
+      rmSync(runDir, { recursive: true, force: true });
+    } catch {
+      /* runDir 残留无害（宿主外，下轮启动回收兜底） */
+    }
+  };
+
+  try {
+    lease = withLock(cwd, () => {
+      const l = acquireLease(cwd, { ttlMs: LEASE_TTL_MS, slug: goal.slug });
+      process.env.LZY_RUNTIME_FENCE = String(l.fence);
+      try {
+        if (loadRuntime(cwd)?.budget) initBudget(cwd, { restart: true, fence: l.fence });
+        else initBudget(cwd);
+      } catch (err) {
+        releaseLease(cwd, l.fence);
+        delete process.env.LZY_RUNTIME_FENCE;
+        throw err;
+      }
+      return l;
+    });
+    budget = loadRuntime(cwd).budget;
+    const effectiveWallMs = wallMs != null ? Math.min(budget.wallClockBudgetMs, wallMs) : budget.wallClockBudgetMs;
+    reclaim();
+
+    console.log(
+      `[drive] 启动（workers=${workers}）：${goal.slug} · 波上限 ${maxSegments} · 有效墙钟 ${effectiveWallMs}ms · mode=${mode} · fence=${lease.fence} · runId=${runId}`,
+    );
+    console.log(
+      `[drive] workers 模式实验读数：turns≈2×（计价轴），小任务可能反慢（docs/reviews/2026-fast-exp-report.md §1.3）// workers-mode measured: turns ≈2×, small tasks may slow down`,
+    );
+
+    // worktree+subject 装配（subject add 使证据集合变 ⇒ 首波屏障对全部现行 F 项重锚）。
+    mkdirSync(runDir, { recursive: true });
+    for (let i = 1; i <= workers; i++) {
+      const w = {
+        i,
+        worktree: join(runDir, `w${i}`),
+        branch: `${runId}-w${i}`,
+        home: join(runDir, `home-w${i}`),
+        subjectAdded: false,
+        resume: null,
+      };
+      const g = gitRun(cwd, ["worktree", "add", "-b", w.branch, w.worktree]);
+      if (g.status !== 0) throw new LoopError(`workers worktree 创建失败（w${i}）：${(g.stderr ?? "").trim().slice(0, 200)}`);
+      const s = lzySpawn(cwd, cliPath, ["loop", "subject", "add", w.worktree], lease.fence);
+      if (s.status !== 0) throw new LoopError(`workers subject add 失败（w${i}）：${(s.stderr ?? s.stdout ?? "").trim().slice(0, 200) || s.error?.message || `status=${s.status}`}`);
+      w.subjectAdded = true;
+      mkdirSync(w.home, { recursive: true });
+      workers_.push(w);
+    }
+
+    let prevProgress = progressSignature(cwd, goal, null);
+
+    for (let seg = 1; seg <= maxSegments; seg++) {
+      // 波间门（risk/心跳）——与单工人同源（ADJ-20/ADJ-19 语义不变）。
+      try {
+        const freshGoal = readGoal(cwd);
+        if (freshGoal) assertDriveEligible(freshGoal);
+      } catch (err) {
+        windDownW(false, `波间门拒（${(err?.message ?? err).slice(0, 200)}）`, riskGuidance(err));
+        break;
+      }
+      try {
+        withLock(cwd, () => (deps.heartbeatLease ?? heartbeatLease)(cwd, lease.fence, { ttlMs: LEASE_TTL_MS }));
+      } catch (err) {
+        if (err?.code === "LEASE_TAKEN") {
+          // 接管族：不写交接（fencing 拒）、不清理（接管者自负）——同单工人 skipHandoff 语义。
+          outcome = { ok: false, cause: `波间门拒（${(err?.message ?? err).slice(0, 200)}）`, handoff: null };
+          console.log(`[drive] 收束：${(err?.message ?? err).slice(0, 200)}——已被接管/租约失效，不写交接不清理`);
+        } else {
+          windDownW(
+            false,
+            `波间心跳失败（${String(err?.message ?? err).slice(0, 160)}）`,
+            "非接管的运行时失败——恢复=lzy loop lease reclaim --force（或等待过期）",
+          );
+        }
+        break;
+      }
+      const remainingWall = effectiveWallMs - spentMsLocal;
+      if (remainingWall <= 0) {
+        windDownW(true, "墙钟预算尽");
+        break;
+      }
+
+      let fresh = null;
+      try {
+        fresh = readGoal(cwd);
+      } catch (err) {
+        windDownW(false, `波间门拒（${String(err?.message ?? err).slice(0, 200)}）`, riskGuidance(err));
+        break;
+      }
+      if (!fresh || fresh.slug !== goal.slug || fresh.status !== "executing") {
+        if (fresh && fresh.status === "done" && fresh.slug === goal.slug) {
+          outcome = { ok: true, cause: "done", handoff: null };
+          console.log(`[drive] ✔ goal done（${fresh.slug}）`);
+          break;
+        }
+        windDownW(false, `目标已非本 drive 的 executing 目标（slug/状态换代）`);
+        break;
+      }
+      const groups = waveSplit(fresh, workers);
+      const pendingCount = (fresh.steps ?? []).filter((s) => s.status !== "done").length;
+      if (pendingCount === 0) {
+        // 终局：drive 自身走既有 finish 链（屏障重锚已在本波末做过——见波尾）。
+        const fin = lzySpawn(cwd, cliPath, ["loop", "finish"], lease.fence);
+        if (fin.status === 0) {
+          outcome = { ok: true, cause: "done", handoff: null };
+          console.log(`[drive] ✔ goal done（${fresh.slug}）——finish 过，进入清理相`);
+          break;
+        }
+        windDownW(
+          false,
+          `finish 失败（exit=${fin.status}）`,
+          (fin.stdout ?? fin.stderr ?? "").trim().slice(0, 300) ||
+            "finish 闸门拒（常=某 subject 脏：工人 worktree 留了未提交物）——人工清理该 worktree 或走 ADR-0013 remove+re-anchor 出口后重试",
+        );
+        break;
+      }
+      const segTimeout = Math.min(remainingWall, DRIVE_SEGMENT_TIMEOUT_MS);
+      console.log(`[drive] 波 ${seg}/${maxSegments}：分派 ${groups.map((g, i) => `w${i + 1}[${g.join(",") || "—"}]`).join(" ")}`);
+
+      const settled = await Promise.allSettled(
+        workers_.map((w, idx) => {
+          const stepIds = groups[idx] ?? [];
+          if (stepIds.length === 0) return Promise.resolve({ ok: true, durationMs: 0, sessionId: null, exitCode: null, stdout: "", stderr: "", skip: true });
+          return spawnHeadless({
+            prompt: composeWorkerPrompt({
+              hostRoot,
+              cliPath,
+              worktree: w.worktree,
+              branch: w.branch,
+              idx: w.i,
+              total: workers,
+              stepIds,
+            }),
+            resume: w.resume,
+            mode,
+            timeoutMs: segTimeout,
+            cwd: w.worktree,
+            home: w.home,
+            extraEnv: { LZY_RUNTIME_FENCE: String(lease.fence) },
+            enginePath: deps.enginePath ?? null,
+            deps: deps.run ? { run: deps.run } : null,
+          }).then((r) => {
+            w.resume = r.sessionId ?? w.resume;
+            return r;
+          });
+        }),
+      );
+      const results = settled.map((s) =>
+        s.status === "fulfilled"
+          ? s.value
+          : { ok: false, durationMs: 0, exitCode: null, error: String(s.reason?.message ?? s.reason) },
+      );
+      for (const [idx, r] of results.entries()) {
+        // 工人 stdout 归档在 runDir 兄弟日志目录（清理相不吞，下轮启动回收——done 路径
+        // 也留痕，供事后读工人段原文）。
+        mkdirSync(join(wtRoot, `${runId}.logs`), { recursive: true });
+        writeFileSync(join(wtRoot, `${runId}.logs`, `worker-w${workers_[idx].i}.txt`), `exit=${r.exitCode ?? "?"} 耗时=${r.durationMs ?? "—"}ms\n${r.stdout ?? ""}\n[stderr]\n${r.stderr ?? ""}\n`);
+      }
+      const maxMs = Math.max(...results.map((r) => r.durationMs ?? 0));
+      console.log(`[drive] 波 ${seg}/${maxSegments} 完成：各工人耗时=${results.map((r) => r.durationMs ?? "—").join("/")}ms（墙钟取 max=${maxMs}ms）`);
+      const bad = results.find((r) => !r.ok && !r.skip);
+      if (bad) {
+        windDownW(
+          false,
+          `工人段失败（exit=${bad.exitCode ?? "—"}${bad.timedOut ? " · 墙钟 SIGKILL" : ""}）`,
+          `workers 波内一名工人 headless 调用失败：${(bad.error ?? "未知").slice(0, 300)}——其余工人产出已按 merge 相保留`,
+        );
+        break;
+      }
+      // 波账：墙钟取 max（并发不 sum，详单 §N1）；recordSpend 超顶拒=干净收束。
+      spentMsLocal += maxMs;
+      try {
+        withLock(cwd, () => recordSpend(cwd, { ms: maxMs, points: 0 }));
+      } catch (err) {
+        if (err?.code === "BUDGET_OVER") {
+          windDownW(true, `预算尽（${String(err.message).split("：")[0]}）`);
+          break;
+        }
+        throw err;
+      }
+
+      // 组装：逐工人分支 merge 回宿主（--no-ff）。冲突=新增收束因 merge-conflict：
+      // 快照+handoff 照写，分支与 worktree 留人工（不清理）。
+      let conflict = null;
+      for (const w of workers_) {
+        if ((groups[w.i - 1] ?? []).length === 0) continue; // 空波工人无分支推进
+        const m = gitRun(cwd, ["merge", "--no-ff", w.branch, "-m", `merge ${w.branch}（drive workers 波 ${seg} 组装）`]);
+        if (m.status !== 0) {
+          conflict = w;
+          break;
+        }
+      }
+      if (conflict) {
+        gitRun(cwd, ["merge", "--abort"]);
+        // 收束因=枚举字面量（消融仪器/读面按因分类）；细节走 riskNote 行。
+        windDownW(
+          true,
+          "merge-conflict",
+          `工人分支与宿主合并冲突（${conflict.branch}）——分支 ${workers_.map((w) => w.branch).join("、")} 与 worktree 已保留；请在人工会话解冲突后按计划推进（该批改动未丢失）`,
+        );
+        break;
+      }
+
+      // 屏障重锚：全部现行 F 项各一次（subject 集本 run 已变；首波即全锚既有绿）。
+      const freshAfter = readGoal(cwd);
+      for (const s of freshAfter?.steps ?? []) {
+        if (s.kind === "F" && s.evidence) {
+          const rb = lzySpawn(cwd, cliPath, ["step", "done", s.id, "--evidence", `wave-barrier rebind：workers 波 ${seg} 组装后复合指纹重锚（drive 代跑）`], lease.fence);
+          if (rb.status !== 0) {
+            windDownW(
+              false,
+              `屏障重锚失败（${s.id}，exit=${rb.status}）`,
+              (rb.stdout ?? rb.stderr ?? "").trim().slice(0, 300),
+            );
+          }
+        }
+      }
+      if (outcome) break; // 重锚通道内的收束
+
+      // 终态判定 + 进度/水位（与单工人同源）。
+      let after = null;
+      try {
+        after = readGoal(cwd);
+      } catch (err) {
+        windDownW(false, `波间门拒（${String(err?.message ?? err).slice(0, 200)}）`, riskGuidance(err));
+        break;
+      }
+      if (after && after.status === "done" && after.slug === goal.slug) {
+        outcome = { ok: true, cause: "done", handoff: null };
+        console.log(`[drive] ✔ goal done（${after.slug}）`);
+        break;
+      }
+      const cur = progressSignature(cwd, after, prevProgress);
+      if (signatureKey(cur) === signatureKey(prevProgress)) noProgressStreak += 1;
+      else noProgressStreak = 0;
+      prevProgress = cur;
+      if (noProgressStreak >= STUCK_STREAK_LIMIT) {
+        windDownW(true, `无推进（stuck，连续 ${STUCK_STREAK_LIMIT} 波零推进）`);
+        break;
+      }
+      const rp = deps.rollingPoints !== undefined ? deps.rollingPoints : rollingWaterlinePoints();
+      if (rp != null && rp >= budget.pointsBudget) {
+        windDownW(true, `积分预算尽（近 5h 滚动水位 ${rp} ≥ 积分硬顶 ${budget.pointsBudget}）`);
+        break;
+      }
+      if (seg === maxSegments) {
+        windDownW(true, `波数尽（${maxSegments} 波）`);
+      }
+    }
+  } finally {
+    if (lease) {
+      try {
+        withLock(cwd, () => releaseLease(cwd, lease.fence));
+      } catch (err) {
+        console.log(`[drive] lease 释放未成（${String(err?.message ?? err).slice(0, 120)}）——回收：lzy loop lease reclaim`);
+      }
+    }
+    delete process.env.LZY_RUNTIME_FENCE;
+  }
+
+  if (!outcome) {
+    windDownW(false, "内部错误：循环无显式收束因退出");
+    if (!outcome) outcome = { ok: false, cause: "内部错误：循环无显式收束因退出", handoff: null };
+  }
+  // 清理相：done 或 ok:true 干净收束（merge-conflict 除外）→ subject remove+worktree
+  // remove+分支 -d+home 删除（finish+attestation 已在前——证据不依赖被移除 subject）。
+  if (outcome.ok && outcome.cause !== "merge-conflict") cleanupPhase();
   return outcome;
 }

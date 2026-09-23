@@ -69,7 +69,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -538,10 +538,13 @@ async function cmdLoop(args) {
       // 无人值守执行通道（0.2.0 棒2，ADR-0020/§⑮ Q3）：单唤起内 spawn headless 会话
       // 循环推进 executing 目标；段间 budget/lease/risk 三门；收束=done/预算尽/段尽/
       // 无推进，除 done 外自写 handoff 快照干净交回。退出码 0=done 或干净收束。
+      // workers 波编排（v024-fast-scheduler#N1）：--workers N 显式；--fast 糖≡N=2
+      //（保留 fast 拍板 2026-09-23）。两者同给时 --workers 优先。
       const r = await runDrive(cwd, {
         wallMs: f["wall-ms"] != null && f["wall-ms"] !== "" ? Number.parseInt(f["wall-ms"], 10) : null,
         maxSegments: f["max-segments"] != null && f["max-segments"] !== "" ? Number.parseInt(f["max-segments"], 10) : undefined,
         mode: typeof f.mode === "string" ? f.mode : undefined,
+        workers: f["workers"] != null && f["workers"] !== "" ? Number.parseInt(f["workers"], 10) : f.fast != null ? 2 : null,
       });
       if (!r.ok) process.exitCode = 1;
       return;

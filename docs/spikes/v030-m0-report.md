@@ -106,13 +106,26 @@ M2 试点执行序 lazyzcode → openchamber → zpigeon-ios；今晚探针序 �
 - 运行清理：serve 进程已停（post-kill HTTP 000），浏览器任务空间已关闭（keep: []）。
 - **配方注意点（M2 前必须处理）**：夹具实例自动检测并连接了本机在跑的 OpenCode（端口 62668）——设置页显示的是**用户真实数据**（侧栏会话历史）。只读观察无害且已脱敏，但 M2 注入试验必须换隔离 OpenCode 实例（或专用端口），不得让试验流量混入用户实例；本节观察全程未做任何写操作。
 
-## 7. zpigeon-ios 模拟器回执（N5）
+## 7. zpigeon-ios 模拟器回执（N5，2026-09-24 凌晨）
 
-（待 N5 填充）
+- 隔离夹具：`v030-fixtures/zpigeon-ios@e573516/`（冻结 `e573516`）；ZCodeKit 相对路径契约经夹具侧符号链接 `v030-fixtures/zpigeon → ../zpigeon` 满足（零写入主仓）；`scripts/dev-setup.sh` 前置三查全 ✔ → `xcodegen generate` 成功。
+- 专用模拟器：`v030-probe-sim`（iPhone 17 · iOS 26.5，UDID 2D3A1192…），未触碰用户已有模拟器。
+- 构建 ✔：`xcodebuild -project ZPigeon.xcodeproj -scheme ZPigeon -destination id=2D3A1192… -derivedDataPath build/dd build` → **BUILD SUCCEEDED**。
+- 安装/启动 ✔：`simctl install` + `launch`（pid 17988/18640/19247）；截图 `artifacts/v030-m0-samples/zpigeon-launch.png`（通知权限弹框）。
+- UI 自动化面 ✔：`xcodebuild test -only-testing:ZPigeonUITests/ZCodeWebParitySmokeUITests/testSmokeWorkspaceCardExpandCollapse` 真实执行 24.6s——XCUITest 跑过启动与首屏进入应用内容断言。
+- **具体阻塞（如实记账）**：测试断言失败——原文 `XCTAssertTrue failed - 远程面 web 首页分区头应存在(收起全部钮)`（ZCodeWebParitySmokeUITests.swift:28）。根因=夹具无配对 web 面与带任务的数据（试验定义 §4.3 预告项）；xcresult 存档 `build/dd/Logs/Test/Test-ZPigeon-2026.09.24_00-37-08-+.xcresult`。
+- **M0 判定**：构建/安装/启动/自动化四面全通；**数据准备是 M2 前置**（配对 web 面 + 任务数据配方），非环境阻塞。UI 自动化技术上可行（XCUITest 路径），通知弹框由测试 runner 自然处理。
+- 附注：idb UI 后端缺席（`ios_ui_status: available:false`）；headless 模拟器无 GUI 窗口，AppleScript 点按不可用；`simctl privacy grant notifications` 被拒（Operation not permitted）、直写 TCC 行无效——UI 弹框交互以 XCUITest runner 为唯一已验证通道（M2 配方沿用）。
 
-## 8. workers 重锚反例（N6）
+## 8. workers 重锚反例（N6，2026-09-24 凌晨，红绿完整）
 
-（待 N6 填充）
+- 夹具：`v030-fixtures/lazyzcode@4b54f77/`（冻结 `4b54f77`）内 LIGHT goal `v030-reanchor-repro`（人权门以 `LZY_ABLATE_HUMAN_GATE=1` 消融通过——反例对象是 `step done` 重绑路径，非采纳门，消融只用于夹具采纳，已如实记账）。
+- 场景三步（全程 CLI 活体，命令与输出冻结）：
+  1. **T1 绿半（真）**：`probe-marker.md` 含 ORIGINAL，`step done F1` 绑定指纹 `2f470b706b` @ `a5823fd`。
+  2. **T2 红半对照（门正常执法）**：标记改 BROKEN 并提交（`d7a2c70`），`lzy loop verify` → `过期 1：F1`——无重绑时新鲜度门如实拒绝。
+  3. **屏障形重绑（缺陷揭示）**：以 `core/drive.js:1195-1197` 同形态调用 `lzy step done F1 --evidence "wave-barrier rebind：workers 波 1 组装后复合指纹重锚（drive 代跑，未复跑断言）"` → 重绑成功，`verify` → `新鲜 1：F1`；同一树上 `git grep BROKEN` 命中——**证据被标现行而断言客观为假**。
+- 结论：`step done` 重绑路径确实把「指纹重锚」当「证据现行」而不复跑断言——workers 波末屏障（drive.js:1172-1211）以该调用把整合候选的失败断言洗成新鲜证据。反例冻结为 M2 退役该路径的红面输入。
+- 保真边界：本反例在屏障的**精确调用形态**上成立（explorer 核对屏障 shell 的即此命令形态）；全 workers 波活体复现（真引擎两工人）留 M2 退役工作顺带完成，不在 M0 展开。
 
 ## 9. 迁移样本（N7）
 

@@ -488,6 +488,23 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - 0.2.0 三件套活体（scratch `C:\scratch020`，SYSTEM exec + `set "LOCALAPPDATA=…"` 引号形态）：**lease 互斥**（acquire fence 1 → 二次 acquire 拒「另一运行时持租（fence 1，至 …）」带僵尸恢复指路）· **fence 写拒**（活跃租约期 `--fence 9` 写 → 「写拒：fence 9 非现行（现行 1）——你已被接管，立即停手不写」）· **drive 门链**（executing 目标上 `lzy loop drive` → 凭据缺席拒带恢复文本；doctor `drive` 行四段齐「凭据缺席（headless 调用会停在认证门） · 活跃租约 fence=1 · 预算未初始化 · v020vm 可入 drive（risk=low）」）；lease 释放 ✔、scratch 清除 ✔。
 - 探针引号雷补记（host 侧驱动教训）：`set VAR=value && cmd` 会把**尾随空格**并进值（`LZY_ABLATE_HUMAN_GATE` 变 `"1 "` 消融判据不中、`LZY_ZCODE_ENGINE` 路径带空格失效）——SYSTEM exec 驱动一律 `set "VAR=value"` 引号形态（0.1.0 配方的静默变体，历次被引号形态掩盖）。
 
+## 执行记录（0.2.4，双审修复轮 + fast 波编排收口——机械件已备，publish 留用户）
+
+### Runbook（按序）
+
+1. **push main**：0.2.4 待发弧 34 提交（goal v024-debt-bundle 搭车 + v024-fast-exp + v024-fast-scheduler + v024-dual-review + **v024-fix-round**）+ 定版提交随行（定版提交无 `Goal:` 尾注——槽位被 done 态 `v024-fix-round` 占用未动，账本 warn 一条预期内，沿 0.2.2/0.2.3 先例）。
+2. **版本五处同步**（同批提交）：`package.json` / `plugin/.zcode-plugin/plugin.json` / `.claude-plugin/marketplace.json`（version+ref→v0.2.4）/ `docs/_layouts/home.html` softwareVersion / `CHANGELOG.md` 定版（`[Unreleased]` → `[0.2.4] - 2026-09-23`，沿 tag 期无空 Unreleased 节的既有形态）。
+3. **发布前验证**（定版树实跑 2026-09-23）：`npm test` **491/491**；surface 5/5（三体 0.2.4 一致）；`node scripts/provenance-ready.mjs` exit 0（**新增 source/ref 与版本联锁断言**——ref 漂移即红）；`npm publish --dry-run` **44 文件 / 295.1 kB / shasum `0ce271b9854acfba886434d99a1266ca5d4fd15e`**；载荷清单仅 `cli/ core/ plugin/ + 四元数据`（逐项核对无 `.mimosa`/`.lazyzcode`/`docs/`/`acfufu`/`sess_`——后两者的随包剩余命中全在被排除的 gitignored `plugin/hooks/.mimosa/` 运行态内）。
+4. **CI 四腿绿**（判决=gh run view conclusion，**不认 `gh run watch --exit-status` 的伪绿**，沿 0.1.0 教训）→ **tag v0.2.4 最后切** → GitHub Release（notes 三节）。
+5. **publish（用户 2FA）**：`npm publish` 从 tag 树发起；载荷冻结纪律=tag 后不动随包文件（见上文同名节）。
+6. **发后核验**：registry `latest=0.2.4`（curl 直证）；发布 shasum 与定版前 dry-run 逐字一致；隔离 prefix 冒烟；真机 `lzy update` 0.2.3→0.2.4 全链；payload-ver 内容级对照。
+7. **本弧发布面新增两处必核**（都在 0.2.4 的修复面内，回归即红）：① `--workers`/`--fast` 帮助行与 `--fast=false` 单工人语义（⑲ 契约 + help 面）；② doctor `drive` 行 workers 三桶读数（形符无哨兵桶对预修复遗留不为 0 即正常，不得被读成回归）。市场 manifest 的 `source.ref` 与版本联锁由 `provenance-ready.mjs` 机器兜底。
+
+### 与上一弧的差异
+
+- 本弧**首次**把 `provenance-ready.mjs` 的 ref/版本联锁纳入发布前必过项（0.2.3 定版时该断言尚不存在）——它的加入让「bump 版本却忘记改 ref」这类漂移在发布前就红。
+- 本弧的 tag 树载荷 = 修复轮 14 提交 + 前四弧 20 提交；**载荷冻结**在定版提交处收口，tag 之后只允许 docs/ 外文件层面的核查（沿 ADJ-15 纪律）。
+
 ## 执行记录（0.2.3，H3R 执法点迁移 + 修复轮——机械件已备，publish 留用户）
 
 ### Runbook（按序）

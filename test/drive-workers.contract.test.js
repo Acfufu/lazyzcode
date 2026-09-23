@@ -74,6 +74,7 @@ function repo(prefix, { steps = ["- [N1] x", "- [N2] y", "- [N3] z"], risk, plan
 }
 
 const goalJson = (d) => join(d, ".lazyzcode", "loop", "goal.json");
+const wtRoot = (d) => siblingRoot(d);
 const siblingRoot = (d) => join(dirname(d), basename(d) + "-fast");
 const siblingEntries = (d) => (existsSync(siblingRoot(d)) ? readdirSync(siblingRoot(d)) : []);
 
@@ -193,6 +194,9 @@ test("③装配与清理：run 中兄弟 worktree 在场；收束后 runDir 清�
     assert.ok(after.some((e) => e.endsWith(".logs")), "logs 目录留待下轮回收");
     const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
     assert.deepEqual(goal.subjects ?? [], [], "收束相须摘除本 run 声明的工人 subject（否则悬空根恒拒 finish，ADJ-01）");
+    // ADJ-30：工人段原文分波归档（各波同名曾互相覆写，只剩末波）
+    const logs = readdirSync(join(wtRoot(d), after.find((e) => e.endsWith(".logs"))));
+    assert.ok(logs.includes("worker-w1-wave1.txt") && logs.includes("worker-w1-wave2.txt"), `分波归档缺失：${JSON.stringify(logs)}`);
   } finally {
     rmSync(d, { recursive: true, force: true });
     rmSync(siblingRoot(d), { recursive: true, force: true });
@@ -650,5 +654,28 @@ test("⑰未来时间戳认领不饿死分派池（与 core 同判「不新鲜�
   } finally {
     rmSync(d, { recursive: true, force: true });
     rmSync(siblingRoot(d), { recursive: true, force: true });
+  }
+});
+
+// ── ⑱装配失败收束（ADJ-14，v024-fix-round#N5）────────────────────────────────
+test("⑱装配相中途失败：回滚已建物、自写快照、零波派发、不穿出异常", async () => {
+  const r = repo("lzy-dw-assembfail-");
+  const d = r.dir;
+  const wt = siblingRoot(d);
+  try {
+    // 确定性触发器：把 .git/worktrees 换成普通文件 ⇒ `git worktree add` 必败（"could not create
+    // leading directories"），且不依赖 runId 的秒级戳（早先按戳预置撞名分支的夹具会跨秒漂移）。
+    rmSync(join(d, ".git", "worktrees"), { recursive: true, force: true });
+    writeFileSync(join(d, ".git", "worktrees"), "blocker\n");
+    const { result, lines } = await captureStdout(() => runDrive(d, { workers: 2, maxSegments: 1 }, passDeps()));
+    assert.equal(result.ok, false, "装配失败属非干净收束");
+    assert.match(result.cause, /装配失败/, `实得 ${result.cause}`);
+    assert.ok(result.handoff, "装配失败须自写 7 字段快照（ADJ-14：原实现异常直接穿出）");
+    assert.match(lines, /未派发任何段/);
+    const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    assert.deepEqual(goal.subjects ?? [], [], "装配失败须回滚已 add 的 subject（不留半装状态）");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(wt, { recursive: true, force: true });
   }
 });

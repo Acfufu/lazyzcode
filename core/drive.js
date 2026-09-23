@@ -97,6 +97,26 @@ function pendingStepsOf(goal) {
   return (goal?.steps ?? []).filter((s) => s?.status !== "done");
 }
 
+// finish 失败诊断（ADJ-34 + ADJ-09 的 fin.error 半）：三面分节打印（原实现 stdout+stderr 直接
+// 拼接、`??` 链在 stdout 为空时吞掉 stderr、spawn 级失败（timeout/ENOENT）的 `fin.error` 完全
+// 不入报文），并按族给恢复指路——missing 根与「某 subject 脏」是两条不同的恢复路径，原实现
+// 一律归「subject 脏」会把人引错方向。
+function describeFinishFailure(fin) {
+  const out = String(fin.stdout ?? "").trim();
+  const err = String(fin.stderr ?? "").trim();
+  const spawn = fin.error?.message ? `spawn=${fin.error.message}` : "";
+  const detail = [out, err ? `[stderr]\n${err}` : "", spawn].filter(Boolean).join("\n");
+  if (detail === "") {
+    return "finish 闸门拒（无输出）——人工核 .lazyzcode/loop/goal.json 与各 subject 根后重试";
+  }
+  const guidance = /missing|缺失|不存在|不可解析/.test(detail)
+    ? "——某 subject 根缺失/不可解析：用 lzy loop subject remove <path> 摘除死根（ADR-0013 的 missing 死锁出口）后重试"
+    : /脏|dirty/.test(detail)
+      ? "——某根有未提交改动：提交或清理该根（工人 worktree 的未提交物见收束快照的风险节）后重试"
+      : "";
+  return `${detail}${guidance}`.slice(0, 400);
+}
+
 // 现行锚定绿的 harnessSpec（屏障重锚的原样透传源，ADJ-04）：代数与锚定判据单一源在
 // core/loop.js（anchoredGreenFor），本函数只做「读图 + 取字段」。**不可读即抛**——调用点
 // 包护栏并收束：静默返回 null 会让重锚写出无 harnessHash 的新绿，正是 ADJ-04 的机器门
@@ -741,11 +761,16 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
   let spentMsLocal = 0;
   let noProgressStreak = 0;
   let outcome = null;
+  let currentWave = 0; // 收束信息面的波号（ADJ-30：收束因缺上下文时接管者无从定位）
   const workers_ = []; // {i, worktree, branch, home, subjectAdded, resume}
 
   // 工人 worktree 脏态盘点（单一源：收束快照的风险节与清理相的保留判据同读一份）。
   // 三态：干净 / 有未提交改动 / 不可判（git 不可用或非 git 目录——**fail-closed 保留**，
   // 与完整性闸门同向：判不了就不删）。
+  // 收束上下文行（ADJ-30）：收束报文自带 slug/波号/工人身份——无人值守链上没人去读盘面细节。
+  const waveContext = () =>
+    `[drive] 上下文：slug=${goal.slug} · 波 ${currentWave}/${maxSegments} · 工人 ${workers_.map((w) => `w${w.i}`).join(",") || "（未装配）"}`;
+
   const workerDirtInventory = () =>
     workers_.map((w) => {
       const st = gitRun(w.worktree, ["status", "--porcelain"]);
@@ -757,8 +782,11 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
     let fresh = null;
     try {
       fresh = readGoal(cwd);
-    } catch {
+    } catch (err) {
+      // ADJ-30：原实现静默吞 readGoal 失败——操作者只看到「收束：<因>」，读不到「为什么没有
+      // 快照」。快照是无人值守链唯一恢复仪表，其缺席必须自名原因。
       fresh = null;
+      console.log(`[drive] 收束：${cause}——goal 状态不可读（${String(err?.message ?? err).slice(0, 160)}），无快照可写`);
     }
     // 保存物进快照（ADJ-03/ADJ-34，v024-fix-round#N1）：清理相在本函数之后才跑（:992），
     // 被保留的工人 worktree 是唯一「未提交内容还在哪」的指针——不进快照就没有恢复仪表。
@@ -785,6 +813,7 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
         .filter(Boolean)
         .join("；") || null;
     const note = [riskNote, extra].filter(Boolean).join("；") || undefined;
+    console.log(waveContext());
     if (fresh && fresh.status === "executing") {
       try {
         const { snap, treeHash } = authorHandoffSnapshot(cwd, fresh, cause, note, deps);
@@ -880,40 +909,61 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
     );
 
     // worktree+subject 装配（subject add 使证据集合变 ⇒ 首波屏障对全部现行 F 项重锚）。
-    mkdirSync(runDir, { recursive: true });
-    // 属主哨兵：本 run 对 runDir 的所有权证据（下轮 reclaim 的删除唯一授权，ADJ-02）。
-    // 原子写（tmp+rename）——半个哨兵文件比没有更坏：读不出=当无哨兵=保留，方向安全但会
-    // 让可回收残留转进「形符无哨兵」桶，故仍走原子序。
-    {
-      const tmp = join(runDir, `${WORKERS_SENTINEL_NAME}.${process.pid}.tmp`);
-      writeFileSync(
-        tmp,
-        `${JSON.stringify({ version: 1, runId, slug: goal.slug, host: hostRoot, createdAt: new Date().toISOString() }, null, 2)}\n`,
-        { mode: 0o600 },
+    // 整段（含 runDir 创建与哨兵写）都在护栏内：装配相的任一步失败都要走「回滚 + 带快照收束」，
+    // 而不是把异常穿出 runDriveWorkers（ADJ-14）。
+    try {
+      mkdirSync(runDir, { recursive: true });
+      // 属主哨兵：本 run 对 runDir 的所有权证据（下轮 reclaim 的删除唯一授权，ADJ-02）。
+      // 原子写（tmp+rename）——半个哨兵文件比没有更坏：读不出=当无哨兵=保留，方向安全但会
+      // 让可回收残留转进「形符无哨兵」桶，故仍走原子序。
+      {
+        const tmp = join(runDir, `${WORKERS_SENTINEL_NAME}.${process.pid}.tmp`);
+        writeFileSync(
+          tmp,
+          `${JSON.stringify({ version: 1, runId, slug: goal.slug, host: hostRoot, createdAt: new Date().toISOString() }, null, 2)}\n`,
+          { mode: 0o600 },
+        );
+        renameSync(tmp, join(runDir, WORKERS_SENTINEL_NAME));
+      }
+      // 装配相护栏（ADJ-14）：原实现裸跑——worktree/subject 建到一半抛错即穿出 runDriveWorkers，
+      // 于是已取租、已 add 部分 subject、无 outcome、无快照（「除 done 外各因自写快照」不变量被击穿）。
+      // 现行：任一环失败 → 先回滚已建物（摘已 add 的 subject + 删已建 worktree + prune）→ 走
+      // windDownW 干净收束（快照含装配失败原因；此为 !ok 收束，清理相不跑、工作树保留）。
+      for (let i = 1; i <= workers; i++) {
+        const w = {
+          i,
+          worktree: join(runDir, `w${i}`),
+          branch: `${runId}-w${i}`,
+          home: join(runDir, `home-w${i}`),
+          subjectAdded: false,
+          resume: null,
+        };
+        const g = gitRun(cwd, ["worktree", "add", "-b", w.branch, w.worktree]);
+        if (g.status !== 0) throw new LoopError(`workers worktree 创建失败（w${i}）：${(g.stderr ?? "").trim().slice(0, 200)}`);
+        const s = lzySpawn(cwd, cliPath, ["loop", "subject", "add", w.worktree], lease.fence);
+        if (s.status !== 0) throw new LoopError(`workers subject add 失败（w${i}）：${(s.stderr ?? s.stdout ?? "").trim().slice(0, 200) || s.error?.message || `status=${s.status}`}`);
+        w.subjectAdded = true;
+        mkdirSync(w.home, { recursive: true });
+        workers_.push(w);
+      }
+    } catch (err) {
+      for (const w of workers_) {
+        if (w.subjectAdded) lzySpawn(cwd, cliPath, ["loop", "subject", "remove", w.worktree], lease.fence);
+        gitRun(cwd, ["worktree", "remove", "--force", w.worktree]);
+      }
+      gitRun(cwd, ["worktree", "prune"]);
+      windDownW(
+        false,
+        `装配失败（${String(err?.message ?? err).slice(0, 180)}）`,
+        `工人 worktree/subject 装配中途失败：已建的 ${workers_.length} 个工人产物已回滚（subject 摘除 + worktree 删除），本 run 未派发任何段；恢复：排查后重跑 lzy loop drive（runDir 残留见兄弟根 ${wtRoot}）`,
       );
-      renameSync(tmp, join(runDir, WORKERS_SENTINEL_NAME));
-    }
-    for (let i = 1; i <= workers; i++) {
-      const w = {
-        i,
-        worktree: join(runDir, `w${i}`),
-        branch: `${runId}-w${i}`,
-        home: join(runDir, `home-w${i}`),
-        subjectAdded: false,
-        resume: null,
-      };
-      const g = gitRun(cwd, ["worktree", "add", "-b", w.branch, w.worktree]);
-      if (g.status !== 0) throw new LoopError(`workers worktree 创建失败（w${i}）：${(g.stderr ?? "").trim().slice(0, 200)}`);
-      const s = lzySpawn(cwd, cliPath, ["loop", "subject", "add", w.worktree], lease.fence);
-      if (s.status !== 0) throw new LoopError(`workers subject add 失败（w${i}）：${(s.stderr ?? s.stdout ?? "").trim().slice(0, 200) || s.error?.message || `status=${s.status}`}`);
-      w.subjectAdded = true;
-      mkdirSync(w.home, { recursive: true });
-      workers_.push(w);
     }
 
     let prevProgress = progressSignature(cwd, goal, null);
 
     for (let seg = 1; seg <= maxSegments; seg++) {
+      // 装配失败等前置收束（outcome 已定）→ 零波派发，直接走收尾（ADJ-14）。
+      if (outcome) break;
       // 波间门（risk/心跳）——与单工人同源（ADJ-20/ADJ-19 语义不变）。
       try {
         const freshGoal = readGoal(cwd);
@@ -970,15 +1020,11 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
           console.log(`[drive] ✔ goal done（${fresh.slug}）——finish 过，进入清理相`);
           break;
         }
-        windDownW(
-          false,
-          `finish 失败（exit=${fin.status}）`,
-          `${(fin.stdout ?? "").trim()}${(fin.stderr ?? "").trim()}`.slice(0, 300) ||
-            "finish 闸门拒（常=某 subject 脏：工人 worktree 留了未提交物）——人工清理该 worktree 或走 ADR-0013 remove+re-anchor 出口后重试",
-        );
+        windDownW(false, `finish 失败（exit=${fin.status}）`, describeFinishFailure(fin));
         break;
       }
       const segTimeout = Math.min(remainingWall, DRIVE_SEGMENT_TIMEOUT_MS);
+      currentWave = seg;
       console.log(`[drive] 波 ${seg}/${maxSegments}：分派 ${groups.map((g, i) => `w${i + 1}[${g.join(",") || "—"}]`).join(" ")}`);
 
       const settled = await Promise.allSettled(
@@ -1014,11 +1060,20 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
           ? s.value
           : { ok: false, durationMs: 0, exitCode: null, error: String(s.reason?.message ?? s.reason) },
       );
-      for (const [idx, r] of results.entries()) {
-        // 工人 stdout 归档在 runDir 兄弟日志目录（清理相不吞，下轮启动回收——done 路径
-        // 也留痕，供事后读工人段原文）。
-        mkdirSync(join(wtRoot, `${runId}.logs`), { recursive: true });
-        writeFileSync(join(wtRoot, `${runId}.logs`, `worker-w${workers_[idx].i}.txt`), `exit=${r.exitCode ?? "?"} 耗时=${r.durationMs ?? "—"}ms\n${r.stdout ?? ""}\n[stderr]\n${r.stderr ?? ""}\n`);
+      // 工人 stdout 归档在 runDir 兄弟日志目录（清理相不吞，下轮启动回收——done 路径也留痕）。
+      // ADJ-30 两处：分波命名（原实现每波同名覆写 ⇒ 只剩末波原文，长 run 的事后复盘断档）；
+      // 写面入护栏（归档失败属可容忍损失，绝不能把信息面故障升级成波循环异常 ⇒ 无 outcome）。
+      try {
+        const logsDir = join(wtRoot, `${runId}.logs`);
+        mkdirSync(logsDir, { recursive: true });
+        for (const [idx, r] of results.entries()) {
+          writeFileSync(
+            join(logsDir, `worker-w${workers_[idx].i}-wave${seg}.txt`),
+            `exit=${r.exitCode ?? "?"} 耗时=${r.durationMs ?? "—"}ms\n${r.stdout ?? ""}\n[stderr]\n${r.stderr ?? ""}\n`,
+          );
+        }
+      } catch (err) {
+        console.log(`[drive] 工人段原文归档失败（${String(err?.message ?? err).slice(0, 120)}）——不阻断本波`);
       }
       const maxMs = Math.max(...results.map((r) => r.durationMs ?? 0));
       console.log(`[drive] 波 ${seg}/${maxSegments} 完成：各工人耗时=${results.map((r) => r.durationMs ?? "—").join("/")}ms（墙钟取 max=${maxMs}ms）`);
@@ -1067,7 +1122,7 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
         windDownW(
           true,
           "merge-conflict",
-          `工人分支与宿主合并冲突（${conflict.branch}）——分支 ${workers_.map((w) => w.branch).join("、")} 与 worktree 已保留；请在人工会话解冲突后按计划推进（该批改动未丢失）`,
+          `工人分支与宿主合并冲突（${conflict.branch}）——本波未组装、宿主未被改动（冲突现场已 abort 清理，盘面无残留冲突标记）；分支 ${workers_.map((w) => w.branch).join("、")} 与 worktree 已保留：人工用 git merge <branch> 逐个取用并解冲突，或在交互会话按计划推进（该批改动未丢失）`,
         );
         break;
       }
@@ -1166,6 +1221,10 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
       if (rp != null && rp >= budget.pointsBudget) {
         windDownW(true, `积分预算尽（近 5h 滚动水位 ${rp} ≥ 积分硬顶 ${budget.pointsBudget}）`);
         break;
+      } else if (rp == null) {
+        // ADJ-30：单工人径有此 fail-soft 行，workers 径缺席 ⇒ 两条路径读面漂移（操作者会以为
+        // 「水位没触发」而非「读数不可用」）。
+        console.log("[drive] 水位读数不可读（fail-soft）——本波跳过积分联动执法");
       }
       if (seg === maxSegments) {
         windDownW(true, `波数尽（${maxSegments} 波）`);

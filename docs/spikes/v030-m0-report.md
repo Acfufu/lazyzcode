@@ -31,9 +31,40 @@ goal `v030-m0`（0.3.0 M0 能力与基线）· 2026-09-23/24 夜间无限窗口�
 
 以 §2 事实 6 的代码级事实收口（explorer 已核），不立活体探针——既定自有代码事实非未知能力，M0 出口不含该活体项；撤回机器化归 M1 `core/contract.js` 面（主方案 §3.1 撤回语义 + §7 模块表）。
 
-## 4. 三仓试验定义（N2）
+## 4. 三仓试验定义（N2，冻结）
 
-（待 N2 填充）
+**隔离夹具总配方（拍板 4 五边界全适用）**：夹具根 `/Users/acfufu/Codehub/v030-fixtures/`（三仓主树之外、宿主树之外）；每仓 `git clone` 后 checkout 冻结 HEAD（下行逐仓钉）；主工作树与夹具路径在本节分开记录，永不混写；机密走运行环境注入，证据脱敏。注入的缺陷一律如实记账为「试验注入」。
+
+### 4.1 lazyzcode（CLI 腿，M2 试点；M3 队列试点定义一并冻结）
+
+- 冻结源：本仓 `4b54f77` → 夹具 `v030-fixtures/lazyzcode@4b54f77/`。
+- 基准任务 A（单任务）：在夹具中注入「`loop drive --workers 0` 非法参数不再拒绝」的受控缺陷，驱动 0.3.0 候选修复为非零退出且零工人启动；中断后恢复并交付 A。
+  - 入口（已核）：`node cli/lzy.js loop drive --workers 0`、`node cli/lzy.js --help`；workers 参数入口在 `core/drive.js`，契约测试在 `test/drive-workers.contract.test.js`（规划 §9 写的 `drive.contract.test.js` 指针据此订正）。
+  - 红绿要求：非法参数拒绝必须在环境/目标前置条件**之前**可观察（不得以另一错误冒充）；反例 = 合法参数路径不受修复影响。
+- 基准任务 B（队列，M3 开始时才验收，不作 M2 前提）：队列完成第一项 → 中断 → 重启续第二项；故障场景不得刷新预算、不得重复交付。验收面：新队列入口 + 累计账本（缺省值见拍板 3：90min/1200pt）；假引擎用例与真引擎结果分列。
+- 通过判据：修复后 CLI stdout/退出码活体、零启动副作用、真实引擎续跑在案。
+
+### 4.2 openchamber（Web 腿，M2 试点）
+
+- 冻结源：`5df72db27` → 夹具 `v030-fixtures/openchamber@5df72db2/`。
+- 基准任务：在夹具中注入「scrollbar 查询映射不到外观设置」的受控缺陷，驱动修复 `scrollbar` 查询到外观设置的流程，并在浏览器**实际打开**对应设置页取证。
+  - 入口（已核）：`bun run build:web`；`node packages/web/bin/cli.js serve --port 4173 --foreground`；`bun test packages/ui/src/lib/settings/search.test.ts`（scrollbar 用例已存在，3 处提及）；`bun run type-check:ui`；`bun run lint:ui`。
+  - 隔离契约：按项目规范准备隔离实例与 OpenCode 依赖；夹具仓的 Git 权限单独声明（该项目规则=未经明确请求不做 Git 操作），不得用本仓授权暗中覆盖。
+  - 红绿要求：浏览器操作不可由纯函数测试替代——绿半必须含浏览器在目标设置页的实拍。
+- 通过判据：纯函数测试绿 + 浏览器实流回执（§6 探针先行验证该面可行）。
+
+### 4.3 zpigeon-ios（原生腿，M2 试点）
+
+- 冻结源：`e573516` → 夹具 `v030-fixtures/zpigeon-ios@e573516/`；兄弟依赖 `../zpigeon/Packages/ZCodeKit`（`188991a`）路径随夹具配方重绑。
+- 基准任务：在夹具中注入「工作区卡片无法展开/收起」的受控缺陷，驱动修复并**实际展示行列表变化**，随后重启恢复测试现场。
+  - 入口（已核）：`scripts/dev-setup.sh`；`xcodegen generate`；`xcodebuild -project ZPigeon.xcodeproj -scheme ZPigeon -destination 'platform=iOS Simulator,name=iPhone 17' build`；UI 测试 `ZPigeonUITests/ZCodeWebParitySmokeUITests.swift` 的 `testSmokeWorkspaceCardExpandCollapse`。
+  - 环境事实：本机 Xcode 27.0 + iOS 26.5（规划写 iOS 26，实际 26.5 满足）；需专用模拟器配对与带任务的数据；配对/数据不可复现即为具体阻塞（§3.2：不得换易面、不得跳过后报绿）。
+  - 红绿要求：现有测试含固定 sleep/空态分支——新验收等待**具体 UI 状态/事件**，不照搬固定 sleep。
+- 通过判据：构建 + 安装 + launch 回执、UI 状态变化截图、重启恢复回执。
+
+### 4.4 串行序（拍板 5）
+
+M2 试点执行序 lazyzcode → openchamber → zpigeon-ios；今晚探针序 §5 → §6 → §7 严格串行（xcodebuild/构建噪声不与积分归因采样重叠）。
 
 ## 5. 积分归因探针（N3）
 

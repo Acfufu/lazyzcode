@@ -514,6 +514,14 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - **载荷冻结核对**：tag 树 `npm pack` 的 tarball sha1 与定版前 dry-run **逐字一致**（`0ce271b9…`）——两笔 test-only 尾随提交零载荷 delta，冻结不变量成立（沿 ADJ-15 纪律，顺序偏离已按本节记账）。
 - **publish（第 5 步）留维护者 2FA**；发后核验清单见 §6 与上文 Runbook 第 6-7 步。
 
+### 发后核验（2026-09-23，publish 用户 2FA）
+
+- **registry 直证**：`latest=0.2.4`（curl HTTP 端点）；发布 shasum `0ce271b9854acfba886434d99a1266ca5d4fd15e` 与定版前 dry-run / tag 树 tarball **三方逐字一致** ✔；`engines>=22`、`bin.lzy=cli/lzy.js` 原样。元数据翻转实测 ≈100–120s（与 0.2.3 的 ~60s 同族）。
+- **隔离 prefix 冒烟 ✔**：`npm i -g lazyzcode@0.2.4 --prefix /tmp/lzy-smoke-024 --prefer-online` **第 1 次尝试即 200**（0.2.3 曾遇 tarball 边缘 ~4.5min——本次传播快于上代数据点）。一个如实注记：prefix 只隔离 npm 包，`lzy --version` 读的插件缓存是**用户级**的——冒烟时读到「CLI 0.2.4 / 缓存 0.2.3」即 ADR-0012 中间态的**正向**形态（CLI 领先缓存、sync 即收敛），非发布缺陷。
+- **真机 `lzy update` 全链 EXIT=0**：全局本是 **0.2.2** ⇒ 0.2.2→0.2.4 **跨两版**升级，「sync 已由新装子进程执行」（ADR-0012 机器面再证）；`lzy --version` = `0.2.4（插件载荷同版本）· 引擎 0.16.9`；缓存版本目录 0.2.4 在列；doctor `payload-ver` 行「缓存 […0.2.3, 0.2.4] · CLI 0.2.4 一致」、`enabled` 行 skills:2 hooks:6。
+- **本弧发布面两处必核（全过）**：① help drive 行带 `[--workers N] [--fast]`；`--fast=false` 走单工人径文案（「——无人值守边界：绝不立新计划…」）、`--fast` 走 workers 径文案（「——无人值守边界不变」）——两径在 done 槽上的拒绝文案可判别。② doctor `drive` 行 workers 三桶 `0（可回收）/0（形符无哨兵）/归档 0`，`attest-trailer` 尾注 5/5 全符（含本弧收尾提交的 Lzy-Attestation 尾注——doctor 的机器核验链活体）。
+- **v0.3.0 交接态**：6 份 agent-first 草稿在 `git stash@{0}`（恢复配方与入口文档见 `docs/reviews/2026-09-23-v024-fix-round.md` §5）；goal 槽 `v024-fix-round` 停 `done`。
+
 ### 与上一弧的差异
 
 - 本弧**首次**把 `provenance-ready.mjs` 的 ref/版本联锁纳入发布前必过项（0.2.3 定版时该断言尚不存在）——它的加入让「bump 版本却忘记改 ref」这类漂移在发布前就红。

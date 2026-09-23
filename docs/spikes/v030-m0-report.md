@@ -97,9 +97,14 @@ M2 试点执行序 lazyzcode → openchamber → zpigeon-ios；今晚探针序 �
 2. **带在途超额的近似限制：部分可行**——每请求完成即落账（检测延迟 ≈ 单请求时长），轮询检测 + 停止下一次派发可实现；在途超额结构性不可避免，且被 SIGKILL 的在途消耗账本假零（§5.2 中断样本）。
 3. **后果（§5.2 预注册语义对号）**：V08「已批准上限能约束执行」在当前引擎面**不可通过**——事后记账/停止下一次派发只算诊断能力；近似限制语义属范围变更，须交用户拍板；未拍板前 **M3 累计积分硬顶验收阻塞**，发布验收连带阻塞。墙钟硬顶（进程 SIGKILL）不受此影响，仍为一等收束信号。
 
-## 6. openchamber 浏览器回执（N4）
+## 6. openchamber 浏览器回执（N4，2026-09-24 凌晨）
 
-（待 N4 填充）
+- 隔离夹具：`v030-fixtures/openchamber@5df72db2/`（冻结 `5df72db27`），`bun install`（3065 包，63s）+ `bun run build:web`（30s）全绿。
+- 服务面：`node packages/web/bin/cli.js serve --port 4173 --foreground` → HTTP 200（27,447B HTML 壳，6.8ms）。
+- 浏览器面（ego-browser）：打开实例 → 等待 SPA 渲染 → 打开设置弹窗 → 搜索框输入 `scrollbar` → 左栏过滤出 Appearance「Always show scrollbars」（含描述文案）——**M2 表面全链活体演练通过**。
+- 截图：`artifacts/v030-m0-samples/oc-settings-scrollbar.png`（sha256 绑入证据包；侧栏背景虚化天然脱敏）。
+- 运行清理：serve 进程已停（post-kill HTTP 000），浏览器任务空间已关闭（keep: []）。
+- **配方注意点（M2 前必须处理）**：夹具实例自动检测并连接了本机在跑的 OpenCode（端口 62668）——设置页显示的是**用户真实数据**（侧栏会话历史）。只读观察无害且已脱敏，但 M2 注入试验必须换隔离 OpenCode 实例（或专用端口），不得让试验流量混入用户实例；本节观察全程未做任何写操作。
 
 ## 7. zpigeon-ios 模拟器回执（N5）
 

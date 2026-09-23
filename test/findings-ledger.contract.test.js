@@ -1,6 +1,6 @@
-// findings ledger 契约测试（v024-debt-bundle N2）：已提交 ledger 过 lint（exit 0 + 行数
-// 输出）+ 畸形夹具各形非零退出。行数钉 41=有意完整性绊线：回填新批次（如 v024 双审）须
-// 显式扩钉本断言并改 ledger meta scope——静默加行在此红（评审警示③的钉法声明）。
+// findings ledger 契约测试（v024-debt-bundle N2；v024-dual-review N5 扩钉）：已提交 ledger
+// 过 lint（exit 0 + 行数输出）+ 畸形夹具各形非零退出。行数钉 80=有意完整性绊线：回填新批次
+// 须显式扩钉本断言并改 ledger meta scope——静默加行在此红（评审警示③的钉法声明）。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -16,10 +16,10 @@ const LEDGER = join(ROOT, "docs", "reviews", "findings-ledger.jsonl");
 const runLint = (file) =>
   spawnSync(process.execPath, [LINT, file], { encoding: "utf8", timeout: 30_000 });
 
-test("已提交 findings ledger 过 lint：exit 0 + 行数 41", () => {
+test("已提交 findings ledger 过 lint：exit 0 + 行数 80", () => {
   const r = runLint(LEDGER);
   assert.equal(r.status, 0, `lint 应过：${r.stdout}${r.stderr}`);
-  assert.match(r.stdout, /41 findings/, `行数 41 输出须在场：${r.stdout}`);
+  assert.match(r.stdout, /80 findings/, `行数 80 输出须在场：${r.stdout}`);
 });
 
 test("畸形夹具：坏 JSON / 缺必填 / 枚举外 / id 重复 / fixed 缺指针 / 缺 meta 首行 ⇒ 全部非零", () => {

@@ -1,4 +1,4 @@
-{"record":"meta","schemaVersion":1,"scope":"v023-dual-review（0.2.3 待发内容五轮 × A/B 双审）41 条唯一发现全量回填；v021/v009 等历史批次不回填（判定表已在其报告 §判定表+处置表内，记账日 2026-09-23，goal v024-debt-bundle#N2）。行数钉 41=有意完整性绊线：回填新批次须显式扩钉并改 test/findings-ledger.contract.test.js，静默加行会被 lint 揪出。","source":"docs/reviews/2026-09-23-v023-dual-review.md §3 判定表"}
+{"record": "meta", "schemaVersion": 1, "scope": "v023-dual-review（0.2.3 待发内容五轮 × A/B 双审）41 条唯一发现全量回填；v024-dual-review（0.2.4 窗口 7b01cd0..fb61809 五轮 × A/B 双审：debt-bundle 搭车 + fast-exp 实验弧 + fast-scheduler workers 弧）39 条唯一发现全量回填——零修复审查，行态全 deferred/open（修复归后续目标）；v021/v009 等历史批次不回填（判定表已在各报告内）。记账 v023 批 2026-09-23 goal v024-debt-bundle#N2；记账 v024 批 2026-09-23 goal v024-dual-review#N5。行数钉 80=有意完整性绊线：回填新批次须显式扩钉并改 test/findings-ledger.contract.test.js，静默加行会被 lint 揪出。", "source": "docs/reviews/2026-09-23-v023-dual-review.md §3 判定表"}
 {"id":"V023-ADJ-01","batch":"v023-dual-review","severity":"P1","verdict":"成立","disposition":"fixed","landed":"16a5061","source":"docs/reviews/2026-09-23-v023-dual-review.md §3 ADJ-01"}
 {"id":"V023-ADJ-02","batch":"v023-dual-review","severity":"P2","verdict":"成立","disposition":"fixed","landed":"8b50b16","source":"docs/reviews/2026-09-23-v023-dual-review.md §3 ADJ-02"}
 {"id":"V023-ADJ-03","batch":"v023-dual-review","severity":"P2","verdict":"成立","disposition":"fixed","landed":"8b50b16","source":"docs/reviews/2026-09-23-v023-dual-review.md §3 ADJ-03"}
@@ -40,3 +40,42 @@
 {"id":"V023-ADJ-39","batch":"v023-dual-review","severity":"P3","verdict":"成立","disposition":"fixed","landed":"7dbaa7f","source":"docs/reviews/2026-09-23-v023-dual-review.md §3 ADJ-39"}
 {"id":"V023-ADJ-40","batch":"v023-dual-review","severity":"P3","verdict":"成立","disposition":"fixed","landed":"7dbaa7f","source":"docs/reviews/2026-09-23-v023-dual-review.md §3 ADJ-40"}
 {"id":"V023-ADJ-41","batch":"v023-dual-review","severity":"P3","verdict":"成立","disposition":"fixed","landed":"4d2febf","source":"docs/reviews/2026-09-23-v023-dual-review.md §3 ADJ-41"}
+{"id": "V024-ADJ-01", "batch": "v024-dual-review", "severity": "P1", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-01"}
+{"id": "V024-ADJ-02", "batch": "v024-dual-review", "severity": "P1", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-02"}
+{"id": "V024-ADJ-03", "batch": "v024-dual-review", "severity": "P1", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-03"}
+{"id": "V024-ADJ-04", "batch": "v024-dual-review", "severity": "P1", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-04"}
+{"id": "V024-ADJ-05", "batch": "v024-dual-review", "severity": "P1", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-05"}
+{"id": "V024-ADJ-06", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-06"}
+{"id": "V024-ADJ-07", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-07"}
+{"id": "V024-ADJ-08", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-08"}
+{"id": "V024-ADJ-09", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-09"}
+{"id": "V024-ADJ-10", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-10"}
+{"id": "V024-ADJ-11", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-11"}
+{"id": "V024-ADJ-12", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-12"}
+{"id": "V024-ADJ-13", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-13"}
+{"id": "V024-ADJ-14", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-14"}
+{"id": "V024-ADJ-15", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-15"}
+{"id": "V024-ADJ-16", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-16"}
+{"id": "V024-ADJ-17", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-17"}
+{"id": "V024-ADJ-18", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-18"}
+{"id": "V024-ADJ-19", "batch": "v024-dual-review", "severity": "P2", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-19"}
+{"id": "V024-ADJ-20", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-20"}
+{"id": "V024-ADJ-21", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-21"}
+{"id": "V024-ADJ-22", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-22"}
+{"id": "V024-ADJ-23", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-23"}
+{"id": "V024-ADJ-24", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-24"}
+{"id": "V024-ADJ-25", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-25"}
+{"id": "V024-ADJ-26", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-26"}
+{"id": "V024-ADJ-27", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-27"}
+{"id": "V024-ADJ-28", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-28"}
+{"id": "V024-ADJ-29", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-29"}
+{"id": "V024-ADJ-30", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-30"}
+{"id": "V024-ADJ-31", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-31"}
+{"id": "V024-ADJ-32", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-32"}
+{"id": "V024-ADJ-33", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-33"}
+{"id": "V024-ADJ-34", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-34"}
+{"id": "V024-ADJ-35", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-35"}
+{"id": "V024-ADJ-36", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-36"}
+{"id": "V024-ADJ-37", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-37"}
+{"id": "V024-ADJ-38", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-38"}
+{"id": "V024-ADJ-39", "batch": "v024-dual-review", "severity": "P3", "verdict": "成立", "disposition": "deferred", "landed": "open", "source": "docs/reviews/2026-09-23-v024-dual-review.md §3 ADJ-39"}

@@ -500,6 +500,20 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 6. **发后核验**：registry `latest=0.2.4`（curl 直证）；发布 shasum 与定版前 dry-run 逐字一致；隔离 prefix 冒烟；真机 `lzy update` 0.2.3→0.2.4 全链；payload-ver 内容级对照。
 7. **本弧发布面新增两处必核**（都在 0.2.4 的修复面内，回归即红）：① `--workers`/`--fast` 帮助行与 `--fast=false` 单工人语义（⑲ 契约 + help 面）；② doctor `drive` 行 workers 三桶读数（形符无哨兵桶对预修复遗留不为 0 即正常，不得被读成回归）。市场 manifest 的 `source.ref` 与版本联锁由 `provenance-ready.mjs` 机器兜底。
 
+### 执行记录（2026-09-23，机械件直发未走 loop——维护者指令）
+
+- **push（第 1 步）**：34 提交（v024 四弧 + 本轮修复轮）→ `03c04fa..ca16053`；定版提交 `ca16053` 无 `Goal:` 尾注（槽位被 done 态 `v024-fix-round` 占用，账本 warn 预期内）。
+- **版本五处（第 2 步）**：`ca16053`（package.json / plugin.json / 市场 manifest version+ref / home.html softwareVersion / CHANGELOG `[0.2.4] - 2026-09-23`）。
+- **发布前验证（第 3 步）**：`npm test` 491/491；surface 5/5；`provenance-ready` exit 0（**ref 联锁首次入必过项**）；`dry-run` 44 文件 / 295.1 kB / shasum `0ce271b9854acfba886434d99a1266ca5d4fd15e`。
+- **CI 三跑方绿（第 4 步，两次真红——两条都是本轮新测试的**环境假设**，非产品缺陷）**：
+  1. 一跑（`ca16053`）：**ubuntu-24 腿红**，`⑱/⑳/⑳b/⑳c/⑰` 等 worker 用例整族挂——新测试依赖**宿主机桌面端注入的 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE`**（本机全绿、CI 全红）。修：测试文件把 env-auth 声明为**模块级夹具前提**（同 `LZY_ABLATE_HUMAN_GATE` 家法），被测三态（缺席/0 字节/次候选）仍由 ⑦/⑯ 的 `withEnv` 显式构造（`e6dc123`，test-only）。
+  2. 二跑（`e6dc123`）：ubuntu 双腿绿、**windows-24 腿红**——我新加的 attest-trailer「不可读目录」支用 `chmodSync(dir, 0o000)`，而 **win32 的 POSIX 位不拦目录读取**（ACL 才是机制），读取照常成功。修：改用**可移植触发器**——把该路径做成普通文件（`readdirSync` 抛 ENOTDIR，且正落在 doctor 文案的「形态异常」成因里）（`758186f`，test-only）。
+  3. 三跑（`758186f`）：**四腿全绿**（node 22/24 × ubuntu/windows，run 35879379612）。
+  - **本地复现 CI 的手法（本轮新增）**：`env -u ZCODE_BUILTIN_PROVIDER_CONFIG_FILE -u ZCODE_PERSONAL_PROVIDER_CONFIG_FILE npm test` → 491/491——宿主机带桌面注入时，不剥 env 的全绿**不构成 CI 证据**。
+- **tag + Release（第 4 步后半）**：`v0.2.4` 打在 `758186f`（**CI 绿判决之后**，沿 0.1.0 教训：判决只认 `gh run view conclusion`）；GitHub Release notes 三节。
+- **载荷冻结核对**：tag 树 `npm pack` 的 tarball sha1 与定版前 dry-run **逐字一致**（`0ce271b9…`）——两笔 test-only 尾随提交零载荷 delta，冻结不变量成立（沿 ADJ-15 纪律，顺序偏离已按本节记账）。
+- **publish（第 5 步）留维护者 2FA**；发后核验清单见 §6 与上文 Runbook 第 6-7 步。
+
 ### 与上一弧的差异
 
 - 本弧**首次**把 `provenance-ready.mjs` 的 ref/版本联锁纳入发布前必过项（0.2.3 定版时该断言尚不存在）——它的加入让「bump 版本却忘记改 ref」这类漂移在发布前就红。

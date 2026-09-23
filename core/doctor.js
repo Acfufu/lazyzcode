@@ -8,6 +8,8 @@ import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
 import { createEngineCli } from "./engine.js";
 import { detectHeadlessAuth } from "./headless.js";
+// workers 残留三桶的形态/哨兵谓词单一源（core/drive.js；ADJ-39 同族纪律）。
+import { DRIVE_WORKERS_ROOT_DIRNAME, WORKERS_LOG_DIR_RE, WORKERS_RUN_DIR_RE, readWorkersSentinel } from "./drive.js";
 import { readRepoManifest, readRegistry, sha256File } from "./installer.js";
 import {
   MARKETPLACE,
@@ -935,9 +937,34 @@ function checkH3rWords(push) {
 }
 
 function checkDrive(push, cwd) {
+  // workers 残留分三桶（宿主外，疤痕巡逻不见）先算：**与引擎无关的卫生事实**——引擎缺席时
+  // 更需要它（清理残留往往正是那时做的事）。ADJ-22：旧实现把 `.logs` 归档一并计入「残留
+  // runDir」，done 全清后读数恒 ≥1，告警语义被淹没。三桶=可回收（形符+哨兵在场）/形符无
+  // 哨兵（预修复遗留——现行 reclaim 永不自动删，人工处置）/归档（`.logs`）。形态与哨兵
+  // 谓词单一源在 core/drive.js（ADJ-39 同族纪律：一个谓词多处复制必漂移）。
+  let workersText = "";
+  try {
+    const sibling = join(dirname(resolve(cwd)), basename(resolve(cwd)) + DRIVE_WORKERS_ROOT_DIRNAME);
+    let reclaimable = 0;
+    let orphan = 0;
+    let archives = 0;
+    if (existsSync(sibling)) {
+      for (const name of readdirSync(sibling)) {
+        if (WORKERS_LOG_DIR_RE.test(name)) {
+          archives += 1;
+        } else if (WORKERS_RUN_DIR_RE.test(name)) {
+          if (readWorkersSentinel(join(sibling, name))) reclaimable += 1;
+          else orphan += 1;
+        }
+      }
+    }
+    workersText = ` · workers 残留 runDir ${reclaimable}（可回收）/${orphan}（形符无哨兵，不自动回收）/归档 ${archives}`;
+  } catch {
+    workersText = "";
+  }
   const engine = findEngine();
   if (!engine) {
-    push("drive", "skip", "引擎缺席——drive 无人值守通道不可用（装 ZCode 桌面端或设 LZY_ZCODE_ENGINE）");
+    push("drive", "skip", `引擎缺席——drive 无人值守通道不可用（装 ZCode 桌面端或设 LZY_ZCODE_ENGINE）${workersText}`);
     return;
   }
   const auth = detectHeadlessAuth();
@@ -981,16 +1008,11 @@ function checkDrive(push, cwd) {
   } else {
     eligText = "无 executing 目标";
   }
-  // workers 面（v024-fast-scheduler#N2）：兄弟 `-fast` 根的残留 runDir 计数（宿主外，
-  // 疤痕巡逻不见；drive 启动自动回收，此处只报数——ADJ-23 同型风险不成立因在宿主外）。
-  let workersText = "";
-  try {
-    const sibling = join(dirname(resolve(cwd)), basename(resolve(cwd)) + "-fast");
-    const left = existsSync(sibling) ? readdirSync(sibling).length : 0;
-    workersText = ` · workers 残留 runDir ${left}`;
-  } catch {
-    workersText = "";
-  }
+  // workers 面（v024-fast-scheduler#N2）：兄弟 `-fast` 根的残留分**三桶**报数（宿主外，疤痕
+  // 巡逻不见）。ADJ-22：旧实现只数目录项个数，把有意保留的 `.logs` 归档也算成「残留 runDir」，
+  // 于是任何一次 workers run 之后读数恒 ≥1，告警语义被淹没。三桶=可回收（形符+哨兵在场）/
+  // 形符无哨兵（预修复遗留——现行 reclaim 永不自动删，人工处置）/ 归档（`.logs`）。形态与
+  // 哨兵谓词单一源在 core/drive.js（ADJ-39 同族纪律：一个谓词多处复制必漂移）。
   push(
     "drive",
     auth.ok ? "ok" : "warn",

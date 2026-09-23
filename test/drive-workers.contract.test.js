@@ -267,6 +267,85 @@ test("⑤组装：工人分支 merge 提交在案+屏障对已取证 F 项重锚
   }
 });
 
+// ── ⑤b 启动回收矩阵（ADJ-02，v024-fix-round#N2）──────────────────────────────
+test("⑤b 启动回收：无哨兵/形不符/归档零删除；带哨兵含未提交内容者整体保留；带哨兵干净者回收", async () => {
+  const r = repo("lzy-dw-reclaim-");
+  const d = r.dir;
+  const wtRoot = siblingRoot(d);
+  const mk = (name) => {
+    const p = join(wtRoot, name);
+    mkdirSync(p, { recursive: true });
+    writeFileSync(join(p, "keep.txt"), "x\n");
+    return p;
+  };
+  const sentinel = (p, runId) =>
+    writeFileSync(join(p, ".lzy-run.json"), JSON.stringify({ version: 1, runId, slug: "dw", host: d, createdAt: "2025-01-01T00:00:00.000Z" }));
+  try {
+    mkdirSync(wtRoot, { recursive: true });
+    const noSentinel = mk("fast-20250101000000"); // 形符但无哨兵=无所有权证据
+    const foreign = mk("my-notes"); // 形不符（无关用户目录）
+    const archive = mk("fast-20250101000001.logs"); // 工人 stdout 归档
+    const dirtySentinel = mk("fast-20250101000002"); // 带哨兵 + 未提交内容
+    sentinel(dirtySentinel, "fast-20250101000002");
+    rmSync(join(dirtySentinel, "keep.txt"));
+    mkdirSync(join(dirtySentinel, "w1"), { recursive: true });
+    writeFileSync(join(dirtySentinel, "w1", "uncommitted.txt"), "salvage\n");
+    const cleanSentinel = mk("fast-20250101000003"); // 带哨兵 + 干净=可回收
+    sentinel(cleanSentinel, "fast-20250101000003");
+    rmSync(join(cleanSentinel, "keep.txt"));
+    const { lines } = await captureStdout(() => runDrive(d, { workers: 2, maxSegments: 1 }, passDeps()));
+    assert.ok(existsSync(noSentinel), "形符无哨兵目录零删除（无所有权证据）");
+    assert.ok(existsSync(foreign), "形不符目录零删除（可能是无关用户目录）");
+    assert.ok(existsSync(archive), ".logs 归档不动");
+    assert.ok(existsSync(join(dirtySentinel, "w1", "uncommitted.txt")), "含未提交内容的 runDir 整体保留");
+    assert.ok(!existsSync(cleanSentinel), "带哨兵且干净=照常回收");
+    assert.match(lines, /跳过/, "跳过项须入回收日志");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(wtRoot, { recursive: true, force: true });
+  }
+});
+
+// ── ⑤c runId 唯一化（ADJ-33，v024-fix-round#N2）──────────────────────────────
+test("⑤c runId 唯一化：同名 runDir 已在场时追加 -<pid>，不再撞 worktree add -b", async () => {
+  const r = repo("lzy-dw-runid-");
+  const d = r.dir;
+  const wtRoot = siblingRoot(d);
+  const stamp = () => `fast-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`;
+  try {
+    const collided = stamp();
+    mkdirSync(join(wtRoot, collided), { recursive: true });
+    writeFileSync(join(wtRoot, collided, "keep.txt"), "x\n"); // 无哨兵：不该被回收
+    const { result } = await captureStdout(() => runDrive(d, { workers: 2, maxSegments: 1 }, passDeps()));
+    assert.equal(result.ok, true, "同秒撞名不得让本次 run 硬抛（worktree add -b 失败）");
+    assert.ok(existsSync(join(wtRoot, collided)), "撞名目录（无哨兵）保留不动");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(wtRoot, { recursive: true, force: true });
+  }
+});
+
+// ── ⑤d doctor 残留计数三桶（ADJ-22，v024-fix-round#N2）────────────────────────
+test("⑤d doctor 残留计数：归档与形符无哨兵分列，不把 .logs 计入可回收残留", async () => {
+  const r = repo("lzy-dw-doctorcnt-");
+  const d = r.dir;
+  const wtRoot = siblingRoot(d);
+  try {
+    mkdirSync(join(wtRoot, "fast-20250101000001.logs"), { recursive: true });
+    mkdirSync(join(wtRoot, "fast-20250101000009"), { recursive: true }); // 形符无哨兵桶
+    mkdirSync(join(wtRoot, "fast-20250101000002"), { recursive: true });
+    writeFileSync(join(wtRoot, "fast-20250101000002", ".lzy-run.json"), JSON.stringify({ version: 1, runId: "fast-20250101000002", slug: "dw", host: d, createdAt: "2025-01-01T00:00:00.000Z" }));
+    const out = lzyIn(d, ["doctor"]);
+    const line = (out.stdout ?? "").split("\n").find((l) => /workers 残留/.test(l)) ?? "";
+    assert.match(line, /workers 残留 runDir 1（可回收）/, `可回收桶应=1（实得行：${line}）`);
+    assert.match(line, /1（形符无哨兵/, `形符无哨兵桶应=1（实得行：${line}）`);
+    assert.match(line, /归档 1/, `归档桶应=1（实得行：${line}）`);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(wtRoot, { recursive: true, force: true });
+  }
+});
+
 // ── ⑥merge-conflict 收束因 ────────────────────────────────────────────────────
 test("⑥merge-conflict：冲突→收束因 merge-conflict+快照在场+分支与 worktree 不清理", async () => {
   const r = repo("lzy-dw-conflict-");
@@ -368,7 +447,7 @@ test("⑪CLI 接线：--fast 折算进 workers 径（executing 检查消息）�
 });
 
 // ── ⑫启动回收 ────────────────────────────────────────────────────────────────
-test("⑫启动回收：无租约关联的残留 runDir 被清；未合并 fast-* 分支保留（salvage 族）", async () => {
+test("⑫启动回收：带哨兵且无未提交内容的残留 runDir 被清；未合并 fast-* 分支保留（salvage 族）", async () => {
   const r = repo("lzy-dw-reclaim-");
   const d = r.dir;
   try {
@@ -376,6 +455,8 @@ test("⑫启动回收：无租约关联的残留 runDir 被清；未合并 fast-
     const stale = join(sib, "fast-20990101000000");
     mkdirSync(stale, { recursive: true });
     writeFileSync(join(stale, "stale.txt"), "stale\n");
+    // 属主哨兵=回收的唯一授权证据（ADJ-02 起）
+    writeFileSync(join(stale, ".lzy-run.json"), JSON.stringify({ version: 1, runId: "fast-20990101000000", slug: "dw", host: d, createdAt: "2099-01-01T00:00:00.000Z" }));
     // 造一个真未合并分支：开分支提交一次再切回原分支。
     const prev = spawnSync("git", ["-C", d, "rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8" }).stdout.trim();
     spawnSync("git", ["-C", d, "switch", "-q", "-C", "fast-20990101000000-w1"], { encoding: "utf8" });
@@ -384,7 +465,7 @@ test("⑫启动回收：无租约关联的残留 runDir 被清；未合并 fast-
     spawnSync("git", ["-C", d, "-c", "user.email=t@l", "-c", "user.name=t", "commit", "-qm", "unmerged"], { encoding: "utf8" });
     spawnSync("git", ["-C", d, "switch", "-q", prev], { encoding: "utf8" });
     await captureStdout(() => runDrive(d, { workers: 2, maxSegments: 1 }, passDeps(fakeWorker())));
-    assert.ok(!existsSync(stale), "无租约关联残留 runDir 应被回收");
+    assert.ok(!existsSync(stale), "哨兵在场且无未提交内容的残留 runDir 应被回收");
     const branches = spawnSync("git", ["-C", d, "branch", "--format", "%(refname:short)"], { encoding: "utf8" }).stdout ?? "";
     assert.match(branches, /fast-20990101000000-w1/, "未合并残留分支保留（salvage 族）");
   } finally {

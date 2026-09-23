@@ -56,6 +56,21 @@ export const DRIVE_MODE_DEFAULT = "yolo";
 // 墙钟取本波 max（并发不 sum）等口径见 runDriveWorkers 内注记与
 // docs/reviews/2026-fast-exp-report.md（实验底座）。
 export const DRIVE_WORKERS_ROOT_DIRNAME = "-fast"; // 兄弟根后缀：<dirname(host)>/<basename(host)>-fast/
+// runDir / 归档名的形态与所有权判据（单一源，drive/doctor/e2e 三面同读——ADJ-39 同族纪律：
+// 一个谓词多处复制必漂移）。`fast-<14 位 UTC 戳>` 为基形；同秒撞名时追加 `-<pid>`
+// （ADJ-33：原实现同秒重跑撞 `worktree add -b` 硬抛且无快照）。属主哨兵 `.lzy-run.json`
+// 是**删除的唯一授权证据**（ADJ-02：形符本身不构成所有权——用户目录可能恰好形符）。
+export const WORKERS_RUN_DIR_RE = /^fast-\d{14}(-\d+)?$/;
+export const WORKERS_LOG_DIR_RE = /^fast-\d{14}\.logs$/;
+export const WORKERS_SENTINEL_NAME = ".lzy-run.json";
+export function readWorkersSentinel(dir) {
+  try {
+    const raw = JSON.parse(readFileSync(join(dir, WORKERS_SENTINEL_NAME), "utf8"));
+    return raw && typeof raw === "object" ? raw : null;
+  } catch {
+    return null;
+  }
+}
 // 段超时上限（单段墙钟）；spawnHeadless 显式 mode 立场不变——drive 缺省 yolo（无人值守
 // 段必须免审批，build/edit 会在 PermissionRequest 上无人可批地停摆）。
 export const DRIVE_SEGMENT_TIMEOUT_MS = HEADLESS_DEFAULT_TIMEOUT_MS;
@@ -650,31 +665,73 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
 
   const hostRoot = resolve(cwd);
   const wtRoot = join(dirname(hostRoot), basename(hostRoot) + DRIVE_WORKERS_ROOT_DIRNAME);
-  const runId = `fast-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`;
+  // runId 唯一化（ADJ-33）：基形 `fast-<14 位 UTC 戳>` 秒粒度，同秒重跑会撞已存在的 runDir →
+  // `worktree add -b` 硬抛且无交接快照。撞名即追加 `-<pid>`（同秒内不同进程必不同；同进程
+  // 重入同秒仍是理论边界，但那已由 lease 单运行时互斥挡住）。
+  const baseRunId = `fast-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`;
+  const runId = existsSync(join(wtRoot, baseRunId)) ? `${baseRunId}-${process.pid}` : baseRunId;
   const runDir = join(wtRoot, runId);
   // CLI 路径可注入（deps.cliPath——契约测试 seam，deps.run 家法）：生产=本进程 CLI
   //（argv[1]）；node --test 下 argv[1] 是测试文件自身，直接用会把测试当 CLI spawn。
   const cliPath = deps.cliPath ?? resolve(process.argv[1] ?? "lzy");
 
-  // 启动回收：runId↔lease 关联（详单 §N2）——取租成功后，兄弟根下不属于本 runId 的
-  // 目录=无活跃租约的残留 → 整体删除+worktree prune；**只删已合并分支**（未合并残留
-  // 分支=salvage 族资产 ADR-0009，保留并在回收日志列清单）。
+  // 启动回收（v024-fix-round#N2 重写，ADJ-02）：**删除的唯一授权证据=属主哨兵**
+  // （`<runDir>/.lzy-run.json`，本 run 创建 runDir 时写入）。旧实现按命名约定对兄弟根下
+  // 一切非本 runId 条目 `rmSync -rf`——无所有权证据、无形校验、不盘点未提交内容，会摧毁
+  // 撞名的无关用户目录，也会把自家 merge-conflict 收束承诺「已保留」的 worktree 在下轮
+  // 唤起毁掉。现行三判：
+  //   ① 名不符 runDir 形态（含用户的杂项目录）→ 跳过 + 日志点名，绝不删；
+  //   ② `.logs` 归档 → 跳过（工人段 stdout 留档）；
+  //   ③ 形符但哨兵缺失/不符 → 跳过（无所有权证据；预修复遗留的形符目录正是这一桶，故永不
+  //      自动删除——doctor 分桶报数，人工处置）；
+  // 只剩「哨兵在场」者才是候选，且逐 worktree 查脏：有未提交（或脏态判不了）→ **整体保留**
+  // （保留物在 runDir 之下，父目录不能删）；零保留物才删目录，随后统一 prune + 扫已合并分支。
   const reclaim = () => {
     if (!existsSync(wtRoot)) return;
     for (const name of readdirSync(wtRoot)) {
       if (name === runId) continue;
       const stale = join(wtRoot, name);
-      rmSync(stale, { recursive: true, force: true });
-      gitRun(cwd, ["worktree", "prune"]);
-      const merged = gitRun(cwd, ["branch", "--merged", "HEAD", "--format", "%(refname:short)"]);
-      for (const b of (merged.stdout ?? "").split("\n").map((x) => x.trim()).filter(Boolean)) {
-        if (b.startsWith("fast-")) gitRun(cwd, ["branch", "-d", b]);
+      if (WORKERS_LOG_DIR_RE.test(name)) {
+        console.log(`[drive] 启动回收：跳过归档 ${name}（工人段 stdout 留档）`);
+        continue;
       }
-      const unmerged = gitRun(cwd, ["branch", "--no-merged", "HEAD", "--format", "%(refname:short)"]);
-      const left = (unmerged.stdout ?? "").split("\n").map((x) => x.trim()).filter((b) => b.startsWith("fast-"));
-      if (left.length > 0) console.log(`[drive] 回收：未合并工人分支保留（salvage 族，ADR-0009）：${left.join("、")}`);
-      console.log(`[drive] 启动回收：残留 run 目录 ${name} 已清（无活跃租约关联）`);
+      if (!WORKERS_RUN_DIR_RE.test(name)) {
+        console.log(`[drive] 启动回收：跳过 ${name}（名不符 runDir 形态——非本工具产物，绝不删）`);
+        continue;
+      }
+      const sentinel = readWorkersSentinel(stale);
+      if (!sentinel || sentinel.runId !== name) {
+        console.log(`[drive] 启动回收：跳过 ${name}（属主哨兵缺失/不符——无所有权证据，绝不删）`);
+        continue;
+      }
+      const keptDirs = [];
+      try {
+        for (const e of readdirSync(stale, { withFileTypes: true })) {
+          if (!e.isDirectory() || !/^w\d+$/.test(e.name)) continue;
+          const st = gitRun(join(stale, e.name), ["status", "--porcelain"]);
+          const state = st.status !== 0 ? "不可判" : (st.stdout ?? "").trim() !== "" ? "有未提交改动" : "干净";
+          if (state !== "干净") keptDirs.push(`${e.name}（${state}）`);
+        }
+      } catch (err) {
+        keptDirs.push(`（目录不可读：${String(err?.message ?? err).slice(0, 80)}）`);
+      }
+      if (keptDirs.length > 0) {
+        console.log(`[drive] 启动回收：${name} 整体保留（含未提交内容：${keptDirs.join("、")}）——salvage 族，人工处置`);
+        continue;
+      }
+      rmSync(stale, { recursive: true, force: true });
+      console.log(`[drive] 启动回收：残留 run 目录 ${name} 已清（哨兵在场、无未提交内容）`);
     }
+    gitRun(cwd, ["worktree", "prune"]);
+    // 已合并分支清理与未合并清单（分支属宿主仓，与目录回收解耦；被保留 worktree 检出的分支
+    // 由 git 自身拒绝 `-d` 兜底）。
+    const merged = gitRun(cwd, ["branch", "--merged", "HEAD", "--format", "%(refname:short)"]);
+    for (const b of (merged.stdout ?? "").split("\n").map((x) => x.trim()).filter(Boolean)) {
+      if (b.startsWith("fast-")) gitRun(cwd, ["branch", "-d", b]);
+    }
+    const unmerged = gitRun(cwd, ["branch", "--no-merged", "HEAD", "--format", "%(refname:short)"]);
+    const left = (unmerged.stdout ?? "").split("\n").map((x) => x.trim()).filter((b) => b.startsWith("fast-"));
+    if (left.length > 0) console.log(`[drive] 回收：未合并工人分支保留（salvage 族，ADR-0009）：${left.join("、")}`);
   };
 
   let lease = null;
@@ -809,6 +866,18 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
 
     // worktree+subject 装配（subject add 使证据集合变 ⇒ 首波屏障对全部现行 F 项重锚）。
     mkdirSync(runDir, { recursive: true });
+    // 属主哨兵：本 run 对 runDir 的所有权证据（下轮 reclaim 的删除唯一授权，ADJ-02）。
+    // 原子写（tmp+rename）——半个哨兵文件比没有更坏：读不出=当无哨兵=保留，方向安全但会
+    // 让可回收残留转进「形符无哨兵」桶，故仍走原子序。
+    {
+      const tmp = join(runDir, `${WORKERS_SENTINEL_NAME}.${process.pid}.tmp`);
+      writeFileSync(
+        tmp,
+        `${JSON.stringify({ version: 1, runId, slug: goal.slug, host: hostRoot, createdAt: new Date().toISOString() }, null, 2)}\n`,
+        { mode: 0o600 },
+      );
+      renameSync(tmp, join(runDir, WORKERS_SENTINEL_NAME));
+    }
     for (let i = 1; i <= workers; i++) {
       const w = {
         i,

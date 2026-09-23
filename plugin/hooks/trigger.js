@@ -44,6 +44,13 @@ const APPROVE_NEG_RE =
 // 退出当前目标参与（Stop 不再拉回）；参与触发（invocational）写认领时同步清旗标。
 // 锚同 BARE_ZW_RE（^[ \t\r]*，V021-ADJ-68）：空行开头的多行 prompt 不得触发。
 const STANDDOWN_RE = /^[ \t\r]*zw\s+standdown(?![a-z0-9_-])/i;
+// 撤回形态（0.3.0 M1，ADR-0024）：「撤回/withdraw/revoke + 8 位 hex 短码」——对当前
+// goal 绑定契约（goal.contract.contractHash）的授权撤回。不要求任何 pending 在场
+//（撤回是主动声明，批准才是对 pending 的应答）；记录写 .lazyzcode/authorizations/
+//（追加式，生效判定=后到者赢）。否定前置筛与批准同族（APPROVE_NEG_RE 家法换动词）。
+const WITHDRAW_RE = /(?:撤回|withdraw|revoke)\s*([0-9a-f]{8})\b/i;
+const WITHDRAW_NEG_RE =
+  /(?:不要?|不准|别|未|请勿|拒绝|勿|don['’]?t|do\s+not|not)\s*[^。！？\n，,、；;.?!]{0,6}(?:撤回|withdraw|revoke)/i;
 
 // 返回 null=落回既有触发词逻辑（零输出零 exit）；返回对象=恰一次 emit 后 exit 0
 // （由调用方执行）。emit 文案零时间戳零文件名（双跑确定性不变量）；全分支异常
@@ -59,6 +66,60 @@ function approvalVerdict(input) {
   try {
     const cwd = inputCwd(input);
     const goal = readGoal(cwd);
+    // 契约批准分支（0.3.0 M1，ADR-0024）：goal 挂着 contractPending 时，批准对象是需求
+    // 契约（contractHash），不是执行计划。钩子只追加 authorization 记录、绝不写 goal.json
+    //（contractPending 的清除/再置一律归 CLI 闸在 withLock 内做——钩子与 CLI 并发改
+    // goal.json 是竞态）。pending 缺席即落回 legacy 分支（无 goal 的债 E 诊断也在那边，
+    // 两分支共用同一条「无目标」出口）。
+    const contractPending = goal?.contractPending;
+    if (contractPending?.contractHash) {
+      const short = String(contractPending.contractHash).slice(0, 8).toLowerCase();
+      if (m[1].toLowerCase() !== short) {
+        return {
+          additionalContext:
+            `[lzy] Approval code mismatch — the pending contract short code is ${short}. ` +
+            `Ask the model for the exact approval sentence (「批准 <短码>」) and send it again. Nothing was recorded.`,
+        };
+      }
+      // exact-hash 复核：契约文件现内容必须仍哈希到 pending 值（批准后改契约=批准作废）。
+      let current = null;
+      try {
+        current = createHash("sha256")
+          .update(readFileSync(resolve(cwd, contractPending.contractPath ?? goal.contract?.path ?? "")))
+          .digest("hex");
+      } catch {}
+      if (current !== contractPending.contractHash) {
+        return {
+          additionalContext:
+            `[lzy] Contract changed since this approval was requested — the short code is void. ` +
+            `Ask the model to re-run the contract registration (lzy loop register --contract <file>) for a fresh code. Nothing was recorded.`,
+        };
+      }
+      const authDir = join(cwd, ".lazyzcode", "authorizations");
+      try {
+        mkdirSync(authDir, { recursive: true });
+        const sid = String(inputSessionId(input) ?? "unknown");
+        const name = `approval-${short}-${sanitizeSessionId(sid).slice(0, 24)}-${Date.now()}.json`;
+        const tmp = join(authDir, `.${name}.${process.pid}.tmp`);
+        writeFileSync(
+          tmp,
+          `${JSON.stringify({ version: 1, kind: "approval", slug: goal.slug, contractHash: contractPending.contractHash, at: new Date().toISOString(), sessionId: sid }, null, 2)}\n`,
+        );
+        renameSync(tmp, join(authDir, name));
+      } catch (err) {
+        const reason = err?.code ?? err?.name ?? "unknown";
+        return {
+          additionalContext:
+            `[lzy] Contract approval was valid but the authorization record could not be written (${reason}) — the contract gate stays closed and nothing was recorded. ` +
+            `Check that .lazyzcode/authorizations is writable (not blocked by a file or a read-only mount) and that the disk has free space, then re-send the approval sentence.`,
+        };
+      }
+      return {
+        additionalContext:
+          `[lzy] Human approval recorded for contract of goal ${goal.slug} (short code ${short}). ` +
+          `The model may now re-run the adoption command (lzy loop plan <file>) to pass the contract gate.`,
+      };
+    }
     const pending = goal?.approvalPending;
     if (!pending?.planHash) {
       // 债 E（ADR-0018 修正案）：批准正则已命中却读不到 goal/pending——旧实现静默
@@ -139,13 +200,81 @@ function approvalVerdict(input) {
   }
 }
 
+// 撤回判定（0.3.0 M1，ADR-0024）：「撤回/withdraw/revoke + 8hex」匹配当前 goal 绑定契约
+// 即追加 withdrawal 记录——不要求 pending（撤回是主动声明）；哈希不匹配/无 goal/无契约
+// 各 emit 一条诊断接管本回合（与批准面同姿态：说清楚，不静默）。撤回的信任属性与批准
+// 相同：唯一写入口=真实用户消息上的本钩子，CLI 无任何撤回写命令。
+function withdrawalVerdict(input) {
+  const prompt = typeof input?.prompt === "string" ? input.prompt : "";
+  const m = prompt.match(WITHDRAW_RE);
+  if (!m) return null;
+  if (WITHDRAW_NEG_RE.test(prompt.slice(0, m.index + m[0].length))) return null;
+  try {
+    const cwd = inputCwd(input);
+    const goal = readGoal(cwd);
+    const bound = goal?.contract?.contractHash;
+    if (!goal) {
+      const root = probeHostRoot(cwd);
+      return {
+        additionalContext: root
+          ? `[lzy] Withdrawal sentence received, but no goal loop is registered at ${cwd} — nothing was recorded. ` +
+            `A goal loop was found at ${root}; ask the model to return to that directory and re-send the withdrawal sentence.`
+          : `[lzy] Withdrawal sentence received, but no goal loop is registered at ${cwd} or any parent directory — nothing was recorded. ` +
+            `Confirm you are in the goal's host workspace root, then re-send the withdrawal sentence.`,
+      };
+    }
+    if (!bound) {
+      return {
+        additionalContext:
+          `[lzy] Withdrawal sentence received, but goal ${goal.slug} has no requirement contract bound (register with lzy loop register --contract <file> first) — nothing was recorded.`,
+      };
+    }
+    const short = String(bound).slice(0, 8).toLowerCase();
+    if (m[1].toLowerCase() !== short) {
+      return {
+        additionalContext:
+          `[lzy] Withdrawal code mismatch — the contract bound to goal ${goal.slug} has short code ${short}. ` +
+          `Ask the model for the exact withdrawal sentence (「撤回 <短码>」) and send it again. Nothing was recorded.`,
+      };
+    }
+    const authDir = join(cwd, ".lazyzcode", "authorizations");
+    try {
+      mkdirSync(authDir, { recursive: true });
+      const sid = String(inputSessionId(input) ?? "unknown");
+      const name = `withdrawal-${short}-${sanitizeSessionId(sid).slice(0, 24)}-${Date.now()}.json`;
+      const tmp = join(authDir, `.${name}.${process.pid}.tmp`);
+      writeFileSync(
+        tmp,
+        `${JSON.stringify({ version: 1, kind: "withdrawal", slug: goal.slug, contractHash: bound, at: new Date().toISOString(), sessionId: sid }, null, 2)}\n`,
+      );
+      renameSync(tmp, join(authDir, name));
+    } catch (err) {
+      const reason = err?.code ?? err?.name ?? "unknown";
+      return {
+        additionalContext:
+          `[lzy] Withdrawal was valid but the authorization record could not be written (${reason}) — nothing was recorded. ` +
+          `Check that .lazyzcode/authorizations is writable and that the disk has free space, then re-send the withdrawal sentence.`,
+      };
+    }
+    return {
+      additionalContext:
+        `[lzy] Withdrawal recorded for contract of goal ${goal.slug} (short code ${short}). ` +
+        `The contract gate will refuse the next gated action (plan adoption / supersede) for this contract; ` +
+        `work already performed stays as-is — withdrawal does not undo external effects.`,
+    };
+  } catch {
+    return null;
+  }
+}
+
 try {
   const input = readStdinJson();
   // LZY_ABLATE_HOOK_HUMAN_GATE（0.1.1 goal1，ADR-0015 形态）：恰 "1" 才消融；短路=径直
-  // 落回既有触发词逻辑。批准分支整体置于 TRIGGER 消融短路之前——消融轴独立（TRIGGER
-  // 臂不连带灭人权门）。
+  // 落回既有触发词逻辑。批准/撤回分支整体置于 TRIGGER 消融短路之前——消融轴独立（TRIGGER
+  // 臂不连带灭人权门）；撤回与批准同轴同熔断（0.3.0 M1），批准优先匹配保 legacy 行为
+  // 逐字段不变（含「批准+撤回」同句的既有优先序）。
   if (process.env.LZY_ABLATE_HOOK_HUMAN_GATE !== "1") {
-    const verdict = approvalVerdict(input);
+    const verdict = approvalVerdict(input) ?? withdrawalVerdict(input);
     if (verdict) {
       emit(verdict);
       process.exit(0);

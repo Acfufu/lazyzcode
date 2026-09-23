@@ -2122,12 +2122,14 @@ const LOOP_TMP_SCAN_DIRS = (cwd) => [
   join(loopDir(cwd), "snapshots"),
   join(loopDir(cwd), "salvage"),
 ];
-// approvals/ 与 attestations/ 的 tmp 命名由钩子/写者自定（家族前缀不覆盖），沿用「任何
-// .tmp」口径（与 cleanup 全同——观测面与清扫面必须同一判据，否则又造出第三份清单）。
+// approvals/、attestations/ 与 authorizations/（0.3.0 M1）的 tmp 命名由钩子/写者自定
+//（家族前缀不覆盖），沿用「任何 .tmp」口径（与 cleanup 全同——观测面与清扫面必须同一
+// 判据，否则又造出第三份清单）。
 const ANY_TMP_SCAN_DIRS = (cwd) => [
   join(loopDir(cwd), "approvals"),
   join(cwd, ".lazyzcode", "evidence"),
   join(cwd, ".lazyzcode", "attestations"),
+  join(cwd, ".lazyzcode", "authorizations"),
 ];
 
 // 孤儿 tmp 计数（doctor 用）：与 cleanupLoopResidue 同一家族表、同一扫描面（ADJ-13，0.2.1）。

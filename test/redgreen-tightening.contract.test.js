@@ -160,6 +160,22 @@ test("INV-08 现行红口径：红重录统一 harness 后旧代红不绊门（r
   const d2 = repo();
   cycle(d2, "cmd v1");
   assert.throws(() => finishLoop(d2, createGit(d2)), /INV-08.*harness 错配/, "现行红错配照旧执法");
+  // ADJ-26（v024-fix-round#N10）：展示面与门同源——`lzy evidence list` 只对现行红打 ⚠，
+  // 旧代红改打「非现行红，不执法」注记（原实现全量遍历：旧代红也打 ⚠ 且文案称「HEAVY finish
+  // 拒」，与门行为相反）。
+  const listOf = (dir) => {
+    const r = spawnSync(process.execPath, [CLI, "evidence", "list"], {
+      cwd: dir,
+      encoding: "utf8",
+      timeout: 60_000,
+      env: { ...process.env, HOME, USERPROFILE: HOME, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE, LZY_ABLATE_HUMAN_GATE: "1" },
+    });
+    return `${r.stdout ?? ""}${r.stderr ?? ""}`;
+  };
+  const outOk = listOf(d);
+  assert.match(outOk, /历史红 harness 与现行绿不符（非现行红，不执法/, `旧代红须打不执法注记：${outOk}`);
+  assert.doesNotMatch(outOk, /⚠ harness 错配/, "旧代红不得再打 ⚠（与门行为相反）");
+  assert.match(listOf(d2), /⚠ harness 错配（现行红/, "现行红错配须照旧打 ⚠");
 });
 
 test("harness 入账形态：节点带 harnessHash=harnessSpec 的 sha256；上限 300；waive 拒收", () => {

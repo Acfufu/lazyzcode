@@ -711,11 +711,25 @@ async function cmdEvidence(args) {
           ].join(" ")
         : "红 ✗（未录）";
       console.log(`  ${fid} · ${greenPart} · ${redPart}`);
-      // INV-08 展示面（LIGHT 也 ⚠ 不拦）：配对红与绿 harnessHash 俱在且不等
+      // INV-08 展示面（LIGHT 也 ⚠ 不拦）：配对红与绿 harnessHash 俱在且不等。
+      // ADJ-26（v024 双审）：门侧自 125bbdd 起**只对现行红执法**（append-only 账本上旧代红永久
+      // 绊门会把「按同一程序重录」的恢复路径堵死），展示面当时仍全量遍历 ⇒ 旧代红错配照打 ⚠ 且
+      // 文案「HEAVY finish 拒」与门行为相反（读面说会被拒、门其实放行）。现行与门同源：只看
+      // red_of 最新现行红，且文案如实——错配只在该红为现行时才拦。
+      const currentRed = reds
+        .slice()
+        .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0) || a.at - b.at)
+        .at(-1);
       const mismatch =
+        anchor?.harnessHash && currentRed?.harnessHash && currentRed.harnessHash !== anchor.harnessHash;
+      if (mismatch) {
+        console.log(`    ⚠ harness 错配（现行红 gen${currentRed.seq} 与绿取证程序不同源；HEAVY finish 拒，LIGHT 仅展示）`);
+      } else if (
         anchor?.harnessHash &&
-        reds.some((r) => r.harnessHash && r.harnessHash !== anchor.harnessHash);
-      if (mismatch) console.log(`    ⚠ harness 错配（红绿取证程序不同源；HEAVY finish 拒，LIGHT 仅展示）`);
+        reds.some((r) => r !== currentRed && r.harnessHash && r.harnessHash !== anchor.harnessHash)
+      ) {
+        console.log(`    ➖ 历史红 harness 与现行绿不符（非现行红，不执法——重录现行红即恢复同源）`);
+      }
       if (greens.length > 1 && (!anchor || greens.some((g) => g.id !== anchor.id))) {
         console.log(`    rebind 链 ${greens.length} 代（gen${greens[0].seq}→gen${greens[greens.length - 1].seq}，现行 ${anchor ? `gen${anchor.seq}` : "未锚定"}）`);
       }

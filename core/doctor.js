@@ -860,7 +860,9 @@ function checkLock(push, cwd) {
 // 距 HEAD 很远的尾注仍可入窗，已知未知 #3 的「>50 漏扫」在字面形态下不成立。worktree
 // 各自持有自己的 .lazyzcode/，共享 git 史的尾注在本树无对应文件=悬空，正是本行要点名态。
 export function checkAttestationTrailer(push, cwd) { // 导出仅供夹具单测（同 checkLedger 家法）
-  const gitRun = spawnSync("git", ["log", "-50", "--format=%B", "--grep", "Lzy-Attestation:"], {
+  // ADJ-28（v024 双审）：`--grep` 默认大小写敏感，而下面的提取正则带 `i` —— 大小写变体
+  //（`lzy-attestation:`）会被预过滤掉、连 warn 都不出。`-i` 让预过滤与提取同宽。
+  const gitRun = spawnSync("git", ["log", "-50", "-i", "--format=%B", "--grep", "Lzy-Attestation:"], {
     cwd,
     shell: false,
     timeout: 10_000,
@@ -882,7 +884,25 @@ export function checkAttestationTrailer(push, cwd) { // 导出仅供夹具单测
       push("attest-trailer", "skip", "无尾注记录且无 attestations 目录（两态皆空，无可核验面）");
       return;
     }
-    push("attest-trailer", "ok", "无尾注记录（ attestations 目录在场；尾注=L0 文本半，收尾提交按 zw SKILL 追加）");
+    // ADJ-28：目录有文件而史无尾注=「收尾提交未按 L0 追尾注（或尾注在扫描窗外）」，与「两态
+    // 皆空」不是一回事——报出文件数，读者才知道该去补尾注还是去核目录。
+    let fileCount = null;
+    try {
+      fileCount = readdirSync(dir).filter((f) => f.endsWith(".json")).length;
+    } catch {
+      fileCount = null; // 不可读：不得降级成「空目录」（那会把权限问题报成两态皆空）
+    }
+    if (fileCount === null) {
+      push("attest-trailer", "warn", `attestations 目录不可读（权限/形态异常）：${dir}——核对该路径的权限与类型后重跑 doctor`);
+      return;
+    }
+    push(
+      "attest-trailer",
+      fileCount > 0 ? "warn" : "ok",
+      fileCount > 0
+        ? `近 50 提交无尾注记录，而 attestations 目录现存 ${fileCount} 件机器证明：收尾提交未按 zw SKILL 追加 Lzy-Attestation 尾注（或尾注在扫描窗外）——机器证明已落盘但无法从提交史回溯`
+        : "无尾注记录且目录无文件（两态皆空；尾注=L0 文本半，收尾提交按 zw SKILL 追加）",
+    );
     return;
   }
   if (!dirExists) {
@@ -904,7 +924,7 @@ export function checkAttestationTrailer(push, cwd) { // 导出仅供夹具单测
       }
     }
   } catch {
-    push("attest-trailer", "warn", `attestations 目录不可读：${dir}`);
+    push("attest-trailer", "warn", `attestations 目录不可读（权限/形态异常）：${dir}——核对该路径的权限与类型后重跑 doctor`);
     return;
   }
   const missing = trailers.filter((h) => !fileHashes.has(h));
@@ -912,10 +932,13 @@ export function checkAttestationTrailer(push, cwd) { // 导出仅供夹具单测
     push("attest-trailer", "ok", `尾注 ${trailers.length}/${trailers.length} 与 attestations 目录全符（内容 sha256 逐条比对）`);
     return;
   }
+  // ADJ-28：原名「无对应文件」把**内容被篡改/替换**也报成「没有那个文件」——两件事实不同，
+  // 处置也不同。按「无内容相符的文件」措辞，并点出两种成因（跨树/悬空 vs 目录内被改动）。
   push(
     "attest-trailer",
     "warn",
-    `尾注 ${trailers.length} 条中 ${missing.length} 条在 attestations 目录无对应文件：${missing.map(short).join(" ")}（悬空/跨树尾注；目录现存 ${fileHashes.size} 件）`,
+    `尾注 ${trailers.length} 条中 ${missing.length} 条在 attestations 目录无**内容相符**的文件：${missing.map(short).join(" ")}` +
+      `（目录现存 ${fileHashes.size} 件）。两种成因：①跨树/悬空尾注（worktree 各持 .lazyzcode/，尾注在别处）；②目录内对应文件已被改动或替换（尾注 sha 是提交时的内容指纹，改动即不符——用 git show 取回收站副本或重跑 finish 复核）`,
   );
 }
 

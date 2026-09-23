@@ -56,7 +56,7 @@ const lzyIn = (d, args) =>
     env: { ...process.env, HOME, USERPROFILE: HOME, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE, LZY_ABLATE_HUMAN_GATE: "1" },
   });
 
-function repo(prefix, { steps = ["- [N1] x", "- [N2] y", "- [N3] z"], risk, planning = false } = {}) {
+function repo(prefix, { steps = ["- [N1] x", "- [N2] y", "- [N3] z"], risk, planning = false, tier } = {}) {
   const d = mkdtempSync(join(tmpdir(), prefix));
   const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
   g(["init", "-q"]);
@@ -65,9 +65,9 @@ function repo(prefix, { steps = ["- [N1] x", "- [N2] y", "- [N3] z"], risk, plan
   writeFileSync(join(d, "a.txt"), "seed\n");
   g(["add", "a.txt"]);
   g(["commit", "-qm", "init"]);
-  lzyIn(d, ["loop", "register", "dw", "--title", "t", ...(risk ? ["--risk", risk] : [])]);
+  lzyIn(d, ["loop", "register", "dw", "--title", "t", ...(risk ? ["--risk", risk] : []), ...(tier ? ["--tier", tier] : [])]);
   writeFileSync(join(d, "p.md"), `${steps.join("\n")}\n`);
-  const plan = lzyIn(d, ["loop", "plan", "p.md"]);
+  const plan = lzyIn(d, ["loop", "plan", "p.md", ...(tier === "heavy" ? ["--review", "plan-reviewer: PASS — 夹具"] : [])]);
   if (plan.status !== 0) throw new Error(`plan 失败：${plan.stdout}${plan.stderr}`);
   if (!planning) lzyIn(d, ["loop", "start"]);
   return { dir: d, lzy: (args) => lzyIn(d, args) };
@@ -529,6 +529,124 @@ test("⑫启动回收：带哨兵且无未提交内容的残留 runDir 被清；
     assert.ok(!existsSync(stale), "哨兵在场且无未提交内容的残留 runDir 应被回收");
     const branches = spawnSync("git", ["-C", d, "branch", "--format", "%(refname:short)"], { encoding: "utf8" }).stdout ?? "";
     assert.match(branches, /fast-20990101000000-w1/, "未合并残留分支保留（salvage 族）");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(siblingRoot(d), { recursive: true, force: true });
+  }
+});
+
+// ── ⑬HEAVY 拒入（ADJ-11，v024-fix-round#N4）──────────────────────────────────
+test("⑬HEAVY 目标拒入 workers（结构性死端 fail-closed，带恢复指路）", async () => {
+  const r = repo("lzy-dw-heavy-", { tier: "heavy", steps: ["- [N1] x", "- [N2] y", "- [F1] 夹具终验：scratch 仓 lzy loop status 显示宿主树清洁"] });
+  try {
+    await assert.rejects(
+      () => runDrive(r.dir, { workers: 2 }, passDeps()),
+      /workers 模式不支持 HEAVY/,
+      "HEAVY × workers 必拒（每波重锚 ⇒ 对照 attestation 必 stale ⇒ finish 必拒）",
+    );
+  } finally {
+    rmSync(r.dir, { recursive: true, force: true });
+  }
+});
+
+// ── ⑭认领释放（ADJ-12）───────────────────────────────────────────────────────
+test("⑭本 run 遗留的步级认领在波终被释放（不再 48h 饿死分派池）", async () => {
+  const r = repo("lzy-dw-claimrel-");
+  const d = r.dir;
+  try {
+    // 假工人：用真 CLI 认领被分派的步但不收口 → 波终应由调度器释放
+    const run = ({ argv }) => {
+      const prompt = String(argv[argv.indexOf("--prompt") + 1] ?? "");
+      for (const id of (prompt.match(/N\d/g) ?? []).sort()) lzyIn(d, ["loop", "claim", id]);
+      return { exitCode: 0, stdout: `${JSON.stringify({ sessionId: "s" })}`, stderr: "" };
+    };
+    const { lines } = await captureStdout(() => runDrive(d, { workers: 2, maxSegments: 1 }, passDeps(run)));
+    assert.match(lines, /认领释放：N\d/, "波终须释放本 run 自造的认领");
+    const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    for (const st of goal.steps) assert.ok(!st.claim, `步骤 ${st.id} 的认领应已释放`);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(siblingRoot(d), { recursive: true, force: true });
+  }
+});
+
+// ── ⑮记账相位（ADJ-13）───────────────────────────────────────────────────────
+test("⑮预算尽收束时本波产出已合并入宿主（recordSpend 相位在 merge 之后）", async () => {
+  const r = repo("lzy-dw-spend-");
+  const d = r.dir;
+  const saved = process.env.LZY_DRIVE_WALLCLOCK_BUDGET_MS;
+  try {
+    process.env.LZY_DRIVE_WALLCLOCK_BUDGET_MS = "1"; // 首波记账即超顶
+    const { result } = await captureStdout(() =>
+      runDrive(d, { workers: 2, maxSegments: 3 }, passDeps(fakeWorker({ mutate: (cwd, wid) => fakeAddFile(wid)(cwd) }))),
+    );
+    assert.match(result.cause, /预算尽/, `实得 ${result.cause}`);
+    const log = spawnSync("git", ["-C", d, "log", "--oneline"], { encoding: "utf8" }).stdout ?? "";
+    assert.match(log, /w1|w2/, "预算尽收束时本波工人提交必须已在宿主历史（产出不脱账）");
+  } finally {
+    if (saved == null) delete process.env.LZY_DRIVE_WALLCLOCK_BUDGET_MS;
+    else process.env.LZY_DRIVE_WALLCLOCK_BUDGET_MS = saved;
+    rmSync(d, { recursive: true, force: true });
+    rmSync(siblingRoot(d), { recursive: true, force: true });
+  }
+});
+
+// ── ⑯工人提示词红线 + env-auth 同强度（ADJ-19/23）────────────────────────────
+test("⑯工人提示词含 finish 禁令；env-auth 判据同强度（0 字节拒、次候选可命中）", async () => {
+  const seen = [];
+  const r = repo("lzy-dw-prompt-");
+  const empty = join(HOME, "provider-empty.json");
+  writeFileSync(empty, "");
+  try {
+    const run = ({ argv }) => {
+      seen.push(String(argv[argv.indexOf("--prompt") + 1] ?? ""));
+      return { exitCode: 0, stdout: `${JSON.stringify({ sessionId: "s" })}`, stderr: "" };
+    };
+    await withEnv({ ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: ENV_FILE }, async () => {
+      await captureStdout(() => runDrive(r.dir, { workers: 2, maxSegments: 1 }, passDeps(run)));
+    });
+    assert.ok(seen.length > 0, "夹具应至少派发一次工人段");
+    assert.ok(seen.every((p) => /绝不运行 lzy loop finish/.test(p)), "工人提示词须含 finish 禁令（ADJ-19）");
+  } finally {
+    rmSync(r.dir, { recursive: true, force: true });
+    rmSync(siblingRoot(r.dir), { recursive: true, force: true });
+  }
+  const r2 = repo("lzy-dw-envauth2-");
+  try {
+    await withEnv({ ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: empty }, async () => {
+      await assert.rejects(
+        () => runDrive(r2.dir, { workers: 2 }, passDeps()),
+        /workers 模式要求 env-auth/,
+        "0 字节凭据文件应与 headless 侧同判（拒）",
+      );
+    });
+    await withEnv({ ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: join(HOME, "nope.json"), ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: ENV_FILE }, async () => {
+      const res = await captureStdout(() => runDrive(r2.dir, { workers: 2, maxSegments: 1 }, passDeps()));
+      assert.equal(res.result.ok, true, "首候选缺席应落到次候选（either-or，不短路）");
+    });
+  } finally {
+    rmSync(r2.dir, { recursive: true, force: true });
+    rmSync(siblingRoot(r2.dir), { recursive: true, force: true });
+  }
+});
+
+// ── ⑰认领新鲜谓词单一源（ADJ-39）─────────────────────────────────────────────
+test("⑰未来时间戳认领不饿死分派池（与 core 同判「不新鲜」）", async () => {
+  const r = repo("lzy-dw-futureclaim-");
+  const d = r.dir;
+  try {
+    const g = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    g.steps[0].claim = { at: new Date(Date.now() + 86_400_000).toISOString() }; // 未来戳=异常标记
+    writeFileSync(goalJson(d), `${JSON.stringify(g, null, 2)}\n`);
+    const seen = [];
+    const run = ({ argv }) => {
+      const prompt = String(argv[argv.indexOf("--prompt") + 1] ?? "");
+      const m = prompt.match(/只做你被分派的步：([^\n]+)/);
+      if (m) seen.push(m[1]);
+      return { exitCode: 0, stdout: `${JSON.stringify({ sessionId: "s" })}`, stderr: "" };
+    };
+    await captureStdout(() => runDrive(d, { workers: 2, maxSegments: 1 }, passDeps(run)));
+    assert.ok(seen.some((x) => x.includes("N1")), `未来戳认领的 N1 仍应可分派；实得 ${JSON.stringify(seen)}`);
   } finally {
     rmSync(d, { recursive: true, force: true });
     rmSync(siblingRoot(d), { recursive: true, force: true });

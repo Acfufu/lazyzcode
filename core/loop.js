@@ -1401,7 +1401,7 @@ function attachHalfFiles(cwd, goal, step, files, seq, half, nodeId) {
 // 占步 48h 互斥永不退役。取值=「不新鲜」（而非 clamp 到 now）：clamp 会让一条伪造/越界
 // 的认领凭 48h 重新起算、继续挡住同目标其他工人，而保守方向应是把异常时间戳视为无效
 // 标记（重认领自然覆写，零工作量损失）——扫描侧同判并把 sid 记入 future 名单告警。
-function isClaimFresh(step) {
+export function isClaimFresh(step) {
   if (!step.claim || typeof step.claim.at !== "string") return false;
   const at = Date.parse(step.claim.at);
   if (!Number.isFinite(at)) return false;

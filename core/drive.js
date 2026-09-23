@@ -14,7 +14,7 @@
 // 缺省 400 相对水位 1600 取四分之一（相对账号水位、非相对本 run 消耗）。
 // 退出码契约：0=done 或干净收束（run 契约正常完成）；1=门拒/段 infra 失败（尽力收束带
 // 快照后非零）。deps 可注入（run/rollingPoints/now/git）供离线契约测试（headless.js 先例）。
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, existsSync, statSync, readdirSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { progressSignature, signatureKey } from "./progress.js";
@@ -24,6 +24,7 @@ import {
   assertDriveEligible,
   handoffDir,
   handoffGoal,
+  isClaimFresh,
   lintHandoffSnapshot,
   loopDir,
   noGoalMessage,
@@ -43,6 +44,7 @@ import {
   HEADLESS_DEFAULT_TIMEOUT_MS,
   HEADLESS_MODES,
   detectHeadlessAuth,
+  envAuthOk,
   spawnHeadless,
 } from "./headless.js";
 import { findEngine } from "./paths.js";
@@ -562,13 +564,6 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
 // 全体过期——首波即全锚）。一波=一段（maxSegments 计波）；墙钟累计=本波 max（并发不
 // sum）；预算/租约/风险门与单工人完全同源。收束因扩充 merge-conflict。N=1 永不进此径。
 
-const WORKER_CLAIM_TTL_MS = 48 * 60 * 60 * 1000; // 镜像 core/loop.js 步级认领 48h
-
-function claimFresh(step, now = Date.now()) {
-  const at = step?.claim?.at ? Date.parse(step.claim.at) : NaN;
-  return Number.isFinite(at) && now - at < WORKER_CLAIM_TTL_MS;
-}
-
 function blockedByLocal(step, goal) {
   const deps = Array.isArray(step.deps) ? step.deps : [];
   if (deps.length === 0) return [];
@@ -580,27 +575,11 @@ function waveSplit(goal, n) {
   // 可认领集（未 done/认领未新鲜/依赖已满足）轮转均分，余数给首工人。deps 阻塞的步
   // 不入本波分派（claim 门兜底双保险）。
   const pool = (goal.steps ?? []).filter(
-    (s) => s.status !== "done" && !claimFresh(s) && blockedByLocal(s, goal).length === 0,
+    (s) => s.status !== "done" && !isClaimFresh(s) && blockedByLocal(s, goal).length === 0,
   );
   const groups = Array.from({ length: n }, () => []);
   pool.forEach((s, i) => groups[i % n].push(s.id));
   return groups;
-}
-
-function envAuthOk() {
-  // 有意对齐 detectHeadlessAuth 的 env 半（core/headless.js either-or）：任一 provider
-  // env 指向非空实文件即可（同带 workers 单 provider 足够；凭据文件不复制——见详单 §N2）。
-  for (const key of ["ZCODE_BUILTIN_PROVIDER_CONFIG_FILE", "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"]) {
-    const v = process.env[key];
-    if (v && v.length > 0) {
-      try {
-        return statSync(v).isFile();
-      } catch {
-        /* 落下一个候选继续判 */
-      }
-    }
-  }
-  return false;
 }
 
 function h3rWakeConflict() {
@@ -639,7 +618,7 @@ function composeWorkerPrompt({ hostRoot, cliPath, worktree, branch, idx, total, 
     `2. 只做你被分派的步：${stepIds.join("、")}。动手前先 cd 宿主根 && node ${cliPath} loop claim <ID> 认领；被拒（已被认领/依赖阻塞）就先做你清单里其他步，稍后再试。`,
     "3. 每步：在当前 worktree 完成并 git add+commit，然后 cd 宿主根 && node <CLI> step done <ID> --note …。",
     `4. 你的分派步全部 done 后：若某 F 项的断言面在你的 worktree 内可核（如本波产出物），cd 宿主根 && node <CLI> step done <FID> --evidence "worker-w${idx} re-verify: <断言实际输出摘要>" 取证（同 id 重取证=合法 rebind）；核不了的 F 项跳过——波终由 drive 屏障重锚。`,
-    "红线：绝不注册新目标；绝不运行 lzy loop drive；绝不 reset/abandon；绝不改动宿主根的已跟踪文件；写命令已带 fence 环境（勿摘）；全程工具真实执行，不要问询；做完即收工退出。",
+    "红线：绝不注册新目标；绝不运行 lzy loop drive；绝不运行 lzy loop finish（收口由 drive 在波间复核后统一做——工人自行 finish 会让组装发生在终验 attestation 之后，账本与机器证明永久分叉）；绝不 reset/abandon；绝不改动宿主根的已跟踪文件；写命令已带 fence 环境（勿摘）；全程工具真实执行，不要问询；做完即收工退出。",
   ].join("\n");
 }
 
@@ -670,6 +649,15 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
   if (goal.status !== "executing") {
     throw new LoopError(`drive 只推进 executing 目标（现状 ${goal.status}）——无人值守边界不变`);
   }
+  // HEAVY 拒入（ADJ-11，v024-fix-round#N4）：结构上不通的死端——每波屏障重锚必换现行锚定绿，
+  // 而 HEAVY finish 强制「对照 attestation 绑现行锚定绿且指纹相符」⇒ 双 stale ⇒ finish 必拒。
+  // 与其烧满预算再失败，不如入口 fail-closed 并指路（tier 只升不降，无降档出口）。
+  if (goal.tier === "heavy") {
+    throw new LoopError(
+      "workers 模式不支持 HEAVY 目标（结构性死端）：每波屏障重锚必换现行锚定绿 ⇒ 对照 attestation 必 stale ⇒ finish 必拒。" +
+        "恢复：用单工人 `lzy loop drive`（串行屏障后对照仍可成立），或在交互会话推进——tier 只升不降，无降档出口",
+    );
+  }
   assertDriveEligible(goal);
   if (!deps.enginePath && !findEngine()) {
     throw new LoopError("引擎未找到——drive 段需 ZCode 桌面端引擎（装桌面端或设 LZY_ZCODE_ENGINE）");
@@ -683,6 +671,8 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
   const baseRunId = `fast-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`;
   const runId = existsSync(join(wtRoot, baseRunId)) ? `${baseRunId}-${process.pid}` : baseRunId;
   const runDir = join(wtRoot, runId);
+  // 本 run 起点（ADJ-12 认领释放的判据下界：只释放本 run 自己造出来的步级认领）
+  const runStartedAt = Date.now();
   // CLI 路径可注入（deps.cliPath——契约测试 seam，deps.run 家法）：生产=本进程 CLI
   //（argv[1]）；node --test 下 argv[1] 是测试文件自身，直接用会把测试当 CLI spawn。
   const cliPath = deps.cliPath ?? resolve(process.argv[1] ?? "lzy");
@@ -775,12 +765,25 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
     // subject 摘除会使本 run 内取证的 F 半随指纹换代失效，同批告知接手会话。
     const inv = workerDirtInventory().filter((x) => x.state !== "干净");
     const cleanupWillRun = ok && cause !== "merge-conflict";
-    const extra = inv.length > 0
-      ? `工人 worktree 盘点（有未提交改动/判不了者一律保留、内容不删）：${inv.map((x) => `w${x.w.i}=${x.state}（${x.w.worktree}）`).join("；")}` +
-        (cleanupWillRun
-          ? "；清理相将摘除本 run 声明的工人 subject——本 run 内取证的 F 项证据随之失效，接手会话须重取后 finish"
-          : "")
-      : null;
+    // 步级认领指路（ADJ-12）：认领既不在推进签名里，也不在「剩余步骤清单」的语义内——不给
+    // 指路，接手者会把「步骤不可分派」当成计划/依赖问题去查。
+    const claimedPending = (fresh?.steps ?? []).filter((s) => s.status !== "done" && s.claim);
+    const extra =
+      [
+        inv.length > 0
+          ? `工人 worktree 盘点（有未提交改动/判不了者一律保留、内容不删）：${inv
+              .map((x) => `w${x.w.i}=${x.state}（${x.w.worktree}）`)
+              .join("；")}` +
+            (cleanupWillRun
+              ? "；清理相将摘除本 run 声明的工人 subject——本 run 内取证的 F 项证据随之失效，接手会话须重取后 finish"
+              : "")
+          : null,
+        claimedPending.length > 0
+          ? `步级认领在场（${claimedPending.map((s) => s.id).join("、")}）：该步不可分派时用 lzy loop claim 列出、lzy loop claim <ID> --release 释放`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("；") || null;
     const note = [riskNote, extra].filter(Boolean).join("；") || undefined;
     if (fresh && fresh.status === "executing") {
       try {
@@ -1024,20 +1027,27 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
         windDownW(
           false,
           `工人段失败（exit=${bad.exitCode ?? "—"}${bad.timedOut ? " · 墙钟 SIGKILL" : ""}）`,
-          `workers 波内一名工人 headless 调用失败：${(bad.error ?? "未知").slice(0, 300)}——其余工人产出已按 merge 相保留`,
+          `workers 波内一名工人 headless 调用失败：${(bad.error ?? "未知").slice(0, 300)}——本波不组装：产出留在各工人分支（未合并，人工 git merge <branch> 取用），worktree 与分支一律保留`,
         );
         break;
       }
-      // 波账：墙钟取 max（并发不 sum，详单 §N1）；recordSpend 超顶拒=干净收束。
-      spentMsLocal += maxMs;
+      // 合并前复核目标态（ADJ-19）：工人在段内自行收口（`lzy loop finish`）会让组装发生在终验
+      // attestation 之后——宿主再变而机器证明已冻结，账本与证明永久分叉。复核不通过即不合并。
+      let preMerge = null;
       try {
-        withLock(cwd, () => recordSpend(cwd, { ms: maxMs, points: 0 }));
+        preMerge = readGoal(cwd);
       } catch (err) {
-        if (err?.code === "BUDGET_OVER") {
-          windDownW(true, `预算尽（${String(err.message).split("：")[0]}）`);
-          break;
+        windDownW(false, `波间门拒（合并相前复核 goal）：${String(err?.message ?? err).slice(0, 200)}`, riskGuidance(err));
+        break;
+      }
+      if (!preMerge || preMerge.slug !== goal.slug || preMerge.status !== "executing") {
+        if (preMerge && preMerge.status === "done" && preMerge.slug === goal.slug) {
+          outcome = { ok: true, cause: "done", handoff: null };
+          console.log(`[drive] ✔ goal done（${preMerge.slug}）——工人段内已收口，跳过组装`);
+        } else {
+          windDownW(false, `目标已非本 drive 的 executing 目标（合并相前复核：${preMerge ? `${preMerge.slug}/${preMerge.status}` : "不可读"}）`);
         }
-        throw err;
+        break;
       }
 
       // 组装：逐工人分支 merge 回宿主（--no-ff）。冲突=新增收束因 merge-conflict：
@@ -1060,6 +1070,34 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
           `工人分支与宿主合并冲突（${conflict.branch}）——分支 ${workers_.map((w) => w.branch).join("、")} 与 worktree 已保留；请在人工会话解冲突后按计划推进（该批改动未丢失）`,
         );
         break;
+      }
+
+      // 波账（相位后移，ADJ-13）：recordSpend 的超顶拒是「干净收束信号」，但它必须在**组装
+      // 之后**——原实现把记账放在 merge 相之前，于是「预算尽」这一干净收束会脱账本波已提交
+      // 未合并的产出（分支留着、checkout 被清理相销毁，快照零提及）。墙钟仍逐波累计、超顶
+      // 仍以「预算尽」收束，只是收束时本波产出已落宿主。
+      spentMsLocal += maxMs;
+      try {
+        withLock(cwd, () => recordSpend(cwd, { ms: maxMs, points: 0 }));
+      } catch (err) {
+        if (err?.code === "BUDGET_OVER") {
+          windDownW(true, `预算尽（${String(err.message).split("：")[0]}）`);
+          break;
+        }
+        throw err;
+      }
+
+      // 认领释放（ADJ-12）：本 run 期间写下（claim.at ≥ runStartedAt）而本波结束时仍未 done 的
+      // 步级认领，由调度器释放——否则该步被 48h 互斥永久排除在 waveSplit 之外，后续波空转、
+      // stuck 收束因失真（原实现从不释放，快照也不指 --release，恢复全靠读源码）。只释放本
+      // run 自己造的认领：交互会话/他人先前的认领绝不动。
+      const staleClaims = (preMerge?.steps ?? []).filter(
+        (st) => st.status !== "done" && st.claim && Date.parse(st.claim.at) >= runStartedAt,
+      );
+      for (const st of staleClaims) {
+        const rel = lzySpawn(cwd, cliPath, ["loop", "claim", st.id, "--release"], lease.fence);
+        if (rel.status === 0) console.log(`[drive] 认领释放：${st.id}（本 run 内认领未收口，放回分派池）`);
+        else console.log(`[drive] 认领释放未成：${st.id}——${String((rel.stderr ?? rel.stdout ?? "").trim()).slice(0, 120)}`);
       }
 
       // 终态判定 + 屏障重锚 + 进度/水位。ADJ-14：readGoal 入护栏（原屏障前的裸奔读取会让

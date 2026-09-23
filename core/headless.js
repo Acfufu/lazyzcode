@@ -45,6 +45,18 @@ function filePresent(p) {
   }
 }
 
+// workers 入口的 env-auth 判据（单一源，v024-fix-round#N4）：两候选 either-or，且须为
+// **非空实文件**（size>0）。ADJ-23（v024 双审）：drive 侧曾内联一份副本并与 detectHeadlessAuth
+// 的 env 半漂移两处——首候选短路（第二候选被忽略，违自身「落下一个候选继续判」的注释）、
+// 0 字节文件被当有效凭据（headless 侧要求 size>0，两读者结论相反）。
+export function envAuthOk() {
+  for (const key of ["ZCODE_BUILTIN_PROVIDER_CONFIG_FILE", "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"]) {
+    const v = process.env[key];
+    if (v && v.length > 0 && filePresent(v)) return true;
+  }
+  return false;
+}
+
 function assertTimeoutMs(timeoutMs) {
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
     throw new HeadlessError(

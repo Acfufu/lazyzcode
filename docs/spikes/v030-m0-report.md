@@ -66,9 +66,36 @@ goal `v030-m0`（0.3.0 M0 能力与基线）· 2026-09-23/24 夜间无限窗口�
 
 M2 试点执行序 lazyzcode → openchamber → zpigeon-ios；今晚探针序 §5 → §6 → §7 严格串行（xcodebuild/构建噪声不与积分归因采样重叠）。
 
-## 5. 积分归因探针（N3）
+## 5. 积分归因探针（N3，样本冻结 2026-09-24 凌晨）
 
-（待 N3 填充）
+探针：`scripts/probes/v030-m0-usage-probe.mjs`（真 HOME、plan 模式、平凡 prompt、3s 轮询账本）。样本原件 `artifacts/v030-m0-samples/sample-*.json`（gitignore，sha256 绑入证据包）。
+
+### 5.1 usage 字段枚举（引擎 --json summary，source=provider）
+
+`source, modelRequestCount, inputTokens, outputTokens, totalTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens, webFetchRequests, webSearchRequests`——逐运行用量在摘要层**可得**（core 现为透传不消费）。
+
+### 5.2 账本行可见延迟（决定性发现：在途不可见）
+
+| 样本 | 运行时长 | 请求起始 lag | 轮询期可见行 | 行状态 |
+| --- | --- | --- | --- | --- |
+| single-1 | 10.1s | 4.1s | 3s/6s/9s 三次轮询全 0 | completed（仅运行结束后可见） |
+| single-2 | 8.0s | 3.4s | 3s/6s 两次轮询全 0 | completed（同上） |
+| conc-a/b（并行） | 10.7s/11.2s | — | 轮询全 0 | completed（结束后可见，双 session_id 独立成行） |
+| interrupt（8s SIGKILL） | 8.0s | — | 轮询全 0 | **零行——20s 后复查仍无行** |
+
+结论：model_usage 行在**请求完成时**才落库；在途请求账本不可见；被 SIGKILL 的在途请求消耗**服务端照常发生、账本永久假零**。检测粒度 = 每请求完成（多轮运行中每轮完成即可见一轮），延迟 ≈ 单请求时长。查询成本可忽略（8–26ms，带 started_at 下界过滤）。附带量级：平凡 prompt 单轮 input ≈ 78k tokens（会话固定开销，跨会话 cache 几乎不命中，768）；大上下文交互会话单轮 ≈ 168k。
+
+### 5.3 并发可分性
+
+双并行运行各得独立 `session_id` 行（sess_5b53… / sess_5973…），逐运行分离归因**可行**（按 session_id；会话目录列亦可作辅助）。
+
+### 5.4 V08 能力判定草稿（对号 §5.2 三态）
+
+**判定：仅事后统计 + 单请求完成粒度检测——诊断能力，不构成执行前硬限制。**
+
+1. **执行前额度保留/硬限制：不可行**（当前引擎面）——无逐运行计量挂点、无请求级预算旗标（`--max-turns` 已移除）、在途请求账本不可见、被杀请求消耗不入账。
+2. **带在途超额的近似限制：部分可行**——每请求完成即落账（检测延迟 ≈ 单请求时长），轮询检测 + 停止下一次派发可实现；在途超额结构性不可避免，且被 SIGKILL 的在途消耗账本假零（§5.2 中断样本）。
+3. **后果（§5.2 预注册语义对号）**：V08「已批准上限能约束执行」在当前引擎面**不可通过**——事后记账/停止下一次派发只算诊断能力；近似限制语义属范围变更，须交用户拍板；未拍板前 **M3 累计积分硬顶验收阻塞**，发布验收连带阻塞。墙钟硬顶（进程 SIGKILL）不受此影响，仍为一等收束信号。
 
 ## 6. openchamber 浏览器回执（N4）
 

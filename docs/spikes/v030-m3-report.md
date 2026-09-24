@@ -55,3 +55,10 @@ goal `v030-m3`（0.3.0 M3：授权队列状态机 + 累计预算账本 + 派发�
   - **F3 红**：points 轴仅 per-run 账户读数（drive recordSpend 恒 points:0），无累计积分账本、无 metering-absent/killed-inflight 申报面、无达限停止下一次派发面。
   - 附带纪律活体：无租约直调 restart 形 initBudget 被 fencing 门拒（runtime.js:339「每-run 预算重开仅限持租的 drive」）——修正探针先 `lease acquire` 取 fence 1 再重放，收尾 `lease release` 无僵尸。
   - 消融记账：**零消融**——红半场地仅注册态 goal（register 非采纳门），未触人权门，无 LZY_ABLATE_* 使用。
+- N3-N9 实现与测试（commit c6f94bd 单体落地+ade1926 四件套+4e454ac 租约活性补丁）：core/queue.js 三家族+状态机+预算账本+派发事务与恢复判定表+逐会话计量；drive.js 段记录 sink；loop.js ANY_TMP_SCAN_DIRS +queue/budget；CLI 七子命令。测试 29 新增全绿，npm test **567 绿/0 红**（538 基线+29）。
+- N10 试点夹具准备（2026-09-25）：夹具槽位 export+reset（v030-m2-pilot 残档腾退，salvage 盘点在案）→分支 `v030-m3-pilot`（基点 fe139ea）→契约/计划落库 commit `21b60f2`→批准落账走 recordAuthorization 受信写者（**Known unknowns 2 证伪与回退**：LZY_ABLATE_HUMAN_GATE 只跳过门不落账，authorizations/ 无记录则队列授权门（零消融）恒拒——回退=contract.js:206 docstring 许可的受信写者路径，批准记录真实在案〔approval-0fa782a9/58f8fe3d〕、非 UPS 人工事件，如实记账：本试点受测面=队列机器非批准门）→queue add q1/q2（q2 deps q1）+queue budget 墙钟总额 900000ms→预检活体：q1=ready、q2=authorized（未就绪首因=依赖）。
+- N11 试点驱动与交付（2026-09-25，真引擎，全部活体冻结 artifacts/v030-m3-red/n11-*.txt）：
+  - **item1 全链**：dispatch→register/采纳（契约门零消融过）→真引擎段 1（sess_5411d3b8…，433449ms）→goal done→finish→结算 **积分 6.79 真实计量入账**（宿主 model_usage 逐请求完成行×ADR-0023 计价）→队列确认→腾槽→**自动续派 q2**（跨项墙钟累计：剩余 466551=900000−433449）。
+  - **段中 SIGKILL**：q2 段中杀驱动进程树（孤儿引擎随父消亡；其死前已交付 marker-q2 提交 `4bac34a`+N1 done——真实部分工作形态）。崩溃态：q2 tx open+goal executing+僵尸租约（fence 5，hostPid 死）。
+  - **重启恢复**：reconcile 判定表 (a) 活体——僵尸租约回收（fence 5）→tx killed+**killed-inflight 假零申报**→item 回 ready→**同 goal 续跑不重复注册**→引擎收 F1→goal done→完成（endpoint A，积分 5.02）→腾槽→队列排空 exit 0。
+  - **断言清单全绿**：q1 tx 恰 1 条（零重复派发）；累计预算跨重启只增（墙钟 729028ms=433449+295579、积分 11.81=6.79+5.02，runtime.json per-run 归零不影响）；item1 工件零二次改写（恰 1 交付提交）；夹具树清洁+槽位腾空。假引擎用例（四件套 29 测试）与真引擎结果分列：两侧恢复判定表/计量/累计语义一致。

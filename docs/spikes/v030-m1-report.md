@@ -42,10 +42,22 @@ goal `v030-m1`（0.3.0 M1 项目与授权：需求契约 + 授权撤回 + 项目
 
 教训入 memory 候选：评审解析器自检须逐字复刻 validateDeps 的自环+环检查（R2/R3 均报「图无环」却漏自环；机器门为权威）。
 
-## 4. F4 十问检索清单（预注册，搬迁后逐问验证两跳可达）
+## 4. F4 十问检索清单（预注册；搬迁后逐问验证，路径链在案）
 
-①触发词与别名 ②Stop 续跑预算与预留 ③红绿证据与豁免形态 ④计划门禁词与决策完备 ⑤并发纪律来源 ⑥无人值守唤醒协议 ⑦跨仓宿主工作区规则 ⑧提交尾注账本格式 ⑨H3R 三原型开关语义 ⑩消融 kill-switch 家族语义。
-（F4 执行时逐问记录：入口文件 → 指针 → 落点文件，路径链在案。）
+| # | 问题 | 路径链（≤2 跳） |
+| --- | --- | --- |
+| ① | 触发词与别名 | zw SKILL.md「Tier triage·Mention ≠ invocation」（ulw/ultrawork 同权、standdown 短语） |
+| ② | Stop 续跑预算与预留 | AGENTS §3 硬约束 2/3（3 池共享+预留）⊕ zw SKILL「Continuation」段（≤2×/session） |
+| ③ | 红绿证据与豁免形态 | zw SKILL workflow 4 → recipes/evidence.md（红半先取/waive-red 一行豁免/INV-08·09） |
+| ④ | 计划门禁词与决策完备 | zw SKILL workflow 2 → recipes/plan.md（zero TBD/待定+Known unknowns 强制） |
+| ⑤ | 并发纪律来源 | zw SKILL triage 末条 → recipes/ratelimit.md（并发纪律 line 实测口径） |
+| ⑥ | 无人值守唤醒协议 | zw SKILL「Unattended mode」段 → recipes/unattended.md（七条红线协议全文） |
+| ⑦ | 跨仓宿主工作区规则 | zw SKILL recipes 指针行 → recipes/host-workspace.md（strict-cwd/subject 声明纪律） |
+| ⑧ | 提交尾注账本格式 | zw SKILL workflow 3（`Goal: <slug>#<step>`）→ recipes/execute.md「Commit ledger」 |
+| ⑨ | H3R 三原型开关语义 | zw SKILL Red lines 末条 → recipes/unattended.md「H3R dormant prototypes」（恰 "1" 唤醒三件） |
+| ⑩ | 消融 kill-switch 家族语义 | AGENTS §4 摘要 #25 → docs/decisions.md #25 全文 ⊕ recipes/unattended.md LZY_ABLATE_H3R_* |
+
+F4 执行记录（2026-09-24）：十问逐条按上表路径人工走查，全部两跳内可达；zw SKILL.md 8,141B、AGENTS.md 11,139B（wc -c 实测，红半=改前 47,285/93,869）。装态核验：`lzy sync` 后枚举 cache 版本目录 skills/zw/（SKILL.md+recipes/ 八件随装，字节与仓内一致）。
 
 ## 5. 实施记录（随步追加）
 

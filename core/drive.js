@@ -1179,7 +1179,12 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
           break;
         }
         const checks = integration?.manifest?.capabilities?.check ?? [];
-        if (checks.length > 0) {
+        // 头树实变门槛（沿旧屏障条件化语义 ADJ-04/05 的经济性半）：组装实变（首波 subject 集入集
+        // 或工人提交合并）才跑整合检查；零变更波候选未变，重跑全套件纯浪费——如实打跳过行。
+        const preBarrier = progressSignature(cwd, after, prevProgress);
+        if (checks.length > 0 && preBarrier.trees === prevProgress.trees) {
+          console.log(`[drive] 波 ${seg}/${maxSegments}：候选树未变——跳过整合检查（零变更波不重跑）`);
+        } else if (checks.length > 0) {
           let failed = null;
           for (const recipe of checks) {
             let result = null;

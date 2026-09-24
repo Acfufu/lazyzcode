@@ -268,8 +268,8 @@ test("④波分派：3 步 2 工人=2+1（worker prompt 只含分派步）", asy
   }
 });
 
-// ── ⑤组装 merge+屏障重锚 ──────────────────────────────────────────────────────
-test("⑤组装：工人分支 merge 提交在案+屏障对已取证 F 项重锚（evidence 含 wave-barrier rebind）", async () => {
+// ── ⑤组装 merge+屏障零证据写面（0.3.0 M2：重锚通道退役）─────────────────────────
+test("⑤组装：工人分支 merge 提交在案+屏障零证据写面（F 证据不被代跑改写——重锚已退役）", async () => {
   const r = repo("lzy-dw-anchor-", { steps: ["- [N1] x", "- [F1] f"] });
   const d = r.dir;
   const g0 = JSON.parse(readFileSync(goalJson(d), "utf8"));
@@ -278,14 +278,16 @@ test("⑤组装：工人分支 merge 提交在案+屏障对已取证 F 项重锚
   f1.evidence = "初版取证";
   writeFileSync(goalJson(d), `${JSON.stringify(g0, null, 2)}\n`);
   try {
-    await captureStdout(() =>
+    const { lines } = await captureStdout(() =>
       runDrive(d, { workers: 2, maxSegments: 1 }, passDeps(fakeWorker({ mutate: (cwd, wid) => fakeAddFile(wid)(cwd) }))),
     );
     const log = spawnSync("git", ["-C", d, "log", "--oneline", "-8"], { encoding: "utf8" }).stdout ?? "";
-    assert.match(log, /merge fast-.*-w1/);
+    assert.match(log, /merge fast-.*-w1/, "组装 merge 行为不变");
     const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
     const f = goal.steps.find((s) => s.id === "F1");
-    assert.match(JSON.stringify(f.evidence ?? ""), /wave-barrier rebind/);
+    assert.ok(!/wave-barrier rebind/.test(JSON.stringify(f.evidence ?? "")), "屏障不得代跑重锚 F 证据（退役面）");
+    assert.match(f.evidence ?? "", /初版取证/, "F 证据原样保留（真实重验才得新鲜）");
+    assert.match(lines, /无 check 清单——整合验证缺席/, "屏障如实声明整合验证缺席");
   } finally {
     rmSync(d, { recursive: true, force: true });
     rmSync(siblingRoot(d), { recursive: true, force: true });
@@ -448,8 +450,8 @@ test("⑨墙钟取 max 不 sum（每波 900ms/700ms → 两波 ≈1800 而非 su
   }
 });
 
-// ── ⑨b 屏障条件化（ADJ-04/05，v024-fix-round#N3）─────────────────────────────
-test("⑨b 零变更波不重锚：F 证据不被改写、绿代数不涨、收束因=stuck（假推进根治）", async () => {
+// ── ⑨b 屏障零证据写面（0.3.0 M2：重锚退役后任何波都不写新绿；v024-fix-round#N3 演进）──
+test("⑨b 屏障零证据写面：任何波不写新绿（重锚已退役）、零推进仍 stuck 收束", async () => {
   const r = repo("lzy-dw-noanchor-", { steps: ["- [N1] x", "- [N2] y", "- [N3] z", "- [F1] f"] });
   const d = r.dir;
   try {
@@ -458,34 +460,39 @@ test("⑨b 零变更波不重锚：F 证据不被改写、绿代数不涨、收�
     const { result, lines } = await captureStdout(() =>
       runDrive(d, { workers: 2, maxSegments: 3 }, passDeps(fakeWorker())),
     );
-    assert.match(lines, /未变——跳过屏障重锚/, "零变更波须打印跳过行");
+    const text = lines;
+    assert.match(text, /无 check 清单——整合验证缺席/, "屏障须打印整合验证缺席行");
+    assert.ok(!/wave-barrier rebind/.test(text), "任何波不得再代跑重锚（退役面）");
     assert.match(result.cause, /stuck/, `零推进应收束为 stuck；实得 ${result.cause}`);
-    // 重锚恰一次（首波 subject 集实变导致），此后零变更波不再重锚——代数不随波数累积
-    assert.equal((lines.match(/屏障重锚完成/g) ?? []).length, 1, "重锚次数应为 1（仅首波实变那次）");
     const list = r.lzy(["evidence", "list"]).stdout ?? "";
-    assert.ok(!/gen3|gen4/.test(list), `零变更波不得再写新绿代数（实得：${list.replace(/\n/g, " ")}）`);
+    assert.ok(!/gen2|gen3|gen4/.test(list), `屏障不得写任何新绿代数（实得：${list.replace(/\n/g, " ")}）`);
   } finally {
     rmSync(d, { recursive: true, force: true });
     rmSync(siblingRoot(d), { recursive: true, force: true });
   }
 });
 
-test("⑨c 实变波重锚恰一次且 harness 原样透传（INV-08 不因重锚变哑）", async () => {
+test("⑨c 实变波不再重锚：F 证据与 harness 原样、账本零改写（代跑通道已退役）", async () => {
   const r = repo("lzy-dw-anchor2-", { steps: ["- [N1] x", "- [N2] y", "- [N3] z", "- [F1] f"] });
   const d = r.dir;
   const har = (out) => (String(out ?? "").match(/🔧([0-9a-f]{8})/) ?? [])[1];
   try {
     const done = r.lzy(["step", "done", "F1", "--evidence", "初版取证（夹具）", "--harness", "npm test"]);
     assert.equal(done.status, 0, `F1 基线取证应成功：${done.stdout}${done.stderr}`);
-    const h1 = har(r.lzy(["evidence", "list"]).stdout);
-    assert.ok(h1, "基绿应带 harness 标记");
+    const before = r.lzy(["evidence", "list"]).stdout ?? "";
+    assert.ok(har(before), "基绿应带 harness 标记");
     const { lines } = await captureStdout(() =>
       runDrive(d, { workers: 2, maxSegments: 2 }, passDeps(fakeWorker({ mutate: (cwd, wid) => fakeAddFile(wid)(cwd) }))),
     );
-    assert.match(lines, /屏障重锚完成（subject 头树集实变）/, "实变波须重锚");
-    const h2 = har(r.lzy(["evidence", "list"]).stdout);
-    assert.equal(h2, h1, `重锚新绿须与原绿同 harness（原 ${h1}，新 ${h2 ?? "缺"}）`);
-    assert.match(r.lzy(["evidence", "list"]).stdout ?? "", /gen2|gen3/, "重锚应产生新一代绿节点");
+    assert.match(lines, /无 check 清单——整合验证缺席/, "实变波须如实声明整合验证缺席");
+    const after = r.lzy(["evidence", "list"]).stdout ?? "";
+    // 账本节点零改写（代数/指纹/半全不动）；时效标注如实从「新鲜」翻「过期」——那正是
+    // 重锚退役后的诚实路径（工人提交使证据过期，真实重验才得新鲜）。
+    const strip = (s) => String(s ?? "").replace(/ · (新鲜|过期)/g, "");
+    assert.equal(strip(after), strip(before), "实变波不得改写证据账本节点（零重绑）");
+    const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    const f = goal.steps.find((s) => s.id === "F1");
+    assert.match(f.evidence?.text ?? "", /初版取证/, "F 证据原文不动");
   } finally {
     rmSync(d, { recursive: true, force: true });
     rmSync(siblingRoot(d), { recursive: true, force: true });
@@ -730,19 +737,17 @@ test("⑳工人段失败：收束因=工人段失败 + !ok + 快照在场 + 分�
   }
 });
 
-test("⑳b 屏障重锚前置读失败：账本损坏 ⇒ fail-closed 收束（不静默写无 harness 新绿）", async () => {
+test("⑳b 整合验证前置读失败：清单损坏 ⇒ fail-closed 收束（不静默跳过检查面）", async () => {
   const r = repo("lzy-dw-dagbroken-", { steps: ["- [N1] x", "- [N2] y", "- [N3] z", "- [F1] f"] });
   const d = r.dir;
   try {
-    const done = r.lzy(["step", "done", "F1", "--evidence", "初版取证（夹具）", "--harness", "npm test"]);
-    assert.equal(done.status, 0, `F1 基线取证应成功：${done.stdout}${done.stderr}`);
-    // 破坏账本（写坏 JSON）：重锚前置读须 fail-closed 收束，而不是静默不带 harness 重锚
-    writeFileSync(join(d, ".lazyzcode", "loop", "dag.json"), "{ broken\n");
+    // 破坏清单（写坏 JSON）：整合验证前置读须 fail-closed 收束，而不是静默当「无清单」跳过
+    writeFileSync(join(d, "lzy.project.json"), "{ broken\n");
     const { result, lines } = await captureStdout(() =>
       runDrive(d, { workers: 2, maxSegments: 2 }, passDeps(fakeWorker({ mutate: (cwd, wid) => fakeAddFile(wid)(cwd) }))),
     );
-    assert.equal(result.ok, false, "账本不可读=非干净收束");
-    assert.match(result.cause, /屏障重锚前置读失败/, `实得 ${result.cause}`);
+    assert.equal(result.ok, false, "清单不可读=非干净收束");
+    assert.match(result.cause, /整合验证前置读失败/, `实得 ${result.cause}`);
     assert.match(lines, /fail-closed|恢复/);
   } finally {
     rmSync(d, { recursive: true, force: true });

@@ -1107,7 +1107,7 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
   // ── 人权门分派（0.3.0 M1）：goal 绑契约 → 契约门（ADR-0024，批准对象=contractHash，
   // 契约内重规划不再逐版批准）；无契约 → 现行 planHash 人权门逐字段不变（legacy，显式
   // 迁移归 M5）。两分支互斥：契约 goal 全程不产生 approvalPending（契约测试钉）。
-  if (goal.contract?.contractHash) {
+  if (goal.contract?.contractHash && !ablated("LZY_ABLATE_HUMAN_GATE")) {
     const contract = assertContractGate(cwd, goal, subjects);
     assertAcceptanceCoverage(contract, items);
     goal.contractPending = null; // 契约门放行即清 pending（不留陈旧批准请求）

@@ -532,6 +532,13 @@ const DEPS_RE = /^\s*deps:\s*(.*)$/;
 // 孤儿扫描容 bullet 前缀（`- deps: …` 也算声明形态——门姿势「不静默吞」对齐，评审 R2-B）。
 const DEPS_ORPHAN_RE = /^\s*(?:[-*]\s+)?deps\s*:/i;
 const DEP_TOKEN_RE = /^[NF]\d+$/;
+// 验收项关联（0.3.0 M1，ADR-0024）：紧随 **F 项** 行的下一行 `accepts: A1,A2`——计划 F 项
+// 对契约验收项的覆盖声明（契约门查 c 的数据面）。N 项后出现=错误（验收由终验承担）；
+// 无契约 goal 的计划出现 accepts 行=解析错误（防静默 no-op）；同一行槽被 deps 占用时
+// accepts 成孤儿（一条目一个关联行，沿 deps 家法）。
+const ACCEPTS_RE = /^\s*accepts:\s*(.*)$/;
+const ACCEPTS_ORPHAN_RE = /^\s*(?:[-*]\s+)?accepts\s*:/i;
+const A_REF_TOKEN_RE = /^A\d+$/;
 // subject 集声明（v008-integrity-kernel#N3，拍板③）：计划头 `subjects: <path>` 每行一路径，
 // 相对路径按宿主根解析；头内重复=LoopError；路径不存在/非 git 仓/与宿主包含=LoopError 拒采纳。
 // 正文杂散 subjects: 行沿 deps orphan 家法响亮拒绝（行级 <!--lzy:allow--> 豁免同款）。
@@ -541,15 +548,16 @@ const SUBJECTS_ORPHAN_RE = /^\s*(?:[-*]\s+)?subjects\s*:/i;
 function parsePlanItems(body) {
   const lines = body.split(/\r?\n/);
   const items = [];
-  const consumedDeps = new Set();
+  const consumedLines = new Set();
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(ITEM_RE);
     if (!m) continue;
     const id = `${m[1]}${m[2]}`;
     if (items.some((it) => it.id === id)) throw new LoopError(`计划清单 id 重复：${id}`);
     let deps = [];
+    let accepts = [];
     if (i + 1 < lines.length && DEPS_RE.test(lines[i + 1])) {
-      consumedDeps.add(i + 1);
+      consumedLines.add(i + 1);
       const tokens = lines[i + 1].match(DEPS_RE)[1].split(/[\s,，]+/).filter(Boolean);
       if (tokens.length === 0) throw new LoopError(`deps 声明为空：${id}（语法：deps: N1,N2）`);
       for (const t of tokens) {
@@ -560,6 +568,22 @@ function parsePlanItems(body) {
         }
       }
       deps = [...new Set(tokens)];
+    } else if (i + 1 < lines.length && ACCEPTS_RE.test(lines[i + 1])) {
+      // accepts 仅合法于 F 项后：N 项挂验收=概念错位（验收由终验承担），响亮拒绝。
+      if (m[1] !== "F") {
+        throw new LoopError(`accepts 仅合法于 F 项之后：${id} 是 N 项（验收项由终验 F 承担）——L${i + 2}`);
+      }
+      consumedLines.add(i + 1);
+      const tokens = lines[i + 1].match(ACCEPTS_RE)[1].split(/[\s,，]+/).filter(Boolean);
+      if (tokens.length === 0) throw new LoopError(`accepts 声明为空：${id}（语法：accepts: A1,A2）`);
+      for (const t of tokens) {
+        if (!A_REF_TOKEN_RE.test(t)) {
+          throw new LoopError(
+            `accepts 条目非法：${id} → ${t}（必须是契约验收项 id，语法：accepts: A1,A2）`,
+          );
+        }
+      }
+      accepts = [...new Set(tokens)];
     }
     const title = m[3].trim();
     // 条目标题上限（ADJ-17，0.2.1）：与 goal.title 同限——标题族人读/机器解析面都要小。
@@ -568,13 +592,18 @@ function parsePlanItems(body) {
         `计划条目标题超上限 ${TITLE_MAX} 字符：${id}（当前 ${title.length}）——标题凝成一句，细节写进条目正文`,
       );
     }
-    items.push({ id, kind: m[1], title, deps });
+    items.push({ id, kind: m[1], title, deps, accepts });
   }
   for (const [i, line] of lines.entries()) {
-    if (consumedDeps.has(i) || line.includes("<!--lzy:allow-->")) continue;
+    if (consumedLines.has(i) || line.includes("<!--lzy:allow-->")) continue;
     if (DEPS_ORPHAN_RE.test(line)) {
       throw new LoopError(
         `孤儿 deps 行（必须是其条目行的下一行）：L${i + 1}: ${line.trim().slice(0, 60)}`,
+      );
+    }
+    if (ACCEPTS_ORPHAN_RE.test(line)) {
+      throw new LoopError(
+        `孤儿 accepts 行（必须紧随 F 项行）：L${i + 1}: ${line.trim().slice(0, 60)}`,
       );
     }
   }
@@ -927,10 +956,30 @@ function assertContractGate(cwd, goal, subjects) {
   return contract;
 }
 
-// (c) 覆盖检查占位（N5 接线）：契约 A 项 id 须被计划 F 项引用覆盖。
+// (c) 覆盖检查（契约门查 c）：契约每个验收项 id 须被至少一个 F 项的 accepts 引用——
+// 计划删验收=越界（覆盖缺口拒绝沿用旧授权，ADR-0024/V01）；引用不存在的 A id=计划与
+// 契约脱节，同拒。accepts 引用超集允许（F 项可同时钉多个验收项；无契约 goal 到不了这里）。
 function assertAcceptanceCoverage(contract, items) {
-  void contract;
-  void items;
+  const contractIds = new Set(contract.acceptances.map((a) => a.id));
+  const covered = new Set();
+  for (const it of items) {
+    for (const ref of it.accepts ?? []) {
+      if (!contractIds.has(ref)) {
+        throw new LoopError(
+          `覆盖检查拒绝（ADR-0024 查 c）：F 项 ${it.id} 引用了契约不存在的验收项 ${ref}` +
+            `（契约验收项：${contract.acceptances.map((a) => a.id).join("、") || "无"}）——修 accepts 引用或出具新契约`,
+        );
+      }
+      covered.add(ref);
+    }
+  }
+  const missing = [...contractIds].filter((id) => !covered.has(id));
+  if (missing.length > 0) {
+    throw new LoopError(
+      `覆盖检查拒绝（ADR-0024 查 c）：契约验收项未被计划覆盖——${missing.join("、")} 没有任何 F 项通过 accepts 引用。` +
+        `删验收项=扩大契约外权限，须出具新契约重新批准；契约内补 F 项即可过`,
+    );
+  }
 }
 
 // supersede（0.1.0 棒B，ADR-0016）：executing 期改计划的 forward-only 出口——同一采纳
@@ -1010,6 +1059,15 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
   if (items.length === 0) {
     throw new LoopError("计划里没有清单项（语法：- [N1] … / - [F1] …，F 项需真实表面证据）");
   }
+  // accepts 无契约即错（0.3.0 M1）：关联语法只在契约 goal 有语义——legacy 计划里出现
+  // 一律拒绝（防静默 no-op：作者以为在钉验收，实际什么都没钉）。
+  if (!goal.contract?.contractHash && items.some((it) => (it.accepts ?? []).length > 0)) {
+    const offenders = items.filter((it) => (it.accepts ?? []).length > 0).map((it) => it.id);
+    throw new LoopError(
+      `本目标未绑定需求契约，计划却出现 accepts 关联（${offenders.join("、")}）——` +
+        `accepts 只在契约 goal（register --contract）有语义；去掉 accepts 行或先绑契约`,
+    );
+  }
   // 升档前移校验（ADJ-08 配套，§⑪ Q5）：HEAVY 计划须 ≥1 F 项——零 F 无对照对象、
   // 对照门无处着力（存量零 F HEAVY 目标走 finish 的零 F 豁免出口）。
   if ((goal.tier ?? "light") === "heavy" && !items.some((it) => /^F/.test(it.id))) {
@@ -1085,6 +1143,7 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
     title: it.title,
     status: "pending",
     deps: it.deps,
+    acceptsRefs: it.accepts ?? [],
     claim: null,
     doneAt: null,
     note: null,

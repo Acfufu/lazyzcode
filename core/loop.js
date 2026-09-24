@@ -2313,6 +2313,8 @@ const ANY_TMP_SCAN_DIRS = (cwd) => [
   join(cwd, ".lazyzcode", "attestations"),
   join(cwd, ".lazyzcode", "authorizations"),
   join(cwd, ".lazyzcode", "verify"), // 0.3.0 M2 执行回执家族（core/verify.js——观测面与清扫面同一判据）
+  join(cwd, ".lazyzcode", "queue"), // 0.3.0 M3 队列状态+派发事件账（core/queue.js，loop/ 外 reset 不清）
+  join(cwd, ".lazyzcode", "budget"), // 0.3.0 M3 累计预算账本（core/queue.js，同上位阶）
 ];
 
 // 孤儿 tmp 计数（doctor 用）：与 cleanupLoopResidue 同一家族表、同一扫描面（ADJ-13，0.2.1）。

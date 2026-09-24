@@ -66,6 +66,17 @@ import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
 import { auditAgentsMd, formatAgentsMd } from "../core/agentsmd.js";
 import { formatCost, rollingWaterlinePoints } from "../core/cost.js";
 import { runDrive } from "../core/drive.js";
+import {
+  addQueueItem,
+  budgetView,
+  cancelQueueItem,
+  formatQueueList,
+  QueueError,
+  reconcileDispatch,
+  runQueueDispatch,
+  setQueueBudget,
+  showQueueItem,
+} from "../core/queue.js";
 
 const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 
@@ -73,7 +84,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1040,6 +1051,21 @@ function printHelp() {
                                             离线=blocked 原文+恢复指路；记录 sha≠HEAD=非现行）
   （与 lzy loop verify 分工：本族=执行面；证据新鲜度权威在 loop verify 红绿账本）
 
+有界队列与累计预算（0.3.0 M3，主方案 §5——多项已授权工作跨中断连续完成；一切命令以 goal 根为 cwd）：
+  lzy queue add <标题> --contract <文件> --plan <文件>
+                                            登记待办（proposed；批准该契约=UPS「批准 <短码>」后
+                                            自动 authorized）[--endpoint A] [--deps q1,q2] [--goal-slug s]
+  lzy queue list                            条目与就绪面（授权/依赖/项目/预算/租约/计划六查）
+  lzy queue show <id>                       条目全文+派发事务账+就绪判定
+  lzy queue budget [--points N] [--wall-ms M] [--note 来源]
+                                            队列总额设定/追加（跨重启/换任务/重试不刷新）；
+                                            --resume-points 人工恢复被 #32 停止的积分限派发
+  lzy queue dispatch [--item id] [--wall-ms N] [--max-segments N]
+                                            取 ready 项派发（锁内占用登记→register/续跑→drive→
+                                            finish→结算→确认→腾槽→下一项；崩溃恢复判定表先行）
+  lzy queue reconcile                       恢复判定表显式读面（未决事务先核对后动作）
+  lzy queue cancel <id> --reason <原因>     取消（保留工件与历史，不清理用户改动）
+
 环境：
   LZY_ZCODE_ENGINE  显式指定引擎 zcode.cjs 路径；设置后替换默认候选（默认找 /Applications/ZCode.app/...，
                     也因此可指向不存在路径来测试「引擎缺失→手动启用」回退）
@@ -1256,6 +1282,98 @@ function cmdVerify(args) {
   throw new LoopError("用法：lzy verify run|reuse|qualify|list|show|ci（执行面；证据新鲜度权威在 lzy loop verify）");
 }
 
+// 有界队列（0.3.0 M3，主方案 §5）：add/list/show/budget/dispatch/reconcile/cancel。
+// 一切队列命令以「goal 根」为 cwd（.lazyzcode/ 解析不向上走——试点以夹具根为 cwd）。
+function cmdQueue(args) {
+  const { _, f } = parseArgs(args);
+  const action = _[0];
+  const cwd = process.cwd();
+  if (action === "add") {
+    const title = _[1];
+    const contractFile = typeof f.contract === "string" ? f.contract : null;
+    if (!title || !contractFile) {
+      throw new LoopError("用法：lzy queue add <标题> --contract <文件> --plan <文件> [--endpoint A] [--deps q1,q2] [--goal-slug s]");
+    }
+    const deps = typeof f.deps === "string" && f.deps.trim() ? f.deps.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const item = addQueueItem(cwd, {
+      title,
+      contractFile,
+      planFile: typeof f.plan === "string" ? f.plan : null,
+      endpoint: typeof f.endpoint === "string" ? f.endpoint : "A",
+      deps,
+      goalSlug: typeof f["goal-slug"] === "string" && f["goal-slug"].trim() ? f["goal-slug"].trim() : null,
+    });
+    console.log(`✔ 条目已登记：${item.id}（${item.state}）· goal=${item.goalSlug} · 契约 ${item.contractHash.slice(0, 8)}… · 计划 ${item.planPath}`);
+    console.log("  下一步：批准该契约（UPS 短码=contractHash 前 8 位）后条目自动 authorized；lzy queue list 看就绪面");
+    return;
+  }
+  if (action === "list") {
+    console.log(formatQueueList(cwd));
+    return;
+  }
+  if (action === "show") {
+    const id = _[1];
+    if (!id || _[2]) throw new LoopError("用法：lzy queue show <id>");
+    const { item, txs, readiness } = showQueueItem(cwd, id);
+    console.log(JSON.stringify(item, null, 2));
+    console.log(`  就绪：${readiness.ready ? "ready" : "未就绪"}`);
+    for (const r of readiness.reasons) console.log(`    ✖ ${r}`);
+    console.log(`  派发事务 ${txs.length} 条：`);
+    for (const t of txs) {
+      console.log(`    ${t.txId}  ${t.phase.padEnd(18)} opened ${t.openedAt}${t.settledAt ? ` → ${t.settledAt}` : ""}${t.segments.length ? ` · 段 ${t.segments.length}` : ""}${t.note ? ` · ${t.note.slice(0, 80)}` : ""}`);
+    }
+    return;
+  }
+  if (action === "budget") {
+    const hasPoints = f.points != null && f.points !== "";
+    const hasWall = f["wall-ms"] != null && f["wall-ms"] !== "";
+    const resume = f["resume-points"] === true;
+    if (!hasPoints && !hasWall && !resume) {
+      const v = budgetView(cwd);
+      console.log(`队列预算：积分总额 ${v.pointsLimit ?? "未设"} · 墙钟总额 ${v.wallLimitMs != null ? `${v.wallLimitMs}ms` : "未设"}`);
+      console.log(`  已耗：积分 ${Math.round(v.points * 100) / 100} · 墙钟 ${v.wallMs}ms ｜ 未决占用：积分 ${Math.round(v.openPoints * 100) / 100} · 墙钟 ${v.openWallMs}ms（崩溃未决按上限保守计入，绝不当零）`);
+      if (v.pointsStopped) console.log("  ⚠ 受积分限额约束的派发已停止（计量缺席/未决占用在案，#32）——人工核对后 --resume-points 恢复");
+      return;
+    }
+    const b = setQueueBudget(cwd, {
+      points: hasPoints ? Number.parseFloat(f.points) : null,
+      wallMs: hasWall ? Number.parseInt(f["wall-ms"], 10) : null,
+      note: typeof f.note === "string" ? f.note : null,
+      resumePoints: resume,
+    });
+    console.log(`✔ 队列预算已设：积分 ${b.pointsLimit ?? "—"} · 墙钟 ${b.wallLimitMs != null ? `${b.wallLimitMs}ms` : "—"}（追加=新 provenance 注记，历史不覆写）`);
+    return;
+  }
+  if (action === "dispatch") {
+    const item = typeof f.item === "string" ? f.item : null;
+    const opts = {
+      item,
+      wallMs: f["wall-ms"] != null && f["wall-ms"] !== "" ? Number.parseInt(f["wall-ms"], 10) : null,
+      maxSegments: f["max-segments"] != null && f["max-segments"] !== "" ? Number.parseInt(f["max-segments"], 10) : undefined,
+      mode: typeof f.mode === "string" ? f.mode : undefined,
+    };
+    return runQueueDispatch(cwd, opts).then((r) => {
+      const failed = r.results.filter((x) => x.outcome === "failed" || x.outcome === "error");
+      if (failed.length > 0) process.exitCode = 1;
+    });
+  }
+  if (action === "reconcile") {
+    if (_[1]) throw new LoopError("用法：lzy queue reconcile（恢复判定表：先核对后动作，绝不重复派发/绝不 reset 另一目标）");
+    const { verdicts } = reconcileDispatch(cwd);
+    if (verdicts.length === 0) console.log("恢复核对：无未决派发事务");
+    for (const v of verdicts) console.log(`  ${v.txId} → ${v.verdict}`);
+    return;
+  }
+  if (action === "cancel") {
+    const id = _[1];
+    if (!id || typeof f.reason !== "string") throw new LoopError("用法：lzy queue cancel <id> --reason <原因>（取消保留工件与历史，不清理用户改动）");
+    const it = cancelQueueItem(cwd, id, f.reason);
+    console.log(`✔ ${it.id} 已取消（工件与历史保留）——blockedReason：${it.blockedReason}`);
+    return;
+  }
+  throw new LoopError("用法：lzy queue add|list|show|budget|dispatch|reconcile|cancel（有界队列，0.3.0 M3）");
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const cmd = args[0];
@@ -1298,6 +1416,8 @@ async function main() {
       return cmdMigrate(args.slice(1));
     case "verify":
       return cmdVerify(args.slice(1));
+    case "queue":
+      return cmdQueue(args.slice(1));
     case "agents-md":
       return cmdAgentsMd();
     case "version":

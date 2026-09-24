@@ -447,6 +447,16 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
       console.log(
         `[drive] 段 ${seg}/${maxSegments} sessionId=${result.sessionId ?? "—"} 耗时=${result.durationMs ?? "—"}ms 退出=${result.exitCode ?? "—"}`,
       );
+      // 段记录 sink（0.3.0 M3 队列结算输入）：sessionId/耗时/退出码逐段外报——调用方
+      // （core/queue.js 派发事务）据此做逐会话计量与墙钟结算；缺省无 sink 时零开销。
+      if (Array.isArray(opts.segmentRecords)) {
+        opts.segmentRecords.push({
+          sessionId: result.sessionId ?? null,
+          durationMs: result.durationMs ?? 0,
+          exitCode: result.exitCode ?? null,
+          endedAt: new Date().toISOString(),
+        });
+      }
       if (!result.ok) {
         windDown(
           false,

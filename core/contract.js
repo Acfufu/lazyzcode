@@ -117,6 +117,20 @@ export function loadContract(contractPath, hostRoot) {
   return { ...parseContract(text, hostRoot), path: abs, hash };
 }
 
+// 项目配方身份：lzy.project.json 内容 sha256（缺文件=null）。契约 recipe 字段绑定的
+// 就是这个哈希——配方变更→授权重估（契约门五查之 e）。schema/校验/就绪面归
+// core/project.js（M1 N6），本助手只回答「配方现在是什么身份」。
+export function manifestHashIfPresent(cwd) {
+  const p = join(cwd, "lzy.project.json");
+  let buf;
+  try {
+    buf = readFileSync(p);
+  } catch {
+    return null;
+  }
+  return hashContractBytes(buf);
+}
+
 function authorizationsDir(cwd) {
   return join(cwd, ".lazyzcode", "authorizations");
 }

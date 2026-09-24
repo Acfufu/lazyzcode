@@ -69,7 +69,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -226,8 +226,13 @@ async function cmdLoop(args) {
       const goal = registerGoal(cwd, _[1], f.title, {
         tier: typeof f.tier === "string" ? f.tier : undefined,
         risk: typeof f.risk === "string" ? f.risk : undefined,
+        contract: typeof f.contract === "string" ? f.contract : null,
       });
       console.log(`✔ 目标已注册：${goal.slug} — ${goal.title}（状态 planning · tier ${goal.tier} · risk ${goal.risk ?? "low"}）`);
+      if (goal.contract) {
+        console.log(`  契约已绑定：${goal.contract.path}（contractHash ${goal.contract.contractHash.slice(0, 8)}…）`);
+        console.log("  采纳计划时走契约门：首次采纳将索「批准 <契约短码>」，契约内重规划不再逐版批准（ADR-0024）");
+      }
       console.log("  下一步：写决策完备计划到 .lazyzcode/plans/<slug>.md，然后 lzy loop plan <文件>");
       return;
     }

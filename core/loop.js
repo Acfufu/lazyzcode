@@ -15,6 +15,7 @@ import {
   supersedeAttempt,
 } from "./attempt.js";
 import { assertFenceIfPresent } from "./runtime.js";
+import { effectiveAuthorization, loadContract, manifestHashIfPresent } from "./contract.js";
 import {
   addCapturedOn,
   addEdge,
@@ -297,7 +298,7 @@ export function nextStep(goal) {
 }
 
 // ── 1. 注册 ────────────────────────────────────────────────────────────────
-export function registerGoal(cwd, slug, title, { tier = "light", risk = "low" } = {}) {
+export function registerGoal(cwd, slug, title, { tier = "light", risk = "low", contract = null } = {}) {
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/i.test(slug ?? "")) {
     throw new LoopError(`slug 不合法：${slug}（仅字母数字与连字符，≤64 字符）`);
   }
@@ -329,6 +330,19 @@ export function registerGoal(cwd, slug, title, { tier = "light", risk = "low" } 
       `宿主无法解析为 git 仓库（未初始化或 git 不可用）：${cwd}——目标循环证据绑定 git 树，` +
         `非 git 宿主的 finish 不可达。先 git init 并完成首次提交，再重新注册（ADR-0019）`,
     );
+  }
+  // 契约绑定（0.3.0 M1，ADR-0024）：register 时校验契约并落 goal.contract={path,hash}。
+  // 校验（结构键/A 项/scope 存在性）在锁外做（纯读）；哈希=注册时点文件字节，采纳门
+  // 每次重查磁盘哈希（漂移=重新 register）。授权批准发生在第一次采纳拒绝之后
+  //（contractPending 由契约门落位）——注册本身不索批准。
+  let contractBinding = null;
+  if (contract != null) {
+    try {
+      const loaded = loadContract(contract, cwd);
+      contractBinding = { path: relative(cwd, loaded.path) || loaded.path, contractHash: loaded.hash };
+    } catch (e) {
+      throw new LoopError(`契约无效：${e?.message ?? e}`);
+    }
   }
   // 查重+写入同一临界区（评审 R6A-1）：并发 register 双方 readGoal 均 null 时
   // 各自 writeGoal 原子覆盖，先注册的目标无痕丢失——唯一漏网的 goal.json 变更操作补齐入锁。
@@ -362,6 +376,9 @@ export function registerGoal(cwd, slug, title, { tier = "light", risk = "low" } 
       baseTreeHash: null,
       subjects: [],
       steps: [],
+      // 契约绑定（0.3.0 M1）：null=legacy goal（现行 planHash 人权门不变）；
+      // 在场=契约 goal（采纳走契约门，ADR-0024）。
+      contract: contractBinding,
       // 实例戳（ADJ-44，0.0.10）：跨 reset 常驻账本里同 slug 多实例并存，节点带
       // attempt 戳隔离——配对/supersedes/锚定都限本实例。序号从账本既有最大戳+1
       // 推导（reset 后重注册不回退）；0.0.9 旧节点无戳=隔离于新实例之外。
@@ -817,6 +834,105 @@ export function adoptPlan(cwd, planFile, opts = {}) {
   return withLock(cwd, () => doAdoptPlan(cwd, planFile, opts));
 }
 
+// ── 契约门（0.3.0 M1，ADR-0024）：goal 绑契约时，批准对象是需求契约（contractHash）
+// 而非执行计划——契约内重规划无须重新批准，扩大权限（覆盖缺口/越 scope/配方漂移/
+// 契约本体变更）一律拒绝沿用旧授权。五查：a 磁盘契约漂移复核 / b 授权有效（approval
+// 后无 withdrawal）/ c 覆盖检查（N5 接线，本步占位全过）/ d subjects⊆scope /
+// e 配方一致。任一不过=落 contractPending 后拒（幂等再置，mirror approvalPending 家法）；
+// 钩子只追加授权记录，pending 的清除与再置一律在本闸（withLock 内）做。
+function contractGateReject(cwd, goal, message) {
+  goal.contractPending = {
+    contractHash: goal.contract.contractHash,
+    contractPath: goal.contract.path,
+    requestedAt: new Date().toISOString(),
+  };
+  writeGoal(cwd, goal);
+  throw new LoopError(message);
+}
+
+function isInsideOrEqual(path, root) {
+  return path === root || path.startsWith(root.endsWith(sep) ? root : root + sep);
+}
+
+function assertContractGate(cwd, goal, subjects) {
+  const bound = goal.contract.contractHash;
+  const short = bound.slice(0, 8);
+  const reArmHint =
+    `本次拒绝已在 goal 落 contractPending（幂等再置）：处理完根因后重跑本命令即可。`;
+  // (a) 磁盘契约漂移复核：读+解析即验——文件缺失/结构坏/字节漂移都在此拒绝。
+  let contract;
+  try {
+    contract = loadContract(goal.contract.path, cwd);
+  } catch (e) {
+    contractGateReject(
+      cwd,
+      goal,
+      `契约门拒绝（ADR-0024 查 a）：契约文件不可读或结构非法——${e?.message ?? e}。` +
+        `修好契约文件或重新 lzy loop register --contract <file>（新哈希=新授权请求）。${reArmHint}`,
+    );
+  }
+  if (contract.hash !== bound) {
+    contractGateReject(
+      cwd,
+      goal,
+      `契约门拒绝（ADR-0024 查 a）：契约文件已变（盘上 ${contract.hash.slice(0, 10)}…≠绑定 ${bound.slice(0, 10)}…）` +
+        `——契约不可变，改契约=新哈希=新授权请求：重新 lzy loop register --contract <file> 并重新批准。${reArmHint}`,
+    );
+  }
+  // (b) 授权有效：存在 approval 且其后无 withdrawal（追加式后到者赢）。
+  const auth = effectiveAuthorization(cwd, goal.slug, bound);
+  if (!auth.authorized) {
+    if (auth.lastEvent?.kind === "withdrawal") {
+      contractGateReject(
+        cwd,
+        goal,
+        `契约门拒绝（ADR-0024 查 b）：契约授权已被用户撤回（撤回于 ${auth.lastEvent.at}，短码 ${short}）——` +
+          `撤回对下一受控动作生效；已发生的外部效果如实保留、不由本门声称撤销。` +
+          `恢复=用户重新批准（把「批准 ${short}」原样转给用户）后重跑本命令。${reArmHint}`,
+      );
+    }
+    contractGateReject(
+      cwd,
+      goal,
+      `人权门未过（契约授权，ADR-0024）：契约 ${goal.contract.path}（短码 ${short}）等待人类批准。` +
+        `把「批准 ${short}」原样转给用户，用户消息到达后重跑本命令。` +
+        `禁令：不得手写 authorizations/ 记录、也不得自跑命令冒充批准（正规通道只有 UserPromptSubmit ` +
+        `钩子在真实用户消息上写记录）——本门防偷懒不防伪证；补偿控制=协议文本+审计环（doctor contract 行），见 ADR-0024。${reArmHint}`,
+    );
+  }
+  // (d) subjects⊆scope：host 与每个声明 subject 都须落于某 scope 条目之内或相等。
+  const scope = contract.scope;
+  const outside = [resolve(cwd), ...subjects].filter((root) => !scope.some((s) => isInsideOrEqual(root, s)));
+  if (outside.length > 0) {
+    contractGateReject(
+      cwd,
+      goal,
+      `契约门拒绝（ADR-0024 查 d）：写入范围越界——${outside.map((p) => p).join("、")} 不在任何 scope 条目内` +
+        `（scope：${contract.scopeRaw.join("、")}）。缩小计划 subjects 或出具新契约（新哈希=新授权请求）。${reArmHint}`,
+    );
+  }
+  // (e) 配方一致：契约声明 recipe≠none 时，磁盘 lzy.project.json 现哈希须等于契约字段。
+  if (contract.recipe !== "none") {
+    const current = manifestHashIfPresent(cwd);
+    const currentShort = current ? current.slice(0, 8) : null;
+    if (currentShort !== contract.recipe) {
+      contractGateReject(
+        cwd,
+        goal,
+        `契约门拒绝（ADR-0024 查 e）：项目配方已漂移——契约绑定 ${contract.recipe}，磁盘现为 ${currentShort ?? "缺席"}。` +
+          `配方权限变更须重新授权：出具新契约（更新 recipe 字段）并重新批准。${reArmHint}`,
+      );
+    }
+  }
+  return contract;
+}
+
+// (c) 覆盖检查占位（N5 接线）：契约 A 项 id 须被计划 F 项引用覆盖。
+function assertAcceptanceCoverage(contract, items) {
+  void contract;
+  void items;
+}
+
 // supersede（0.1.0 棒B，ADR-0016）：executing 期改计划的 forward-only 出口——同一采纳
 // 门（评审/快照/计划节点全照走），旧 attempt 置 superseded、开 attempt+1 新代次。
 export function supersedePlan(cwd, planFile, opts = {}) {
@@ -930,7 +1046,14 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
   // ADJ-15（0.2.1）：报文口径=禁令，不是能力断言——批准记录是工作区里的本地 JSON 文件，
   // 手写即可「过门」；本门防偷懒不防伪证（与 dag/attestation 同一威胁边界），补偿控制=
   // 协议文本+审计环（doctor approvals 行为批准记录的机器读面），边界见 ADR-0018。
-  if (!ablated("LZY_ABLATE_HUMAN_GATE") && !findApproval(cwd, goal.slug, planHash)) {
+  // ── 人权门分派（0.3.0 M1）：goal 绑契约 → 契约门（ADR-0024，批准对象=contractHash，
+  // 契约内重规划不再逐版批准）；无契约 → 现行 planHash 人权门逐字段不变（legacy，显式
+  // 迁移归 M5）。两分支互斥：契约 goal 全程不产生 approvalPending（契约测试钉）。
+  if (goal.contract?.contractHash) {
+    const contract = assertContractGate(cwd, goal, subjects);
+    assertAcceptanceCoverage(contract, items);
+    goal.contractPending = null; // 契约门放行即清 pending（不留陈旧批准请求）
+  } else if (!ablated("LZY_ABLATE_HUMAN_GATE") && !findApproval(cwd, goal.slug, planHash)) {
     // planPath 进 pending：首次采纳时 goal.planPath 尚为空、复采纳时指向旧计划——
     // 钩子的 exact-hash 复核必须哈希到「本门所验的这份文件」。
     goal.approvalPending = {

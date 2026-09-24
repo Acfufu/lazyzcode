@@ -54,7 +54,7 @@ function reject(msg) {
 function validateRecipe(cls, raw, cwd, seenIds, index) {
   const at = `${cls}[${index}]`;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) reject(`${at} 须为对象`);
-  const { id, argv, cwd: recipeCwd, timeoutMs, env, writePaths, outputs } = raw;
+  const { id, argv, cwd: recipeCwd, timeoutMs, env, writePaths, inputPaths, outputs } = raw;
   if (typeof id !== "string" || !id.trim()) reject(`${at}.id 缺席或为空`);
   if (seenIds.has(id)) reject(`配方 id 重复：${id}（六类内全局唯一）`);
   seenIds.add(id);
@@ -92,7 +92,22 @@ function validateRecipe(cls, raw, cwd, seenIds, index) {
       if (typeof o !== "string") reject(`${at}.outputs 含非字符串项`);
     }
   }
-  return { id, argv, cwd: recipeCwd ?? ".", timeoutMs: timeoutMs ?? null, env: env ?? [], writePaths: writePaths ?? [], outputs: outputs ?? [] };
+  // inputPaths（0.3.0 M2 范围档，ADR-0025）：该检查依赖的受验证输入清单——文件或目录条目，
+  // 项目根相对；有清单且过对抗资格才允许回执复用（四问判定，core/verify.js）。校验同
+  // writePaths 家法：相对路径、不逃逸项目根；条目可以是目录（执行时全枚举，未知新文件=变化）。
+  if (inputPaths !== undefined) {
+    if (!Array.isArray(inputPaths)) reject(`${at}.inputPaths 须为相对路径数组`);
+    for (const w of inputPaths) {
+      if (typeof w !== "string" || !w.trim()) reject(`${at}.inputPaths 含非字符串或空项`);
+      if (isAbsolute(w)) reject(`${at}.inputPaths 含绝对路径：「${w}」——只收相对路径`);
+      const resolved = resolve(cwd, w);
+      const rel = relative(cwd, resolved);
+      if (rel.startsWith("..") || resolve(cwd, rel) !== resolved) {
+        reject(`${at}.inputPaths 逃逸项目根：「${w}」→ ${rel}`);
+      }
+    }
+  }
+  return { id, argv, cwd: recipeCwd ?? ".", timeoutMs: timeoutMs ?? null, env: env ?? [], writePaths: writePaths ?? [], inputPaths: inputPaths ?? [], outputs: outputs ?? [] };
 }
 
 export function validateManifest(obj, cwd) {

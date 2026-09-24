@@ -57,6 +57,21 @@ goal `v030-m1`（0.3.0 M1 项目与授权：需求契约 + 授权撤回 + 项目
   - 夹具勘误记账：配方哈希须与文件字节同源（printf 无换行 vs echo 有换行曾误配——查 e 活体自证）；sibling 须为真兄弟仓（宿主内路径被既有 subject 包含关系门先拒）。
 - 计划外漂移记账：开工时用户已拍板 V08（提交 6cfa167），AGENTS §4 #32 被占用→计划 N14「决策行 #32」顺延 #33（本报告 §1）。
 
-## 6. 对抗清单自查（finish 前收口）
+## 6. 对抗清单自查（docs/research-adversarial-checklist.md 九类，2026-09-24）
 
-（本 goal 触 command/parse/state-merge 三面；九类逐类记录适用/排除理由。）
+本 goal 新增面：契约门（CLI 闸，parse+state-merge 面）、trigger.js 批准双分派+撤回分支（command 面）、
+project.js 清单校验（parse 面）、migrate.js 只读预览（展示面）、authorizations 账本家族。逐类：
+
+1. **malformed input——已有防护（新增面自带）**：契约解析器拒绝未知结构键/单值键重复/非法 endpoint/坏 recipe/A 项重复 id/scope 不存在；清单校验拒绝 shell 串 argv/重复 id/负 timeout/env 带值/writePaths 逃逸（契约测试 8 例）；授权账本单条损坏 fail-closed（跳过会隐藏 withdrawal——比 approvals 的 skip 严，威胁差异在 report §2 注明）。
+2. **prompt injection——不适用（债 A 残余不扩大）**：契约文件与计划文件同信任级（用户/作者手写），本 goal 未引入外部不可信内容面；钩子撤回/批准短语否定前置筛沿 APPROVE_NEG_RE 家法，emit 文案全静态（双跑字节确定契约不破）。
+3. **cancel-resume——已有防护（新面自带再置幂等）**：契约门每次拒绝在 withLock 内幂等再置 contractPending（mirror approvalPending 家法）；authorizations 追加式 reset 不清（契约测试钉）；钩子只追加记录不写 goal.json，CLI 闸与钩子并发无竞态。
+4. **stale state——已有防护（新面主题即防过期）**：契约门查 a 每次重哈希磁盘契约文件（漂移即拒）；查 e 现算清单哈希（配方漂移即拒）；授权时序=at ISO 主键+文件名次键确定性排序；活体：反例3 配方漂移红绿在案。
+5. **dirty worktree——已有防护**：本 goal 全程先提交后取证；scope 是采纳时点边界声明，运行时写入面无执法（如实 L0 声明，见计划执法层级节与债 F）。
+6. **hung commands——已有防护**：contract.js/project.js/migrate.js 零 spawn 全同步；无新增超时面。
+7. **flaky tests——已有防护**：三件套 23 例全确定性（固定 at 时戳、无时区依赖、HOME 隔离、win32 雷防家法：path.join 全程/原始 JSON 解析断言/无分隔符假设）。
+8. **misleading success output——已有防护（本 goal 主题）**：越界三反例机器拒（查 c/d/b/e 红绿在案）；迁移预览恒标 authorization=NONE；project check 如实命名「入口存在」静态半、不冒充「实际可运行」。
+9. **repeated interruptions——已有防护**：钩子 fail-open 姿态不变；重复撤回短语=追加多条 withdrawal 记录（后到者赢，无害幂等语义）。
+
+**记账新债**：
+- **债 F（scope 运行时执法缺位，本 goal 增记）**：契约 scope 仅在采纳/supersede 两闸执法（subjects⊆scope），lzy 不观察每次写入——scope 外写入是 L0 协议面非机器门。升格条件：M3 队列派发落地时由派发前检查扩展执法点；出现真实越 scope 事故时评估写入拦截。
+- 债 A（计划/契约内容无来源标记）不变未扩大；债 B/C/D/E 状态不变。

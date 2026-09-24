@@ -1,6 +1,6 @@
 # ADR-0024：用户批准目标边界，代理自主维护执行计划
 
-日期：2026-09-23。状态：accepted（设计共识）；用户明确要求暂不实施，尚未替代现行运行规则。
+日期：2026-09-23。状态：accepted（设计共识）；**M1 范围已实现（2026-09-24，goal v030-m1）**——契约门/contractHash 批准/撤回/项目清单/迁移预览落主线，无契约 goal 保持 ADR-0018 原门；队列与累计预算执法归 M3+，交付终点执法归 M4。
 关联：[访谈记录](../design-v030-agent-first.md)、[ADR-0018](0018-ups-exact-hash-human-gate.md)、[ADR-0016](0016-attempt-lineage-propagation.md)。
 
 ## 方向决策

@@ -3,6 +3,40 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Requirement contracts** (0.3.0 M1, goal `v030-m1`; ADR-0024 revising ADR-0018):
+  register a goal against an immutable requirement contract (`lzy loop register
+  --contract <file>`; `contractHash` = sha256 of the file bytes). Plan adoption for
+  contract-bound goals runs the five-check contract gate — disk-hash drift, effective
+  authorization, acceptance coverage (`accepts:` refs on F items), subjects⊆scope,
+  recipe-hash match — and the UPS approval phrase binds the **contract** short code;
+  in-contract replans (`supersede`) re-run the review gate but no longer re-approve.
+  New trusted UPS phrase 「撤回 <短码>」 appends a withdrawal record; the gate refuses
+  the next gated action and already-occurred external effects stay honestly recorded.
+  Records live in `.lazyzcode/authorizations/` (append-only, reset-surviving,
+  fail-closed on a corrupt record); CLI read faces `lzy contract show` / `lzy
+  contract auth`; doctor `contract` row. Goals without a contract keep the legacy
+  planHash human gate byte-identical.
+- **Project manifest** (0.3.0 M1): versioned `lzy.project.json` with six capability
+  classes (prepare/start/check/observe/cleanup/delivery); recipes carry explicit argv
+  arrays (shell strings rejected), timeouts, env-name lists (values injected at
+  runtime), and root-confined write paths. `lzy project check` (validation +
+  entry-present readiness) and `lzy project discover` (read-only missing list);
+  doctor `project` row. A contract's `recipe:` field binds the manifest content hash.
+- **Migration preview** (0.3.0 M1): `lzy migrate preview <root>` read-only scan of
+  legacy goal-loop records — per-task contract drafts with `authorization: NONE`,
+  endpoint draft, acceptance drafts from snapshot F assertions, and four
+  privilege-escalation prohibitions (M0 §9 mapping). Active goals refuse; corrupt
+  records surface as warnings; zero write-back. Full migration machinery is M5.
+- **Knowledge routing** (0.3.0 M1): the zw skill splits into a ≤8 KiB resident entry
+  plus eight per-phase recipes (`plugin/skills/zw/recipes/`); root AGENTS.md slims to
+  ≤12 KiB by relocating history (`docs/history.md`), the decision table
+  (`docs/decisions.md`), and the glossary (root `CONTEXT.md`). Nothing deleted —
+  every rule stays reachable entry → recipe → cited ADR.
+
 ## [0.2.4] - 2026-09-23
 
 ### Added

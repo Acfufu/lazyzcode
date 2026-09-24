@@ -169,6 +169,9 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | Handoff | `lzy loop handoff --snapshot <file>` | Register a clean handoff — the next Stop releases once, without spending the continue budget |
 | Cross-repo list | `lzy loop list [--root <dir>]` | Read-only sweep of sibling repos' goal loops (status, progress, claims, staleness, salvage stubs); anonymous release counters survive reset |
 | Goal lineage | `lzy loop history` | Read-only union of evidence bundles, salvage stubs, and git ledger trailers — every past goal with status, commit count, and latest activity |
+| Requirement contracts | `lzy contract show · lzy contract auth` | The human approves what to build and the boundary (immutable contractHash via the UPS human gate); the agent replans inside it without re-approval. Approval/withdrawal live only in UPS phrases — the CLI is read-only (ADR-0024) |
+| Project manifest | `lzy project check · lzy project discover` | Versioned `lzy.project.json` recipes (six capability classes; explicit argv, env names only, root-confined write paths) with validation, readiness, and a read-only missing list |
+| Migration preview | `lzy migrate preview <root>` | Read-only scan of legacy goal records producing contract drafts with `authorization: NONE` — old approvals never upgrade into new authorizations |
 | Cost report | `lzy loop cost` | Points report from the engine's local billing ledger (standing coefficients + dated promo overlay; simplified-OR goal attribution with a human-review note; read-only) |
 | `agents-md` | `lzy agents-md` | Project-memory audit: qualifying directories and coverage gaps |
 | `uninstall` | `lzy uninstall` | Removes the deployed cache and the registry entry |

@@ -235,6 +235,28 @@ repository**: `lzy loop register` hard-rejects a non-git host with `git init`
 guidance, because evidence binds git trees and a non-git host cannot pass
 `finish` (ADR-0019).
 
+## Requirement contracts (0.3.0)
+
+By default a goal loop approves an **execution plan**: the UPS human gate binds your
+「批准 <短码>」 to the planHash, and changing the plan mid-flight re-opens the gate.
+Since 0.3.0 a goal can instead be bound to a **requirement contract** — an immutable
+markdown file describing what to build (acceptance items with stable ids), where it
+may write (`scope:`), which delivery endpoint it targets, and which project-recipe
+version it trusts:
+
+```
+lzy loop register <slug> --title "…" --contract .lazyzcode/contracts/<task>.md
+```
+
+You approve the **contract** once (「批准 <contractHash 短码>」); afterwards the agent
+replans inside the boundary without asking again — deleting an acceptance item,
+stepping outside `scope:`, or a changed `lzy.project.json` are all machine-rejected
+until you approve a new contract. You can revoke with 「撤回 <contractHash 短码>」:
+the next gated action refuses, work already done stays honestly recorded. Read the
+bound contract and its approval ledger with `lzy contract show` / `lzy contract
+auth` (read-only — approvals and withdrawals exist only as real user messages).
+Goals registered without a contract keep the classic plan-approval gate.
+
 ## Goal loop commands
 
 ```

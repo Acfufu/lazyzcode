@@ -34,3 +34,12 @@ Four boundaries, fixed here so they cannot drift:
 4. **The message may carry `cwd`, the probed host root, and the goal slug** — all deterministic for a given state — while the invariant still bans timestamps and record filenames (the record name embeds `Date.now()`; injecting it would break byte-determinism across runs).
 
 **Precedence trade-off (recorded, machine-pinned).** A non-null verdict exits the hook, so an approve-shaped prompt that also carries a trigger word (e.g. `zw 批准 <短码>`) no longer reaches the trigger pipeline for that turn: no claim is written and no ZW engagement is injected. This is intentional — the approval is the stronger intent signal, and the human gate should speak before the loop engages — and the behaviour is pinned by test rather than left incidental.
+
+## 修订节（2026-09-24，0.3.0 M1 goal v030-m1——批准对象迁移，ADR-0024 落地）
+
+ADR-0024 改变批准的**对象**：人批准需求契约（contractHash，不可变），代理在契约边界内自主维护执行计划。自 0.3.0 M1 起双轨并存：
+
+1. **契约 goal**（`lzy loop register --contract <file>` 绑定 `goal.contract`）：计划采纳与 supersede 走**契约门**（授权有效 + 覆盖检查 + subjects⊆scope + 配方一致 + 契约文件漂移复核），批准短语「批准 <contractHash 前 8 位>」由同一 UPS 钩子写入 `.lazyzcode/authorizations/`（approval/withdrawal 追加式，后到者赢）；**契约内重规划不再重走人权门**（supersede 仍重走评审门）。新增撤回短语「撤回 <8hex>」=同轴可信事件：撤回后下一受控动作被拒，已发生外部效果如实保留。机器门同受 `LZY_ABLATE_HUMAN_GATE`、钩子双分支同受 `LZY_ABLATE_HOOK_HUMAN_GATE`（消融矩阵契约测试钉）。
+2. **legacy goal**（无契约）：本 ADR 的 planHash 人权门逐字段不变——`approvals/`、approvalPending、exact-hash 复核全保持；显式迁移归 0.3.0 M5。
+
+不变量沿袭：审批记录只能由 UPS 钩子在真实用户消息上写入（CLI 无 approve/withdraw 写命令）；批准绑定不可变哈希，批准后改被批文件=作废；本门防偷懒不防伪证，补偿控制=协议文本+审计环（doctor `contract` 行新增）。

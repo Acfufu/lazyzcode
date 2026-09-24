@@ -148,6 +148,9 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | 红绿 manifest | `lzy evidence red <Fid> --evidence … · waive-red <Fid> --reason · list` | 双证据机器账本：红半绑自己的面（缺省复合指纹、`--surface` 外部表面）；waive=一行豁免的机器形态；绿半 `step done` 即镜像；`list` 读按 F manifest |
 | 失效 DAG | `lzy dag dependents <id|surface> · lzy dag stale` | 跨 reset 中央账本：「什么依赖 X」+对照现行指纹的失效预览（只展示）；verify/finish 从它判证据时效——损坏即 fail-closed 拒（ADR-0014） |
 | 机器证明 | `lzy attest comparator --file <json>` | 对照判决落机器 attestation（HEAVY finish 强制现行 MATCH）；每次 finish 落 LOOP_COMPLETE 终验证明 |
+| 需求契约 | `lzy contract show · lzy contract auth` | 人批准「做什么与边界」（不可变 contractHash，经 UPS 人权门）；代理在边界内改计划无须重新批准。批准/撤回只在 UPS 短语——CLI 只读（ADR-0024） |
+| 项目清单 | `lzy project check · lzy project discover` | 版本化 `lzy.project.json` 配方（六类能力；明确 argv、env 只报名单、写入路径锁项目根）：校验、就绪、只读缺失清单 |
+| 迁移预览 | `lzy migrate preview <root>` | 旧目标记录只读扫描→契约草案（`authorization: NONE`）——旧批准永不升级为新授权 |
 | 交接 | `lzy loop handoff --snapshot <文件>` | 登记干净交接——下个 Stop 放行一次，不消耗续跑预算 |
 | 跨仓清单 | `lzy loop list [--root <目录>]` | 只读扫同级仓的目标循环（状态/进度/认领/新鲜度/存根）；匿名放行计数跨 reset 永续 |
 | 目标谱系 | `lzy loop history` | 只读并集证据包 ∪ salvage 存根 ∪ git 尾注——每个历史目标的状态、提交数与最近活动 |

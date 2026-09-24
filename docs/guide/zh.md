@@ -196,6 +196,23 @@ tier 之外立了第二根轴：**risk_class**（LOW / MED / HIGH / RESTRICTED�
 `lzy loop register` 对非 git 宿主直接硬拒并给 `git init` 指路——证据绑定 git
 树，非 git 宿主的 finish 不可达（ADR-0019）。
 
+## 需求契约（0.3.0）
+
+默认情况下，目标循环批准的是**执行计划**：UPS 人权门把你的「批准 <短码>」绑定到
+planHash，执行中改计划会重新触发批准。从 0.3.0 起，目标可以改为绑定**需求契约**——
+一份不可变的 markdown 文件：写清验收项（稳定 id）、允许写入的范围（`scope:`）、
+交付终点，以及信任的项目配方版本：
+
+```
+lzy loop register <slug> --title "…" --contract .lazyzcode/contracts/<task>.md
+```
+
+你只需批准**契约**一次（「批准 <contractHash 短码>」）；此后代理在边界内自主改计划、
+不再反复索批——删验收项、越出 `scope:`、或 `lzy.project.json` 变更都会被机器拒绝，
+直到你批准新契约。你可以用「撤回 <contractHash 短码>」撤回授权：下一个受闸动作会被
+拒绝，已完成的工作如实保留。用 `lzy contract show` / `lzy contract auth` 查看
+（只读——批准与撤回只来自真实用户消息）。未绑定契约的目标保持经典计划批准门。
+
 ## 目标循环命令
 
 ```

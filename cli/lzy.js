@@ -41,6 +41,7 @@ import {
 } from "../core/loop.js";
 import { effectiveAuthorization, loadContract } from "../core/contract.js";
 import { projectCheck, projectDiscover } from "../core/project.js";
+import { listReceipts, qualifyCheck, queryCiChecks, reuseRun, runCheck, showReceipt, VerifyError } from "../core/verify.js";
 import { previewMigration, renderMigrationPreview } from "../core/migrate.js";
 import { formatAttempts } from "../core/attempt.js";
 import {
@@ -72,7 +73,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1025,6 +1026,20 @@ function printHelp() {
   lzy migrate preview <根路径>              旧记录只读预览（契约草案 authorization=NONE；
                                             活跃 goal 在场拒；零写回，完整迁移归 M5）
 
+受控执行与回执（0.3.0 M2，主方案 §4.1/§4.2——真实执行产生回执，文本/指纹不构成新执行）：
+  lzy verify run <checkId>                  经受控执行器跑检查配方（argv shell:false+超时击杀+
+                                            env 白名单），回执+原始输出落 .lazyzcode/verify/
+                                            [--accepts A1,A2] [--note 摘要]
+  lzy verify reuse <checkId> --of <runId>   显式请求范围档复用判定（四问全过才放行；拒绝静默
+                                            复用；base 回执原时点原事实保留，只追加适用性判定）
+  lzy verify qualify <checkId>              对抗资格活体（逐声明输入注入检测+字节原样恢复复核；
+                                            资格绑定 checkId+manifestHash，清单变更须重资格化）
+  lzy verify list [--goal <slug>]           回执枚举（校验和 fail-closed）
+  lzy verify show <runId>                   回执全文+「非现行」身份对照（不冒充现行）
+  lzy verify ci [--sha <sha>] [--repo o/n]  只读查询 GitHub check-runs 绑候选身份（gh 缺席/
+                                            离线=blocked 原文+恢复指路；记录 sha≠HEAD=非现行）
+  （与 lzy loop verify 分工：本族=执行面；证据新鲜度权威在 loop verify 红绿账本）
+
 环境：
   LZY_ZCODE_ENGINE  显式指定引擎 zcode.cjs 路径；设置后替换默认候选（默认找 /Applications/ZCode.app/...，
                     也因此可指向不存在路径来测试「引擎缺失→手动启用」回退）
@@ -1134,6 +1149,113 @@ function cmdMigrate(args) {
   console.log("  （旧记录零改动；活跃 goal 在场拒预览；authorization 恒 NONE——转换产物须新批准）");
 }
 
+// ── verify 族（0.3.0 M2，主方案 §4.1/§4.2）：受控执行回执 + 范围档复用 + CI 身份绑定。
+// 与 `lzy loop verify`（证据时效核对读面）分工：本族=检查配方的真实执行/复用/资格/CI 查询
+// 执行面；证据新鲜度权威仍在 loop verify（red-green 账本），两读面不互代。
+function cmdVerify(args) {
+  const { _, f } = parseArgs(args);
+  const sub = _[0];
+  const cwd = process.cwd();
+  const accepts = typeof f.accepts === "string" ? f.accepts.split(/[\s,，]+/).filter(Boolean) : [];
+  const note = typeof f.note === "string" ? f.note : null;
+  if (sub === "run") {
+    const checkId = _[1];
+    if (!checkId || _[2]) throw new LoopError("用法：lzy verify run <checkId> [--accepts A1,A2] [--note 摘要]");
+    const { receipt, receiptPath, rawRel } = runCheck(cwd, checkId, { accepts, note });
+    const exitDesc = receipt.exit.error ? `error: ${receipt.exit.error}` : receipt.exit.timeout ? "超时击杀（SIGTERM）" : `exit ${receipt.exit.code}`;
+    console.log(`执行回执 · ${checkId} · ${exitDesc} · runId ${receipt.runId}`);
+    console.log(`  候选 HEAD ${receipt.candidate.headSha?.slice(0, 10) ?? "—"} · 复合指纹 ${receipt.candidate.compositeFingerprint?.slice(0, 12) ?? "unbound"} · 清单 ${receipt.recipe.manifestHash?.slice(0, 12) ?? "—"}`);
+    console.log(`  回执 ${receiptPath} · 原始输出 ${rawRel}（人工摘要与原始输出分离保存）`);
+    if (receipt.inputSnapshot) console.log(`  输入快照：${Object.keys(receipt.inputSnapshot).length} 项已入档（范围档复用判定面）`);
+    if (receipt.exit.code !== 0) process.exitCode = 1;
+    return;
+  }
+  if (sub === "reuse") {
+    const checkId = _[1];
+    const baseRunId = typeof f.of === "string" ? f.of : null;
+    if (!checkId || !baseRunId || _[2]) {
+      throw new LoopError("用法：lzy verify reuse <checkId> --of <runId>（显式请求复用判定；拒绝静默复用）");
+    }
+    const r = reuseRun(cwd, checkId, baseRunId, { accepts, note });
+    if (!r.ok) {
+      console.error(`复用拒绝（保守回退全树档）· ${checkId} · base ${baseRunId}`);
+      for (const reason of r.reasons) console.error(`  ✖ ${reason}`);
+      console.error("  恢复：lzy verify run " + checkId + " 真实重验（范围档四问全过才可复用，ADR-0025）");
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`复用回执 · ${checkId} · base ${baseRunId}（原时点 ${r.receipt.startedAt}，原观察事实保留） · runId ${r.receipt.runId}`);
+    for (const reason of r.receipt.reuseJudgment.reasons) console.log(`  ✔ ${reason}`);
+    console.log(`  回执 ${r.receiptPath}（追加式适用性判定——base 回执未被改写）`);
+    return;
+  }
+  if (sub === "qualify") {
+    const checkId = _[1];
+    if (!checkId || _[2]) throw new LoopError("用法：lzy verify qualify <checkId>（对抗资格活体：逐声明输入注入检测+原样恢复）");
+    const { receipt, receiptPath, baselineRunId } = qualifyCheck(cwd, checkId, { note });
+    console.log(`qualification 资格回执 · ${checkId} · 基线 runId ${baselineRunId} · 注入 ${receipt.injections.length} 条全检测`);
+    for (const inj of receipt.injections) console.log(`  ✔ ${inj.entry}（${inj.mode}）检测通过且已原样恢复`);
+    console.log(`  回执 ${receiptPath}（资格绑定 checkId+manifestHash——清单变更须重新资格化）`);
+    return;
+  }
+  if (sub === "list") {
+    const slug = typeof f.goal === "string" ? f.goal : null;
+    const receipts = listReceipts(cwd, slug);
+    console.log(`执行回执 · ${receipts.length} 条（.lazyzcode/verify/ · reset 不清 · 校验和 fail-closed）`);
+    for (const r of receipts) {
+      const exitDesc = r.exit.blocked ? "blocked" : r.exit.noRemoteCommit ? "远端无此提交" : r.exit.error ? "error" : r.exit.timeout ? "timeout" : `exit ${r.exit.code}`;
+      console.log(`  ${r.startedAt}  ${r.kind.padEnd(13)} ${r.checkId.padEnd(14)} ${exitDesc.padEnd(10)} ${r.runId}`);
+    }
+    return;
+  }
+  if (sub === "show") {
+    const runId = _[1];
+    if (!runId || _[2]) throw new LoopError("用法：lzy verify show <runId>");
+    const { receipt, current } = showReceipt(cwd, runId);
+    console.log(JSON.stringify(receipt, null, 2));
+    console.log(
+      current
+        ? "  身份对照：现行（记录复合指纹=现行候选指纹）"
+        : "  身份对照：非现行（记录身份≠现行候选——原观察事实按原时点解释，不冒充现行）",
+    );
+    return;
+  }
+  if (sub === "ci") {
+    const { receipt, receiptPath, recordedSha, nowHead } = queryCiChecks(cwd, {
+      repo: typeof f.repo === "string" ? f.repo : null,
+      sha: typeof f.sha === "string" ? f.sha : null,
+      note,
+    });
+    if (receipt.exit.blocked) {
+      console.error(`CI 查询 blocked · ${receipt.ci.repo}@${recordedSha.slice(0, 10)}`);
+      console.error(`  ✖ ${receipt.exit.blocked}`);
+      console.error(`  回执 ${receiptPath}（blocked 如实落账——不静默空过）`);
+      process.exitCode = 1;
+      return;
+    }
+    if (receipt.exit.noRemoteCommit) {
+      console.log(`CI 查询 · ${receipt.ci.repo}@${recordedSha.slice(0, 10)} → 无 CI 结果`);
+      console.log(`  ${receipt.exit.detail}`);
+      console.log(`  回执 ${receiptPath}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`CI 检查 · ${receipt.ci.repo}@${recordedSha.slice(0, 10)} · ${receipt.ci.checks.length} 条 check-runs`);
+    for (const c of receipt.ci.checks) {
+      console.log(`  ${c.conclusion ?? "—"}  ${c.name}  ${c.details_url ?? ""}`);
+    }
+    const allGreen = receipt.ci.checks.length > 0 && receipt.ci.checks.every((c) => c.conclusion === "success");
+    console.log(
+      `  判读：${allGreen ? "全绿（绑定该提交身份）" : receipt.ci.checks.length === 0 ? "无 check-runs 在案" : "存在非 success 结论"} · ` +
+        (recordedSha === nowHead ? "记录 sha=现行 HEAD（现行）" : `记录 sha≠现行 HEAD（${nowHead?.slice(0, 10) ?? "—"}）——非现行，候选变化后须重新核对`),
+    );
+    console.log(`  回执 ${receiptPath}`);
+    if (!allGreen) process.exitCode = 1;
+    return;
+  }
+  throw new LoopError("用法：lzy verify run|reuse|qualify|list|show|ci（执行面；证据新鲜度权威在 lzy loop verify）");
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const cmd = args[0];
@@ -1174,6 +1296,8 @@ async function main() {
       return cmdProject(args.slice(1));
     case "migrate":
       return cmdMigrate(args.slice(1));
+    case "verify":
+      return cmdVerify(args.slice(1));
     case "agents-md":
       return cmdAgentsMd();
     case "version":

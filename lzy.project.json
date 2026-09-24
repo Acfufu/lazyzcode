@@ -1,1 +1,20 @@
-{"schemaVersion":1,"capabilities":{"check":[{"id":"smoke","argv":["node","-e","process.exit(0)"],"timeoutMs":30000}]}}
+{
+  "schemaVersion": 1,
+  "capabilities": {
+    "check": [
+      {
+        "id": "test-suite",
+        "argv": ["node", "--test", "test/**/*.test.js"],
+        "timeoutMs": 600000,
+        "env": ["TZ"],
+        "inputPaths": ["core", "cli", "plugin", "test", "package.json"]
+      },
+      {
+        "id": "help-smoke",
+        "argv": ["node", "cli/lzy.js", "--help"],
+        "timeoutMs": 30000,
+        "inputPaths": ["cli", "package.json"]
+      }
+    ]
+  }
+}

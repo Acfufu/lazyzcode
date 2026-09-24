@@ -26,6 +26,38 @@ versioning is SemVer.
   runtime), and root-confined write paths. `lzy project check` (validation +
   entry-present readiness) and `lzy project discover` (read-only missing list);
   doctor `project` row. A contract's `recipe:` field binds the manifest content hash.
+- **Verification receipts** (0.3.0 M2, goal `v030-m2`; plan §4.1): `lzy verify run
+  <checkId>` executes a manifest check recipe under the controlled executor (argv
+  array, `shell:false`, SIGTERM timeout kill, env-name whitelist) and records a
+  checksum-protected receipt — runId/checkId/acceptance ids/contract hash/candidate
+  identity (HEAD + composite fingerprint)/recipe & manifest hash/input snapshot/env
+  fingerprint/start-end/exit/artifact sha256 — under `.lazyzcode/verify/` (append-only,
+  reset-surviving, fail-closed on tamper); raw output is stored separately from
+  summaries (`<slug>/raw/<runId>.log`). Receipts are produced by real execution only —
+  edited text or fingerprints never constitute a new run.
+- **Scope-tier evidence reuse** (0.3.0 M2; ADR-0025): check recipes may declare
+  `inputPaths` (validated like writePaths; files or directories, directories fully
+  enumerated so unknown new files count as change). `lzy verify qualify <checkId>`
+  runs the adversarial qualification live (injects a change into every declared input
+  and requires detection plus byte-identical restore); `lzy verify reuse <checkId>
+  --of <runId>` grants reuse only when all four questions pass (non-empty inputs,
+  qualification on record for the same checkId+manifestHash, input snapshot unchanged,
+  manifest hash and env fingerprint unchanged) — otherwise it conservatively falls
+  back with named reasons. Reuse receipts append an applicability judgment and never
+  rewrite the base receipt's original time and observations.
+- **Integration verification** (0.3.0 M2; plan §4.3): the drive workers-wave barrier
+  no longer re-anchors F evidence ("wave-barrier rebind" path retired — re-anchor is
+  not re-verification). When the goal root has a manifest with check recipes, the
+  barrier executes them for real on the merged candidate tree and records receipts;
+  a failed integration check winds down unclean (blocks delivery A); without a
+  manifest nothing auto-refreshes — stale evidence stays stale until genuinely
+  re-verified. Zero-change waves skip the re-run (tree-change gate).
+- **CI identity binding** (0.3.0 M2): `lzy verify ci [--sha <sha>] [--repo o/n]`
+  queries GitHub check-runs read-only via `gh api` (zero shell, 30s timeout, no push,
+  no repo-setting writes) and records a receipt binding {repo, sha, checks, queriedAt}.
+  A recorded sha that differs from the current HEAD is displayed as 非现行 (not
+  current); gh absent/offline yields an explicit blocked message with recovery hints
+  and a nonzero exit — never a silent pass. Honors `LZY_GH_BIN` for injection seams.
 - **Migration preview** (0.3.0 M1): `lzy migrate preview <root>` read-only scan of
   legacy goal-loop records — per-task contract drafts with `authorization: NONE`,
   endpoint draft, acceptance drafts from snapshot F assertions, and four

@@ -57,8 +57,6 @@ goal `v030-m2`（0.3.0 M2：verify 回执 + 范围档 + 整合验证 + CI 身份
   - **F4 红**：改前宿主 CLI `verify ci` → 未知命令原文。
   - 消融记账：F2/F3 场地人权门 LZY_ABLATE_HUMAN_GATE=1 + 钩子层 LZY_ABLATE_HOOK_HUMAN_GATE=1（M0§8 家法，被测面=证据机器非批准门）。
 
-## 6. 对抗清单自查（收口时补）
-
 ## 5.1 N9 试点夹具注入（2026-09-24）
 
 - 夹具槽位 reset（M0 残档 v030-reanchor-repro 清理，salvage 盘点在案）→ 分支 `v030-m2-pilot` 基点 `4b54f77`。

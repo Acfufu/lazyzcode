@@ -525,3 +525,73 @@ export function qualifyCheck(cwd, checkId, { note = null } = {}) {
   const p = writeReceipt(cwd, receipt);
   return { receipt, receiptPath: relative(cwd, p), baselineRunId: baseline.receipt.runId };
 }
+
+// ── CI 身份绑定（0.3.0 M2，拍板 5）：只读查询 GitHub check-runs 并绑候选提交身份 ──────
+// gh api（argv 数组、零 shell、30s 超时、零 push 零写零仓库设置改动）。一切读面恒对照
+// 「记录 sha vs 现行 HEAD」，不一致=如实「非现行」；gh 缺席/离线/无凭据/远端无此提交=
+// blocked 原文+恢复指路（回执如实落 blocked，不静默空过）。绑定对象=ci.yml 矩阵腿。
+export function queryCiChecks(cwd, { repo = null, sha = null, note = null } = {}) {
+  const goal = readGoal(cwd);
+  if (!goal) throw new VerifyError(`无活跃目标：verify ci 需 executing 目标承载 slug/契约——先 lzy loop register`);
+  const head = sha ?? headSha(cwd);
+  if (!head) throw new VerifyError("HEAD 不可解析（非 git 仓或空仓）——CI 绑定需要候选提交身份");
+  let repoSlug = repo;
+  if (!repoSlug) {
+    const r = spawnSync("git", ["remote", "get-url", "origin"], { cwd, shell: false, timeout: 10_000, encoding: "utf8" });
+    const url = (r.stdout ?? "").trim();
+    const m = url.match(/github\.com[:/](.+?)(?:\.git)?\/?$/);
+    if (!m) throw new VerifyError(`origin 远端非 GitHub（${url.slice(0, 80) || "缺席"}）——用 --repo <owner/name> 显式指定`);
+    repoSlug = m[1];
+  }
+  const startedAt = new Date().toISOString();
+  const runId = newRunId();
+  const r = spawnSync(
+    "gh",
+    ["api", `repos/${repoSlug}/commits/${head}/check-runs`, "--jq", "[.check_runs[] | {name, conclusion, details_url}]"],
+    { shell: false, timeout: 30_000, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+  );
+  const endedAt = new Date().toISOString();
+  let checks = [];
+  let exit;
+  if (r.error) {
+    exit =
+      r.error.code === "ENOENT"
+        ? { blocked: "gh CLI 缺席——恢复：安装 gh（https://cli.github.com）后重跑" }
+        : { blocked: `gh 执行失败：${r.error.message}` };
+  } else if (r.status !== 0) {
+    const errText = String(r.stderr ?? r.stdout ?? "").trim();
+    exit = /No commit found|HTTP 404/.test(errText)
+      ? { noRemoteCommit: true, detail: "远端无此提交——未推送或历史已改写（如实：无 CI 结果，不冒充现行绿）" }
+      : { blocked: `gh api 非零退出（exit=${r.status}）：${errText.slice(0, 200)}——恢复：gh auth status 核凭据/网络后重跑` };
+  } else {
+    try {
+      checks = JSON.parse(r.stdout ?? "[]");
+      if (!Array.isArray(checks)) throw new Error("非数组");
+      exit = { ci: "recorded", count: checks.length };
+    } catch {
+      exit = { blocked: `gh 输出不可解析（预期 JSON 数组）：${String(r.stdout ?? "").slice(0, 120)}` };
+    }
+  }
+  const receipt = {
+    schemaVersion: VERIFY_VERSION,
+    kind: "ci",
+    slug: goal.slug,
+    runId,
+    checkId: "ci-check-runs",
+    acceptanceIds: [],
+    contractHash: goal.contract?.hash ?? null,
+    candidate: candidateIdentity(cwd),
+    recipe: { id: "gh api check-runs（只读）", argv: ["gh", "api"], cwd: ".", timeoutMs: 30_000, manifestHash: null },
+    inputSnapshot: null,
+    envFingerprint: envFingerprint([]),
+    startedAt,
+    endedAt,
+    exit,
+    artifacts: [],
+    summary: note,
+    baseRunId: null,
+    ci: { repo: repoSlug, sha: head, checks, queriedAt: endedAt },
+  };
+  const p = writeReceipt(cwd, receipt);
+  return { receipt, receiptPath: relative(cwd, p), recordedSha: head, nowHead: headSha(cwd) };
+}

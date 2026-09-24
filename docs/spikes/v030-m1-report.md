@@ -49,7 +49,13 @@ goal `v030-m1`（0.3.0 M1 项目与授权：需求契约 + 授权撤回 + 项目
 
 ## 5. 实施记录（随步追加）
 
-（N2 起：模块落地记录、反例命令与输出、红绿取证、偏离记账。）
+- N2-N11 机器面逐提交落地（contract.js/trigger.js/loop.js 契约门五查/accepts/project.js/migrate.js/CLI 三族/doctor 三行）；每步 `npm test` 全绿（基线 491 零回归）。
+- N12 对抗反例夹具（scripts/probes/v030-m1-gate-repro.sh，v030-fixtures 外隔离现场；绿半=本树 CLI，红半=冻结基线 lazyzcode@4b54f77 且 HUMAN_GATE 消融如实记账）：
+  - 反例1 越界：红半覆盖缺口计划静默采纳（exit 0）；绿半查 c 覆盖缺口拒 + 查 d subject 出 scope 拒（exit 1）。
+  - 反例2 撤回：红半「撤回 abcdef01」被基线静默无视（空 JSON，exit 0）；绿半撤回→supersede 被拒点名撤回（查 b，exit 1）→再批准→supersede 过（exit 0）；authorizations 账本 approval→withdrawal→approval 时序在案。
+  - 反例3 配方漂移：红半改 lzy.project.json 后基线重采纳无感知（exit 0）；绿半查 e 漂移拒（exit 1）。
+  - 夹具勘误记账：配方哈希须与文件字节同源（printf 无换行 vs echo 有换行曾误配——查 e 活体自证）；sibling 须为真兄弟仓（宿主内路径被既有 subject 包含关系门先拒）。
+- 计划外漂移记账：开工时用户已拍板 V08（提交 6cfa167），AGENTS §4 #32 被占用→计划 N14「决策行 #32」顺延 #33（本报告 §1）。
 
 ## 6. 对抗清单自查（finish 前收口）
 

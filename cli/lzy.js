@@ -1162,7 +1162,7 @@ function cmdVerify(args) {
     const checkId = _[1];
     if (!checkId || _[2]) throw new LoopError("用法：lzy verify run <checkId> [--accepts A1,A2] [--note 摘要]");
     const { receipt, receiptPath, rawRel } = runCheck(cwd, checkId, { accepts, note });
-    const exitDesc = receipt.exit.error ? `error: ${receipt.exit.error}` : receipt.exit.timeout ? "超时击杀（SIGTERM）" : `exit ${receipt.exit.code}`;
+    const exitDesc = receipt.exit.timeout ? "超时击杀（SIGTERM/ETIMEDOUT）" : receipt.exit.error ? `error: ${receipt.exit.error}` : `exit ${receipt.exit.code}`;
     console.log(`执行回执 · ${checkId} · ${exitDesc} · runId ${receipt.runId}`);
     console.log(`  候选 HEAD ${receipt.candidate.headSha?.slice(0, 10) ?? "—"} · 复合指纹 ${receipt.candidate.compositeFingerprint?.slice(0, 12) ?? "unbound"} · 清单 ${receipt.recipe.manifestHash?.slice(0, 12) ?? "—"}`);
     console.log(`  回执 ${receiptPath} · 原始输出 ${rawRel}（人工摘要与原始输出分离保存）`);
@@ -1203,7 +1203,7 @@ function cmdVerify(args) {
     const receipts = listReceipts(cwd, slug);
     console.log(`执行回执 · ${receipts.length} 条（.lazyzcode/verify/ · reset 不清 · 校验和 fail-closed）`);
     for (const r of receipts) {
-      const exitDesc = r.exit.blocked ? "blocked" : r.exit.noRemoteCommit ? "远端无此提交" : r.exit.error ? "error" : r.exit.timeout ? "timeout" : `exit ${r.exit.code}`;
+      const exitDesc = r.exit.blocked ? "blocked" : r.exit.noRemoteCommit ? "远端无此提交" : r.exit.timeout ? "timeout" : r.exit.error ? "error" : `exit ${r.exit.code}`;
       console.log(`  ${r.startedAt}  ${r.kind.padEnd(13)} ${r.checkId.padEnd(14)} ${exitDesc.padEnd(10)} ${r.runId}`);
     }
     return;

@@ -148,7 +148,9 @@ function writeReceipt(cwd, receipt) {
   const p = join(dir, `receipt-${seq + 1}-${receipt.runId}.json`);
   mkdirSync(dirname(p), { recursive: true });
   const out = { ...receipt, checksum: checksumOf(receipt) };
-  const tmp = join(dirname(p), `.receipt-${process.pid}-${Date.now()}.tmp`);
+  // tmp 落家族根（verify/ 顶层）——ANY_TMP_SCAN_DIRS 的清扫/观测面只扫顶层（approvals 家法），
+  // 落 slug 子目录会成为清不到的孤儿；rename 跨目录同一文件系统。
+  const tmp = join(verifyRoot(cwd), `.receipt-${process.pid}-${Date.now()}.tmp`);
   writeFileSync(tmp, `${JSON.stringify(out, null, 2)}\n`, { mode: 0o600 });
   renameSync(tmp, p);
   return p;
@@ -286,7 +288,9 @@ export function runCheck(cwd, checkId, { accepts = [], note = null } = {}) {
     if (existsSync(abs)) artifacts.push({ path: o.split("\\").join("/"), sha256: sha256File(abs) });
   }
   const exit = r.error
-    ? { error: r.error.message }
+    ? r.error.code === "ETIMEDOUT"
+      ? { timeout: true, signal: r.signal ?? null, error: r.error.message } // spawnSync 超时=error ETIMEDOUT 形态（signal 可能空）
+      : { error: r.error.message }
     : r.signal
       ? { timeout: true, signal: r.signal }
       : { code: r.status };
@@ -377,7 +381,7 @@ export function judgeReuse(cwd, checkId, baseRunId) {
       reasons.push(`声明输入变化：${changed.slice(0, 5).join(", ")}${changed.length > 5 ? ` 等 ${changed.length} 项` : ""}——重验`);
     }
   }
-  if (base && base.recipe.manifestHash === loaded.hash && !sameSnapshot(envFingerprint(recipe.env ?? []), base.envFingerprint)) {
+  if (base && base.recipe.manifestHash === loaded.hash && JSON.stringify(envFingerprint(recipe.env ?? [])) !== JSON.stringify(base.envFingerprint)) {
     reasons.push("环境指纹变化（platform/node/TZ/名单变量）——环境变化无法解释即回退（ADR-0025）");
   }
   return reasons.length === 0
@@ -545,8 +549,9 @@ export function queryCiChecks(cwd, { repo = null, sha = null, note = null } = {}
   }
   const startedAt = new Date().toISOString();
   const runId = newRunId();
+  const ghBin = process.env.LZY_GH_BIN || "gh"; // 测试注入缝（镜像 LZY_ZCODE_ENGINE 家法）
   const r = spawnSync(
-    "gh",
+    ghBin,
     ["api", `repos/${repoSlug}/commits/${head}/check-runs`, "--jq", "[.check_runs[] | {name, conclusion, details_url}]"],
     { shell: false, timeout: 30_000, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
   );

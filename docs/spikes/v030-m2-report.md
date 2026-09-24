@@ -49,7 +49,13 @@ goal `v030-m2`（0.3.0 M2：verify 回执 + 范围档 + 整合验证 + CI 身份
 
 ## 5. 实施记录（随步追加）
 
-- N1（本节）：基线冻结+骨架落盘。
+- N1：基线冻结+骨架落盘（HEAD 0d23018→9f05564；npm test 514 绿改前实测）。
+- N2 主机红半预捕（账本 n366-n369，附件 artifacts/v030-m2-red/ sha256 绑定）：
+  - **F1 红**：夹具基线 CLI `verify run` → 未知命令原文（8.5KB help 全文，exit 1）。
+  - **F2 红**：scratch（9f05564）LIGHT goal 绿锚 marker ORIGINAL @ 52a562d（指纹 5a3a68d644）→ 无关 README 变更 → verify `过期 1：F1` exit 1——全树一刀切语义实锤。
+  - **F3 红（M0§8 递延全形态，真引擎 zcode.cjs 3.14.3）**：lz-red-f3 scratch，绿锚 @ 78db300（gen1）→ marker 改 BROKEN @ cc4c043（对照态 verify 如实过期）→ `drive --workers 2`：波 1 完成（工人 77.5s/180.6s）→「屏障重锚完成（subject 头树集实变）」→ **finish 过（marker 客观为假时新鲜度门放行）**。加重实锤：波中工人 w2 曾如实记红（dag n3：grep ORIGINAL 零命中），屏障重锚绿 n4（gen2「wave-barrier rebind…drive 代跑，未复跑断言」）把诚实红覆盖成现行。附带发现：清理相删 worktree 后复合指纹含 missing 根，verify 再报过期——证据曾短暂绑定瞬态 worktree 状态（另一缺陷面，如实记账）。
+  - **F4 红**：改前宿主 CLI `verify ci` → 未知命令原文。
+  - 消融记账：F2/F3 场地人权门 LZY_ABLATE_HUMAN_GATE=1 + 钩子层 LZY_ABLATE_HOOK_HUMAN_GATE=1（M0§8 家法，被测面=证据机器非批准门）。
 
 ## 6. 对抗清单自查（收口时补）
 

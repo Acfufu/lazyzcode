@@ -48,3 +48,9 @@ goal `v030-m3`（0.3.0 M3：授权队列状态机 + 累计预算账本 + 派发�
 ## 5. 实施记录（随步追加）
 
 - N1：基线冻结+骨架落盘（HEAD 9f3e7aa7…；npm test 538 绿改前实测 2026-09-25 EXIT=0）。
+- N2 主机红半预捕（账本 n381-n386，附件 artifacts/v030-m3-red/ sha256 绑定，--surface external 各绑各面）：
+  - **F1/F4/F5/F6 红**：queue 七子命令（add/list/show/budget/dispatch/reconcile/cancel）全为「未知命令：queue」+usage dump，exit 1×7 逐文件落盘——队列面整体缺位。
+  - **F2 红**：scratch 注册态 goal，budget init(60000ms/10pts)→spend 12000ms/3pts（非零原文）→**drive 同形态 initBudget(restart:true, fence=1) 后 spent=0/0**、remaining 读 0/60000——消耗无任何跨 run 累计载体；scratch `.lazyzcode/` 仅 `loop`，无 budget/ 无 queue/ 家族。
+  - **F3 红**：points 轴仅 per-run 账户读数（drive recordSpend 恒 points:0），无累计积分账本、无 metering-absent/killed-inflight 申报面、无达限停止下一次派发面。
+  - 附带纪律活体：无租约直调 restart 形 initBudget 被 fencing 门拒（runtime.js:339「每-run 预算重开仅限持租的 drive」）——修正探针先 `lease acquire` 取 fence 1 再重放，收尾 `lease release` 无僵尸。
+  - 消融记账：**零消融**——红半场地仅注册态 goal（register 非采纳门），未触人权门，无 LZY_ABLATE_* 使用。

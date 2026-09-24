@@ -49,6 +49,7 @@ goal `v030-m3`（0.3.0 M3：授权队列状态机 + 累计预算账本 + 派发�
 
 - N1：基线冻结+骨架落盘（HEAD 9f3e7aa7…；npm test 538 绿改前实测 2026-09-25 EXIT=0）。
 - N2 主机红半预捕（账本 n381-n386，附件 artifacts/v030-m3-red/ sha256 绑定，--surface external 各绑各面）：
+  - **supersede 注记（attempt 1→2）**：执行期发现派发采纳步缺声明输入（item.planPath/queue add --plan），按 ADR-0024 契约内重规划走 supersede（评审员续热复核 PASS）；forward-only 世系代价=attempt 1 的步完成记账与红半锚定如实作废（旧 6 红半入他实例历史），N1/N2 在 attempt 2 下重完成、六红半原捕获文件重绑（捕获内容零变化，仍为改前态；捕获时点 2026-09-24T18:13-18:16Z 早于全部代码提交）。
   - **F1/F4/F5/F6 红**：queue 七子命令（add/list/show/budget/dispatch/reconcile/cancel）全为「未知命令：queue」+usage dump，exit 1×7 逐文件落盘——队列面整体缺位。
   - **F2 红**：scratch 注册态 goal，budget init(60000ms/10pts)→spend 12000ms/3pts（非零原文）→**drive 同形态 initBudget(restart:true, fence=1) 后 spent=0/0**、remaining 读 0/60000——消耗无任何跨 run 累计载体；scratch `.lazyzcode/` 仅 `loop`，无 budget/ 无 queue/ 家族。
   - **F3 红**：points 轴仅 per-run 账户读数（drive recordSpend 恒 points:0），无累计积分账本、无 metering-absent/killed-inflight 申报面、无达限停止下一次派发面。

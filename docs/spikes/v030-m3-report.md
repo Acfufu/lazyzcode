@@ -62,3 +62,25 @@ goal `v030-m3`（0.3.0 M3：授权队列状态机 + 累计预算账本 + 派发�
   - **段中 SIGKILL**：q2 段中杀驱动进程树（孤儿引擎随父消亡；其死前已交付 marker-q2 提交 `4bac34a`+N1 done——真实部分工作形态）。崩溃态：q2 tx open+goal executing+僵尸租约（fence 5，hostPid 死）。
   - **重启恢复**：reconcile 判定表 (a) 活体——僵尸租约回收（fence 5）→tx killed+**killed-inflight 假零申报**→item 回 ready→**同 goal 续跑不重复注册**→引擎收 F1→goal done→完成（endpoint A，积分 5.02）→腾槽→队列排空 exit 0。
   - **断言清单全绿**：q1 tx 恰 1 条（零重复派发）；累计预算跨重启只增（墙钟 729028ms=433449+295579、积分 11.81=6.79+5.02，runtime.json per-run 归零不影响）；item1 工件零二次改写（恰 1 交付提交）；夹具树清洁+槽位腾空。假引擎用例（四件套 29 测试）与真引擎结果分列：两侧恢复判定表/计量/累计语义一致。
+
+## 6. 对抗清单自查（docs/research-adversarial-checklist.md 九类，2026-09-25 收口）
+
+本 goal 新增面：core/queue.js（三家族/状态机/派发事务/恢复判定表/逐会话计量）、drive.js 段记录 sink、CLI queue 七子命令、`.lazyzcode/queue/`+`.lazyzcode/budget/` 两家族。逐类：
+
+1. **malformed input——已有防护（新面自带，测试钉）**：三家族校验和 fail-closed（篡改 ledger 字节→读面拒，budget ②）；schemaVersion 形状断言+写前形状校验（写侧毒化防护）；deps 未知/自指/环 add 即拒；endpoint B/C、计划缺位、非正预算值全拒（state ③④、budget ⑦）；querySessionPoints sessionId 白名单净化（引号/分号/越界→absent，metering ④——SQL 内插注入面防御）。
+2. **prompt injection——不适用（攻击面未扩大）**：契约/计划信任级不变（批准流=M1 面）；队列读面（list/show/budget）全为本仓产生的状态文本；宿主 model_usage 行只折积分数字，不进任何命令构造。
+3. **cancel-resume——本 goal 主题（真引擎活体在案）**：段中 SIGKILL→tx open 保留→重启 reconcile：僵尸租约回收（holderPidAlive 判死）→killed+killed-inflight 申报→同 goal 续跑不重复注册→完成（N11 活体）；busy-live（租约在握且持租进程存活）不核销不重驱（recovery ④）；孤儿引擎部分工作（marker-q2 提交+N1 done）被恢复链如实接管。
+4. **stale state——已有防护**：三家族在 loop/ 外 reset 不清（位阶先例+reviewer 复核）；预算未决占用按登记上限保守计入（不假零，budget ③）；终态不可逆；supersede 世系切换后旧代红半锚定如实作废重绑（N2 注记）。
+5. **dirty worktree——已有防护（试点实测）**：夹具夹具文件未提交→finish 完整性闸门拒→队列未竟路径 item 回 ready 不假完成（调试期实锤，后夹具补提交全链绿）；试点终态夹具树清洁+槽位腾空。
+6. **hung commands——已有防护**：队列项 goal 沿 drive 既有墙钟/段上限/段超时；队列总额（wall/points）在派发门与占用登记双层约束；假 drive/真 drive 测试均 maxSegments 收束。
+7. **flaky tests——已有防护+一处显式边界**：四件套 29 例全假 drive/deps 注入零触网；真实 sqlite3 面不进测试（缺席路径=HOME 隔离天然全平台；db-present 路径=注入 querySessionPoints）；真实引擎面只在试点活体（不在 npm test）。
+8. **misleading success output——本 goal 主题（红绿全链在案）**：未授权提案永不 ready/零执行（recovery ⑥）；未竟不假完成（finish 拒→item 回 ready，非 failed 非 completed）；计量缺席/未计价/killed-inflight 三类显式记录不折零；overrun 如实入账（budget ⑤）；重复回执 dedup 拒；queue list 就绪面直陈未就绪首因。
+9. **repeated interruptions——本 goal 主题（活体在案）**：killed tx 重驱同 goal（N11）；重复 dispatch 对 open tx busy-live/killed 判定收敛；dedupKey 幂等结算（重复 settle 全 duplicate=no-op）。
+
+## 7. 债记账（收口时点）
+
+- **债 F（M1 记，处置声明）**：scope 运行时执法缺位（writePaths/inputPaths 均不观察逐次写入）。M3 派发面落地后重评：首版派发=受控 argv 执行器（shell:false）+队列自有 goal 注册面，暴露面已收窄；文件系统级逐写观察成本/误伤比失衡。**债 F 继续挂账，升格条件改挂 M4 交付面**（外部动作前授权核对）。
+- **债 G（M2 记，范围延伸）**：win32 执行语义未核——本 goal 计量测试已把「真实 sqlite3 CLI 缺席」纳入同族边界（缺席路径全平台活体；db-present 路径注入缝平台无关）；drive 段 SIGTERM/win32 gh 解析仍沿 M2 原债，CI 矩阵轮真值补核。
+- **债 I（新记）**：队列项 goal 的 LIGHT 恒定+endpoint A 恒定为首版收窄——HEAVY 项（comparator 终验面）与 B/C endpoint 入队归 M4；「未知外部结果单独核对状态（主方案 §5.1）」首版收窄为 failed+人工指路，M4 交付面重评。
+- **债 J（新记）**：孤儿引擎的段后工作不受队列控制——SIGKILL 后孤儿引擎可能继续写（本试点实测：死前完成 marker 提交+N1）。恢复链如实接管该形态，但「杀驱动即杀全部在途」不作承诺（进程组语义归宿主/引擎边界，ADR-0020 已知边界同族）。
+- **债 K（新记）**：engine `--json` usage 摘要作第二计量源的对账（Known unknowns 1）未拍板——试点结算全走宿主 db 行（唯一权威），摘要未消费；M4 交付面若需低延迟计量再做对账拍板。

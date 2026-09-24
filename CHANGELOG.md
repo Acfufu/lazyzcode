@@ -7,6 +7,24 @@ versioning is SemVer.
 
 ### Added
 
+- **Bounded queue & cumulative budget** (0.3.0 M3, goal `v030-m3`; ADR-0027): `lzy
+  queue` family (add/list/show/budget/dispatch/reconcile/cancel). Multiple approved
+  contracts run serially across interruptions: an item state machine (proposed →
+  authorized → ready → running → completed, with blocked/failed/cancelled) gates on
+  effective authorization + dependencies + project readiness + budget + lease + plan;
+  dispatch writes a transaction record in-lock (occupancy registration), then registers
+  or resumes the item goal, drives, finishes, settles per segment, confirms the queue,
+  and only then recycles the slot. Crash recovery reconciles every unsettled
+  transaction against the current goal (live-lease busy check, same-goal resume
+  without re-register, honest settle for done goals, failed-with-pointer for orphans)
+  — never re-dispatching blindly, never resetting another goal. The cumulative budget
+  ledger (`.lazyzcode/budget/`, reset-surviving) binds (slug, contractHash) with
+  provenance; dedup keys keep duplicate receipts from double-charging. Point
+  enforcement follows the approved approximate-limit semantics (#32): per-segment
+  sessionId usage queries, dispatch stops at the limit (in-flight overrun recorded
+  honestly), and metering absence / unpriced models / killed-inflight consumption are
+  explicitly recorded — never counted as zero — until a human resumes via
+  `lzy queue budget --resume-points`.
 - **Requirement contracts** (0.3.0 M1, goal `v030-m1`; ADR-0024 revising ADR-0018):
   register a goal against an immutable requirement contract (`lzy loop register
   --contract <file>`; `contractHash` = sha256 of the file bytes). Plan adoption for

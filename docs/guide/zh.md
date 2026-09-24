@@ -225,6 +225,19 @@ lzy loop register <slug> --title "…" --contract .lazyzcode/contracts/<task>.md
 并绑定提交身份：记录 sha≠现行 HEAD 如实标注「非现行」，gh 缺席/离线给 blocked 原文，
 绝不静默放行。
 
+## 有界队列与累计预算（0.3.0 M3）
+
+多项已授权工作可以跨中断连续完成。`lzy queue add` 把一项已批契约的工作登记进队列
+（`proposed`→批准生效后 `authorized`→依赖/项目/预算/租约/计划全就绪 `ready`），
+`lzy queue dispatch` 逐项串行派发：锁内写派发事务（占用登记）→注册或续跑 goal→drive
+→finish→按段结算→队列确认→腾槽→下一项。崩溃/中断后重启 dispatch，恢复判定表先核对
+后动作：未决事务×现行 goal 逐一判定（同 goal 续跑不重复注册；已 done 补结算；goal 缺失
+转 failed 带人工指路），绝不重复派发、绝不 reset 另一目标。累计预算（`lzy queue budget`）
+绑定契约哈希、独立于可 reset 的当前 goal：换任务、重启、重试都不刷新；相同回执按
+dedupKey 不重复扣账。积分执法采近似限制语义：逐段按 sessionId 查宿主用量，计量缺席/
+未计价模型/未决占用一律不算零——停止受积分限额约束的自动派发并显式记录，人工核对后
+`--resume-points` 恢复；SIGKILL 在途消耗以 killed-inflight 条目申报，绝不抹成零。
+
 ## 目标循环命令
 
 ```

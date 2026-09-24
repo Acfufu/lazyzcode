@@ -11,7 +11,7 @@
 ## 2. 当前状态（2026-09-25 短表；完整历史档案 → docs/history.md）
 
 - **已发布**：npm `lazyzcode` 0.2.4（registry latest；跨版本升级走 `lzy update` 或手动两步，见 README）。
-- **开发线 0.3.0 agent-first 改造进行中**：规划六文件已入库（入口 docs/plan-v030-agent-first.md + design/research + ADR-0024/0025）；M0 能力与基线已落地（docs/spikes/v030-m0-report.md；V08 判定=近似限制语义已经用户拍板，#32）；**M1 项目与授权已落地（2026-09-24，goal v030-m1：需求契约+契约门五查+授权撤回+lzy.project.json+知识路由 zw≤8KiB/AGENTS≤12KiB+只读迁移预览；#33；报告 docs/spikes/v030-m1-report.md）**；M2 验证机器面+lazyzcode 试点 A 已落地（2026-09-24，goal v030-m2：core/verify.js 执行回执+范围档四问复用/对抗资格+波末重锚退役→整合验证+CI 身份绑定+冻结夹具试点 A 交付〔独立评审 PASS〕；报告 docs/spikes/v030-m2-report.md）；openchamber/zpigeon-ios 试点按拍板 5 串行序待后续 goal。
+- **开发线 0.3.0 agent-first 改造进行中**：规划六文件已入库（入口 docs/plan-v030-agent-first.md + design/research + ADR-0024/0025）；M0 能力与基线已落地（docs/spikes/v030-m0-report.md；V08 判定=近似限制语义已经用户拍板，#32）；**M1 项目与授权已落地（2026-09-24，goal v030-m1：需求契约+契约门五查+授权撤回+lzy.project.json+知识路由 zw≤8KiB/AGENTS≤12KiB+只读迁移预览；#33；报告 docs/spikes/v030-m1-report.md）**；M2 验证机器面+lazyzcode 试点 A 已落地（2026-09-24，goal v030-m2：core/verify.js 执行回执+范围档四问复用/对抗资格+波末重锚退役→整合验证+CI 身份绑定+冻结夹具试点 A 交付〔独立评审 PASS〕；报告 docs/spikes/v030-m2-report.md）；**M3 有界队列+累计预算+lazyzcode 队列试点已落地（2026-09-25，goal v030-m3：lzy queue 七子命令+状态机授权门+派发事务崩溃恢复判定表+累计预算绑定 contractHash+积分近似限制记账〔#32；ADR-0027〕+真引擎两项队列试点〔段中 SIGKILL 恢复链+6.79/5.02 积分真实计量〕；报告 docs/spikes/v030-m3-report.md）**；openchamber/zpigeon-ios 试点按拍板 5 串行序待后续 goal。
 - 全部历史里程碑（P0 落地→六轮双审→0.0.5 首发→0.1.x/0.2.x 全弧线）、消融账本锚点、双审报告索引 → docs/history.md。
 - 发布机械件（定版/tag/publish/pages）按 docs/release-checklist.md 执行；docs/reviews/ 为评审报告库。
 
@@ -40,6 +40,7 @@
 | #31 | fast 形态 | --workers 波编排保留主线、LIGHT only、不默认化 |
 | #32 | 积分预算执法 | 近似限制语义（逐请求完成检测+停止下一次派发+在途超额如实记账） |
 | #33 | M1 契约授权 | 批准对象=contractHash、撤回=UPS 短码、契约内重规划免人权门、无契约 goal 保持现行门 |
+| #34 | M3 队列与累计预算 | 队列/预算家族在 loop/ 外（reset 不清）；预算绑定 (slug, contractHash) 不另铸授权 id；近似限制记账=逐段计量+三类「不算零」显式记录+seq 基人工恢复（ADR-0027） |
 
 其余 #1-#24 全表 → docs/decisions.md（含北星路径、产品形态、状态目录、证据时效、认领制、完整性内核、DAG 等全部拍板原文）。
 

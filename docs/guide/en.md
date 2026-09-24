@@ -274,6 +274,26 @@ check-runs read-only and binds the commit identity: a recorded sha behind the cu
 HEAD is labeled 非现行 (not current), and gh absent/offline reports blocked with
 recovery hints — never a silent pass.
 
+## Bounded queue & cumulative budget (0.3.0 M3)
+
+Multiple authorized items can run continuously across interruptions. `lzy queue add`
+registers an approved contract as a queue item (`proposed` → `authorized` once the
+approval is effective → `ready` when dependencies / project / budget / lease / plan are
+all satisfied); `lzy queue dispatch` runs items serially: a dispatch transaction is
+written in-lock (occupancy registration) → the goal is registered or resumed → drive →
+finish → per-segment settlement → queue confirmation → slot recycle → next item. After
+a crash, restarting dispatch reconciles before acting: each unsettled transaction is
+judged against the current goal (same goal resumes without re-registering; a done goal
+settles honestly; a missing goal fails the item with a human-pointer), never
+re-dispatching blindly and never resetting another goal. The cumulative budget
+(`lzy queue budget`) binds the contract hash and lives outside the resettable goal:
+switching tasks, restarts and retries never refresh it, duplicate receipts dedupe by
+key. Point enforcement uses the approved approximate-limit semantics: usage is queried
+per segment sessionId; metering absence / unpriced models / unsettled occupancy are
+never counted as zero — point-limited dispatch stops with an explicit record until a
+human resumes it via `--resume-points`; in-flight consumption at SIGKILL is declared as
+a killed-inflight entry, never flattened to zero.
+
 ## Goal loop commands
 
 ```

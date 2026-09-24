@@ -1,6 +1,6 @@
 # v030-m2 实施报告：0.3.0 M2 验证机器面与 lazyzcode 自托管试点 A
 
-goal `v030-m2`（0.3.0 M2：verify 回执 + 范围档 + 整合验证 + CI 身份绑定 + lazyzcode 试点 A）· 2026-09-24 开工。
+goal `v030-m2`（0.3.0 M2：verify 回执 + 范围档 + 整合验证 + CI 身份绑定 + lazyzcode 试点 A）· 2026-09-24 开工 · **2026-09-25 收口：17/17 步全 done · comparator 6/6 MATCH · LOOP_COMPLETE**。
 主方案 docs/plan-v030-agent-first.md §4/§7/§10-M2；ADR-0024（契约授权）/ADR-0025（验证依赖范围）。
 计划 `.lazyzcode/plans/v030-m2.md`（快照 sha256 77edef9126…，R2 PASS 后按 P3 建议微调三处的版本）；契约 `.lazyzcode/contracts/v030-m2.md`（contractHash 093bfd9c…，UPS 批准在案）。
 

@@ -24,7 +24,7 @@ import { loadProjectManifest } from "./project.js";
 import { computePoints } from "./cost.js";
 import { queryHostDb } from "./hostdb.js";
 import { billingDbPath } from "./paths.js";
-import { loadRuntime } from "./runtime.js";
+import { loadRuntime, holderPidAlive, reclaimLease } from "./runtime.js";
 import { createGit } from "./git.js";
 
 export const QUEUE_VERSION = 1;
@@ -607,8 +607,11 @@ export function reconcileDispatch(cwd, deps = {}) {
             return null;
           }
         })();
-        if (rt?.activeLease != null && rt.activeLease.expiresAtMs > Date.now()) {
-          verdicts.push({ txId: tx.txId, verdict: "busy-live（租约在握——派发可能仍活跃，不核销）", goalSlug: tx.goalSlug });
+        const lease = rt?.activeLease ?? null;
+        const leaseLive = lease != null && lease.expiresAtMs > Date.now()
+          && holderPidAlive(lease.hostPid) !== false; // 持租进程已死（ESRCH）=僵尸租约不算活跃
+        if (leaseLive) {
+          verdicts.push({ txId: tx.txId, verdict: "busy-live（租约在握且持租进程存活——派发可能仍活跃，不核销）", goalSlug: tx.goalSlug });
           continue;
         }
         patchTx(cwd, tx.txId, {
@@ -630,6 +633,12 @@ export function reconcileDispatch(cwd, deps = {}) {
             note: "派发事务未决终止——在途消耗不可知，不得当作零消耗释放（#32 假零申报）",
           });
         }
+        // 僵尸租约回收（best-effort）：持租进程死于 SIGKILL 时租约未过期会挡住重驱——
+        // holderPidAlive 已判死，此处按同判据回收（判不准时 reclaimLease 自身仍会拒）。
+        try {
+          const rc = reclaimLease(cwd, {});
+          if (rc.reclaimed) console.log(`[queue] 僵尸租约已回收（fence ${rc.fence}）`);
+        } catch {}
         verdicts.push({ txId: tx.txId, verdict: "killed（item 回 ready）", goalSlug: tx.goalSlug });
       } else if (goal && goal.slug === tx.goalSlug && goal.status === "done") {
         let settled = null;

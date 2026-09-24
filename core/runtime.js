@@ -165,7 +165,7 @@ function leaseActive(lease, now = Date.now()) {
 // 持租者活性探测（ADJ-32，0.2.1 五轮双审）：SIGKILL 的 drive 留下活性租约，后续每次
 // 唤起被拒且不给 handoff，恢复=人工删文件。同机 pid 存活可判（ESRCH=已死）；容器/pid 复用
 // 等不确定情形按「存活」处理（保守侧=继续拒，TTL 兜底），故只用于报错文案与 reclaim 出口。
-function holderPidAlive(pid) {
+export function holderPidAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return null; // 旧格式无 pid=不可判
   try {
     process.kill(pid, 0);

@@ -39,6 +39,9 @@ import {
   withLock,
   writeGoalReport,
 } from "../core/loop.js";
+import { effectiveAuthorization, loadContract } from "../core/contract.js";
+import { projectCheck, projectDiscover } from "../core/project.js";
+import { previewMigration, renderMigrationPreview } from "../core/migrate.js";
 import { formatAttempts } from "../core/attempt.js";
 import {
   acquireLease,
@@ -1014,12 +1017,121 @@ function printHelp() {
 项目记忆（AGENTS.md 分层，确定性审计——写盘归 init-deep 技能且草稿先行）：
   lzy agents-md    资格谓词+覆盖审计详单（退出码 0=覆盖完整无超限，1=有缺口/超限）
 
+需求契约与项目清单（0.3.0 M1，ADR-0024——批准/撤回走 UPS 短语，CLI 只读）：
+  lzy contract show                         目标绑定契约读面（结构键/验收项/授权态/漂移警示）
+  lzy contract auth                         授权账本时序（approval/withdrawal，追加式后到者赢）
+  lzy project check                         lzy.project.json 校验+就绪静态半（入口存在态）
+  lzy project discover                      只读缺失清单（能力类缺项/入口缺失配方）
+  lzy migrate preview <根路径>              旧记录只读预览（契约草案 authorization=NONE；
+                                            活跃 goal 在场拒；零写回，完整迁移归 M5）
+
 环境：
   LZY_ZCODE_ENGINE  显式指定引擎 zcode.cjs 路径；设置后替换默认候选（默认找 /Applications/ZCode.app/...，
                     也因此可指向不存在路径来测试「引擎缺失→手动启用」回退）
 
 设计红线：lzy 对用户 config.json 零写入；启用一律经引擎官方命令（docs/adr/0001）。
 证据纪律：F 项证据绑定 tree hash，代码一变旧证据作废；测试全绿≠证据。`);
+}
+
+// ── contract 族（0.3.0 M1，ADR-0024）：只读读面。写入口只有 UPS 钩子（批准/撤回短语），
+// CLI 无 approve/withdraw 命令（ADR-0018 同款禁令：模型可跑的写通道=假人权门形态）。
+function cmdContract(args) {
+  const { _, f } = parseArgs(args);
+  const sub = _[0];
+  const cwd = process.cwd();
+  if (sub === "show") {
+    const goal = readGoal(cwd);
+    if (!goal?.contract?.contractHash) {
+      throw new LoopError(
+        `本目录目标未绑定需求契约（register --contract <file> 绑定；无 goal 时先 lzy loop register）——` +
+          `无契约 goal 走现行 planHash 人权门（ADR-0018），不受 ADR-0024 契约门管辖`,
+      );
+    }
+    let contract;
+    try {
+      contract = loadContract(goal.contract.path, cwd);
+    } catch (e) {
+      throw new LoopError(
+        `契约文件不可读或结构非法：${e?.message ?? e}——契约绑定 ${goal.contract.path}（hash ${goal.contract.contractHash.slice(0, 8)}…）；` +
+          `修好文件或重新 register --contract（新哈希=新授权请求）`,
+      );
+    }
+    const drift = contract.hash !== goal.contract.contractHash;
+    const auth = effectiveAuthorization(cwd, goal.slug, goal.contract.contractHash);
+    console.log(`契约 · 目标 ${goal.slug} · ${goal.contract.path}（contractHash ${goal.contract.contractHash.slice(0, 8)}…${drift ? "，⚠ 磁盘文件已漂移——须重新 register --contract" : ""}）`);
+    console.log(`  task ${contract.task} · endpoint ${contract.endpoint} · recipe ${contract.recipe}${contract.budgetRef ? ` · budget-ref ${contract.budgetRef}` : ""}`);
+    console.log(`  scope：${contract.scopeRaw.join("、")}`);
+    if (contract.nonGoals) console.log(`  non-goals：${contract.nonGoals}`);
+    console.log(`  验收项（accepts 引用目标）：`);
+    for (const a of contract.acceptances) console.log(`    ${a.id}  ${a.text}`);
+    console.log(`  授权：${auth.authorized ? "有效（approval 在场且其后无 withdrawal）" : auth.lastEvent ? `失效（最后事件 ${auth.lastEvent.kind} @ ${auth.lastEvent.at}）` : "无记录（待批准）"} · 事件 ${auth.events.length} 条（lzy contract auth 看时序）`);
+    return;
+  }
+  if (sub === "auth") {
+    const goal = readGoal(cwd);
+    if (!goal?.contract?.contractHash) {
+      throw new LoopError("本目录目标未绑定需求契约（lzy contract show 先看绑定态）");
+    }
+    const auth = effectiveAuthorization(cwd, goal.slug, goal.contract.contractHash);
+    console.log(`授权账本 · 目标 ${goal.slug} · 契约 ${goal.contract.contractHash.slice(0, 8)}… · ${auth.events.length} 条（追加式，后到者赢）`);
+    for (const e of auth.events) {
+      console.log(`  ${e.kind === "approval" ? "✔ 批准" : "✖ 撤回"}  ${e.at}  ${e.file}`);
+    }
+    console.log(`  生效：${auth.authorized ? "是" : "否"}（.lazyzcode/authorizations/，reset 不清；唯一写入口=UPS 钩子）`);
+    return;
+  }
+  throw new LoopError("用法：lzy contract show | lzy contract auth（只读；批准/撤回走 UPS 短语「批准 <短码>」「撤回 <短码>」）");
+}
+
+// ── project 族（0.3.0 M1，主方案 §3.2）：只读发现与就绪静态半；真实执行归 M2 verify。
+function cmdProject(args) {
+  const { _ } = parseArgs(args);
+  const sub = _[0];
+  const cwd = process.cwd();
+  if (sub === "check") {
+    const r = projectCheck(cwd);
+    if (!r.present) {
+      console.log(`项目清单：本目录无 lzy.project.json（lzy project discover 看缺失面）`);
+      return;
+    }
+    console.log(`项目清单 · lzy.project.json（内容 sha256 ${r.hash.slice(0, 8)}…——契约 recipe 绑定此哈希） · 配方 ${r.recipes.length} 条`);
+    for (const rec of r.recipes) {
+      console.log(`  [${rec.class}] ${rec.id}  ${rec.state === "entry-present" ? "✔ 入口存在" : "✖ 入口缺失"}（${rec.entry}）`);
+    }
+    console.log("  （就绪=静态入口存在态；「实际可运行」归 M2 verify 执行回执，不在此冒充）");
+    return;
+  }
+  if (sub === "discover") {
+    const r = projectDiscover(cwd);
+    if (!r.present) {
+      console.log(`只读发现 · ${r.hint}`);
+      console.log(`  六类能力全缺：${r.missingClasses.join("、")}`);
+      return;
+    }
+    console.log(`只读发现 · lzy.project.json（sha256 ${r.hash.slice(0, 8)}…）`);
+    console.log(`  缺项能力类：${r.missingClasses.length > 0 ? r.missingClasses.join("、") : "（无——六类齐备）"}`);
+    if (r.absentEntries.length > 0) {
+      console.log(`  入口缺失配方：${r.absentEntries.map((a) => `${a.class}/${a.id}(${a.entry})`).join("、")}`);
+    }
+    console.log("  （发现面≠受信执行输入：采纳流=契约引用清单哈希并经批准，ADR-0024）");
+    return;
+  }
+  throw new LoopError("用法：lzy project check | lzy project discover（只读）");
+}
+
+// ── migrate 族（0.3.0 M1）：只读预览；完整迁移机器归 M5。
+function cmdMigrate(args) {
+  const { _, f } = parseArgs(args);
+  if (_[0] !== "preview") {
+    throw new LoopError("用法：lzy migrate preview <目标根路径>（只读；--root <dir> 等价）");
+  }
+  const root = typeof f.root === "string" ? f.root : _[1];
+  if (!root || _[2]) {
+    throw new LoopError("用法：lzy migrate preview <目标根路径>（只读；--root <dir> 等价）");
+  }
+  const result = previewMigration(resolve(process.cwd(), root));
+  console.log(renderMigrationPreview(result));
+  console.log("  （旧记录零改动；活跃 goal 在场拒预览；authorization 恒 NONE——转换产物须新批准）");
 }
 
 async function main() {
@@ -1056,6 +1168,12 @@ async function main() {
       return cmdAttest(args.slice(1));
     case "dag":
       return cmdDag(args.slice(1));
+    case "contract":
+      return cmdContract(args.slice(1));
+    case "project":
+      return cmdProject(args.slice(1));
+    case "migrate":
+      return cmdMigrate(args.slice(1));
     case "agents-md":
       return cmdAgentsMd();
     case "version":

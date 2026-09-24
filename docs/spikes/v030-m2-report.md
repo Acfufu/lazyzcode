@@ -73,10 +73,23 @@ goal `v030-m2`（0.3.0 M2：verify 回执 + 范围档 + 整合验证 + CI 身份
 - **计划外事件 1（自举混淆反例，如实记账）**：drive#3 误用夹具内旧 CLI 驱动——旧「屏障重锚完成」行在退役后复现即为铁证；候选整合面未执行。处置：supersede 增 N4，改候选 CLI 重驱（drive#4）。教训：夹具工作区内 `node cli/lzy.js` 永远解析夹具自身代码——试点驱动一律用绝对路径候选 CLI。
 - **计划外事件 2（门控经济性补丁）**：整合验证原实现每波都跑全套件；补头树实变门槛（零变更波跳过+如实打行），drive#4 波 2/3 跳过行如约。
 
-## 6. 对抗清单自查（收口时补）
+## 6. 对抗清单自查（docs/research-adversarial-checklist.md 九类，2026-09-25 收口）
 
-（待收口）
+本 goal 新增面：core/verify.js（受控执行器/校验和回执/范围档四问/qualification 活体/CI 查询）、drive.js 整合验证块（重锚退役）、CLI verify 六子命令、`.lazyzcode/verify/` 家族。逐类：
 
-## 7. 债记账（随步追加）
+1. **malformed input——已有防护（新面自带）**：清单损坏在整合验证前置读 fail-closed（⑳b 钉）；回执篡改 fail-closed（校验和面，verify-receipt 钉）；qualification 对缺失条目/未检测变更 fail-closed 拒资格；gh 输出不可解析=blocked 不空过；argv shell 串在清单校验层拒绝（执行前）。
+2. **prompt injection——不适用（攻击面未扩大）**：契约/计划信任级不变；CI 检查名/URL 仅作展示文本（console.log），不进任何命令构造；配方 argv 来自版本化清单（信任流=契约绑定哈希经批准，M1 面）。
+3. **cancel-resume——已有防护（活体在案）**：回执写=tmp 0600+rename（无半写回执）；drive SIGKILL→僵尸租约门+显式 reclaim+重驱零重复交付（F3 活体）；supersede 重锚 ×3 全程 forward-only。
+4. **stale state——已有防护（本 goal 主题之一）**：回执绑候选身份、show 恒对照「非现行」；复用四问现算快照/清单哈希/环境指纹；整合验证按头树实变门槛现判；F1 证据被合并自然过期→重取（诚实门活体）。
+5. **dirty worktree——已有防护**：宿主 goal 全程先提交后取证（N2 记步时的未提交警示即该门提示面）；回执绑 HEAD 头树（未提交不可见，与证据家族同一语义，如实记账）。
+6. **hung commands——已有防护**：执行器 timeoutMs SIGTERM 击杀（ETIMEDOUT 语义钉）；gh 30s 超时；整合检查受配方超时约束；零变更波跳过重跑（门控）。
+7. **flaky tests——已有防护+两处显式跳过**：四件套 24 例真子进程+HOME 隔离+LZY_GH_BIN 注入缝（CI 零触网零 PATH 操控）；win32 下超时击杀与假 gh 两组显式 skip（执行语义未核，Known unknowns 3 预注册——CI 矩阵轮真值补核）；integration 用假引擎零网。
+8. **misleading success output——本 goal 主题（红绿全链在案）**：重锚退役（F3 真引擎红半→绿半）；回执不可由文本/指纹冒充；blocked ≠ pass；「非现行」如实标注；回退具名原因；qualification 字节原样恢复复核；**对抗自查实战捕获=drive#3 自举混淆**（夹具旧 CLI 驱动使旧重锚复现——「屏障重锚完成」行即铁证，改候选 CLI 重驱纠正）。
+9. **repeated interruptions——已有防护**：F1 过期→重取证→finish 通过（重取流程活体）；attempt 2→3 重锚 ×2；回执只追加（seq 递增）容忍重跑。
 
-（待收口）
+## 7. 债记账（收口时点）
+
+- **债 G（新记）：win32 执行语义未核**——执行器 SIGTERM 超时击杀（signal/ETIMEDOUT 形态）与 gh 可执行解析（PATHEXT/.exe）在 Windows 未验证；四件套对应两组 win32 显式 skip。升格路径：CI 矩阵 win 腿真值补核（预注册于计划 Known unknowns 3）；本地不得宣称跨平台执行面已验。
+- **债 H（新记）：整合回执不刷新 F 项红绿证据（设计如此，摩擦如实声明）**——重锚退役后，带已锚定 F 证据的目标经 workers 波后证据自然过期，须真实重验才得新鲜；drive 对此类目标收束于 finish 拒（诚实路径）。操作面摩擦=交付 A 前多一步真实重验；不设任何自动刷新通道（M0§8 教训的代价，接受）。
+- **债 F（M1 记，状态不变）**：scope 运行时执法缺位（writePaths/inputPaths 均不观察逐次写入）；升格条件仍挂 M3 派发面。
+- **观察（非债）**：空分派波仍装配 2 工人 worktree（drive#4 波 2/3 实测 0ms 分派但装配照走）——浪费小、语义无害；若 M3 队列放大该形态再评估跳过装配。

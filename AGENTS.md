@@ -8,10 +8,10 @@
 做 ZCode 版的 [lazycodex](https://github.com/code-yeongyu/lazycodex)（OmO 引擎的 Codex 发行版，MIT）。形态：**ZCode 插件 + 轻量 CLI（`lzy`）**——插件承载 skills/hooks/agents（纪律层），CLI 承载目标循环状态机与安装器。完整背景与论证见 `docs/reports/index.html`。
 
 
-## 2. 当前状态（2026-09-24 短表；完整历史档案 → docs/history.md）
+## 2. 当前状态（2026-09-25 短表；完整历史档案 → docs/history.md）
 
 - **已发布**：npm `lazyzcode` 0.2.4（registry latest；跨版本升级走 `lzy update` 或手动两步，见 README）。
-- **开发线 0.3.0 agent-first 改造进行中**：规划六文件已入库（入口 docs/plan-v030-agent-first.md + design/research + ADR-0024/0025）；M0 能力与基线已落地（docs/spikes/v030-m0-report.md；V08 判定=近似限制语义已经用户拍板，#32）；**M1 项目与授权已落地（2026-09-24，goal v030-m1：需求契约+契约门五查+授权撤回+lzy.project.json+知识路由 zw≤8KiB/AGENTS≤12KiB+只读迁移预览；#33；报告 docs/spikes/v030-m1-report.md）**；M2 起三仓试点（verify 回执/范围档/整合验证）待开工。
+- **开发线 0.3.0 agent-first 改造进行中**：规划六文件已入库（入口 docs/plan-v030-agent-first.md + design/research + ADR-0024/0025）；M0 能力与基线已落地（docs/spikes/v030-m0-report.md；V08 判定=近似限制语义已经用户拍板，#32）；**M1 项目与授权已落地（2026-09-24，goal v030-m1：需求契约+契约门五查+授权撤回+lzy.project.json+知识路由 zw≤8KiB/AGENTS≤12KiB+只读迁移预览；#33；报告 docs/spikes/v030-m1-report.md）**；M2 验证机器面+lazyzcode 试点 A 已落地（2026-09-24，goal v030-m2：core/verify.js 执行回执+范围档四问复用/对抗资格+波末重锚退役→整合验证+CI 身份绑定+冻结夹具试点 A 交付〔独立评审 PASS〕；报告 docs/spikes/v030-m2-report.md）；openchamber/zpigeon-ios 试点按拍板 5 串行序待后续 goal。
 - 全部历史里程碑（P0 落地→六轮双审→0.0.5 首发→0.1.x/0.2.x 全弧线）、消融账本锚点、双审报告索引 → docs/history.md。
 - 发布机械件（定版/tag/publish/pages）按 docs/release-checklist.md 执行；docs/reviews/ 为评审报告库。
 

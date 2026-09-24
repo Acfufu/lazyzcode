@@ -213,6 +213,18 @@ lzy loop register <slug> --title "…" --contract .lazyzcode/contracts/<task>.md
 拒绝，已完成的工作如实保留。用 `lzy contract show` / `lzy contract auth` 查看
 （只读——批准与撤回只来自真实用户消息）。未绑定契约的目标保持经典计划批准门。
 
+## 受控执行与回执（0.3.0 M2）
+
+`lzy.project.json` 里的 check 配方可以真正跑起来：`lzy verify run <checkId>` 经受控
+执行器（argv 数组、无 shell、超时击杀、环境变量白名单）执行配方并落一份**校验和回执**
+到 `.lazyzcode/verify/`（reset 不清；篡改即 fail-closed）。原始输出存 `raw/`，与人工
+摘要分离。配方声明 `inputPaths`（文件或目录）并通过 `lzy verify qualify` 的对抗资格
+（逐声明输入注入变更、须检测到且原样恢复）后，`lzy verify reuse --of <runId>` 才允许
+复用旧回执——四问（清单非空/资格在案/输入快照一致/清单与环境未变）任一不过即具名保守
+回退；复用只追加适用性判定，永不改写旧回执。`lzy verify ci` 只读查询 GitHub check-runs
+并绑定提交身份：记录 sha≠现行 HEAD 如实标注「非现行」，gh 缺席/离线给 blocked 原文，
+绝不静默放行。
+
 ## 目标循环命令
 
 ```

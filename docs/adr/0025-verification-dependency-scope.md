@@ -1,6 +1,6 @@
 # ADR-0025：按验证依赖决定证据失效
 
-日期：2026-09-23。状态：accepted（设计共识）；用户明确要求暂不实施，尚未替代现行运行规则。
+日期：2026-09-23。状态：accepted；**M2 已实现**（goal v030-m2，2026-09-24）——执行回执（core/verify.js 校验和家族）、inputPaths 范围档四问复用+对抗资格活体（qualify）、具名保守回退；writePaths 运行时执法仍缺位（债 F，升格挂 M3 派发面）。旧全树证据按原绑定解释；范围资格须重新建立（本文「协议提案与定案条件」的对抗用例=qualify 活体+scope-tier 契约测试）。
 关联：[访谈记录](../design-v030-agent-first.md)、[ADR-0013](0013-integrity-kernel.md)、[ADR-0014](0014-invalidation-dag-red-green-manifest.md)。
 
 ## 方向决策

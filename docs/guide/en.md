@@ -257,6 +257,23 @@ bound contract and its approval ledger with `lzy contract show` / `lzy contract
 auth` (read-only — approvals and withdrawals exist only as real user messages).
 Goals registered without a contract keep the classic plan-approval gate.
 
+## Controlled execution & receipts (0.3.0 M2)
+
+Check recipes in `lzy.project.json` can now actually run: `lzy verify run <checkId>`
+executes the recipe under the controlled executor (argv array, no shell, timeout kill,
+env-name whitelist) and records a **checksum receipt** under `.lazyzcode/verify/`
+(reset-surviving; tamper fails closed). Raw output lands in `raw/`, kept separate from
+human summaries. A recipe that declares `inputPaths` (files or directories) and passes
+`lzy verify qualify` — the adversarial qualification that injects a change into every
+declared input and requires detection plus byte-identical restore — may reuse old
+receipts via `lzy verify reuse --of <runId>`; any failed question (non-empty inputs /
+qualification on record / input snapshot unchanged / manifest & env unchanged) falls
+back conservatively with named reasons, and reuse only appends an applicability
+judgment — the base receipt is never rewritten. `lzy verify ci` queries GitHub
+check-runs read-only and binds the commit identity: a recorded sha behind the current
+HEAD is labeled 非现行 (not current), and gh absent/offline reports blocked with
+recovery hints — never a silent pass.
+
 ## Goal loop commands
 
 ```

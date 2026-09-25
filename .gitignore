@@ -29,3 +29,6 @@ artifacts/
 
 # pnpm 误跑再生锁文件（本仓零依赖根包；2026-09-14 Q3 拍板升 ignore——删了三回复发）
 pnpm-lock.yaml
+
+# npm 误装再生锁文件（本仓零依赖根包；2026-09-25 意外 npm install ai 事故后升 ignore，根锚定不涉 scripts/docs-preview/ 独立依赖）
+/package-lock.json

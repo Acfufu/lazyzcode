@@ -64,3 +64,11 @@ goal `v030-zpigeon-ios-pilot`（HEAVY/risk med，契约 `.lazyzcode/contracts/v0
 - **M0 阻塞解阻实证截图**：`baseline/launch-paired-cards.png`（sha256 绑 F1）——分区头「当前设备上的工作区和任务 2 个工作区 · 2 个任务」+v030-ws-a 卡片「1 个任务」+任务行「v030 expand collapse probe」在场；通知权限弹框由 XCUITest runner 自然处理（M0 同款）。
 - **注入前基线绿 ×2**（KU1 连续一致性判据）：`testSmokeWorkspaceCardExpandCollapse passed` **13.347s**（run1）/ **11.110s**（run2），均 exit 0——`baseline/green-run1.txt`/`green-run2.txt`；对照红态复捕 :28 失败=配方前红、配方后绿，F1 红绿两半齐。
 - 配方回执汇总 `baseline/n2-recipe-receipt.txt`（relay 日志+seed 读数+截图 sha256）；回执文件 sha256：n2-recipe-receipt `f4a4aea447c10148…`、screenshot `168d2b34cf3e4881…`（终值绑证据账本）。
+
+### 5.2 N3 契约与夹具清单落库（2026-09-25）
+
+- 夹具分支 `v030-zp-pilot`（基点 e573516）→ 五件统一 commit **aef973a**（lzy.project.json〔check=pilot-build/pilot-ui-smoke〕+scripts/pilot-check.sh〔中继探活拉起+幂等重播种+两 xcodebuild〕+scripts/pilot-relay.mjs〔零依赖 silent/handshake 双模〕+contracts/pilot.md〔recipe 0c2025fa〕+plans/pilot.md）——提交首版尾注误标 `#N0` 已 amend 订正为宿主执行步 `#N3`（引擎未起、分支独占，如实记）。
+- 夹具 goal `v030-zp-pilot`（LIGHT/risk low）register 回执：契约绑定 contracts/pilot.md（contractHash 3a43b108…）。
+- **无授权 adopt 拒原文**（负路径回执，`baseline/fixture-noauth-reject.txt`）：`[lzy] 人权门未过（契约授权，ADR-0024）：契约 contracts/pilot.md（短码 3a43b108）等待人类批准。…禁令：不得手写 authorizations/ 记录、也不得自跑命令冒充批准…`。
+- recordAuthorization 受信写者落账：`.lazyzcode/authorizations/approval-3a43b108-v030-zp-pilot-seed-1790306527100.json`（**如实声明：非 UPS 人工事件**——批准派生自宿主契约 64e91dd7 的 UPS 批准，受测面=驱动机械；M3 N10+oc N2 家法）。
+- adopt 过（4 项：N:2 F:2）+start 回执：基线 tree 0eb11cd6ff；夹具 .lazyzcode/ 经夹具 .gitignore 天然排除（评审核实在案）。

@@ -478,13 +478,20 @@ function annotateDone(cwd, ep, intentId, observedPatch, attempt) {
 }
 
 // CI 轮询（拍板 5：15s×≤12）：绿=present∧completed∧ok；有败=即拒；预算尽=pending（=拒，
-// 合并前置=CI 全绿——无 CI 仓此门永不绿，首版收窄如实声明）。query-failed=读面故障。
+// 合并前置=CI 全绿——无 CI 仓此门永不绿，首版收窄如实声明）。查询故障（网络 EOF 等）
+// 预算内重试——瞬时断连不判死（V10：读面故障重试后仍败才 query-failed）。
 function pollCi(deps, repo, sha) {
   const sleep = deps?.sleep ?? syncSleep;
+  let lastFail = null;
   for (let i = 1; i <= CI_POLL_MAX; i++) {
     const r = listCheckRuns(deps, repo, sha);
     if (!r.ok) {
-      return { verdict: "query-failed", polls: i, detail: String(r.stderr ?? r.error?.message ?? "").slice(0, 200) || "gh api 失败" };
+      lastFail = String(r.stderr ?? r.error?.message ?? "").slice(0, 200) || "gh api 失败";
+      if (i < CI_POLL_MAX) {
+        sleep(CI_POLL_INTERVAL_MS);
+        continue;
+      }
+      return { verdict: "query-failed", polls: i, detail: lastFail };
     }
     const v = checkRunsVerdict(r.runs);
     if (v.present && v.completed && v.ok) return { verdict: "green", polls: i, count: r.runs.length };

@@ -133,8 +133,8 @@ const TRANSITIONS = {
   intended: ["acting", "done", "failed"], // done/failed 仅经 readback 观察到外部事实（如他因已合并）
   acting: ["done", "failed", "refused", "unknown", "intended"], // intended 仅经 readback（open：合并未发生）
   unknown: ["done", "intended", "failed"], // readback 分类：merged→done / open→intended / 失败确证→failed
-  failed: ["acting", "intended"], // 同身份重试（act）或 readback 复核
-  refused: ["acting", "intended"], // 同上（拒绝后修复门序条件可重试）
+  failed: ["acting", "intended", "done"], // 同身份重试（act）或 readback 复核/迟来事实（他因已合并等）
+  refused: ["acting", "intended", "done"], // 同上（拒绝后修复门序条件可重试；读回观察到既成事实亦收束）
   done: [],
 };
 

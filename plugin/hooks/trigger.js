@@ -261,7 +261,7 @@ function withdrawalVerdict(input) {
     try {
       mkdirSync(authDir, { recursive: true });
       const sid = String(inputSessionId(input) ?? "unknown");
-      const name = `withdrawal-${short}-${sanitizeSessionId(sid).slice(0, 24)}-${Date.now()}.json`;
+      const name = `withdrawal-${code}-${sanitizeSessionId(sid).slice(0, 24)}-${Date.now()}.json`;
       const tmp = join(authDir, `.${name}.${process.pid}.tmp`);
       writeFileSync(
         tmp,

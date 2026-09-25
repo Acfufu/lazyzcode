@@ -81,7 +81,7 @@
 - **债 M4-2（d5 账本纠错未产品化）→ 延后**：correction attempt 留痕路径已足（一次发生+双留痕）；复发第二例或用户点名再产品化。
 - **债 M4-3（queue B/C 编排）/债 M4-4（C 面多页爬核）→ 重申后续版本**（原措辞明示延后，非 M5 义务）。
 
-- **N12 知识收口**（57dff66）：ADR-0029 立案+decisions #36+AGENTS 两行（12245B≤12288 腾位后）+CHANGELOG M5+CONTEXT 新词（版本入口/迁移日志）+README/guide 双语 migrate 行；裸 `{{` 全量零命中；债面五债拍板定案（§7）。
+- **N12 知识收口**（57dff66）：ADR-0029 立案+decisions #36+AGENTS 两行（12245B≤12288 腾位后）+CHANGELOG M5+CONTEXT 新词（版本入口/迁移日志）+README/guide 双语 migrate 行；裸 <code>&#123;&#123;</code> 全量零命中；债面五债拍板定案（§7）。
 - **N13 终审与收口**：双评审（R4 机器路无 P1 四 P2/R5 回放账路 REVISE 两 MF）→修复轮 71c290b（机器三修+两收+回归钉两件；文书两 MF+四 WARN；618/618 绿）→本报告终稿（评审轮记录+对抗自查）为最后内容提交→push 后 CI 真值核验→F1–F7 绿半终树采集→comparator→finish。
 
 ## 8. 对抗九类自查（N13 收口口径）
@@ -94,4 +94,4 @@
 6. **授权漂移**：契约 a65e57fe 字节哈希绑定零改动（批准后未触）；回放夹具契约经 recordAuthorization 受信写者+种子标注（M3 家法）。
 7. **计量假零**：回放积分两次止步活体（446.1/618.5≥400）如实记账+放宽续驱（债 O 配方）；消耗未按 sessionId 折算的面在报告 §3 如实标「未折算」，不算零不补造。
 8. **静默收窄**：lazyzcode-M3 队列代表任务回放账 1 次（不在 A5 算术）如实开列缺面（R5 MF-1 修正后）；win32 skip=边界非已验面如实声明；oc-④ 无浏览器面如实标注。
-9. **单源漂移**：decisions #36+ADR-0029+AGENTS §2/§4+CHANGELOG+CONTEXT+README/guide 双语同批落；AGENTS 12245B≤12288 实测；docs 裸 `{{` 零命中。
+9. **单源漂移**：decisions #36+ADR-0029+AGENTS §2/§4+CHANGELOG+CONTEXT+README/guide 双语同批落；AGENTS 12245B≤12288 实测；docs 裸 <code>&#123;&#123;</code> 零命中。

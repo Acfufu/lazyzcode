@@ -72,3 +72,9 @@ goal `v030-zpigeon-ios-pilot`（HEAVY/risk med，契约 `.lazyzcode/contracts/v0
 - **无授权 adopt 拒原文**（负路径回执，`baseline/fixture-noauth-reject.txt`）：`[lzy] 人权门未过（契约授权，ADR-0024）：契约 contracts/pilot.md（短码 3a43b108）等待人类批准。…禁令：不得手写 authorizations/ 记录、也不得自跑命令冒充批准…`。
 - recordAuthorization 受信写者落账：`.lazyzcode/authorizations/approval-3a43b108-v030-zp-pilot-seed-1790306527100.json`（**如实声明：非 UPS 人工事件**——批准派生自宿主契约 64e91dd7 的 UPS 批准，受测面=驱动机械；M3 N10+oc N2 家法）。
 - adopt 过（4 项：N:2 F:2）+start 回执：基线 tree 0eb11cd6ff；夹具 .lazyzcode/ 经夹具 .gitignore 天然排除（评审核实在案）。
+
+### 5.3 N4 注入与红半预捕（2026-09-25）
+
+- 注入：RemoteHomeView.swift toggle 处理器体 `if…remove/insert` 行替换为 `_ = id // 试验注入注释`——**恰一行 diff**（1 insertion/1 deletion）；注入 commit `4182d45`（消息如实标注「试验注入——工作区卡片 toggle 熔断（受控缺陷，试点红面）」+尾注）。
+- **红半精确命中**：pilot-ui-smoke failed（10.8s），断言原文 `ZCodeWebParitySmokeUITests.swift:113: XCTAssertTrue failed - 点卡头应展开(任务行出现)`——与计划预注册失败点逐字同形；**收起全部/行数 0 前段断言照常通过**=注入只熔断 toggle 交互路径，判别面干净（`red/red-injected-test.txt`，sha256 38c22c81…）。
+- 红态视觉件：xcresult 附件导出（xcresulttool export attachments）获**测试全程屏幕录制 mp4**（2.28MB，sha256 2bf567b5…——收起全部生效→点卡头行不出现全程在案）+3 事件件；xcresult `build/dd/Logs/Test/Test-ZPigeon-2026.09.25_11-23-15-+0800.xcresult`。

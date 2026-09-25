@@ -956,6 +956,39 @@ function assertContractGate(cwd, goal, subjects) {
   return contract;
 }
 
+// ── 交付授权接线（0.3.0 M4，ADR-0028）：delivery 契约经 contractPending 复用 UPS 批准
+// 通道——钩子批准分支只认 goal.contractPending（无 status 闸），故 request 落三字段
+// {contractHash, contractPath, requestedAt} 逐字镜像 contractGateReject（:872-877 家法；
+// contractPath 承载钩子 exact-hash 复核目标，缺位=误哈希主契约、批准作废）。goal.json
+// 写面恒在本模块（delivery.js 不触 goal.json）；pending 清除=act 门过或同族替换时幂等清。
+export function bindDeliveryContract(cwd, ep, contractPath, contractHash) {
+  return withLock(cwd, () => {
+    const goal = readGoal(cwd);
+    if (!goal) throw new LoopError("本目录没有进行中的目标——delivery 授权挂 goal（先 lzy loop register）");
+    if (goal.status !== "executing") {
+      throw new LoopError(`目标 ${goal.slug} 非 executing（${goal.status}）——delivery 授权在执行期绑定`);
+    }
+    goal.delivery = { ...(goal.delivery ?? {}), [ep]: { path: contractPath, hash: contractHash } };
+    goal.contractPending = { contractHash, contractPath, requestedAt: new Date().toISOString() };
+    writeGoal(cwd, goal);
+    return { slug: goal.slug, short: contractHash.slice(0, 8) };
+  });
+}
+
+// pending 清除：expectHash 匹配才清（不清别的在途请求）；幂等（无 pending=no-op）。
+export function clearDeliveryPending(cwd, expectHash) {
+  return withLock(cwd, () => {
+    const goal = readGoal(cwd);
+    if (!goal?.contractPending) return null;
+    if (expectHash && goal.contractPending.contractHash !== expectHash) return goal.contractPending;
+    const cleared = goal.contractPending;
+    goal.contractPending = null;
+    writeGoal(cwd, goal);
+    return cleared;
+  });
+}
+
+
 // (c) 覆盖检查（契约门查 c）：契约每个验收项 id 须被至少一个 F 项的 accepts 引用——
 // 计划删验收=越界（覆盖缺口拒绝沿用旧授权，ADR-0024/V01）；引用不存在的 A id=计划与
 // 契约脱节，同拒。accepts 引用超集允许（F 项可同时钉多个验收项；无契约 goal 到不了这里）。

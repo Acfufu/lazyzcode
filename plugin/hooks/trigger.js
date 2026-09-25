@@ -212,7 +212,6 @@ function withdrawalVerdict(input) {
   try {
     const cwd = inputCwd(input);
     const goal = readGoal(cwd);
-    const bound = goal?.contract?.contractHash;
     if (!goal) {
       const root = probeHostRoot(cwd);
       return {
@@ -223,20 +222,41 @@ function withdrawalVerdict(input) {
             `Confirm you are in the goal's host workspace root, then re-send the withdrawal sentence.`,
       };
     }
-    if (!bound) {
+    // 撤回目标集合（0.3.0 M4，ADR-0028）：goal 主契约 + delivery 契约（B/C）——形状与
+    // 后到者赢语义照走（记录仍 {version,kind,slug,contractHash,at,sessionId}，无 scope 字段：
+    // 目标身份由契约本体承载）。8hex 前缀两两碰撞=拒（确定性优先，不猜用户意图）。
+    const candidates = [];
+    if (typeof goal?.contract?.contractHash === "string" && goal.contract.contractHash) {
+      candidates.push({ hash: goal.contract.contractHash, what: "goal contract" });
+    }
+    for (const ep of ["B", "C"]) {
+      const h = goal?.delivery?.[ep]?.hash;
+      if (typeof h === "string" && h) candidates.push({ hash: h, what: `delivery ${ep} contract` });
+    }
+    if (candidates.length === 0) {
       return {
         additionalContext:
-          `[lzy] Withdrawal sentence received, but goal ${goal.slug} has no requirement contract bound (register with lzy loop register --contract <file> first) — nothing was recorded.`,
+          `[lzy] Withdrawal sentence received, but goal ${goal.slug} has no contract bound (register with lzy loop register --contract <file> first) — nothing was recorded.`,
       };
     }
-    const short = String(bound).slice(0, 8).toLowerCase();
-    if (m[1].toLowerCase() !== short) {
+    const code = m[1].toLowerCase();
+    const matched = candidates.filter((c) => String(c.hash).slice(0, 8).toLowerCase() === code);
+    if (matched.length === 0) {
+      const list = candidates.map((c) => `${String(c.hash).slice(0, 8).toLowerCase()} (${c.what})`).join(", ");
       return {
         additionalContext:
-          `[lzy] Withdrawal code mismatch — the contract bound to goal ${goal.slug} has short code ${short}. ` +
+          `[lzy] Withdrawal code mismatch — valid codes for goal ${goal.slug}: ${list}. ` +
           `Ask the model for the exact withdrawal sentence (「撤回 <短码>」) and send it again. Nothing was recorded.`,
       };
     }
+    if (matched.length > 1) {
+      return {
+        additionalContext:
+          `[lzy] Withdrawal code ${code} matches more than one contract on goal ${goal.slug} — refusing to guess. ` +
+          `Nothing was recorded; withdraw by full context (e.g. re-bind and withdraw via the model relaying exact instructions).`,
+      };
+    }
+    const bound = matched[0].hash;
     const authDir = join(cwd, ".lazyzcode", "authorizations");
     try {
       mkdirSync(authDir, { recursive: true });
@@ -258,8 +278,8 @@ function withdrawalVerdict(input) {
     }
     return {
       additionalContext:
-        `[lzy] Withdrawal recorded for contract of goal ${goal.slug} (short code ${short}). ` +
-        `The contract gate will refuse the next gated action (plan adoption / supersede) for this contract; ` +
+        `[lzy] Withdrawal recorded for goal ${goal.slug} (short code ${code}). ` +
+        `The matching gate will refuse the next gated action (plan adoption / supersede / delivery act) for this contract; ` +
         `work already performed stays as-is — withdrawal does not undo external effects.`,
     };
   } catch {

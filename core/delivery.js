@@ -607,3 +607,129 @@ export function readbackDeliveryB(cwd, opts = {}, deps = {}) {
   const fresh = noteAttempt(cwd, "B", it.id, { method: "readback", outcome: "closed", detail: `#${pr.number} closed（本就 failed）` });
   return { intent: fresh, pr };
 }
+
+// ── C 面（pages-verify）：pages/builds/latest 轮询对齐 mergeSha → HTTPS 抓取站点页 →
+// --expect-marker 内容判据。全链只读（无不可逆写）——失败=failed（可重试/可读回复验），
+// 永不 unknown；构建失败/未对齐/内容不符/HTTP 非 200 均如实拒绝，不假绿（V11）。
+function pagesLatest(deps, repo) {
+  const r = ghApi(deps, ["api", `repos/${repo}/pages/builds/latest`, "--jq", "{status, commit, created_at, updated_at}"]);
+  if (r.code !== 0) return { ok: false, ...r };
+  try {
+    const b = JSON.parse(r.stdout);
+    if (!b || typeof b !== "object") return { ok: false, ...r, parseError: true };
+    return { ok: true, status: b.status ?? null, commit: b.commit ?? null };
+  } catch {
+    return { ok: false, ...r, parseError: true };
+  }
+}
+
+// Pages 站点 URL 由 repo slug 构造（<owner>.github.io/<repo>，gh pages html_url 同构；
+// slug 小写——Pages 域名小写归一）。私仓/自定义域不在首版面（报告声明）。
+export function siteUrlOf(repo) {
+  const [owner, name] = String(repo).split("/");
+  if (!owner || !name) throw new DeliveryError(`repo slug 非法（须 owner/name）：${repo}`);
+  return `https://${owner.toLowerCase()}.github.io/${name.toLowerCase()}/`;
+}
+
+function verifyPages(deps, repo, mergeSha, expectMarker) {
+  const siteUrl = siteUrlOf(repo);
+  const fetchRes = curlGet(deps, siteUrl);
+  const httpOk = fetchRes.code === 0 && fetchRes.httpStatus === 200;
+  const markerFound = httpOk && String(fetchRes.body ?? "").includes(expectMarker);
+  return { siteUrl, fetchRes, httpOk, markerFound };
+}
+
+export function actDeliveryC(cwd, opts, deps = {}) {
+  const { repo, expectMarker } = opts ?? {};
+  if (!repo || !expectMarker) {
+    throw new DeliveryError("act C 缺参数：--repo <owner/name> --expect-marker <合并后才存在的稳定串> 必填");
+  }
+  // B 前置：C 核验对象=B 产出的 mergeSha——B 意图须 done 且带 observed.mergeSha。
+  const pre = loadIntents(cwd);
+  const b = pre?.intents.find((x) => x.endpoint === "B");
+  if (!b || b.status !== "done" || !b.observed?.mergeSha) {
+    throw new DeliveryError(`C 面前置不满足：B 交付意图${!b ? "缺席" : `处于 ${b.status}`}且须带 observed.mergeSha——先完成 B 链（act B→readback B）再核验 Pages`);
+  }
+  const mergeSha = b.observed.mergeSha;
+  const { intent } = beginAct(cwd, "C", { kind: "pages-verify", target: { repo, expectMarker, mergeSha }, plannedArgv: [`gh api repos/${repo}/pages/builds/latest`, `curl ${siteUrlOf(repo)}`] });
+  const id = intent.id;
+  // 轮询（拍板 7：15s×≤10）至 status=built ∧ commit==mergeSha。
+  const sleep = deps?.sleep ?? syncSleep;
+  let build = null;
+  for (let i = 1; i <= PAGES_POLL_MAX; i++) {
+    const r = pagesLatest(deps, repo);
+    if (!r.ok) {
+      if (r.error?.code === "ENOENT") {
+        failAct(cwd, "C", id, "failed", { method: "pages-poll", outcome: "gh-missing", detail: "gh CLI 缺席" });
+        throw new DeliveryError("gh CLI 缺席——安装 gh 后重跑 act C");
+      }
+      failAct(cwd, "C", id, "failed", { method: "pages-poll", outcome: "query-failed", detail: String(r.stderr ?? "").slice(0, 200) });
+      throw new DeliveryError(`Pages 构建查询失败（意图 ${id} 已记 failed）：${String(r.stderr ?? "").slice(0, 200)}——readback C 可复验`);
+    }
+    build = { status: r.status, commit: r.commit };
+    if (build.status === "errored") {
+      failAct(cwd, "C", id, "failed", { method: "pages-poll", outcome: "build-errored", detail: `Pages 构建失败于 commit ${String(build.commit ?? "").slice(0, 10)}` });
+      throw new DeliveryError(`Pages 构建失败（意图 ${id} 已记 failed）——构建/内容问题如实阻塞（V11），修复 docs 后重跑 act C`);
+    }
+    if (build.status === "built" && build.commit === mergeSha) {
+      noteAttempt(cwd, "C", id, { method: "pages-poll", outcome: "aligned", detail: `commit ${String(build.commit).slice(0, 10)} built（${i} polls）` });
+      break;
+    }
+    if (i < PAGES_POLL_MAX) {
+      noteAttempt(cwd, "C", id, { method: "pages-poll", outcome: "pending", detail: `status=${build.status} commit=${String(build.commit ?? "").slice(0, 10)}` });
+      sleep(PAGES_POLL_INTERVAL_MS);
+    }
+  }
+  if (!(build && build.status === "built" && build.commit === mergeSha)) {
+    failAct(cwd, "C", id, "failed", { method: "pages-poll", outcome: "budget-exhausted", detail: `预算内未对齐（${PAGES_POLL_MAX}×${PAGES_POLL_INTERVAL_MS / 1000}s；latest=${build ? `${build.status}/${String(build.commit ?? "").slice(0, 10)}` : "无"}` });
+    throw new DeliveryError(`Pages 构建未在预算内对齐 mergeSha（意图 ${id} 已记 failed）——readback C 可复验（V11：不假绿）`);
+  }
+  // HTTPS 内容判据：200 ∧ 含 expect-marker。
+  const { siteUrl, fetchRes, httpOk, markerFound } = verifyPages(deps, repo, mergeSha, expectMarker);
+  if (!httpOk || !markerFound) {
+    const detail = `url=${siteUrl} http=${fetchRes.httpStatus ?? "n/a"} curlExit=${fetchRes.code} marker=${markerFound ? "found" : "MISSING"}${fetchRes.stderr ? ` stderr=${String(fetchRes.stderr).slice(0, 120)}` : ""}`;
+    failAct(cwd, "C", id, "failed", { method: "https-verify", outcome: "mismatch", detail });
+    throw new DeliveryError(`Pages 内容核验拒绝（意图 ${id} 已记 failed）：${detail}——构建对齐但内容判据不符（V11：不归 completed）`);
+  }
+  const it = settleAct(cwd, "C", id, "done", {
+    attempt: { method: "https-verify", outcome: "ok", detail: `200 ∧ marker found @ ${siteUrl}` },
+    observed: { pagesBuild: build, http: { url: siteUrl, status: 200, markerFound: true }, closedBy: "act" },
+  });
+  return { intent: it, build, siteUrl };
+}
+
+// readback C（幂等读面）：构建对齐+内容判据的迟来事实可把 failed/intended 收束为 done；
+// done 复验刷新 observed；未对齐=原状+如实 attempt。
+export function readbackDeliveryC(cwd, opts = {}, deps = {}) {
+  const state = loadIntents(cwd);
+  const it = state?.intents.find((x) => x.endpoint === "C");
+  if (!it) throw new DeliveryError("无 C 交付意图可读回——先 lzy delivery act C");
+  const repo = opts.repo ?? it.target.repo;
+  const marker = opts.expectMarker ?? it.target.expectMarker;
+  if (!repo || !marker) throw new DeliveryError("readback C 缺 repo/expect-marker（意图 target 与参数均缺席）");
+  const r = pagesLatest(deps, repo);
+  if (!r.ok) {
+    noteAttempt(cwd, "C", it.id, { method: "readback", outcome: "query-failed", detail: String(r.stderr ?? "").slice(0, 200) });
+    throw new DeliveryError(`readback C 查询失败（意图 ${it.id} 保持 ${it.status}）：${String(r.stderr ?? "").slice(0, 200)}`);
+  }
+  const aligned = r.status === "built" && r.commit === it.target.mergeSha;
+  if (!aligned) {
+    const fresh = noteAttempt(cwd, "C", it.id, { method: "readback", outcome: "not-aligned", detail: `status=${r.status} commit=${String(r.commit ?? "").slice(0, 10)}（意图要求 ${String(it.target.mergeSha).slice(0, 10)}）` });
+    return { intent: fresh, build: { status: r.status, commit: r.commit }, aligned: false };
+  }
+  const { siteUrl, fetchRes, httpOk, markerFound } = verifyPages(deps, repo, it.target.mergeSha, marker);
+  const verified = httpOk && markerFound;
+  if (it.status === "done") {
+    const fresh = annotateDone(cwd, "C", it.id, { pagesBuild: { status: r.status, commit: r.commit }, http: { url: siteUrl, status: fetchRes.httpStatus ?? null, markerFound } }, { method: "readback", outcome: verified ? "ok" : "mismatch", detail: `aligned=${aligned} marker=${markerFound ? "found" : "MISSING"}` });
+    return { intent: fresh, aligned: true, verified };
+  }
+  if (!verified) {
+    const fresh = noteAttempt(cwd, "C", it.id, { method: "readback", outcome: verified ? "ok" : "mismatch", detail: `aligned=${aligned} http=${fetchRes.httpStatus ?? "n/a"} marker=${markerFound ? "found" : "MISSING"}` });
+    return { intent: fresh, aligned: true, verified: false };
+  }
+  const fresh = settleAct(cwd, "C", it.id, "done", {
+    attempt: { method: "readback", outcome: "ok", detail: `200 ∧ marker found @ ${siteUrl}（读回收束）` },
+    observed: { pagesBuild: { status: r.status, commit: r.commit }, http: { url: siteUrl, status: 200, markerFound: true }, closedBy: "readback" },
+  });
+  return { intent: fresh, aligned: true, verified: true };
+}

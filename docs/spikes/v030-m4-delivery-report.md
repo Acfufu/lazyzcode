@@ -91,3 +91,9 @@ Goal `v030-m4-delivery`（tier heavy · risk high · 契约 4a2efc76…59b · �
 
 - **债 M4-1（CI flake）**：M3 预算套件在 push-to-main 腿三次偶发零就绪（④×1、⑤×2；PR 腿 5/5 绿、本地 20+ 执行零复现）——readiness 原因已随止步报文落日志，下次复现自诊断；根因未定论，不静默。**债 M4-2（d5 账本纠错）**：read-back-authority 缺陷产出的假 done 经 correction attempt 作废（非机器转移，报告+attempt 双留痕）；纠错路径未产品化。**债 M4-3（queue B/C 编排）**：delivery 独立于 queue，队列项仍拒 B/C（后续版本归并）。**债 M4-4（C 内容判据为单标记）**：报告页标题串+构建 commit 双判据已强，多页爬核留后续。**债 F 继承**：scope 逐写执法升格条件=本 goal 交付面已落地，待复评。
 
+## 9. 终验收口（2026-09-25，§7 第 4 条预注册的 rebind 落地）
+
+- F 证据 rebind 终树 fd20cdde9：1ece2a8→本次 docs 差异纯报告/AGENTS/history，delivery 代码面零改动（status/intents/check-runs/报告页 HTML 附件 sha256 与 gen1 逐字相同自证）——六项绿半 gen2（F3 gen3）全新鲜，外部读面（status/gh pr view 3/pages builds/latest/HTTPS 标记计数=3）与 IAB 双截图全量重采。
+- 红半 n446–n450 补入账（N2 改前原文：delivery 四态未知命令 EXIT=1/hook mismatch 零记录/站点零标记+报告页 404）+F6 一行豁免在账——INV-09 六对齐。
+- 对照 n451 六项 MATCH（对照员独立复跑活体面+git show c0a8b30 实证改前 cli/lzy.js 零 delivery 字样）；LOOP_COMPLETE attestation=终验机器证明（planHash+各根头树+指纹 2f12959281+对照 n451）。
+

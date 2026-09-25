@@ -89,3 +89,10 @@ goal `v030-zpigeon-ios-pilot`（HEAVY/risk med，契约 `.lazyzcode/contracts/v0
 - **drive#3（fence 3）**：段 1（sess_82bf22dd…，144.5s）→ `✔ goal done（v030-zp-pilot）——终验 attestation：.lazyzcode/attestations/`（`v030-zp-pilot-20260925T033940Z.json`）。
 - **断言清单（零重复交付）**：试点分支 e573516..HEAD 恰 4 commit（基础设施 aef973a/注入 4182d45/修复 9080d13/标记 29347c3）——**修复 commit 恰一条**；`git diff e5735163 HEAD -- RemoteHomeView.swift` **0 行（blob 全同）**；goal done 4/4；三次 drive 段记录枚举无第二条修复提交。
 - **消耗实记**：墙钟=272.2+104.3+144.5=521.0s（drive 段记录）；积分=hostdb model_usage 按 sessionId 只读查询、core/cost.js ADR-0023 口径折算：drive#1 **3.27** + drive#2 **1.976** + drive#3 **1.74** = **6.986**（引擎模型 deepseek-v4.1-flash；`drive/points-summary.txt`+`drive/points-rows.txt`）。
+
+### 5.5 N6 UI 实流取证与重启恢复（2026-09-25）
+
+- **修复后 UI 实流（无 launch 参数冷启动——Keychain 配对自动直达远程面）**：截图 `green/green-launch-1.png`（sha256 ab9e5ffc…）——分区头「2 个工作区 · 2 个任务」在场、首卡 v030-ws-a **默认展开**（chevron 朝下+任务行「v030 expand collapse probe」可见）、次卡 v030-ws-b 收起（chevron 侧向）——defaultExpansion 语义恢复如初（修复前注入态卡头点按两向无响应、:113 红）。
+- **重启恢复**：terminate+launch 全新进程→截图 `green/green-relaunch.png`（sha256 96166115…）行集合与重启前原样（Keychain 配对+快照缓存持久）；defaults 读数前后 diff **空**（`green/defaults-before-restart.txt` vs `after`，DEFAULTS_IDENTICAL 断言）。
+- **最终绿回执（驱动侧复跑，绑 F2 绿半）**：pilot-ui-smoke **passed（15.563s）** exit 0（`green/green-final-test.txt`）；与 N2 基线绿 13.3s/11.1s 及引擎段内 F1 自采绿四点一致。
+- **清理回执**（`green/cleanup-receipt.txt`）：中继进程 56803 终止→post-kill 探活 `000`（connection refused）+lsof 零行；模拟器留 booted 态至 N7 后处置（不触用户其他设备）。

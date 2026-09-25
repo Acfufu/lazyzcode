@@ -46,3 +46,11 @@ Goal `v030-m4-delivery`（tier heavy · risk high · 契约 4a2efc76…59b · �
 | F6 回归聚合 | npm test stdout | waive-red 一行（回归聚合面） |
 
 ## 5. 执行记录（随步追加）
+
+### N2 主机红半预捕（改前活体，场地 artifacts/v030-m4-red/）
+
+- (a) delivery 族未知命令 ×4：`未知命令：delivery`（stderr）+用法（stdout），**EXIT=1** 四态同（a-unknown-*.out/.err + a-unknown-exitcodes.txt）。
+- (b) hook 撤回对非绑定短码（deadbeef）mismatch 原文：`Withdrawal code mismatch — the contract bound to goal v030-m4-delivery has short code 4a2efc76 … Nothing was recorded.`（spawn 真钩子 stdin，EXIT=0 零记录；b-hook-mismatch.out）——F3 红半。
+- (c) `.lazyzcode/` 家族清单：**无 delivery/**（attestations/authorizations/contracts/drafts/evidence/loop/plans/verify；c-family-absence.txt）。
+- (d) 线上站点改前预抓取：index 200（内容含 0.2.4、**零** v030-m3/v030-m4 标记）；报告页两 URL 变体 **404**（d-site-fetch-meta.txt+d-marker-count.txt+原文 body×3）——F5 内容标记「合并后才存在」的改前不在场活体。
+

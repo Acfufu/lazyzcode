@@ -196,6 +196,59 @@ tier 之外立了第二根轴：**risk_class**（LOW / MED / HIGH / RESTRICTED�
 `lzy loop register` 对非 git 宿主直接硬拒并给 `git init` 指路——证据绑定 git
 树，非 git 宿主的 finish 不可达（ADR-0019）。
 
+## 需求契约（0.3.0）
+
+默认情况下，目标循环批准的是**执行计划**：UPS 人权门把你的「批准 <短码>」绑定到
+planHash，执行中改计划会重新触发批准。从 0.3.0 起，目标可以改为绑定**需求契约**——
+一份不可变的 markdown 文件：写清验收项（稳定 id）、允许写入的范围（`scope:`）、
+交付终点，以及信任的项目配方版本：
+
+```
+lzy loop register <slug> --title "…" --contract .lazyzcode/contracts/<task>.md
+```
+
+你只需批准**契约**一次（「批准 <contractHash 短码>」）；此后代理在边界内自主改计划、
+不再反复索批——删验收项、越出 `scope:`、或 `lzy.project.json` 变更都会被机器拒绝，
+直到你批准新契约。你可以用「撤回 <contractHash 短码>」撤回授权：下一个受闸动作会被
+拒绝，已完成的工作如实保留。用 `lzy contract show` / `lzy contract auth` 查看
+（只读——批准与撤回只来自真实用户消息）。未绑定契约的目标保持经典计划批准门。
+
+## 受控执行与回执（0.3.0 M2）
+
+`lzy.project.json` 里的 check 配方可以真正跑起来：`lzy verify run <checkId>` 经受控
+执行器（argv 数组、无 shell、超时击杀、环境变量白名单）执行配方并落一份**校验和回执**
+到 `.lazyzcode/verify/`（reset 不清；篡改即 fail-closed）。原始输出存 `raw/`，与人工
+摘要分离。配方声明 `inputPaths`（文件或目录）并通过 `lzy verify qualify` 的对抗资格
+（逐声明输入注入变更、须检测到且原样恢复）后，`lzy verify reuse --of <runId>` 才允许
+复用旧回执——四问（清单非空/资格在案/输入快照一致/清单与环境未变）任一不过即具名保守
+回退；复用只追加适用性判定，永不改写旧回执。`lzy verify ci` 只读查询 GitHub check-runs
+并绑定提交身份：记录 sha≠现行 HEAD 如实标注「非现行」，gh 缺席/离线给 blocked 原文，
+绝不静默放行。
+
+## 有界队列与累计预算（0.3.0 M3）
+
+多项已授权工作可以跨中断连续完成。`lzy queue add` 把一项已批契约的工作登记进队列
+（`proposed`→批准生效后 `authorized`→依赖/项目/预算/租约/计划全就绪 `ready`），
+`lzy queue dispatch` 逐项串行派发：锁内写派发事务（占用登记）→注册或续跑 goal→drive
+→finish→按段结算→队列确认→腾槽→下一项。崩溃/中断后重启 dispatch，恢复判定表先核对
+后动作：未决事务×现行 goal 逐一判定（同 goal 续跑不重复注册；已 done 补结算；goal 缺失
+转 failed 带人工指路），绝不重复派发、绝不 reset 另一目标。累计预算（`lzy queue budget`）
+绑定契约哈希、独立于可 reset 的当前 goal：换任务、重启、重试都不刷新；相同回执按
+dedupKey 不重复扣账。积分执法采近似限制语义：逐段按 sessionId 查宿主用量，计量缺席/
+未计价模型/未决占用一律不算零——停止受积分限额约束的自动派发并显式记录，人工核对后
+`--resume-points` 恢复；SIGKILL 在途消耗以 killed-inflight 条目申报，绝不抹成零。
+
+## 有限交付 B/C（0.3.0 M4）
+
+交付到项目主干（终点 B）或已验证的线上环境（终点 C）需要在需求契约之外的单独授权：
+`lzy delivery request B|C --contract <文件>` 绑定按终点划分的交付契约并索取其哈希的
+UPS 批准。合并动作（`lzy delivery act B`）受机器门约束：B∧C 双授权（合并会触发部署的
+分支须两项都有效）、PR head/base 漂移复核、PR headSha 的必需 CI 全绿——然后绑定 PR
+HEAD 合并、读回实际 merge SHA、轮询该 SHA 的 CI。Pages 核验（`lzy delivery act C`）
+等待构建 commit 对齐 merge SHA，并按预期标记核对线上 HTTPS 内容。每个动作之前都有意图
+记录（目标身份与计划 argv）落 `.lazyzcode/delivery/`；超时或断连后用
+`lzy delivery readback B|C` 分类收束——done 恒终，已成功动作绝不重复执行。
+
 ## 目标循环命令
 
 ```

@@ -20,7 +20,6 @@ import { spawnSync } from "node:child_process";
 import { progressSignature, signatureKey } from "./progress.js";
 import {
   LoopError,
-  anchoredGreenFor,
   assertDriveEligible,
   handoffDir,
   handoffGoal,
@@ -31,7 +30,8 @@ import {
   readGoal,
   withLock,
 } from "./loop.js";
-import { loadDag } from "./dag.js";
+import { loadProjectManifest } from "./project.js";
+import { runCheck } from "./verify.js";
 import {
   acquireLease,
   heartbeatLease,
@@ -115,16 +115,6 @@ function describeFinishFailure(fin) {
       ? "——某根有未提交改动：提交或清理该根（工人 worktree 的未提交物见收束快照的风险节）后重试"
       : "";
   return `${detail}${guidance}`.slice(0, 400);
-}
-
-// 现行锚定绿的 harnessSpec（屏障重锚的原样透传源，ADJ-04）：代数与锚定判据单一源在
-// core/loop.js（anchoredGreenFor），本函数只做「读图 + 取字段」。**不可读即抛**——调用点
-// 包护栏并收束：静默返回 null 会让重锚写出无 harnessHash 的新绿，正是 ADJ-04 的机器门
-// 拆除形态，故 fail-closed。
-function anchoredHarnessSpec(cwd, goal, fid) {
-  const dag = loadDag(cwd);
-  if (!dag) return null; // 账本缺席（全新目标）＝无既有绿可透传
-  return anchoredGreenFor(dag, goal, fid)?.harnessSpec ?? null;
 }
 
 function composeSegmentPrompt(cwd, cliPath) {
@@ -457,6 +447,16 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
       console.log(
         `[drive] 段 ${seg}/${maxSegments} sessionId=${result.sessionId ?? "—"} 耗时=${result.durationMs ?? "—"}ms 退出=${result.exitCode ?? "—"}`,
       );
+      // 段记录 sink（0.3.0 M3 队列结算输入）：sessionId/耗时/退出码逐段外报——调用方
+      // （core/queue.js 派发事务）据此做逐会话计量与墙钟结算；缺省无 sink 时零开销。
+      if (Array.isArray(opts.segmentRecords)) {
+        opts.segmentRecords.push({
+          sessionId: result.sessionId ?? null,
+          durationMs: result.durationMs ?? 0,
+          exitCode: result.exitCode ?? null,
+          endedAt: new Date().toISOString(),
+        });
+      }
       if (!result.ok) {
         windDown(
           false,
@@ -1169,45 +1169,65 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
         console.log(`[drive] ✔ goal done（${after.slug}）`);
         break;
       }
-      // 屏障重锚（**条件化**，ADJ-04/05）：只在本波 subject 头树集实变时才重锚。首波的实变
-      // 来自 subject 集本身（prevProgress 在装配前采集，只含宿主根），此后只有真实提交才会
-      // 移动它。旧实现无条件重锚 ⇒ ①每波机械追加绿节点，推进签名（greens 计数）恒涨，stuck
-      // 收束因结构性不可达（零推进也能烧满波预算还 exit 0）；②给从未在合并树上复跑的 F 项写
-      // 新绿且不传 --harness ⇒ 新绿无 harnessHash，INV-08 双在场判据恒假（机器门被自家编排
-      // 无声拆除）。
-      // 诚实边界：重锚 ≠ 复验——它把「已有取证」绑到本波新指纹，断言本身未在合并树上重跑。
-      // 该边界记入 ADR-0026 与对抗清单（升格条件=工人侧真复跑面立项）。
-      const preBarrier = progressSignature(cwd, after, prevProgress);
-      if (preBarrier.trees !== prevProgress.trees) {
-        for (const s of after?.steps ?? []) {
-          if (s.kind !== "F" || !s.evidence) continue;
-          let harness = null;
-          try {
-            harness = anchoredHarnessSpec(cwd, after, s.id);
-          } catch (err) {
-            windDownW(
-              false,
-              `屏障重锚前置读失败（证据账本不可读）：${String(err?.message ?? err).slice(0, 160)}`,
-              "证据账本不可读——恢复：lzy doctor 核 dag 面后重跑（不带 --harness 静默重锚会重开 ADJ-04 的口，故 fail-closed）",
-            );
-            break;
-          }
-          const rbArgs = ["step", "done", s.id, "--evidence", `wave-barrier rebind：workers 波 ${seg} 组装后复合指纹重锚（drive 代跑，未复跑断言）`];
-          if (harness) rbArgs.push("--harness", harness); // harnessSpec 原样透传：INV-08 冻结不因重锚失效
-          const rb = lzySpawn(cwd, cliPath, rbArgs, lease.fence);
-          if (rb.status !== 0) {
-            windDownW(
-              false,
-              `屏障重锚失败（${s.id}，exit=${rb.status}）`,
-              (rb.stdout ?? rb.stderr ?? "").trim().slice(0, 300),
-            );
-            break;
-          }
+      // 整合验证（0.3.0 M2，主方案 §4.3；本段退役 0.2.x 屏障重锚——「重锚 ≠ 复验」的代跑
+      // 通道整体拆除，M0§8 反例+本仓 v030-m2#N2 真引擎红半实证：工人诚实红被 gen2 重锚绿
+      // 覆盖、finish 在断言客观为假时放行）：合并候选树上的整合检查经受控执行器真实执行、
+      // 回执落账 .lazyzcode/verify/；失败 windDownW(false) 报真因——两工人各自通过 ≠ 整合
+      // 成功（V06），整合失败阻塞交付 A。清单缺席的仓零代跑零重绑：F 证据自然过期（诚实
+      // 路径——真实重验才得新鲜，finish 新鲜度门如实拒），drive 自动面不再存在任何证据
+      // 刷新通道；屏障形手工 step done 保留为人工命令面（人责证据）。
+      {
+        let integration = null;
+        try {
+          integration = loadProjectManifest(cwd);
+        } catch (err) {
+          windDownW(
+            false,
+            `整合验证前置读失败（清单损坏）：${String(err?.message ?? err).slice(0, 160)}`,
+            "清单不可读 fail-closed——lzy project discover 核对清单后重驱",
+          );
+          break;
         }
-        if (outcome) break; // 重锚通道内的收束
-        console.log(`[drive] 波 ${seg}/${maxSegments}：屏障重锚完成（subject 头树集实变）`);
-      } else {
-        console.log(`[drive] 波 ${seg}/${maxSegments}：subject 头树集未变——跳过屏障重锚（不制造机械推进）`);
+        const checks = integration?.manifest?.capabilities?.check ?? [];
+        // 头树实变门槛（沿旧屏障条件化语义 ADJ-04/05 的经济性半）：组装实变（首波 subject 集入集
+        // 或工人提交合并）才跑整合检查；零变更波候选未变，重跑全套件纯浪费——如实打跳过行。
+        const preBarrier = progressSignature(cwd, after, prevProgress);
+        if (checks.length > 0 && preBarrier.trees === prevProgress.trees) {
+          console.log(`[drive] 波 ${seg}/${maxSegments}：候选树未变——跳过整合检查（零变更波不重跑）`);
+        } else if (checks.length > 0) {
+          let failed = null;
+          for (const recipe of checks) {
+            let result = null;
+            try {
+              result = runCheck(cwd, recipe.id, { note: `drive 整合验证：workers 波 ${seg} 组装后候选树全检查（未复跑 F 断言——F 时效归既有红绿门）` });
+            } catch (err) {
+              windDownW(
+                false,
+                `整合验证执行失败（${recipe.id}）：${String(err?.message ?? err).slice(0, 200)}`,
+                `检查配方执行面故障——lzy verify run ${recipe.id} 复现后修配方`,
+              );
+              break;
+            }
+            if (!result) break;
+            const ok = result.receipt.exit.code === 0;
+            console.log(
+              `[drive] 波 ${seg}/${maxSegments}：整合检查 ${recipe.id} → ${ok ? `exit 0（回执 ${result.receipt.runId}）` : `失败 ${JSON.stringify(result.receipt.exit)}（回执 ${result.receipt.runId}）`}`,
+            );
+            if (!ok && !failed) failed = { id: recipe.id, runId: result.receipt.runId, exit: result.receipt.exit };
+          }
+          if (outcome) break; // 通道内已收束
+          if (failed) {
+            windDownW(
+              false,
+              `整合验证失败（${failed.id}，exit=${JSON.stringify(failed.exit)}，回执 ${failed.runId}）——整合候选不交付`,
+              "两工人各自通过 ≠ 整合成功（主方案 §4.3）——修失败项后重驱；详情 lzy verify show " + failed.runId,
+            );
+            break;
+          }
+          console.log(`[drive] 波 ${seg}/${maxSegments}：整合验证全绿（${checks.length} 检查回执落账）`);
+        } else {
+          console.log(`[drive] 波 ${seg}/${maxSegments}：无 check 清单——整合验证缺席，F 证据自然过期（不再自动重锚/代跑）`);
+        }
       }
       const cur = progressSignature(cwd, after, prevProgress);
       if (signatureKey(cur) === signatureKey(prevProgress)) noProgressStreak += 1;

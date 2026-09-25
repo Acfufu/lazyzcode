@@ -3,6 +3,102 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Limited delivery B/C (merge & Pages)** (0.3.0 M4, goal `v030-m4-delivery`; ADR-0028):
+  `lzy delivery` family (request/status/act/readback). B and C each get a separate
+  delivery contract (endpoint hashed into the approval) riding the UPS approval channel
+  unchanged — the hook approval branch needs zero changes; withdrawal recognizes
+  delivery contract short codes. The merge action is machine-gated on B∧C dual
+  authorization (main is the Pages source), PR head/base drift re-check, and green CI
+  on the PR head; merge binds the PR head (`--match-head-commit`), reads back the
+  actual merge SHA, and polls CI on that SHA. Pages verification aligns the build
+  commit with the merge SHA and checks live HTTPS content against an expected marker.
+  An intent ledger records target identity before any external call; read-back
+  classifies outcomes (merged → done, open → re-arm); done is final — no blind
+  re-execution after timeouts or disconnects.
+- **Bounded queue & cumulative budget** (0.3.0 M3, goal `v030-m3`; ADR-0027): `lzy
+  queue` family (add/list/show/budget/dispatch/reconcile/cancel). Multiple approved
+  contracts run serially across interruptions: an item state machine (proposed →
+  authorized → ready → running → completed, with blocked/failed/cancelled) gates on
+  effective authorization + dependencies + project readiness + budget + lease + plan;
+  dispatch writes a transaction record in-lock (occupancy registration), then registers
+  or resumes the item goal, drives, finishes, settles per segment, confirms the queue,
+  and only then recycles the slot. Crash recovery reconciles every unsettled
+  transaction against the current goal (live-lease busy check, same-goal resume
+  without re-register, honest settle for done goals, failed-with-pointer for orphans)
+  — never re-dispatching blindly, never resetting another goal. The cumulative budget
+  ledger (`.lazyzcode/budget/`, reset-surviving) binds (slug, contractHash) with
+  provenance; dedup keys keep duplicate receipts from double-charging. Point
+  enforcement follows the approved approximate-limit semantics (#32): per-segment
+  sessionId usage queries, dispatch stops at the limit (in-flight overrun recorded
+  honestly), and metering absence / unpriced models / killed-inflight consumption are
+  explicitly recorded — never counted as zero — until a human resumes via
+  `lzy queue budget --resume-points`.
+- **Requirement contracts** (0.3.0 M1, goal `v030-m1`; ADR-0024 revising ADR-0018):
+  register a goal against an immutable requirement contract (`lzy loop register
+  --contract <file>`; `contractHash` = sha256 of the file bytes). Plan adoption for
+  contract-bound goals runs the five-check contract gate — disk-hash drift, effective
+  authorization, acceptance coverage (`accepts:` refs on F items), subjects⊆scope,
+  recipe-hash match — and the UPS approval phrase binds the **contract** short code;
+  in-contract replans (`supersede`) re-run the review gate but no longer re-approve.
+  New trusted UPS phrase 「撤回 <短码>」 appends a withdrawal record; the gate refuses
+  the next gated action and already-occurred external effects stay honestly recorded.
+  Records live in `.lazyzcode/authorizations/` (append-only, reset-surviving,
+  fail-closed on a corrupt record); CLI read faces `lzy contract show` / `lzy
+  contract auth`; doctor `contract` row. Goals without a contract keep the legacy
+  planHash human gate byte-identical.
+- **Project manifest** (0.3.0 M1): versioned `lzy.project.json` with six capability
+  classes (prepare/start/check/observe/cleanup/delivery); recipes carry explicit argv
+  arrays (shell strings rejected), timeouts, env-name lists (values injected at
+  runtime), and root-confined write paths. `lzy project check` (validation +
+  entry-present readiness) and `lzy project discover` (read-only missing list);
+  doctor `project` row. A contract's `recipe:` field binds the manifest content hash.
+- **Verification receipts** (0.3.0 M2, goal `v030-m2`; plan §4.1): `lzy verify run
+  <checkId>` executes a manifest check recipe under the controlled executor (argv
+  array, `shell:false`, SIGTERM timeout kill, env-name whitelist) and records a
+  checksum-protected receipt — runId/checkId/acceptance ids/contract hash/candidate
+  identity (HEAD + composite fingerprint)/recipe & manifest hash/input snapshot/env
+  fingerprint/start-end/exit/artifact sha256 — under `.lazyzcode/verify/` (append-only,
+  reset-surviving, fail-closed on tamper); raw output is stored separately from
+  summaries (`<slug>/raw/<runId>.log`). Receipts are produced by real execution only —
+  edited text or fingerprints never constitute a new run.
+- **Scope-tier evidence reuse** (0.3.0 M2; ADR-0025): check recipes may declare
+  `inputPaths` (validated like writePaths; files or directories, directories fully
+  enumerated so unknown new files count as change). `lzy verify qualify <checkId>`
+  runs the adversarial qualification live (injects a change into every declared input
+  and requires detection plus byte-identical restore); `lzy verify reuse <checkId>
+  --of <runId>` grants reuse only when all four questions pass (non-empty inputs,
+  qualification on record for the same checkId+manifestHash, input snapshot unchanged,
+  manifest hash and env fingerprint unchanged) — otherwise it conservatively falls
+  back with named reasons. Reuse receipts append an applicability judgment and never
+  rewrite the base receipt's original time and observations.
+- **Integration verification** (0.3.0 M2; plan §4.3): the drive workers-wave barrier
+  no longer re-anchors F evidence ("wave-barrier rebind" path retired — re-anchor is
+  not re-verification). When the goal root has a manifest with check recipes, the
+  barrier executes them for real on the merged candidate tree and records receipts;
+  a failed integration check winds down unclean (blocks delivery A); without a
+  manifest nothing auto-refreshes — stale evidence stays stale until genuinely
+  re-verified. Zero-change waves skip the re-run (tree-change gate).
+- **CI identity binding** (0.3.0 M2): `lzy verify ci [--sha <sha>] [--repo o/n]`
+  queries GitHub check-runs read-only via `gh api` (zero shell, 30s timeout, no push,
+  no repo-setting writes) and records a receipt binding {repo, sha, checks, queriedAt}.
+  A recorded sha that differs from the current HEAD is displayed as 非现行 (not
+  current); gh absent/offline yields an explicit blocked message with recovery hints
+  and a nonzero exit — never a silent pass. Honors `LZY_GH_BIN` for injection seams.
+- **Migration preview** (0.3.0 M1): `lzy migrate preview <root>` read-only scan of
+  legacy goal-loop records — per-task contract drafts with `authorization: NONE`,
+  endpoint draft, acceptance drafts from snapshot F assertions, and four
+  privilege-escalation prohibitions (M0 §9 mapping). Active goals refuse; corrupt
+  records surface as warnings; zero write-back. Full migration machinery is M5.
+- **Knowledge routing** (0.3.0 M1): the zw skill splits into a ≤8 KiB resident entry
+  plus eight per-phase recipes (`plugin/skills/zw/recipes/`); root AGENTS.md slims to
+  ≤12 KiB by relocating history (`docs/history.md`), the decision table
+  (`docs/decisions.md`), and the glossary (root `CONTEXT.md`). Nothing deleted —
+  every rule stays reachable entry → recipe → cited ADR.
+
 ## [0.2.4] - 2026-09-23
 
 ### Added

@@ -8,6 +8,8 @@ import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
 import { createEngineCli } from "./engine.js";
 import { detectHeadlessAuth } from "./headless.js";
+import { effectiveAuthorization, loadContract } from "./contract.js";
+import { projectCheck } from "./project.js";
 // workers 残留三桶的形态/哨兵谓词单一源（core/drive.js；ADJ-39 同族纪律）。
 import { DRIVE_WORKERS_ROOT_DIRNAME, WORKERS_LOG_DIR_RE, WORKERS_RUN_DIR_RE, readWorkersSentinel } from "./drive.js";
 import { readRepoManifest, readRegistry, sha256File } from "./installer.js";
@@ -558,6 +560,83 @@ function checkApprovals(push, cwd) {
   push("approvals", "ok", `批准记录 ${names.length} 条（形状合法；ADR-0018 审计面——记录身份=文件+at/sessionId 字段）`);
 }
 
+// 契约授权诊断（0.3.0 M1，ADR-0024）：活跃 goal 绑契约时的授权态与漂移复核——ok=授权
+// 有效；warn=待批准/已撤回/磁盘契约漂移（gate 会拦，这里让原因提前可见）；skip=无 goal
+// 或未绑契约（legacy 人权门不受影响）。只读零写，warn/skip only 不翻退出码。
+function checkContract(push, cwd) {
+  let goal = null;
+  try {
+    goal = JSON.parse(readFileSync(join(cwd, ".lazyzcode", "loop", "goal.json"), "utf8"));
+  } catch {
+    goal = null;
+  }
+  if (!goal?.contract?.contractHash) {
+    push("contract", "skip", goal ? `目标 ${goal.slug} 未绑需求契约（走现行 planHash 人权门，ADR-0018）` : "无活跃目标");
+    return;
+  }
+  const short = String(goal.contract.contractHash).slice(0, 8);
+  let drift = null;
+  try {
+    const loaded = loadContract(goal.contract.path, cwd);
+    if (loaded.hash !== goal.contract.contractHash) drift = `磁盘契约已漂移（现 ${loaded.hash.slice(0, 8)}…≠绑定 ${short}）——重新 register --contract`;
+  } catch (e) {
+    drift = `契约文件不可读或结构非法：${String(e?.message ?? e).slice(0, 80)}`;
+  }
+  if (drift) {
+    push("contract", "warn", drift);
+    return;
+  }
+  const auth = effectiveAuthorization(cwd, goal.slug, goal.contract.contractHash);
+  if (auth.authorized) {
+    push("contract", "ok", `契约 ${short} 授权有效（approval 在场且其后无 withdrawal；goal ${goal.slug}）`);
+  } else if (auth.lastEvent?.kind === "withdrawal") {
+    push("contract", "warn", `契约 ${short} 已被用户撤回（${auth.lastEvent.at}）——采纳/supersede 将被契约门拒绝；恢复=重新批准`);
+  } else {
+    push("contract", "warn", `契约 ${short} 待批准（contractPending 在场）——把「批准 ${short}」转给用户后重跑采纳`);
+  }
+}
+
+// 项目清单诊断（0.3.0 M1）：lzy.project.json 在场即校验+报就绪静态半；缺席=skip。
+function checkProjectManifest(push, cwd) {
+  const r = projectCheck(cwd);
+  if (!r.present) {
+    push("project", "skip", "无 lzy.project.json（可选件；lzy project discover 看缺失面）");
+    return;
+  }
+  const missing = r.recipes.filter((x) => x.state !== "entry-present").length;
+  if (missing > 0) {
+    push("project", "warn", `清单合法（sha256 ${r.hash.slice(0, 8)}…，配方 ${r.recipes.length} 条）但 ${missing} 条入口缺失——lzy project check 逐条看`);
+  } else {
+    push("project", "ok", `清单合法（sha256 ${r.hash.slice(0, 8)}…，配方 ${r.recipes.length} 条，入口全在）`);
+  }
+}
+
+// 迁移预览诊断（0.3.0 M1）：报告旧记录族在場情况（reset 残档/历史 attestation），
+// 有可预览记录且无活跃 goal 时指路 lzy migrate preview。纯信息面。
+function checkMigratePreview(push, cwd) {
+  const lz = join(cwd, ".lazyzcode");
+  let goalActive = false;
+  try {
+    const goal = JSON.parse(readFileSync(join(lz, "loop", "goal.json"), "utf8"));
+    goalActive = goal && ["planning", "executing"].includes(goal.status);
+  } catch {}
+  const count = (dir, ext) => {
+    try {
+      return readdirSync(dir).filter((f) => f.endsWith(ext) && !f.startsWith(".")).length;
+    } catch {
+      return 0;
+    }
+  };
+  const attestations = count(join(lz, "attestations"), ".json");
+  const snapshots = count(join(lz, "loop", "snapshots"), ".md");
+  if (attestations === 0 && snapshots === 0) {
+    push("migrate", "skip", "无旧记录族（attestations/snapshots 均空）");
+    return;
+  }
+  const detail = `旧记录：attestations ${attestations} · snapshots ${snapshots}${goalActive ? "（活跃 goal 在场——preview 会拒，收口后才可预览）" : `（lzy migrate preview ${cwd} 可只读预览契约草案）`}`;
+  push("migrate", "ok", detail);
+}
+
 // 提交账本巡逻（ADR-0005）：goal 起点后的提交缺 `Goal:` 尾注的比例。
 // warn-only：账本是约定纪律，缺指针不阻断任何流程，doctor 可见即可。
 export function checkLedger(push, cwd) {
@@ -1063,6 +1142,9 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkLoopState(p, cwd),
     (p) => checkClaims(p, cwd),
     (p) => checkApprovals(p, cwd),
+    (p) => checkContract(p, cwd),
+    (p) => checkProjectManifest(p, cwd),
+    (p) => checkMigratePreview(p, cwd),
     (p) => checkHostGit(p, cwd),
     (p) => checkWaterline(p),
     (p) => checkOrphanWake(p, cwd),

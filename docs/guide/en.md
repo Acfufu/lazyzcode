@@ -235,6 +235,81 @@ repository**: `lzy loop register` hard-rejects a non-git host with `git init`
 guidance, because evidence binds git trees and a non-git host cannot pass
 `finish` (ADR-0019).
 
+## Requirement contracts (0.3.0)
+
+By default a goal loop approves an **execution plan**: the UPS human gate binds your
+「批准 <短码>」 to the planHash, and changing the plan mid-flight re-opens the gate.
+Since 0.3.0 a goal can instead be bound to a **requirement contract** — an immutable
+markdown file describing what to build (acceptance items with stable ids), where it
+may write (`scope:`), which delivery endpoint it targets, and which project-recipe
+version it trusts:
+
+```
+lzy loop register <slug> --title "…" --contract .lazyzcode/contracts/<task>.md
+```
+
+You approve the **contract** once (「批准 <contractHash 短码>」); afterwards the agent
+replans inside the boundary without asking again — deleting an acceptance item,
+stepping outside `scope:`, or a changed `lzy.project.json` are all machine-rejected
+until you approve a new contract. You can revoke with 「撤回 <contractHash 短码>」:
+the next gated action refuses, work already done stays honestly recorded. Read the
+bound contract and its approval ledger with `lzy contract show` / `lzy contract
+auth` (read-only — approvals and withdrawals exist only as real user messages).
+Goals registered without a contract keep the classic plan-approval gate.
+
+## Controlled execution & receipts (0.3.0 M2)
+
+Check recipes in `lzy.project.json` can now actually run: `lzy verify run <checkId>`
+executes the recipe under the controlled executor (argv array, no shell, timeout kill,
+env-name whitelist) and records a **checksum receipt** under `.lazyzcode/verify/`
+(reset-surviving; tamper fails closed). Raw output lands in `raw/`, kept separate from
+human summaries. A recipe that declares `inputPaths` (files or directories) and passes
+`lzy verify qualify` — the adversarial qualification that injects a change into every
+declared input and requires detection plus byte-identical restore — may reuse old
+receipts via `lzy verify reuse --of <runId>`; any failed question (non-empty inputs /
+qualification on record / input snapshot unchanged / manifest & env unchanged) falls
+back conservatively with named reasons, and reuse only appends an applicability
+judgment — the base receipt is never rewritten. `lzy verify ci` queries GitHub
+check-runs read-only and binds the commit identity: a recorded sha behind the current
+HEAD is labeled 非现行 (not current), and gh absent/offline reports blocked with
+recovery hints — never a silent pass.
+
+## Bounded queue & cumulative budget (0.3.0 M3)
+
+Multiple authorized items can run continuously across interruptions. `lzy queue add`
+registers an approved contract as a queue item (`proposed` → `authorized` once the
+approval is effective → `ready` when dependencies / project / budget / lease / plan are
+all satisfied); `lzy queue dispatch` runs items serially: a dispatch transaction is
+written in-lock (occupancy registration) → the goal is registered or resumed → drive →
+finish → per-segment settlement → queue confirmation → slot recycle → next item. After
+a crash, restarting dispatch reconciles before acting: each unsettled transaction is
+judged against the current goal (same goal resumes without re-registering; a done goal
+settles honestly; a missing goal fails the item with a human-pointer), never
+re-dispatching blindly and never resetting another goal. The cumulative budget
+(`lzy queue budget`) binds the contract hash and lives outside the resettable goal:
+switching tasks, restarts and retries never refresh it, duplicate receipts dedupe by
+key. Point enforcement uses the approved approximate-limit semantics: usage is queried
+per segment sessionId; metering absence / unpriced models / unsettled occupancy are
+never counted as zero — point-limited dispatch stops with an explicit record until a
+human resumes it via `--resume-points`; in-flight consumption at SIGKILL is declared as
+a killed-inflight entry, never flattened to zero.
+
+## Limited delivery B/C (0.3.0 M4)
+
+Delivering all the way to the project's main branch (endpoint B) or a verified live
+environment (endpoint C) needs its own authorization on top of the requirement
+contract: `lzy delivery request B|C --contract <file>` binds a per-endpoint delivery
+contract and asks for a UPS approval of its hash. The merge action (`lzy delivery act
+B`) is machine-gated: dual B∧C authorization (when merging to a branch that triggers a
+deploy), PR head/base drift re-check, and green required CI on the PR head — then it
+merges bound to the PR head, reads back the actual merge SHA, and polls CI on that SHA.
+Pages verification (`lzy delivery act C`) waits until the Pages build commit matches
+the merge SHA and checks the live HTTPS content against an expected marker. Every
+action is preceded by an intent record (target identity, planned argv) in
+`.lazyzcode/delivery/`, and `lzy delivery readback B|C` classifies outcomes after
+timeouts or disconnects — a done intent is final, so an already-successful action is
+never re-executed.
+
 ## Goal loop commands
 
 ```

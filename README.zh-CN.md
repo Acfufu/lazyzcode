@@ -148,6 +148,12 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | 红绿 manifest | `lzy evidence red <Fid> --evidence … · waive-red <Fid> --reason · list` | 双证据机器账本：红半绑自己的面（缺省复合指纹、`--surface` 外部表面）；waive=一行豁免的机器形态；绿半 `step done` 即镜像；`list` 读按 F manifest |
 | 失效 DAG | `lzy dag dependents <id|surface> · lzy dag stale` | 跨 reset 中央账本：「什么依赖 X」+对照现行指纹的失效预览（只展示）；verify/finish 从它判证据时效——损坏即 fail-closed 拒（ADR-0014） |
 | 机器证明 | `lzy attest comparator --file <json>` | 对照判决落机器 attestation（HEAVY finish 强制现行 MATCH）；每次 finish 落 LOOP_COMPLETE 终验证明 |
+| 需求契约 | `lzy contract show · lzy contract auth` | 人批准「做什么与边界」（不可变 contractHash，经 UPS 人权门）；代理在边界内改计划无须重新批准。批准/撤回只在 UPS 短语——CLI 只读（ADR-0024） |
+| 项目清单 | `lzy project check · lzy project discover` | 版本化 `lzy.project.json` 配方（六类能力；明确 argv、env 只报名单、写入路径锁项目根）：校验、就绪、只读缺失清单 |
+| 迁移预览 | `lzy migrate preview <root>` | 旧目标记录只读扫描→契约草案（`authorization: NONE`）——旧批准永不升级为新授权 |
+| 验证回执与范围档 | `lzy verify run/reuse/qualify/list/show/ci` | 受控执行器产生校验和回执（原始输出分离保存，`.lazyzcode/verify/`）；声明输入复用须经对抗资格，否则具名保守回退（ADR-0025）；CI check-runs 只读绑定，非现行/blocked 如实呈现 |
+| 有界队列与累计预算 | `lzy queue add/list/show/budget/dispatch/reconcile/cancel` | 多项已授权工作跨中断连续完成（`.lazyzcode/queue/`+`.lazyzcode/budget/`，reset 不清）：状态机授权门、派发事务崩溃恢复（先核对后动作）、累计预算绑定契约哈希跨重启不刷新；计量缺席/未决占用不算零——停受积分限额约束的派发并显式记录（ADR-0027） |
+| 有限交付 B/C | `lzy delivery request/status/act/readback` | 合并主干（B）与 Pages 上线核验（C）各立独立交付契约、复用 UPS 批准通道（ADR-0028）：合并前置=B∧C 双授权+PR head/base 漂移复核+CI 绿，绑 PR HEAD、读回实际 merge SHA 并轮询该 SHA 的 CI；C=Pages 构建对齐 merge SHA+线上 HTTPS 内容标记判据；意图账本先于动作落身份、读回分类收束——绝不盲目重发 |
 | 交接 | `lzy loop handoff --snapshot <文件>` | 登记干净交接——下个 Stop 放行一次，不消耗续跑预算 |
 | 跨仓清单 | `lzy loop list [--root <目录>]` | 只读扫同级仓的目标循环（状态/进度/认领/新鲜度/存根）；匿名放行计数跨 reset 永续 |
 | 目标谱系 | `lzy loop history` | 只读并集证据包 ∪ salvage 存根 ∪ git 尾注——每个历史目标的状态、提交数与最近活动 |

@@ -23,6 +23,7 @@ import {
   formatRepoList,
   formatStatus,
   handoffGoal,
+  bindDeliveryContract,
   fingerprintSubjects,
   noGoalMessage,
   readGoal,
@@ -39,6 +40,10 @@ import {
   withLock,
   writeGoalReport,
 } from "../core/loop.js";
+import { effectiveAuthorization, loadContract } from "../core/contract.js";
+import { projectCheck, projectDiscover } from "../core/project.js";
+import { listReceipts, qualifyCheck, queryCiChecks, reuseRun, runCheck, showReceipt, VerifyError } from "../core/verify.js";
+import { previewMigration, renderMigrationPreview } from "../core/migrate.js";
 import { formatAttempts } from "../core/attempt.js";
 import {
   acquireLease,
@@ -62,6 +67,25 @@ import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
 import { auditAgentsMd, formatAgentsMd } from "../core/agentsmd.js";
 import { formatCost, rollingWaterlinePoints } from "../core/cost.js";
 import { runDrive } from "../core/drive.js";
+import {
+  addQueueItem,
+  budgetView,
+  cancelQueueItem,
+  formatQueueList,
+  QueueError,
+  reconcileDispatch,
+  runQueueDispatch,
+  setQueueBudget,
+  showQueueItem,
+} from "../core/queue.js";
+import {
+  actDeliveryB,
+  actDeliveryC,
+  deliveryStatus,
+  readbackDeliveryB,
+  readbackDeliveryC,
+  validateDeliveryContract,
+} from "../core/delivery.js";
 
 const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 
@@ -69,7 +93,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -226,8 +250,13 @@ async function cmdLoop(args) {
       const goal = registerGoal(cwd, _[1], f.title, {
         tier: typeof f.tier === "string" ? f.tier : undefined,
         risk: typeof f.risk === "string" ? f.risk : undefined,
+        contract: typeof f.contract === "string" ? f.contract : null,
       });
       console.log(`✔ 目标已注册：${goal.slug} — ${goal.title}（状态 planning · tier ${goal.tier} · risk ${goal.risk ?? "low"}）`);
+      if (goal.contract) {
+        console.log(`  契约已绑定：${goal.contract.path}（contractHash ${goal.contract.contractHash.slice(0, 8)}…）`);
+        console.log("  采纳计划时走契约门：首次采纳将索「批准 <契约短码>」，契约内重规划不再逐版批准（ADR-0024）");
+      }
       console.log("  下一步：写决策完备计划到 .lazyzcode/plans/<slug>.md，然后 lzy loop plan <文件>");
       return;
     }
@@ -1009,12 +1038,486 @@ function printHelp() {
 项目记忆（AGENTS.md 分层，确定性审计——写盘归 init-deep 技能且草稿先行）：
   lzy agents-md    资格谓词+覆盖审计详单（退出码 0=覆盖完整无超限，1=有缺口/超限）
 
+需求契约与项目清单（0.3.0 M1，ADR-0024——批准/撤回走 UPS 短语，CLI 只读）：
+  lzy contract show                         目标绑定契约读面（结构键/验收项/授权态/漂移警示）
+  lzy contract auth                         授权账本时序（approval/withdrawal，追加式后到者赢）
+  lzy project check                         lzy.project.json 校验+就绪静态半（入口存在态）
+  lzy project discover                      只读缺失清单（能力类缺项/入口缺失配方）
+  lzy migrate preview <根路径>              旧记录只读预览（契约草案 authorization=NONE；
+                                            活跃 goal 在场拒；零写回，完整迁移归 M5）
+
+受控执行与回执（0.3.0 M2，主方案 §4.1/§4.2——真实执行产生回执，文本/指纹不构成新执行）：
+  lzy verify run <checkId>                  经受控执行器跑检查配方（argv shell:false+超时击杀+
+                                            env 白名单），回执+原始输出落 .lazyzcode/verify/
+                                            [--accepts A1,A2] [--note 摘要]
+  lzy verify reuse <checkId> --of <runId>   显式请求范围档复用判定（四问全过才放行；拒绝静默
+                                            复用；base 回执原时点原事实保留，只追加适用性判定）
+  lzy verify qualify <checkId>              对抗资格活体（逐声明输入注入检测+字节原样恢复复核；
+                                            资格绑定 checkId+manifestHash，清单变更须重资格化）
+  lzy verify list [--goal <slug>]           回执枚举（校验和 fail-closed）
+  lzy verify show <runId>                   回执全文+「非现行」身份对照（不冒充现行）
+  lzy verify ci [--sha <sha>] [--repo o/n]  只读查询 GitHub check-runs 绑候选身份（gh 缺席/
+                                            离线=blocked 原文+恢复指路；记录 sha≠HEAD=非现行）
+  （与 lzy loop verify 分工：本族=执行面；证据新鲜度权威在 loop verify 红绿账本）
+
+有界队列与累计预算（0.3.0 M3，主方案 §5——多项已授权工作跨中断连续完成；一切命令以 goal 根为 cwd）：
+  lzy queue add <标题> --contract <文件> --plan <文件>
+                                            登记待办（proposed；批准该契约=UPS「批准 <短码>」后
+                                            自动 authorized）[--endpoint A] [--deps q1,q2] [--goal-slug s]
+  lzy queue list                            条目与就绪面（授权/依赖/项目/预算/租约/计划六查）
+  lzy queue show <id>                       条目全文+派发事务账+就绪判定
+  lzy queue budget [--points N] [--wall-ms M] [--note 来源]
+                                            队列总额设定/追加（跨重启/换任务/重试不刷新）；
+                                            --resume-points 人工恢复被 #32 停止的积分限派发
+  lzy queue dispatch [--item id] [--wall-ms N] [--max-segments N]
+                                            取 ready 项派发（锁内占用登记→register/续跑→drive→
+                                            finish→结算→确认→腾槽→下一项；崩溃恢复判定表先行）
+  lzy queue reconcile                       恢复判定表显式读面（未决事务先核对后动作）
+  lzy queue cancel <id> --reason <原因>     取消（保留工件与历史，不清理用户改动）
+
+交付（lzy delivery，0.3.0 M4，ADR-0028）：
+  lzy delivery request <B|C> --contract <文件>
+                                            绑定 B/C 独立交付契约（endpoint 入哈希）并落批准请求；
+                                            批准=UPS 短语「批准 <短码>」，唯一写入口=钩子
+  lzy delivery status                       交付授权与意图读面（只读）
+  lzy delivery act B --repo <o/n> --branch <b> --base <基> --head <SHA>
+                 --pr-title <题> --pr-body-file <文件> [--pr <n>]
+                                            B 链：push→PR→漂移复核→CI 全绿→merge（绑 HEAD）
+                                            →读回 merge SHA→该 SHA CI 轮询；合并前置=B∧C 双授权
+  lzy delivery act C --repo <o/n> --expect-marker <串>
+                                            C 链：Pages 构建对齐 merge SHA+线上内容判据
+  lzy delivery readback <B|C>               读回收束（merged→done/open→re-arm/未对齐如实）；
+                                            超时/断连后先读回，绝不盲目重发
+
 环境：
   LZY_ZCODE_ENGINE  显式指定引擎 zcode.cjs 路径；设置后替换默认候选（默认找 /Applications/ZCode.app/...，
                     也因此可指向不存在路径来测试「引擎缺失→手动启用」回退）
 
 设计红线：lzy 对用户 config.json 零写入；启用一律经引擎官方命令（docs/adr/0001）。
 证据纪律：F 项证据绑定 tree hash，代码一变旧证据作废；测试全绿≠证据。`);
+}
+
+// ── contract 族（0.3.0 M1，ADR-0024）：只读读面。写入口只有 UPS 钩子（批准/撤回短语），
+// CLI 无 approve/withdraw 命令（ADR-0018 同款禁令：模型可跑的写通道=假人权门形态）。
+function cmdContract(args) {
+  const { _, f } = parseArgs(args);
+  const sub = _[0];
+  const cwd = process.cwd();
+  if (sub === "show") {
+    const goal = readGoal(cwd);
+    if (!goal?.contract?.contractHash) {
+      throw new LoopError(
+        `本目录目标未绑定需求契约（register --contract <file> 绑定；无 goal 时先 lzy loop register）——` +
+          `无契约 goal 走现行 planHash 人权门（ADR-0018），不受 ADR-0024 契约门管辖`,
+      );
+    }
+    let contract;
+    try {
+      contract = loadContract(goal.contract.path, cwd);
+    } catch (e) {
+      throw new LoopError(
+        `契约文件不可读或结构非法：${e?.message ?? e}——契约绑定 ${goal.contract.path}（hash ${goal.contract.contractHash.slice(0, 8)}…）；` +
+          `修好文件或重新 register --contract（新哈希=新授权请求）`,
+      );
+    }
+    const drift = contract.hash !== goal.contract.contractHash;
+    const auth = effectiveAuthorization(cwd, goal.slug, goal.contract.contractHash);
+    console.log(`契约 · 目标 ${goal.slug} · ${goal.contract.path}（contractHash ${goal.contract.contractHash.slice(0, 8)}…${drift ? "，⚠ 磁盘文件已漂移——须重新 register --contract" : ""}）`);
+    console.log(`  task ${contract.task} · endpoint ${contract.endpoint} · recipe ${contract.recipe}${contract.budgetRef ? ` · budget-ref ${contract.budgetRef}` : ""}`);
+    console.log(`  scope：${contract.scopeRaw.join("、")}`);
+    if (contract.nonGoals) console.log(`  non-goals：${contract.nonGoals}`);
+    console.log(`  验收项（accepts 引用目标）：`);
+    for (const a of contract.acceptances) console.log(`    ${a.id}  ${a.text}`);
+    console.log(`  授权：${auth.authorized ? "有效（approval 在场且其后无 withdrawal）" : auth.lastEvent ? `失效（最后事件 ${auth.lastEvent.kind} @ ${auth.lastEvent.at}）` : "无记录（待批准）"} · 事件 ${auth.events.length} 条（lzy contract auth 看时序）`);
+    return;
+  }
+  if (sub === "auth") {
+    const goal = readGoal(cwd);
+    if (!goal?.contract?.contractHash) {
+      throw new LoopError("本目录目标未绑定需求契约（lzy contract show 先看绑定态）");
+    }
+    const auth = effectiveAuthorization(cwd, goal.slug, goal.contract.contractHash);
+    console.log(`授权账本 · 目标 ${goal.slug} · 契约 ${goal.contract.contractHash.slice(0, 8)}… · ${auth.events.length} 条（追加式，后到者赢）`);
+    for (const e of auth.events) {
+      console.log(`  ${e.kind === "approval" ? "✔ 批准" : "✖ 撤回"}  ${e.at}  ${e.file}`);
+    }
+    console.log(`  生效：${auth.authorized ? "是" : "否"}（.lazyzcode/authorizations/，reset 不清；唯一写入口=UPS 钩子）`);
+    return;
+  }
+  throw new LoopError("用法：lzy contract show | lzy contract auth（只读；批准/撤回走 UPS 短语「批准 <短码>」「撤回 <短码>」）");
+}
+
+// ── project 族（0.3.0 M1，主方案 §3.2）：只读发现与就绪静态半；真实执行归 M2 verify。
+function cmdProject(args) {
+  const { _ } = parseArgs(args);
+  const sub = _[0];
+  const cwd = process.cwd();
+  if (sub === "check") {
+    const r = projectCheck(cwd);
+    if (!r.present) {
+      console.log(`项目清单：本目录无 lzy.project.json（lzy project discover 看缺失面）`);
+      return;
+    }
+    console.log(`项目清单 · lzy.project.json（内容 sha256 ${r.hash.slice(0, 8)}…——契约 recipe 绑定此哈希） · 配方 ${r.recipes.length} 条`);
+    for (const rec of r.recipes) {
+      console.log(`  [${rec.class}] ${rec.id}  ${rec.state === "entry-present" ? "✔ 入口存在" : "✖ 入口缺失"}（${rec.entry}）`);
+    }
+    console.log("  （就绪=静态入口存在态；「实际可运行」归 M2 verify 执行回执，不在此冒充）");
+    return;
+  }
+  if (sub === "discover") {
+    const r = projectDiscover(cwd);
+    if (!r.present) {
+      console.log(`只读发现 · ${r.hint}`);
+      console.log(`  六类能力全缺：${r.missingClasses.join("、")}`);
+      return;
+    }
+    console.log(`只读发现 · lzy.project.json（sha256 ${r.hash.slice(0, 8)}…）`);
+    console.log(`  缺项能力类：${r.missingClasses.length > 0 ? r.missingClasses.join("、") : "（无——六类齐备）"}`);
+    if (r.absentEntries.length > 0) {
+      console.log(`  入口缺失配方：${r.absentEntries.map((a) => `${a.class}/${a.id}(${a.entry})`).join("、")}`);
+    }
+    console.log("  （发现面≠受信执行输入：采纳流=契约引用清单哈希并经批准，ADR-0024）");
+    return;
+  }
+  throw new LoopError("用法：lzy project check | lzy project discover（只读）");
+}
+
+// ── migrate 族（0.3.0 M1）：只读预览；完整迁移机器归 M5。
+function cmdMigrate(args) {
+  const { _, f } = parseArgs(args);
+  if (_[0] !== "preview") {
+    throw new LoopError("用法：lzy migrate preview <目标根路径>（只读；--root <dir> 等价）");
+  }
+  const root = typeof f.root === "string" ? f.root : _[1];
+  if (!root || _[2]) {
+    throw new LoopError("用法：lzy migrate preview <目标根路径>（只读；--root <dir> 等价）");
+  }
+  const result = previewMigration(resolve(process.cwd(), root));
+  console.log(renderMigrationPreview(result));
+  console.log("  （旧记录零改动；活跃 goal 在场拒预览；authorization 恒 NONE——转换产物须新批准）");
+}
+
+// ── verify 族（0.3.0 M2，主方案 §4.1/§4.2）：受控执行回执 + 范围档复用 + CI 身份绑定。
+// 与 `lzy loop verify`（证据时效核对读面）分工：本族=检查配方的真实执行/复用/资格/CI 查询
+// 执行面；证据新鲜度权威仍在 loop verify（red-green 账本），两读面不互代。
+function cmdVerify(args) {
+  const { _, f } = parseArgs(args);
+  const sub = _[0];
+  const cwd = process.cwd();
+  const accepts = typeof f.accepts === "string" ? f.accepts.split(/[\s,，]+/).filter(Boolean) : [];
+  const note = typeof f.note === "string" ? f.note : null;
+  if (sub === "run") {
+    const checkId = _[1];
+    if (!checkId || _[2]) throw new LoopError("用法：lzy verify run <checkId> [--accepts A1,A2] [--note 摘要]");
+    const { receipt, receiptPath, rawRel } = runCheck(cwd, checkId, { accepts, note });
+    const exitDesc = receipt.exit.timeout ? "超时击杀（SIGTERM/ETIMEDOUT）" : receipt.exit.error ? `error: ${receipt.exit.error}` : `exit ${receipt.exit.code}`;
+    console.log(`执行回执 · ${checkId} · ${exitDesc} · runId ${receipt.runId}`);
+    console.log(`  候选 HEAD ${receipt.candidate.headSha?.slice(0, 10) ?? "—"} · 复合指纹 ${receipt.candidate.compositeFingerprint?.slice(0, 12) ?? "unbound"} · 清单 ${receipt.recipe.manifestHash?.slice(0, 12) ?? "—"}`);
+    console.log(`  回执 ${receiptPath} · 原始输出 ${rawRel}（人工摘要与原始输出分离保存）`);
+    if (receipt.inputSnapshot) console.log(`  输入快照：${Object.keys(receipt.inputSnapshot).length} 项已入档（范围档复用判定面）`);
+    if (receipt.exit.code !== 0) process.exitCode = 1;
+    return;
+  }
+  if (sub === "reuse") {
+    const checkId = _[1];
+    const baseRunId = typeof f.of === "string" ? f.of : null;
+    if (!checkId || !baseRunId || _[2]) {
+      throw new LoopError("用法：lzy verify reuse <checkId> --of <runId>（显式请求复用判定；拒绝静默复用）");
+    }
+    const r = reuseRun(cwd, checkId, baseRunId, { accepts, note });
+    if (!r.ok) {
+      console.error(`复用拒绝（保守回退全树档）· ${checkId} · base ${baseRunId}`);
+      for (const reason of r.reasons) console.error(`  ✖ ${reason}`);
+      console.error("  恢复：lzy verify run " + checkId + " 真实重验（范围档四问全过才可复用，ADR-0025）");
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`复用回执 · ${checkId} · base ${baseRunId}（原时点 ${r.receipt.startedAt}，原观察事实保留） · runId ${r.receipt.runId}`);
+    for (const reason of r.receipt.reuseJudgment.reasons) console.log(`  ✔ ${reason}`);
+    console.log(`  回执 ${r.receiptPath}（追加式适用性判定——base 回执未被改写）`);
+    return;
+  }
+  if (sub === "qualify") {
+    const checkId = _[1];
+    if (!checkId || _[2]) throw new LoopError("用法：lzy verify qualify <checkId>（对抗资格活体：逐声明输入注入检测+原样恢复）");
+    const { receipt, receiptPath, baselineRunId } = qualifyCheck(cwd, checkId, { note });
+    console.log(`qualification 资格回执 · ${checkId} · 基线 runId ${baselineRunId} · 注入 ${receipt.injections.length} 条全检测`);
+    for (const inj of receipt.injections) console.log(`  ✔ ${inj.entry}（${inj.mode}）检测通过且已原样恢复`);
+    console.log(`  回执 ${receiptPath}（资格绑定 checkId+manifestHash——清单变更须重新资格化）`);
+    return;
+  }
+  if (sub === "list") {
+    const slug = typeof f.goal === "string" ? f.goal : null;
+    const receipts = listReceipts(cwd, slug);
+    console.log(`执行回执 · ${receipts.length} 条（.lazyzcode/verify/ · reset 不清 · 校验和 fail-closed）`);
+    for (const r of receipts) {
+      const exitDesc = r.exit.blocked ? "blocked" : r.exit.noRemoteCommit ? "远端无此提交" : r.exit.timeout ? "timeout" : r.exit.error ? "error" : `exit ${r.exit.code}`;
+      console.log(`  ${r.startedAt}  ${r.kind.padEnd(13)} ${r.checkId.padEnd(14)} ${exitDesc.padEnd(10)} ${r.runId}`);
+    }
+    return;
+  }
+  if (sub === "show") {
+    const runId = _[1];
+    if (!runId || _[2]) throw new LoopError("用法：lzy verify show <runId>");
+    const { receipt, current } = showReceipt(cwd, runId);
+    console.log(JSON.stringify(receipt, null, 2));
+    console.log(
+      current
+        ? "  身份对照：现行（记录复合指纹=现行候选指纹）"
+        : "  身份对照：非现行（记录身份≠现行候选——原观察事实按原时点解释，不冒充现行）",
+    );
+    return;
+  }
+  if (sub === "ci") {
+    const { receipt, receiptPath, recordedSha, nowHead } = queryCiChecks(cwd, {
+      repo: typeof f.repo === "string" ? f.repo : null,
+      sha: typeof f.sha === "string" ? f.sha : null,
+      note,
+    });
+    if (receipt.exit.blocked) {
+      console.error(`CI 查询 blocked · ${receipt.ci.repo}@${recordedSha.slice(0, 10)}`);
+      console.error(`  ✖ ${receipt.exit.blocked}`);
+      console.error(`  回执 ${receiptPath}（blocked 如实落账——不静默空过）`);
+      process.exitCode = 1;
+      return;
+    }
+    if (receipt.exit.noRemoteCommit) {
+      console.log(`CI 查询 · ${receipt.ci.repo}@${recordedSha.slice(0, 10)} → 无 CI 结果`);
+      console.log(`  ${receipt.exit.detail}`);
+      console.log(`  回执 ${receiptPath}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`CI 检查 · ${receipt.ci.repo}@${recordedSha.slice(0, 10)} · ${receipt.ci.checks.length} 条 check-runs`);
+    for (const c of receipt.ci.checks) {
+      console.log(`  ${c.conclusion ?? "—"}  ${c.name}  ${c.details_url ?? ""}`);
+    }
+    const allGreen = receipt.ci.checks.length > 0 && receipt.ci.checks.every((c) => c.conclusion === "success");
+    console.log(
+      `  判读：${allGreen ? "全绿（绑定该提交身份）" : receipt.ci.checks.length === 0 ? "无 check-runs 在案" : "存在非 success 结论"} · ` +
+        (recordedSha === nowHead ? "记录 sha=现行 HEAD（现行）" : `记录 sha≠现行 HEAD（${nowHead?.slice(0, 10) ?? "—"}）——非现行，候选变化后须重新核对`),
+    );
+    console.log(`  回执 ${receiptPath}`);
+    if (!allGreen) process.exitCode = 1;
+    return;
+  }
+  throw new LoopError("用法：lzy verify run|reuse|qualify|list|show|ci（执行面；证据新鲜度权威在 lzy loop verify）");
+}
+
+// 有界队列（0.3.0 M3，主方案 §5）：add/list/show/budget/dispatch/reconcile/cancel。
+// 一切队列命令以「goal 根」为 cwd（.lazyzcode/ 解析不向上走——试点以夹具根为 cwd）。
+function cmdQueue(args) {
+  const { _, f } = parseArgs(args);
+  const action = _[0];
+  const cwd = process.cwd();
+  if (action === "add") {
+    const title = _[1];
+    const contractFile = typeof f.contract === "string" ? f.contract : null;
+    if (!title || !contractFile) {
+      throw new LoopError("用法：lzy queue add <标题> --contract <文件> --plan <文件> [--endpoint A] [--deps q1,q2] [--goal-slug s]");
+    }
+    const deps = typeof f.deps === "string" && f.deps.trim() ? f.deps.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const item = addQueueItem(cwd, {
+      title,
+      contractFile,
+      planFile: typeof f.plan === "string" ? f.plan : null,
+      endpoint: typeof f.endpoint === "string" ? f.endpoint : "A",
+      deps,
+      goalSlug: typeof f["goal-slug"] === "string" && f["goal-slug"].trim() ? f["goal-slug"].trim() : null,
+    });
+    console.log(`✔ 条目已登记：${item.id}（${item.state}）· goal=${item.goalSlug} · 契约 ${item.contractHash.slice(0, 8)}… · 计划 ${item.planPath}`);
+    console.log("  下一步：批准该契约（UPS 短码=contractHash 前 8 位）后条目自动 authorized；lzy queue list 看就绪面");
+    return;
+  }
+  if (action === "list") {
+    console.log(formatQueueList(cwd));
+    return;
+  }
+  if (action === "show") {
+    const id = _[1];
+    if (!id || _[2]) throw new LoopError("用法：lzy queue show <id>");
+    const { item, txs, readiness } = showQueueItem(cwd, id);
+    console.log(JSON.stringify(item, null, 2));
+    console.log(`  就绪：${readiness.ready ? "ready" : "未就绪"}`);
+    for (const r of readiness.reasons) console.log(`    ✖ ${r}`);
+    console.log(`  派发事务 ${txs.length} 条：`);
+    for (const t of txs) {
+      console.log(`    ${t.txId}  ${t.phase.padEnd(18)} opened ${t.openedAt}${t.settledAt ? ` → ${t.settledAt}` : ""}${t.segments.length ? ` · 段 ${t.segments.length}` : ""}${t.note ? ` · ${t.note.slice(0, 80)}` : ""}`);
+    }
+    return;
+  }
+  if (action === "budget") {
+    const hasPoints = f.points != null && f.points !== "";
+    const hasWall = f["wall-ms"] != null && f["wall-ms"] !== "";
+    const resume = f["resume-points"] === true;
+    if (!hasPoints && !hasWall && !resume) {
+      const v = budgetView(cwd);
+      console.log(`队列预算：积分总额 ${v.pointsLimit ?? "未设"} · 墙钟总额 ${v.wallLimitMs != null ? `${v.wallLimitMs}ms` : "未设"}`);
+      console.log(`  已耗：积分 ${Math.round(v.points * 100) / 100} · 墙钟 ${v.wallMs}ms ｜ 未决占用：积分 ${Math.round(v.openPoints * 100) / 100} · 墙钟 ${v.openWallMs}ms（崩溃未决按上限保守计入，绝不当零）`);
+      if (v.pointsStopped) console.log("  ⚠ 受积分限额约束的派发已停止（计量缺席/未决占用在案，#32）——人工核对后 --resume-points 恢复");
+      return;
+    }
+    const b = setQueueBudget(cwd, {
+      points: hasPoints ? Number.parseFloat(f.points) : null,
+      wallMs: hasWall ? Number.parseInt(f["wall-ms"], 10) : null,
+      note: typeof f.note === "string" ? f.note : null,
+      resumePoints: resume,
+    });
+    console.log(`✔ 队列预算已设：积分 ${b.pointsLimit ?? "—"} · 墙钟 ${b.wallLimitMs != null ? `${b.wallLimitMs}ms` : "—"}（追加=新 provenance 注记，历史不覆写）`);
+    return;
+  }
+  if (action === "dispatch") {
+    const item = typeof f.item === "string" ? f.item : null;
+    const opts = {
+      item,
+      wallMs: f["wall-ms"] != null && f["wall-ms"] !== "" ? Number.parseInt(f["wall-ms"], 10) : null,
+      maxSegments: f["max-segments"] != null && f["max-segments"] !== "" ? Number.parseInt(f["max-segments"], 10) : undefined,
+      mode: typeof f.mode === "string" ? f.mode : undefined,
+    };
+    return runQueueDispatch(cwd, opts).then((r) => {
+      const failed = r.results.filter((x) => x.outcome === "failed" || x.outcome === "error");
+      if (failed.length > 0) process.exitCode = 1;
+    });
+  }
+  if (action === "reconcile") {
+    if (_[1]) throw new LoopError("用法：lzy queue reconcile（恢复判定表：先核对后动作，绝不重复派发/绝不 reset 另一目标）");
+    const { verdicts } = reconcileDispatch(cwd);
+    if (verdicts.length === 0) console.log("恢复核对：无未决派发事务");
+    for (const v of verdicts) console.log(`  ${v.txId} → ${v.verdict}`);
+    return;
+  }
+  if (action === "cancel") {
+    const id = _[1];
+    if (!id || typeof f.reason !== "string") throw new LoopError("用法：lzy queue cancel <id> --reason <原因>（取消保留工件与历史，不清理用户改动）");
+    const it = cancelQueueItem(cwd, id, f.reason);
+    console.log(`✔ ${it.id} 已取消（工件与历史保留）——blockedReason：${it.blockedReason}`);
+    return;
+  }
+  throw new LoopError("用法：lzy queue add|list|show|budget|dispatch|reconcile|cancel（有界队列，0.3.0 M3）");
+}
+
+// ── delivery 族（0.3.0 M4，ADR-0028）：B/C 外部动作的授权与执行面。授权写入口只有
+// UPS 钩子（批准/撤回短语）——request 仅落契约绑定+批准请求（contractPending），CLI 无
+// approve/withdraw（ADR-0018 禁令同族）；act/readback 受授权门+意图账本执法（防重复
+// 执行/漂移复核/unknown 先读回）。
+function formatIntentLine(it) {
+  const t = it.target ?? {};
+  const obs = it.observed ?? {};
+  const obsTxt = obs.mergeSha
+    ? `mergeSha=${String(obs.mergeSha).slice(0, 10)} ci=${obs.mergeCiState ?? "?"}`
+    : obs.pagesBuild
+      ? `pages=${obs.pagesBuild.status}/${String(obs.pagesBuild.commit ?? "").slice(0, 10)}`
+      : "";
+  const tgt = JSON.stringify({
+    repo: t.repo,
+    branch: t.branch,
+    headSha: t.headSha ? String(t.headSha).slice(0, 10) : undefined,
+    prNumber: t.prNumber,
+    mergeSha: t.mergeSha ? String(t.mergeSha).slice(0, 10) : undefined,
+    expectMarker: t.expectMarker,
+  });
+  return `  ${it.id} [${it.endpoint}] ${it.kind} · ${it.status}${obsTxt ? ` · ${obsTxt}` : ""} · target=${tgt} · attempts=${it.attempts.length}`;
+}
+
+function cmdDelivery(args) {
+  const { _, f } = parseArgs(args);
+  const action = _[0];
+  const cwd = process.cwd();
+  if (action === "request") {
+    const ep = _[1];
+    const contractFile = typeof f.contract === "string" ? f.contract : null;
+    if (!ep || !contractFile || _[2]) {
+      throw new LoopError("用法：lzy delivery request <B|C> --contract <契约文件>（B/C 各立独立契约，endpoint 入哈希）");
+    }
+    const v = validateDeliveryContract(cwd, ep, contractFile);
+    const bound = bindDeliveryContract(cwd, ep, v.path, v.hash);
+    console.log(`✔ delivery 契约已绑定：${ep} ← ${v.path}（contractHash ${v.hash.slice(0, 8)}…）`);
+    console.log(`  批准对象=契约完整哈希（ADR-0024/0028）：把「批准 ${bound.short}」原样转给用户；`);
+    console.log(`  批准由 UPS 钩子在真实用户消息上落账（本 CLI 无 approve 命令），随后 lzy delivery status 查授权面。`);
+    return;
+  }
+  if (action === "status") {
+    const s = deliveryStatus(cwd);
+    if (!s.goal) {
+      console.log("本目录没有进行中的目标——delivery 授权与意图挂 goal。");
+      return;
+    }
+    const pend = s.goal.contractPending ? `（pending ${String(s.goal.contractPending.contractHash).slice(0, 8)} 等待批准）` : "";
+    console.log(`目标 ${s.goal.slug}（${s.goal.status}）${pend}`);
+    for (const ep of ["B", "C"]) {
+      const c = s.contracts[ep];
+      console.log(
+        c.bound
+          ? `  ${ep}: 契约 ${c.contractPath}（${c.contractHash.slice(0, 8)}…）· 授权=${c.authorized ? "有效" : "未批准/已撤回"} · 授权事件 ${c.events}`
+          : `  ${ep}: 未绑定`,
+      );
+    }
+    if (s.intents.length === 0) console.log("  意图账本空。");
+    for (const it of s.intents) console.log(formatIntentLine(it));
+    return;
+  }
+  if (action === "act") {
+    const ep = _[1];
+    if (ep === "B") {
+      if (!f.repo || !f.branch || !f.base || !f.head || !f["pr-title"] || !f["pr-body-file"]) {
+        throw new LoopError("用法：lzy delivery act B --repo <owner/name> --branch <分支> --base <基线> --head <40位SHA> --pr-title <题> --pr-body-file <正文文件> [--pr <编号>]");
+      }
+      const r = actDeliveryB(cwd, {
+        repo: f.repo,
+        branch: f.branch,
+        base: f.base,
+        head: f.head,
+        prTitle: f["pr-title"],
+        prBodyFile: f["pr-body-file"],
+        pr: f.pr != null ? Number(f.pr) : null,
+      });
+      const o = r.intent.observed;
+      if (r.alreadyMerged) {
+        console.log(`✔ B 链读回权威：PR #${o.prNumber} 已处于 merged（mergeSha ${String(o.mergeSha).slice(0, 10)}）——绝不重发合并`);
+      } else {
+        console.log(`✔ B 链完成：PR #${o.prNumber} 已合并（--match-head-commit 绑定）→ 实际 mergeSha=${String(o.mergeSha).slice(0, 10)}`);
+      }
+      if (o.mergeCiState === "green") console.log(`  merge SHA CI 全绿（${o.mergeCiDetail}）——B 端点判据满足（A3）`);
+      else if (o.mergeCiState === "pending") console.log(`  ⚠ merge SHA CI 预算内未全绿（${o.mergeCiDetail}）——lzy delivery readback B 复验后再下结论`);
+      else console.log(`  ✖ merge SHA CI 失败（${o.mergeCiDetail ?? "详情见意图账本"}）——「已合并、验证失败」如实记账，不归 B completed（V09）`);
+      return;
+    }
+    if (ep === "C") {
+      if (!f.repo || !f["expect-marker"]) {
+        throw new LoopError("用法：lzy delivery act C --repo <owner/name> --expect-marker <合并后才存在的稳定串> [--content-url <具体页 URL>]");
+      }
+      const r = actDeliveryC(cwd, { repo: f.repo, expectMarker: f["expect-marker"], contentUrl: f["content-url"] ?? null });
+      console.log(`✔ C 链完成：Pages 构建 ${r.build.status} @ ${String(r.build.commit).slice(0, 10)}（== mergeSha）`);
+      console.log(`  HTTPS ${r.siteUrl} → 200 ∧ 内容标记在场——C 端点判据满足（A4）`);
+      return;
+    }
+    throw new LoopError("用法：lzy delivery act <B|C>（B=合并链 / C=Pages 上线核验）");
+  }
+  if (action === "readback") {
+    const ep = _[1];
+    if (ep === "B") {
+      const r = readbackDeliveryB(cwd, { repo: f.repo, pr: f.pr != null ? Number(f.pr) : null });
+      const o = r.intent.observed ?? {};
+      if (r.intent.status === "done") {
+        console.log(`✔ readback B：PR #${o.prNumber ?? r.pr.number} merged（mergeSha ${String(o.mergeSha ?? r.pr.mergeSha).slice(0, 10)}，closedBy=${o.closedBy ?? "?"}）· merge CI=${o.mergeCiState ?? "query-failed"}`);
+      } else if (r.intent.status === "intended") {
+        console.log(`➖ readback B：PR #${r.pr.number} 仍 open——合并未发生，意图 ${r.intent.id} re-arm（r.rearmed ? "已从异常态恢复" : "本就 intended"）`);
+      } else {
+        console.log(`✖ readback B：PR #${r.pr.number} ${r.pr.state}——意图 ${r.intent.id}=${r.intent.status}`);
+      }
+      return;
+    }
+    if (ep === "C") {
+      const r = readbackDeliveryC(cwd, { repo: f.repo, expectMarker: f["expect-marker"] });
+      if (r.aligned && r.verified) console.log(`✔ readback C：构建对齐且内容标记在场（意图 ${r.intent.id}=${r.intent.status}）`);
+      else if (r.aligned) console.log(`⚠ readback C：构建对齐但内容判据不符（意图 ${r.intent.id}=${r.intent.status}）——V11 不假绿`);
+      else console.log(`➖ readback C：构建未对齐（意图 ${r.intent.id}=${r.intent.status}）——稍后复验`);
+      return;
+    }
+    throw new LoopError("用法：lzy delivery readback <B|C> [--repo <o/n>] [--pr <n>] [--expect-marker <串>]");
+  }
+  throw new LoopError("用法：lzy delivery request|status|act|readback（有限交付面，0.3.0 M4）");
 }
 
 async function main() {
@@ -1051,6 +1554,18 @@ async function main() {
       return cmdAttest(args.slice(1));
     case "dag":
       return cmdDag(args.slice(1));
+    case "contract":
+      return cmdContract(args.slice(1));
+    case "project":
+      return cmdProject(args.slice(1));
+    case "migrate":
+      return cmdMigrate(args.slice(1));
+    case "verify":
+      return cmdVerify(args.slice(1));
+    case "queue":
+      return cmdQueue(args.slice(1));
+    case "delivery":
+      return cmdDelivery(args.slice(1));
     case "agents-md":
       return cmdAgentsMd();
     case "version":

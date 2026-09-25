@@ -294,13 +294,24 @@ function authorizationGate(cwd, goal, ep, { needB, needC }) {
   return { ablated: false };
 }
 
-// 意图门（拍板 4）：done 恒拒；acting/unknown 先 readback；failed/refused 同身份可重试；
-// 身份漂移=拒绝（新候选=新契约=新授权，V09）。C 面观察参数（expect-marker/content-url）
-// 不属交付身份（C 身份=repo+mergeSha）——初判猜错可重瞄（attempt 如实记录重瞄前后值），
-// repo/mergeSha 漂移仍拒；B 面 headSha 恒为硬身份。
+// 意图按（endpoint∧交付身份）匹配：「已成功动作」=同一交付身份的动作，不是该端点的
+// 全部历史——follow-up 交付（新 HEAD/新 mergeSha）开新意图，历史意图永存账本。
+// B 身份=repo+branch+base+headSha；C 身份=repo+mergeSha。观察参数（C 面 expect-marker/
+// content-url）不在身份内（重瞄=attempt 记录）；B 面 headSha 恒硬。
 const OBSERVABLE_KEYS = new Set(["expectMarker", "contentUrl"]);
+function intentIdentity(ep, target) {
+  if (ep === "B") return JSON.stringify([target.repo, target.branch, target.base, target.headSha]);
+  return JSON.stringify([target.repo, target.mergeSha]);
+}
+// 锚=交付面（B: repo+branch+base / C: repo）——锚漂移=换了交付对象=新契约；滚动值
+//（B: headSha / C: mergeSha）新=同交付面的 follow-up=新意图。
+function intentAnchor(ep, target) {
+  return ep === "B" ? JSON.stringify([target.repo, target.branch, target.base]) : JSON.stringify([target.repo]);
+}
 function intentGate(state, ep, target) {
-  const it = state.intents.find((x) => x.endpoint === ep);
+  const epIntents = state.intents.filter((x) => x.endpoint === ep);
+  const key = intentIdentity(ep, target);
+  const it = epIntents.find((x) => intentIdentity(ep, x.target) === key);
   if (it && it.status === "done") {
     throw new DeliveryError(`交付意图 ${it.id} 已 done（${it.observed ? JSON.stringify(it.observed).slice(0, 120) : "无 observed"}）——已成功动作绝不重复执行（V10）。读面：lzy delivery readback ${ep}`);
   }
@@ -317,6 +328,14 @@ function intentGate(state, ep, target) {
       );
     }
     return { intent: it, created: false };
+  }
+  // 无同身份意图：同端点已有历史而锚全不符=换了交付对象=新契约（V09）；锚同=follow-up 放行。
+  const anchor = intentAnchor(ep, target);
+  if (epIntents.length > 0 && !epIntents.some((x) => intentAnchor(ep, x.target) === anchor)) {
+    throw new DeliveryError(
+      `交付意图身份漂移：${ep} 面已有交付历史而本次交付锚（${ep === "B" ? "repo/branch/base" : "repo"}）全不符` +
+        `——新交付面=新契约=新授权请求（V09），不以新身份偷渡进旧授权`,
+    );
   }
   return { intent: null, created: true };
 }
@@ -580,7 +599,7 @@ export function actDeliveryB(cwd, opts, deps = {}) {
 // 单查；open→intended（re-arm，合并未发生）；closed→failed；查询失败=原状+如实报文。
 export function readbackDeliveryB(cwd, opts = {}, deps = {}) {
   const state = loadIntents(cwd);
-  const it = state?.intents.find((x) => x.endpoint === "B");
+  const it = state?.intents.filter((x) => x.endpoint === "B").findLast(() => true); // 最新 B 意图（多链并存读最新）
   if (!it) throw new DeliveryError("无 B 交付意图可读回——先 lzy delivery act B（意图先于动作）");
   const repo = opts.repo ?? it.target.repo;
   if (!repo) throw new DeliveryError("读回缺 repo（意图 target 与 --repo 均缺席）");
@@ -653,9 +672,9 @@ export function actDeliveryC(cwd, opts, deps = {}) {
   if (!repo || !expectMarker) {
     throw new DeliveryError("act C 缺参数：--repo <owner/name> --expect-marker <合并后才存在的稳定串> [--content-url <具体页 URL>]");
   }
-  // B 前置：C 核验对象=B 产出的 mergeSha——B 意图须 done 且带 observed.mergeSha。
+  // B 前置：C 核验对象=最新 done B 链产出的 mergeSha（follow-up 合并后即指向新 mergeSha）。
   const pre = loadIntents(cwd);
-  const b = pre?.intents.find((x) => x.endpoint === "B");
+  const b = pre?.intents.filter((x) => x.endpoint === "B" && x.status === "done" && x.observed?.mergeSha).findLast(() => true);
   if (!b || b.status !== "done" || !b.observed?.mergeSha) {
     throw new DeliveryError(`C 面前置不满足：B 交付意图${!b ? "缺席" : `处于 ${b.status}`}且须带 observed.mergeSha——先完成 B 链（act B→readback B）再核验 Pages`);
   }
@@ -730,7 +749,7 @@ export function actDeliveryC(cwd, opts, deps = {}) {
 // done 复验刷新 observed；未对齐=原状+如实 attempt。
 export function readbackDeliveryC(cwd, opts = {}, deps = {}) {
   const state = loadIntents(cwd);
-  const it = state?.intents.find((x) => x.endpoint === "C");
+  const it = state?.intents.filter((x) => x.endpoint === "C").findLast(() => true); // 最新 C 意图
   if (!it) throw new DeliveryError("无 C 交付意图可读回——先 lzy delivery act C");
   const repo = opts.repo ?? it.target.repo;
   const marker = opts.expectMarker ?? it.target.expectMarker;

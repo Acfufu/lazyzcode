@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAuthorizations, recordAuthorization } from "../core/contract.js";
 import { bindDeliveryContract } from "../core/loop.js";
-import { actDeliveryB, deliveryStatus, validateDeliveryContract } from "../core/delivery.js";
+import { actDeliveryB, deliveryStatus, loadIntents, validateDeliveryContract } from "../core/delivery.js";
 
 const HOME = mkdtempSync(join(tmpdir(), "lzy-dgate-home-"));
 process.env.HOME = HOME;
@@ -245,6 +245,27 @@ test("⑨授权账本形状回归：approval 记录侧写（slug+hash 绑定）"
     const recs = loadAuthorizations(d).filter((r) => r.contractHash === b.hash);
     assert.equal(recs.length, 1);
     assert.equal(recs[0].kind, "approval");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑩follow-up 合并流：head1 done 后以新 head2 act=开新意图（旧意图永存），同 head2 重 act=done 恒拒", () => {
+  const d = goalRepo("lzy-dgate-10-");
+  try {
+    const { b, c } = bindBoth(d);
+    for (const h of [b.hash, c.hash]) recordAuthorization(d, { kind: "approval", slug: "dgate", contractHash: h, sessionId: "t", at: new Date().toISOString() });
+    const r1 = actDeliveryB(d, opts, fakeDeps());
+    assert.equal(r1.intent.status, "done");
+    assert.equal(r1.intent.observed.mergeSha, MERGE);
+    const HEAD2 = "d".repeat(40);
+    const r2 = actDeliveryB(d, { ...opts, head: HEAD2 }, fakeDeps({ headSha: HEAD2 }));
+    assert.equal(r2.intent.id, "d2", "新身份=新意图");
+    assert.equal(r2.intent.status, "done");
+    const intents = loadIntents(d).intents.filter((x) => x.endpoint === "B");
+    assert.equal(intents.length, 2, "两条 B 意图并存");
+    assert.equal(intents[0].observed.mergeSha, MERGE, "旧意图事实不动");
+    assert.throws(() => actDeliveryB(d, { ...opts, head: HEAD2 }, fakeDeps({ headSha: HEAD2 })), /已 done/);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

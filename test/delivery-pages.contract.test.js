@@ -1,6 +1,7 @@
 // 交付 Pages 面契约测试（0.3.0 M4，拍板 7，V11）：B 前置（mergeSha 缺席拒）；构建对齐轮询
 // 预算（15s×≤10，sleep 注入零延迟）；errored 即拒；HTTPS 200∧expect-marker 判据（缺失/非 200
-// 如实 failed 不假绿）；readback C 迟来事实收束 done/未对齐原状。全 deps 注入——win32 安全。
+// 如实 failed 不假绿）；观察参数重瞄（marker/URL 校正=attempt 记录，交付身份 repo/mergeSha
+// 漂移仍拒）；readback C 迟来事实收束 done/未对齐原状。全 deps 注入——win32 安全。
 import { test } from "node:test";
 process.env.LZY_ABLATE_HUMAN_GATE = "1"; // 授权门非本文件被测面
 import assert from "node:assert/strict";
@@ -57,7 +58,7 @@ function goalRepo(prefix) {
   return d;
 }
 
-// 假 gh（B 链全绿用）+假 curl。pagesCommit 可变（驱动对齐/未对齐/errored 形态）。
+// 假 gh（B 链全绿用）+假 curl。pagesCommit/pagesStatus/body 可变（驱动各形态）。
 function fakeDeps({ pagesCommit = OLD, pagesStatus = "built", httpStatus = 200, body = `<html>${MARKER}</html>` } = {}) {
   const calls = [];
   const deps = {
@@ -66,7 +67,7 @@ function fakeDeps({ pagesCommit = OLD, pagesStatus = "built", httpStatus = 200, 
     ghApi: (args) => {
       calls.push(args.join(" "));
       if (args[0] === "pr" && args[1] === "view") {
-        const merged = calls.some((c) => c.startsWith("pr merge"));
+        const merged = calls.some((x) => x.startsWith("pr merge"));
         return { code: 0, stdout: JSON.stringify({ state: merged ? "MERGED" : "OPEN", headRefOid: HEAD, baseRefName: "main", number: 7, url: "u", mergeCommit: merged ? { oid: MERGE } : null }), stderr: "" };
       }
       if (args[0] === "pr" && args[1] === "merge") {
@@ -103,7 +104,7 @@ test("①B 前置：B 意图缺席→act C 拒且零调用", () => {
   try {
     const deps = fakeDeps();
     assert.throws(() => actDeliveryC(d, cOpts, deps), /C 面前置不满足/);
-    assert.equal(deps._calls.filter((c) => c.includes("pages")).length, 0);
+    assert.equal(deps._calls.filter((x) => x.includes("pages")).length, 0);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
@@ -116,7 +117,7 @@ test("②Pages 预算内未对齐（latest 仍旧 commit）→failed 如实（V1
     const deps = fakeDeps({ pagesCommit: OLD });
     assert.throws(() => actDeliveryC(d, cOpts, deps), /Pages 构建未在预算内对齐.*readback C 可复验/);
     assert.equal(intentC(d).status, "failed");
-    assert.equal(deps._calls.filter((c) => c.includes("pages/builds/latest")).length, 10, "轮询预算=10 次");
+    assert.equal(deps._calls.filter((x) => x.includes("pages/builds/latest")).length, 10, "轮询预算=10 次");
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
@@ -185,5 +186,35 @@ test("⑤readback C：迟来事实（对齐+marker）把 failed 收束为 done�
     assert.equal(intentC(d2).status, "failed");
   } finally {
     rmSync(d2, { recursive: true, force: true });
+  }
+});
+
+test("⑥观察参数重瞄：failed 后以校正 marker/URL 重 act→done 且 attempt 记录前后值", async () => {
+  const d = goalRepo("lzy-dpages-6-");
+  try {
+    await doneB(d);
+    assert.throws(() => actDeliveryC(d, cOpts, fakeDeps({ pagesCommit: MERGE, body: "<html>旧内容</html>" })), /marker=MISSING/);
+    assert.equal(intentC(d).status, "failed");
+    const r = actDeliveryC(d, { repo: REPO, expectMarker: "M4 报告页标题", contentUrl: "https://acfufu.github.io/lazyzcode/spikes/x/" }, fakeDeps({ pagesCommit: MERGE, body: "<html>M4 报告页标题</html>" }));
+    assert.equal(r.intent.status, "done");
+    assert.equal(r.intent.target.expectMarker, "M4 报告页标题");
+    assert.equal(r.intent.target.contentUrl, "https://acfufu.github.io/lazyzcode/spikes/x/");
+    const reAim = r.intent.attempts.filter((a) => a.method === "re-aim");
+    assert.equal(reAim.length, 1);
+    assert.match(reAim[0].detail, /v030-m4-delivery-report/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑦C 交付身份漂移拒：repo 不符→身份漂移（观察参数豁免不波及身份键）", async () => {
+  const d = goalRepo("lzy-dpages-7-");
+  try {
+    await doneB(d);
+    assert.throws(() => actDeliveryC(d, cOpts, fakeDeps({ pagesCommit: MERGE, body: "<html>旧内容</html>" })), /marker=MISSING|内容核验拒绝/);
+    assert.equal(intentC(d).status, "failed");
+    assert.throws(() => actDeliveryC(d, { repo: "other/repo", expectMarker: "M4 报告页标题" }, fakeDeps({ pagesCommit: MERGE })), /身份漂移/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
   }
 });

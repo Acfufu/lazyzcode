@@ -295,7 +295,10 @@ function authorizationGate(cwd, goal, ep, { needB, needC }) {
 }
 
 // 意图门（拍板 4）：done 恒拒；acting/unknown 先 readback；failed/refused 同身份可重试；
-// 身份漂移（repo/branch/head/base/marker 不符）=拒绝（新候选=新契约=新授权，V09）。
+// 身份漂移=拒绝（新候选=新契约=新授权，V09）。C 面观察参数（expect-marker/content-url）
+// 不属交付身份（C 身份=repo+mergeSha）——初判猜错可重瞄（attempt 如实记录重瞄前后值），
+// repo/mergeSha 漂移仍拒；B 面 headSha 恒为硬身份。
+const OBSERVABLE_KEYS = new Set(["expectMarker", "contentUrl"]);
 function intentGate(state, ep, target) {
   const it = state.intents.find((x) => x.endpoint === ep);
   if (it && it.status === "done") {
@@ -305,7 +308,7 @@ function intentGate(state, ep, target) {
     throw new DeliveryError(`交付意图 ${it.id} 处于 ${it.status}——结果未定先读回收束，绝不盲目重发（V10）：lzy delivery readback ${ep}`);
   }
   if (it) {
-    const drift = Object.entries(target).filter(([k, v]) => v !== undefined && JSON.stringify(it.target[k]) !== JSON.stringify(v));
+    const drift = Object.entries(target).filter(([k, v]) => v !== undefined && !OBSERVABLE_KEYS.has(k) && JSON.stringify(it.target[k]) !== JSON.stringify(v));
     if (drift.length > 0) {
       throw new DeliveryError(
         `交付意图 ${it.id} 身份漂移：${drift.map(([k]) => k).join("、")} 与已声明意图不符` +
@@ -660,6 +663,21 @@ export function actDeliveryC(cwd, opts, deps = {}) {
   const target = { repo, expectMarker, mergeSha };
   if (opts.contentUrl) target.contentUrl = opts.contentUrl;
   const { intent } = beginAct(cwd, "C", { kind: "pages-verify", target, plannedArgv: [`gh api repos/${repo}/pages/builds/latest`, `curl ${opts.contentUrl ?? siteUrlOf(repo)}`] });
+  // 观察参数重瞄（初判猜错的仪器校正，非身份变更）：attempt 记录前后值——报告面如实。
+  const reAim = {};
+  if (opts.expectMarker && opts.expectMarker !== intent.target.expectMarker) reAim.expectMarker = [intent.target.expectMarker, opts.expectMarker];
+  if (opts.contentUrl && opts.contentUrl !== intent.target.contentUrl) reAim.contentUrl = [intent.target.contentUrl ?? "(站点根)", opts.contentUrl];
+  if (Object.keys(reAim).length > 0) {
+    withLock(cwd, () => {
+      const state = loadIntents(cwd);
+      const it = state.intents.find((x) => x.id === intent.id && x.endpoint === "C");
+      Object.assign(it.target, Object.fromEntries(Object.entries(reAim).map(([k, [, nv]]) => [k, nv])));
+      it.attempts.push({ at: new Date().toISOString(), method: "re-aim", outcome: "ok", detail: `观察参数校正（等效强度、交付身份 repo/mergeSha 不变）：${JSON.stringify(reAim)}` });
+      it.updatedAt = new Date().toISOString();
+      saveIntents(cwd, state);
+      return it;
+    });
+  }
   const id = intent.id;
   // 轮询（拍板 7：15s×≤10）至 status=built ∧ commit==mergeSha。
   const sleep = deps?.sleep ?? syncSleep;

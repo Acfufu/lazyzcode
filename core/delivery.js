@@ -130,7 +130,7 @@ export function saveIntents(cwd, state) {
 // 收束（merged→done(observed)、open→intended re-arm）；failed/refused→acting=同身份重试
 //（门序全重走）；done 恒终——任何进入 done 的迁移不可逆（防重复执行）。
 const TRANSITIONS = {
-  intended: ["acting"],
+  intended: ["acting", "done", "failed"], // done/failed 仅经 readback 观察到外部事实（如他因已合并）
   acting: ["done", "failed", "refused", "unknown", "intended"], // intended 仅经 readback（open：合并未发生）
   unknown: ["done", "intended", "failed"], // readback 分类：merged→done / open→intended / 失败确证→failed
   failed: ["acting", "intended"], // 同身份重试（act）或 readback 复核
@@ -170,16 +170,19 @@ function gitPushDefault(cwd, branch, { timeoutMs = 120_000 } = {}) {
 }
 
 // HTTPS 只读抓取（Pages 内容核验）：curl 同步面（macOS/win10+ 原生 curl；prlctl VM 家法）。
+// -w HTTPSTATUS:%{http_code} 尾注带回状态码（-sS 静默体不含元数据）。
 export function curlGet(deps, url, { timeoutMs = 15_000 } = {}) {
   const curlBin = process.env.LZY_CURL_BIN || "curl";
   const run = deps?.curlGet ?? ((u, o) => {
-    const r = spawnSync(curlBin, ["-sS", "-L", "--max-time", String(Math.ceil((o?.timeoutMs ?? 15_000) / 1000)), u], {
+    const r = spawnSync(curlBin, ["-sS", "-L", "--max-time", String(Math.ceil((o?.timeoutMs ?? 15_000) / 1000)), "-w", "HTTPSTATUS:%{http_code}", u], {
       shell: false, timeout: o?.timeoutMs ?? 15_000, encoding: "utf8", maxBuffer: 16 * 1024 * 1024,
     });
     return { code: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "", error: r.error ?? null, signal: r.signal ?? null };
   });
   const r = run(url, { timeoutMs });
-  return { ...r, timedOut: r.signal != null || r.error?.code === "ETIMEDOUT" };
+  const m = /HTTPSTATUS:(\d+)\s*$/.exec(r.stdout ?? "");
+  const body = m ? r.stdout.slice(0, m.index) : r.stdout;
+  return { ...r, body, httpStatus: m ? Number(m[1]) : null, timedOut: r.signal != null || r.error?.code === "ETIMEDOUT" };
 }
 
 // gh pr view 归一：mergeCommit 在 gh 的 JSON 里是 {oid,…} 对象（旧版可能为串）。
@@ -417,4 +420,190 @@ export function deliveryStatus(cwd) {
       target: it.target, attempts: it.attempts.length, observed: it.observed, updatedAt: it.updatedAt,
     })),
   };
+}
+
+// ── 账本attempt 附加（锁内，无转移）：链中途事实即时入账，追加不覆写。──
+function noteAttempt(cwd, ep, intentId, attempt) {
+  return withLock(cwd, () => {
+    const state = loadIntents(cwd);
+    const it = state.intents.find((x) => x.id === intentId && x.endpoint === ep);
+    if (!it) throw new DeliveryError(`交付意图 ${intentId} 不在场（ep=${ep}）。${RECOVERY}`);
+    it.attempts.push({ at: new Date().toISOString(), ...attempt });
+    it.updatedAt = new Date().toISOString();
+    saveIntents(cwd, state);
+    return it;
+  });
+}
+
+// done 态注记（锁内，无转移）：merge-SHA CI 复验结果等迟来事实——done 事实本身不变。
+function annotateDone(cwd, ep, intentId, observedPatch, attempt) {
+  return withLock(cwd, () => {
+    const state = loadIntents(cwd);
+    const it = state.intents.find((x) => x.id === intentId && x.endpoint === ep);
+    if (!it) throw new DeliveryError(`交付意图 ${intentId} 不在场（ep=${ep}）。${RECOVERY}`);
+    if (attempt) it.attempts.push({ at: new Date().toISOString(), ...attempt });
+    if (observedPatch) it.observed = { ...(it.observed ?? {}), ...observedPatch };
+    it.updatedAt = new Date().toISOString();
+    saveIntents(cwd, state);
+    return it;
+  });
+}
+
+// CI 轮询（拍板 5：15s×≤12）：绿=present∧completed∧ok；有败=即拒；预算尽=pending（=拒，
+// 合并前置=CI 全绿——无 CI 仓此门永不绿，首版收窄如实声明）。query-failed=读面故障。
+function pollCi(deps, repo, sha) {
+  const sleep = deps?.sleep ?? syncSleep;
+  for (let i = 1; i <= CI_POLL_MAX; i++) {
+    const r = listCheckRuns(deps, repo, sha);
+    if (!r.ok) {
+      return { verdict: "query-failed", polls: i, detail: String(r.stderr ?? r.error?.message ?? "").slice(0, 200) || "gh api 失败" };
+    }
+    const v = checkRunsVerdict(r.runs);
+    if (v.present && v.completed && v.ok) return { verdict: "green", polls: i, count: r.runs.length };
+    if (v.present && v.completed && !v.ok) return { verdict: "failed", polls: i, bad: v.bad };
+    if (i < CI_POLL_MAX) sleep(CI_POLL_INTERVAL_MS);
+  }
+  return { verdict: "pending", polls: CI_POLL_MAX };
+}
+
+// ── B 链（merge-chain）：push → PR create/resolve → 漂移复核 → headSha CI 全绿 →
+// merge（--match-head-commit）→ 即时读回 mergeCommit → merge SHA CI 轮询。
+// 不可逆点=merge：超时/断连→unknown（读回分类后方可收束，绝不盲目重发，V10）；
+// 其余确定性失败→failed/refused（同身份重试门序全重走）。
+export function actDeliveryB(cwd, opts, deps = {}) {
+  const { repo, branch, head, base, prTitle, prBodyFile } = opts ?? {};
+  if (!repo || !branch || !base || !prTitle || !prBodyFile) {
+    throw new DeliveryError("act B 缺参数：--repo <owner/name> --branch <分支> --base <基线> --pr-title <题> --pr-body-file <正文文件> 必填");
+  }
+  if (!/^[0-9a-f]{40}$/.test(String(head ?? ""))) {
+    throw new DeliveryError(`--head 须为 40 位完整提交 SHA（漂移复核与 --match-head-commit 都以完整 SHA 为判据）：${head ?? "缺席"}`);
+  }
+  const target = { repo, base, branch, headSha: head };
+  if (opts.pr != null) target.prNumber = opts.pr;
+  const plannedArgv = ["git push origin <branch>", `gh pr create --head ${branch} --base ${base}`, `gh pr merge <n> --merge --match-head-commit ${head}`];
+  const { goal, intent } = beginAct(cwd, "B", { kind: "merge-chain", target, plannedArgv });
+  const id = intent.id;
+  // 1) push（幂等；超时=unknown，确定性拒绝=failed）
+  const pushRun = (deps?.gitPush ?? gitPushDefault)(cwd, branch);
+  if (pushRun.timedOut) {
+    failAct(cwd, "B", id, "unknown", { method: "push", outcome: "timeout", detail: "git push 超时/被杀——远端是否已接收未知" });
+    throw new DeliveryError(`git push 超时——结果未定记 unknown（意图 ${id}）。先 lzy delivery readback B 核对远端分支，绝不盲目重推（V10）`);
+  }
+  if (pushRun.code !== 0) {
+    const detail = String(pushRun.stderr ?? pushRun.stdout ?? "").trim().slice(0, 300);
+    failAct(cwd, "B", id, "failed", { method: "push", outcome: "rejected", detail });
+    throw new DeliveryError(`git push 失败（意图 ${id} 已记 failed）：${detail}——修复后重跑 act B（同身份门序重走）`);
+  }
+  const upToDate = /up.to.date/i.test(String(pushRun.stderr ?? "") + String(pushRun.stdout ?? ""));
+  noteAttempt(cwd, "B", id, { method: "push", outcome: "ok", detail: upToDate ? "Everything up-to-date" : "pushed" });
+  // 2) PR resolve/create（可逆步；create 幂等——已存在即转 resolve）
+  let pr = prView(deps, repo, target.prNumber ?? branch);
+  if (!pr.ok) {
+    if (pr.error?.code === "ENOENT") {
+      failAct(cwd, "B", id, "failed", { method: "pr-resolve", outcome: "gh-missing", detail: "gh CLI 缺席" });
+      throw new DeliveryError("gh CLI 缺席——安装 gh（https://cli.github.com）后重跑 act B");
+    }
+    const cr = ghApi(deps, ["pr", "create", "--repo", repo, "--head", branch, "--base", base, "--title", prTitle, "--body-file", prBodyFile], { timeoutMs: 60_000 });
+    if (cr.timedOut) {
+      failAct(cwd, "B", id, "unknown", { method: "pr-create", outcome: "timeout", detail: "gh pr create 超时——PR 是否已建未知" });
+      throw new DeliveryError(`gh pr create 超时——结果未定记 unknown（意图 ${id}）。先 lzy delivery readback B 核对（V10）`);
+    }
+    noteAttempt(cwd, "B", id, { method: "pr-create", outcome: cr.code === 0 ? "ok" : "rejected", detail: String(cr.stderr ?? cr.stdout ?? "").trim().slice(0, 300) });
+    pr = prView(deps, repo, branch);
+    if (!pr.ok) {
+      failAct(cwd, "B", id, "unknown", { method: "pr-resolve", outcome: "query-failed", detail: "create 后读回失败" });
+      throw new DeliveryError(`gh pr create 后读回失败（意图 ${id}）——先 lzy delivery readback B 核对（V10）`);
+    }
+  }
+  noteAttempt(cwd, "B", id, { method: "pr-resolve", outcome: "ok", detail: `#${pr.number} state=${pr.state} head=${String(pr.headRefOid ?? "").slice(0, 10)}` });
+  // 3) 漂移复核（V09）：state=open ∧ headRefOid==intent ∧ base==intent——任一不符=refused。
+  if (pr.state === "MERGED" && pr.mergeSha) {
+    // 他因已合并：读回权威——done(observed)，绝不重发 merge。
+    const it = settleAct(cwd, "B", id, "done", {
+      attempt: { method: "drift-check", outcome: "already-merged", detail: `#${pr.number} 已处于 merged（读回权威）` },
+      observed: { mergeSha: pr.mergeSha, prNumber: pr.number, prUrl: pr.url ?? null, closedBy: "act-drift-observe" },
+    });
+    return { intent: it, alreadyMerged: true };
+  }
+  if (pr.state !== "OPEN" || pr.headRefOid !== head || pr.baseRefName !== base) {
+    const detail = `state=${pr.state} head=${String(pr.headRefOid ?? "null").slice(0, 10)} base=${pr.baseRefName ?? "null"}（意图要求 OPEN/${head.slice(0, 10)}/${base}）`;
+    failAct(cwd, "B", id, "refused", { method: "drift-check", outcome: "mismatch", detail });
+    throw new DeliveryError(`漂移复核拒绝（V09，意图 ${id} 已记 refused）：${detail}——合并前 HEAD/base 漂移须重建候选并复核适用验证；新 HEAD=新契约=新授权`);
+  }
+  // 4) PR headSha CI 全绿（合并前置）。
+  const headCi = pollCi(deps, repo, head);
+  if (headCi.verdict !== "green") {
+    const detail = headCi.verdict === "failed" ? `失败项：${headCi.bad.join(", ")}` : headCi.verdict === "pending" ? `预算内未全绿（${CI_POLL_MAX}×${CI_POLL_INTERVAL_MS / 1000}s）` : headCi.detail;
+    failAct(cwd, "B", id, "refused", { method: "ci-head", outcome: headCi.verdict, detail });
+    throw new DeliveryError(`PR CI 门拒绝（意图 ${id} 已记 refused）：${detail}——合并前置=headSha check-runs 全绿；修复后重跑 act B（follow-up 提交=新 HEAD=新授权）`);
+  }
+  noteAttempt(cwd, "B", id, { method: "ci-head", outcome: "green", detail: `${headCi.count} checks all green（${headCi.polls} polls）` });
+  // 5) merge（不可逆点）：--match-head-commit 绑 HEAD；超时/断连=unknown。
+  const mergeRun = ghApi(deps, ["pr", "merge", String(pr.number), "--merge", "--match-head-commit", head], { timeoutMs: 60_000 });
+  if (mergeRun.timedOut) {
+    failAct(cwd, "B", id, "unknown", { method: "merge", outcome: "timeout", detail: `gh pr merge #${pr.number} --match-head-commit 超时——是否已合并未知` });
+    throw new DeliveryError(`gh pr merge 超时——结果未定记 unknown（意图 ${id}）。先 lzy delivery readback B 核对是否已合并，绝不重发（V10）`);
+  }
+  let prAfter = prView(deps, repo, pr.number);
+  if (mergeRun.code !== 0 && !(prAfter.ok && prAfter.state === "MERGED")) {
+    const detail = String(mergeRun.stderr ?? mergeRun.stdout ?? "").trim().slice(0, 300);
+    failAct(cwd, "B", id, "failed", { method: "merge", outcome: "rejected", detail });
+    throw new DeliveryError(`gh pr merge 失败（意图 ${id} 已记 failed）：${detail}——修复后重跑 act B`);
+  }
+  if (!prAfter.ok || !prAfter.mergeSha) {
+    failAct(cwd, "B", id, "unknown", { method: "merge", outcome: "readback-failed", detail: "merge 后读回 mergeCommit 失败" });
+    throw new DeliveryError(`merge 后读回失败（意图 ${id}）——实际 merge SHA 未知记 unknown。先 lzy delivery readback B（V10）`);
+  }
+  // 6) merge SHA CI 轮询（B 终验判据=A3：该 SHA 必需检查通过）。
+  const mergeCi = pollCi(deps, repo, prAfter.mergeSha);
+  const it = settleAct(cwd, "B", id, "done", {
+    attempt: { method: "merge", outcome: "merged", detail: `#${pr.number} --match-head-commit ${head.slice(0, 10)} → mergeSha ${prAfter.mergeSha.slice(0, 10)}` },
+    observed: {
+      mergeSha: prAfter.mergeSha, prNumber: pr.number, prUrl: prAfter.url ?? pr.url ?? null,
+      mergedAt: new Date().toISOString(), closedBy: "act", mergeCiState: mergeCi.verdict === "green" ? "green" : mergeCi.verdict,
+      mergeCiDetail: mergeCi.verdict === "failed" ? mergeCi.bad?.join(", ") : mergeCi.verdict === "pending" ? `预算内未全绿（readback B 复验）` : `${mergeCi.count} checks green`,
+    },
+  });
+  return { intent: it, mergeSha: prAfter.mergeSha, headCi, mergeCi };
+}
+
+// readback B（幂等读面，绝不写）：PR 状态分类收束——merged→done(observed)+merge SHA CI
+// 单查；open→intended（re-arm，合并未发生）；closed→failed；查询失败=原状+如实报文。
+export function readbackDeliveryB(cwd, opts = {}, deps = {}) {
+  const state = loadIntents(cwd);
+  const it = state?.intents.find((x) => x.endpoint === "B");
+  if (!it) throw new DeliveryError("无 B 交付意图可读回——先 lzy delivery act B（意图先于动作）");
+  const repo = opts.repo ?? it.target.repo;
+  if (!repo) throw new DeliveryError("读回缺 repo（意图 target 与 --repo 均缺席）");
+  const ref = opts.pr ?? it.target.prNumber ?? it.target.branch;
+  const pr = prView(deps, repo, ref);
+  if (!pr.ok) {
+    noteAttempt(cwd, "B", it.id, { method: "readback", outcome: "query-failed", detail: String(pr.stderr ?? pr.error?.message ?? "").slice(0, 300) });
+    throw new DeliveryError(`readback B 查询失败（意图 ${it.id} 保持 ${it.status}）：${String(pr.stderr ?? pr.error?.message ?? "").slice(0, 200)}`);
+  }
+  if (pr.state === "MERGED" && pr.mergeSha) {
+    const wasDone = it.status === "done";
+    const ci = listCheckRuns(deps, repo, pr.mergeSha);
+    const v = ci.ok ? checkRunsVerdict(ci.runs) : null;
+    const mergeCiState = v ? (v.completed && v.ok ? "green" : v.completed ? "failed" : "pending") : null;
+    const fresh = wasDone
+      ? annotateDone(cwd, "B", it.id, { mergeSha: pr.mergeSha, prNumber: pr.number, prUrl: pr.url ?? null, mergeCiState }, { method: "readback", outcome: "merged", detail: `#${pr.number} mergeSha ${pr.mergeSha.slice(0, 10)} ci=${mergeCiState ?? "query-failed"}` })
+      : settleAct(cwd, "B", it.id, "done", {
+          attempt: { method: "readback", outcome: "merged", detail: `#${pr.number} mergeSha ${pr.mergeSha.slice(0, 10)}（读回收束）` },
+          observed: { mergeSha: pr.mergeSha, prNumber: pr.number, prUrl: pr.url ?? null, closedBy: "readback", mergeCiState },
+        });
+    return { intent: fresh, pr, mergeCiState };
+  }
+  if (pr.state === "OPEN") {
+    const rearm = it.status !== "intended";
+    const fresh = rearm ? settleAct(cwd, "B", it.id, "intended", { attempt: { method: "readback", outcome: "open", detail: `#${pr.number} 仍 open——合并未发生，re-arm（门序重走后可再 act）` } }) : noteAttempt(cwd, "B", it.id, { method: "readback", outcome: "open", detail: `#${pr.number} open（本就 intended）` });
+    return { intent: fresh, pr, rearmed: rearm };
+  }
+  // CLOSED 未合并
+  if (it.status !== "failed") {
+    const fresh = settleAct(cwd, "B", it.id, "failed", { attempt: { method: "readback", outcome: "closed", detail: `#${pr.number} 已关闭未合并` } });
+    return { intent: fresh, pr };
+  }
+  const fresh = noteAttempt(cwd, "B", it.id, { method: "readback", outcome: "closed", detail: `#${pr.number} closed（本就 failed）` });
+  return { intent: fresh, pr };
 }

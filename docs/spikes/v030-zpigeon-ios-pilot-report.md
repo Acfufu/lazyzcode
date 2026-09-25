@@ -96,3 +96,45 @@ goal `v030-zpigeon-ios-pilot`（HEAVY/risk med，契约 `.lazyzcode/contracts/v0
 - **重启恢复**：terminate+launch 全新进程→截图 `green/green-relaunch.png`（sha256 96166115…）行集合与重启前原样（Keychain 配对+快照缓存持久）；defaults 读数前后 diff **空**（`green/defaults-before-restart.txt` vs `after`，DEFAULTS_IDENTICAL 断言）。
 - **最终绿回执（驱动侧复跑，绑 F2 绿半）**：pilot-ui-smoke **passed（15.563s）** exit 0（`green/green-final-test.txt`）；与 N2 基线绿 13.3s/11.1s 及引擎段内 F1 自采绿四点一致。
 - **清理回执**（`green/cleanup-receipt.txt`）：中继进程 56803 终止→post-kill 探活 `000`（connection refused）+lsof 零行；模拟器留 booted 态至 N7 后处置（不触用户其他设备）。
+
+### 5.6 N7 整合验证与回归（2026-09-25）
+
+- 夹具 check 配方：pilot-build **BUILD SUCCEEDED**（`green/pilot-build-final.txt`）+pilot-ui-smoke **passed 15.563s**（`green/green-final-test.txt`）——均 exit 0。
+- 本仓 npm test：见 §1 表（基线 567/567=N1 改前实测；`green/host-npm-test-final.txt`）。
+- blob 全同断言：`git diff e5735163 HEAD -- ZPigeon/Sources/Features/Home/RemoteHomeView.swift` = **0 行**；夹具树清洁（29347c3）。
+
+## 6. 对抗清单自查（docs/research-adversarial-checklist.md 九类，2026-09-25 收口）
+
+本 goal 新增面：宿主零代码改动（机械只消费）；夹具侧=试点分支四提交+`.lazyzcode/` 状态+隔离面脚本族。逐类：
+
+1. **malformed input——既有机械覆盖**：夹具契约/清单/计划过既有校验（契约门五查活体：无授权拒→落账→过）；check argv 走清单校验层（shell 串拒）；注入面=单行（无新解析面）。
+2. **prompt injection——面收窄**：引擎在夹具仓运行（yolo 段），读夹具计划（我方文本）；爆炸半径=夹具仓；宿主树零改动（npm test 全绿+树清洁实证）。
+3. **cancel-resume——本 goal 主题（活体在案）**：drive#2 树 SIGKILL→僵尸租约（fence 2，holderPid 84621 死）→重驱被租约门拦原文→reclaim→fence 3 重驱→零重复交付（修复 commit 恰一条 9080d13+分支枚举）。击杀点在段间窗口如实记（租约语义与段中击杀一致）。
+4. **stale state——两类处置**：build/dd M0 残留经 N1 增量探针裁决（21.4s SUCCEEDED 复用成立，非盲用）；drive 每 run 预算重开（spent 归零重计）如实记；陈旧产物无假绿通道（native 每 run 实构建）。
+5. **dirty worktree——全程清洁**：夹具树每次断言均清洁；宿主树先提交后取证；`.lazyzcode/` 夹具 .gitignore 天然排除。
+6. **hung commands——既有预算**：drive 段上限 6/墙钟 1800s（drive#1 预算执法收束即活体）；check 配方 timeoutMs 900000。
+7. **flaky tests——重复一致性**：冒烟测试四绿（基线 13.347/11.110、引擎 F1 自采、终验 15.563）+两红形态稳定（无配对 :28、注入 :113）全在案；通知弹框由 runner 自然处理（M0+本腿两腿一致）。
+8. **misleading success output——对抗加固**：零重复交付靠提交枚举+blob 全同（不靠「跑绿了」自证）；红/绿以精确断言行判别（:28/:113 vs passed）；重启恢复以 defaults 读数 diff 断言（非截图自证）；积分按 sessionId 归因实算（core/cost.js 口径，不手估）。
+9. **repeated interruptions——单次演练足够**：一次 SIGKILL+一次 reclaim+一次重驱；fence 单调 1→2→3 绝不重用。
+
+## 7. 债记账（收口时点）
+
+- **债 O（新记，重要）**：drive 默认积分硬顶（400）的执法 gauge=**账号级** 5h 滚动水位——宿主交互会话自身消耗即可把水位顶过硬顶，夹具/兄弟 goal 被误伤收束（gauge/target 错位，#32 近似限制已知边界）。缓解=文档化 env `LZY_DRIVE_POINTS_BUDGET` 显式放宽（本 goal 契约 budget-ref none 依据）；升格路径=预算 gauge 支持按 sessionId 归因（M0 §5.3 并发可分性已证可行）或 budget-ref=none 契约跳过积分执法只留墙钟。本 goal 内记账照走未丢。
+- **债 L（oc 腿记）修正注记**：zpigeon 配对面=配对 URL host 派生的 ZCode 中继（RemoteURL.swift:63-75），**非 openchamber serve**——债 L「含后续 zpigeon 配对」预判不适用；本腿零 openchamber 面、零 HOME 覆写需求。
+- **债 M（oc 腿记）**：不涉（本腿零 opencode 依赖）；**债 G/H/F/I**：不涉（无 win32 执行、无已锚定证据过期重采场景〔F 证据在改码冻结后统一采集〕、scope 逐次写执法非本腿路径、非队列形态）。
+
+## 8. Known unknowns 判定（收口）
+
+1. **假中继相位窗（KU1）：成立**——silent 升级窗（.connecting+缓存卡列表）两轮基线绿+终验绿全程稳定；完整握手兜底支未启用（零换级）。
+2. **播种通道（KU2）：成立**——`defaults write -string` 一次命中（首试缺 `-string` 被 defaults 旧式 plist 解析拒，如实记后即通）；launch-argument 域备选未启用。
+3. **引擎段内自验与交付（KU3）：证立**——drive#1 段 1 引擎自主完成修复交付+pilot-check.sh 双配方自跑+F1 自采证据；预注册回退路径（驱动侧代跑）未触发。
+
+## 9. 消耗实账（收口时点）
+
+| 项 | 值 |
+| --- | --- |
+| 墙钟（drive 段记录） | drive#1 272.2s · drive#2 104.3s · drive#3 144.5s · 合计 **521.0s** |
+| 积分（hostdb model_usage×ADR-0023，core/cost.js 折算） | drive#1 `sess_dcf0f5b6`=**3.27** · drive#2 `sess_e4c85151`=**1.976** · drive#3 `sess_82bf22dd`=**1.74** · 合计 **6.986** |
+| fence | #1 → #2 → #3（单调递增，绝不重用） |
+| 夹具 goal 交付 | 修复 `9080d13` + 标记 `29347c3` + 终验 attestation（`.lazyzcode/attestations/v030-zp-pilot-20260925T033940Z.json`） |
+| 对照参考 | oc 腿（同形单任务）7.165pt/402s——本腿量级一致（UI 测试段更贵但段数少） |

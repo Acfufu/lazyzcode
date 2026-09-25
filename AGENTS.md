@@ -11,7 +11,7 @@
 ## 2. 当前状态（2026-09-25 短表；完整历史档案 → docs/history.md）
 
 - **已发布**：npm `lazyzcode` 0.2.4（registry latest；升级见 README）。
-- **开发线 0.3.0 agent-first 改造进行中**：规划六文件已入库（入口 docs/plan-v030-agent-first.md + design/research + ADR-0024/0025）；M0 能力与基线已落地（docs/spikes/v030-m0-report.md；V08=近似限制语义〔拍板〕，#32）；**M1 项目与授权已落地（2026-09-24，goal v030-m1：需求契约+契约门五查+授权撤回+lzy.project.json+知识路由+只读迁移预览；#33；报告 docs/spikes/v030-m1-report.md）**；M2 验证机器面+lazyzcode 试点 A 已落地（2026-09-24，goal v030-m2：core/verify.js 执行回执+范围档四问复用/对抗资格+波末重锚退役→整合验证+CI 身份绑定+冻结夹具试点 A 交付；报告 docs/spikes/v030-m2-report.md）；**M3 有界队列+累计预算+lazyzcode 队列试点已落地（2026-09-25，goal v030-m3：lzy queue 七子命令+状态机授权门+派发事务崩溃恢复判定表+累计预算绑定 contractHash+积分近似限制记账〔#32；ADR-0027〕+真引擎两项队列试点；报告 docs/spikes/v030-m3-report.md）**；**M2 三仓腿之二 openchamber 已落地（2026-09-25，goal v030-openchamber-pilot：受控注入→真引擎修复+SIGKILL 恢复链→隔离浏览器实流取证；报告 docs/spikes/v030-openchamber-pilot-report.md）；zpigeon-ios 腿待后续 goal**。
+- **开发线 0.3.0 agent-first 改造进行中**：规划六文件已入库（入口 docs/plan-v030-agent-first.md + design/research + ADR-0024/0025）；M0 能力与基线已落地（V08=近似限制语义〔拍板〕，#32）；M1 项目与授权已落地（2026-09-24，goal v030-m1：需求契约+契约门五查+授权撤回+lzy.project.json+知识路由；#33）；M2 验证机器面+lazyzcode 试点 A 已落地（2026-09-24，goal v030-m2：verify 执行回执+范围档四问+波末重锚退役→整合验证+CI 身份绑定+试点 A 交付）；M3 有界队列+累计预算已落地（2026-09-25，goal v030-m3：queue 七子命令+崩溃恢复判定表+预算绑定 contractHash+近似限制记账〔#32；ADR-0027〕+队列试点）；**M2 三仓腿之二 openchamber 已落地（2026-09-25，goal v030-openchamber-pilot：受控注入→真引擎修复+SIGKILL 恢复链→浏览器实流取证）**；**三仓腿之三 zpigeon-ios 已落地（2026-09-25，goal v030-zpigeon-ios-pilot：合成中继+播种解 M0 数据阻塞→受控注入→真引擎修复+SIGKILL 恢复链→XCUITest 取证+重启恢复——三仓 A 出口 3/3）；各步报告 → docs/spikes/。
 - 全部历史里程碑（P0 落地→六轮双审→0.0.5 首发→0.1.x/0.2.x 全弧线→0.3.0 M0-M3+oc 腿）、消融账本锚点、双审报告索引 → docs/history.md。
 - 发布机械件（定版/tag/publish/pages）按 docs/release-checklist.md 执行；docs/reviews/ 为评审报告库。
 

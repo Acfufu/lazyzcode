@@ -2349,6 +2349,8 @@ const ANY_TMP_SCAN_DIRS = (cwd) => [
   join(cwd, ".lazyzcode", "queue"), // 0.3.0 M3 队列状态+派发事件账（core/queue.js，loop/ 外 reset 不清）
   join(cwd, ".lazyzcode", "budget"), // 0.3.0 M3 累计预算账本（core/queue.js，同上位阶）
   join(cwd, ".lazyzcode", "delivery"), // 0.3.0 M4 交付意图账本（core/delivery.js，同上位阶）
+  join(cwd, ".lazyzcode", "migration"), // 0.3.0 M5 迁移机器账本（backup/stage/journal，core/migrate.js，同上位阶）
+  join(cwd, ".lazyzcode", "drafts"), // 0.3.0 M5 迁移转换产物（契约草案，core/migrate.js，同上位阶）
 ];
 
 // 孤儿 tmp 计数（doctor 用）：与 cleanupLoopResidue 同一家族表、同一扫描面（ADJ-13，0.2.1）。

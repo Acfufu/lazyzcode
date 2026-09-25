@@ -67,3 +67,27 @@ Goal `v030-m4-delivery`（tier heavy · risk high · 契约 4a2efc76…59b · �
 - HTTPS 内容判据：报告页 `https://acfufu.github.io/lazyzcode/spikes/v030-m4-delivery-report/` → 200 ∧ 标题标记「v030-m4-delivery 试点报告」在场（改前预抓取已证 0.2.4 站点零 v030-m4 串）。
 - 浏览器关键路径截图：报告页整页（pages-report-full.png，1.17MB）+站点首页（pages-index.png），IAB 实流，sha256 绑 N12 账本。
 
+### N12 收口（2026-09-25）
+
+- **B2 链活体（续）**：PR#3（read-back-authority 缺陷修复+回归钉⑪+readiness 原因插桩）→CI 四腿绿→merge 绑 HEAD `9742677`→**实际 mergeSha=`ab9e1efaca` CI 全绿**（4 测试腿+Pages 三检查全 success）——B 端点判据（V09）达成；d5 假事实（read-back-authority 缺陷产物）经 correction attempt 显式作废回 refused（账本纠错留痕，报告本节即披露）。
+- **C 复验**：新意图 d7——Pages built@ab9e1efaca（==新 mergeSha）+报告页 200∧标记在场。意图账本终态七条（d1-d7）=全链诚实史。
+- **F 证据**：终树（main@ab9e1ef，tree 514b8237）六项采集，npm test 603/603（基线 567+36）。
+
+## 6. 结果与判据对照
+
+| 判据 | 结果 |
+| --- | --- |
+| M4 出口=一条 B 真实通过 | ✅ PR#1/#2/#3 三次真实合并（全部 --match-head-commit 绑 HEAD+读回实际 merge SHA）；最终 mergeSha ab9e1efaca CI 全绿（V09） |
+| M4 出口=一条 C 真实通过 | ✅ Pages 构建两次对齐 mergeSha（61d1dc35、ab9e1efaca）+HTTPS 内容标记+浏览器关键路径双截图（V11） |
+| 断连未知可核对、不盲目重写 | ✅ merge 超时=unknown→readback 分类收束；CI 轮询查询故障预算内重试；read-back-authority 缺陷被纠正机制捕获并留痕（V10） |
+| 授权边界 | ✅ 四次 UPS 真实批准（goal 契约 4a2efc76、B 86cfd50f、C 10fce1cd、B2 ec48a4cf）；授权记录 schema 零扩展；撤回面扩展随线交付 |
+| V09 漂移/CI 门 | ✅ push 后 API 读滞后假漂移=拒（读回核对后重跑过门）；headSha CI 门三连假拒（小写判读缺陷）如实 refused 后修复再过 |
+
+## 7. 对抗清单九类自查
+
+1. 假完成：merge-SHA CI 红×3 全部如实「已合并、验证失败」，从不归 completed——B 端点在 CI 全绿的 ab9e1efaca 才宣告达成。2. 假重锚：无（波末重锚面不在本 goal）。3. 越权写入：四次 UPS 批准外的零外部写入（push/PR/merge 全在 delivery act 门序内、授权现读 fail-closed）。4. 证据时效：F 证据绑终树（rebind 于收官提交后重采）。5. 自指：对照项不进 F 表（comparator 独立核验）。6. 授权漂移：契约文件四份全部字节哈希绑定，批准后零改动。7. 计量假零：本 goal 无引擎段（budget-ref none 如实），无消耗记账面。8. 静默收窄：queue B/C 编排不做（拍板 12 四债声明）、C 面全只读不涉 unknown——报告显式。9. 单源漂移：decisions #35+ADR-0028+CONTEXT 新词+README/guide 双语同批落。
+
+## 8. 债与遗留（如实记账）
+
+- **债 M4-1（CI flake）**：M3 预算套件在 push-to-main 腿三次偶发零就绪（④×1、⑤×2；PR 腿 5/5 绿、本地 20+ 执行零复现）——readiness 原因已随止步报文落日志，下次复现自诊断；根因未定论，不静默。**债 M4-2（d5 账本纠错）**：read-back-authority 缺陷产出的假 done 经 correction attempt 作废（非机器转移，报告+attempt 双留痕）；纠错路径未产品化。**债 M4-3（queue B/C 编排）**：delivery 独立于 queue，队列项仍拒 B/C（后续版本归并）。**债 M4-4（C 内容判据为单标记）**：报告页标题串+构建 commit 双判据已强，多页爬核留后续。**债 F 继承**：scope 逐写执法升格条件=本 goal 交付面已落地，待复评。
+

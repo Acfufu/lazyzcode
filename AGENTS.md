@@ -11,7 +11,7 @@
 ## 2. 当前状态（2026-09-25 短表；完整历史档案 → docs/history.md）
 
 - **已发布**：npm `lazyzcode` 0.2.4（registry latest；升级见 README）。
-- **开发线 0.3.0 agent-first 改造进行中**：规划六文件已入库（入口 docs/plan-v030-agent-first.md + design/research + ADR-0024/0025）；M0 能力与基线已落地（V08=近似限制语义〔拍板〕，#32）；M1 项目与授权已落地（2026-09-24，goal v030-m1；#33）；M2 验证机器面+lazyzcode 试点 A 已落地（2026-09-24，goal v030-m2）；M3 有界队列+累计预算已落地（2026-09-25，goal v030-m3；#34/ADR-0027）；M2 三仓腿 openchamber+zpigeon-ios 两试点已落地（2026-09-25——三仓 A 出口 3/3）；各步报告 → docs/spikes/。
+- **开发线 0.3.0 agent-first 改造进行中**：规划六文件已入库（入口 docs/plan-v030-agent-first.md + design/research + ADR-0024/0025）；M0 能力与基线已落地（V08=近似限制语义〔拍板〕，#32）；M1 项目与授权已落地（2026-09-24，goal v030-m1；#33）；M2 验证机器面+lazyzcode 试点 A 已落地（2026-09-24，goal v030-m2）；M3 有界队列+累计预算已落地（2026-09-25，goal v030-m3；#34/ADR-0027）；M2 三仓腿 openchamber+zpigeon-ios 两试点已落地（2026-09-25——三仓 A 出口 3/3）；**M4 有限交付 B/C 已落地（2026-09-25，goal v030-m4-delivery：delivery 授权动作面+首条 B/C 真实闭环；#35/ADR-0028）**；各步报告 → docs/spikes/。
 - 全部历史里程碑（P0 落地→六轮双审→0.0.5 首发→0.1.x/0.2.x 全弧线→0.3.0 M0-M3+oc 腿）、消融账本锚点、双审报告索引 → docs/history.md。
 - 发布机械件（定版/tag/publish/pages）按 docs/release-checklist.md 执行；docs/reviews/ 为评审报告库。
 

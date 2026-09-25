@@ -43,7 +43,15 @@ import {
 import { effectiveAuthorization, loadContract } from "../core/contract.js";
 import { projectCheck, projectDiscover } from "../core/project.js";
 import { listReceipts, qualifyCheck, queryCiChecks, reuseRun, runCheck, showReceipt, VerifyError } from "../core/verify.js";
-import { previewMigration, renderMigrationPreview } from "../core/migrate.js";
+import {
+  MigrateError,
+  applyMigration,
+  migrationStatus,
+  previewMigration,
+  renderMigrationApply,
+  renderMigrationPreview,
+  renderMigrationStatus,
+} from "../core/migrate.js";
 import { formatAttempts } from "../core/attempt.js";
 import {
   acquireLease,
@@ -1044,7 +1052,10 @@ function printHelp() {
   lzy project check                         lzy.project.json 校验+就绪静态半（入口存在态）
   lzy project discover                      只读缺失清单（能力类缺项/入口缺失配方）
   lzy migrate preview <根路径>              旧记录只读预览（契约草案 authorization=NONE；
-                                            活跃 goal 在场拒；零写回，完整迁移归 M5）
+                                            活跃 goal 在场拒；零写回）
+  lzy migrate apply <根路径>                显式迁移：备份→暂存→校验→原子切换+版本入口
+                                            （在途→drafts 草案授权 NONE；幂等；崩溃续跑）
+  lzy migrate status <根路径>               迁移状态读面（state.json 版本入口+journal 相位）
 
 受控执行与回执（0.3.0 M2，主方案 §4.1/§4.2——真实执行产生回执，文本/指纹不构成新执行）：
   lzy verify run <checkId>                  经受控执行器跑检查配方（argv shell:false+超时击杀+
@@ -1183,19 +1194,41 @@ function cmdProject(args) {
   throw new LoopError("用法：lzy project check | lzy project discover（只读）");
 }
 
-// ── migrate 族（0.3.0 M1）：只读预览；完整迁移机器归 M5。
+// ── migrate 族（0.3.0 M1 预览；0.3.0 M5 apply/status——主方案 §8 完整迁移机器）：
+// preview 只读；apply=显式迁移（备份→暂存→校验→原子切换，源六族字节保真）；
+// status=版本入口+journal 只读读面。根路径一律显式（防裸命令误迁移宿主树）。
 function cmdMigrate(args) {
   const { _, f } = parseArgs(args);
-  if (_[0] !== "preview") {
-    throw new LoopError("用法：lzy migrate preview <目标根路径>（只读；--root <dir> 等价）");
+  const sub = _[0];
+  const usage = "用法：lzy migrate preview <目标根路径>（只读）| apply <目标根路径>（显式迁移）| status <目标根路径>（迁移状态；--root <dir> 等价）";
+  if (sub !== "preview" && sub !== "apply" && sub !== "status") {
+    throw new LoopError(usage);
   }
   const root = typeof f.root === "string" ? f.root : _[1];
   if (!root || _[2]) {
-    throw new LoopError("用法：lzy migrate preview <目标根路径>（只读；--root <dir> 等价）");
+    throw new LoopError(usage);
   }
-  const result = previewMigration(resolve(process.cwd(), root));
-  console.log(renderMigrationPreview(result));
-  console.log("  （旧记录零改动；活跃 goal 在场拒预览；authorization 恒 NONE——转换产物须新批准）");
+  const abs = resolve(process.cwd(), root);
+  try {
+    if (sub === "preview") {
+      const result = previewMigration(abs);
+      console.log(renderMigrationPreview(result));
+      console.log("  （旧记录零改动；活跃 goal 在场拒预览；authorization 恒 NONE——转换产物须新批准）");
+      return;
+    }
+    if (sub === "apply") {
+      const result = applyMigration(abs);
+      console.log(renderMigrationApply(result));
+      if (result.mode === "applied") {
+        console.log("  （显式迁移：源六族已备份 migration/backup/<runId>；drafts 草案 authorization=NONE 不构成授权——转正须人工立契+UPS 批准）");
+      }
+      return;
+    }
+    console.log(renderMigrationStatus(migrationStatus(abs)));
+  } catch (err) {
+    if (err instanceof MigrateError) throw new LoopError(err.message);
+    throw err;
+  }
 }
 
 // ── verify 族（0.3.0 M2，主方案 §4.1/§4.2）：受控执行回执 + 范围档复用 + CI 身份绑定。

@@ -10,6 +10,7 @@ import { createEngineCli } from "./engine.js";
 import { detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
 import { projectCheck } from "./project.js";
+import { loadMigrationState } from "./migrate.js";
 // workers 残留三桶的形态/哨兵谓词单一源（core/drive.js；ADJ-39 同族纪律）。
 import { DRIVE_WORKERS_ROOT_DIRNAME, WORKERS_LOG_DIR_RE, WORKERS_RUN_DIR_RE, readWorkersSentinel } from "./drive.js";
 import { readRepoManifest, readRegistry, sha256File } from "./installer.js";
@@ -611,8 +612,10 @@ function checkProjectManifest(push, cwd) {
   }
 }
 
-// 迁移预览诊断（0.3.0 M1）：报告旧记录族在場情况（reset 残档/历史 attestation），
-// 有可预览记录且无活跃 goal 时指路 lzy migrate preview。纯信息面。
+// 迁移预览诊断（0.3.0 M1；M5 扩展版本入口读面）：报告旧记录族在場情况（reset 残档/
+// 历史 attestation），有可预览记录且无活跃 goal 时指路 lzy migrate preview；M5 起同行
+// 附 state.json 版本入口读数（缺位=未迁移提示行，损坏/未知 schema=⚠ 照实示——纯信息
+// 面，不翻退出码）。
 function checkMigratePreview(push, cwd) {
   const lz = join(cwd, ".lazyzcode");
   let goalActive = false;
@@ -629,11 +632,22 @@ function checkMigratePreview(push, cwd) {
   };
   const attestations = count(join(lz, "attestations"), ".json");
   const snapshots = count(join(lz, "loop", "snapshots"), ".md");
+  let stateNote = "";
+  if (existsSync(join(lz, "state.json"))) {
+    try {
+      const st = loadMigrationState(cwd);
+      stateNote = ` · 版本入口 stateVersion=${st.stateVersion}（已迁移任务 ${Object.keys(st.tasks ?? {}).length}${st.lastRunId ? `，run ${st.lastRunId}` : ""}）`;
+    } catch (err) {
+      stateNote = ` · ⚠ 版本入口：${err.message.slice(0, 80)}`;
+    }
+  } else if (attestations > 0 || snapshots > 0) {
+    stateNote = " · 版本入口缺位（未迁移——lzy migrate preview 预览，apply 显式迁移）";
+  }
   if (attestations === 0 && snapshots === 0) {
-    push("migrate", "skip", "无旧记录族（attestations/snapshots 均空）");
+    push("migrate", "skip", `无旧记录族（attestations/snapshots 均空）${stateNote}`);
     return;
   }
-  const detail = `旧记录：attestations ${attestations} · snapshots ${snapshots}${goalActive ? "（活跃 goal 在场——preview 会拒，收口后才可预览）" : `（lzy migrate preview ${cwd} 可只读预览契约草案）`}`;
+  const detail = `旧记录：attestations ${attestations} · snapshots ${snapshots}${goalActive ? "（活跃 goal 在场——preview 会拒，收口后才可预览）" : `（lzy migrate preview ${cwd} 可只读预览契约草案）`}${stateNote}`;
   push("migrate", "ok", detail);
 }
 

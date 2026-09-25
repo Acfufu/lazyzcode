@@ -78,3 +78,14 @@ goal `v030-zpigeon-ios-pilot`（HEAVY/risk med，契约 `.lazyzcode/contracts/v0
 - 注入：RemoteHomeView.swift toggle 处理器体 `if…remove/insert` 行替换为 `_ = id // 试验注入注释`——**恰一行 diff**（1 insertion/1 deletion）；注入 commit `4182d45`（消息如实标注「试验注入——工作区卡片 toggle 熔断（受控缺陷，试点红面）」+尾注）。
 - **红半精确命中**：pilot-ui-smoke failed（10.8s），断言原文 `ZCodeWebParitySmokeUITests.swift:113: XCTAssertTrue failed - 点卡头应展开(任务行出现)`——与计划预注册失败点逐字同形；**收起全部/行数 0 前段断言照常通过**=注入只熔断 toggle 交互路径，判别面干净（`red/red-injected-test.txt`，sha256 38c22c81…）。
 - 红态视觉件：xcresult 附件导出（xcresulttool export attachments）获**测试全程屏幕录制 mp4**（2.28MB，sha256 2bf567b5…——收起全部生效→点卡头行不出现全程在案）+3 事件件；xcresult `build/dd/Logs/Test/Test-ZPigeon-2026.09.25_11-23-15-+0800.xcresult`。
+
+### 5.4 N5 真引擎驱动与中断恢复（2026-09-25）
+
+- **drive#1（fence 1）**：段 1（sess_dcf0f5b6…，272.2s，exit 0）引擎段内自主完成 N1 修复 commit `9080d13`（「试点修复——恢复工作区卡片 toggle 处理器原实现」）+N2 标记 commit `29347c3`+**F1 靶向验证全绿自采证据**（pilot-check.sh build+ui-smoke 全绿、blob 全同，指纹 e78d9a480c·附件 2）——KU3 证立（引擎段内能跑通 check 配方并自主交付）；段后收束：**M3 积分预算执法活体**「积分预算尽（近 5h 滚动水位 414.1 ≥ 积分硬顶 400）」+handoff 快照自写。
+  - **计划外事件（如实记账）**：drive 默认积分硬顶 400 的执法 gauge=**账号级** 5h 滚动水位（drive.js 头注自认「不是本 run 的消费累计」）——宿主交互会话自身消耗即把水位顶过 400，夹具 goal 被误伤收束；与本 goal 契约 budget-ref「不设执法上限」错位。处置=重驱带 `LZY_DRIVE_POINTS_BUDGET=4000`（runtime.js 文档化 env 钮，drive 每 run 重开预算 spent 归零重计）；预算记账照走（spent 不丢），gauge/target 语义错位记债 O。
+- **drive#2（fence 2）**：段 1（sess_e4c85151…，104.3s，exit 0）完成 F2 认领取证；段后 gate 窗口内驱动进程树被 SIGKILL（84621+引擎 91989 全树）——**击杀点在段间（段 1 已退、段 2 未起），租约持有者死亡=僵尸租约态，语义与段中击杀一致（如实记）**。附带发现：首轮 kill 因 zsh `kill` 不收换行 pid 列表而失败（`illegal pid` 原文在 drive2 演练记录），逐 pid 重杀成功——SIGKILL 演练本身两态（失败尝试+成功）全程 CLI/ps 活体在案。
+- **重驱被拦（僵尸租约门活体）**：`[lzy] 另一运行时持租（fence 2，至 2026-09-25T04:06:16.774Z）——单运行时互斥；持租进程 pid 84621 已不存在（僵尸租约）——回收：lzy loop lease reclaim`。
+- **lease reclaim**：`✔ 租约已回收：fence 2（持有进程已不存在）——下次 acquire 发新号`。
+- **drive#3（fence 3）**：段 1（sess_82bf22dd…，144.5s）→ `✔ goal done（v030-zp-pilot）——终验 attestation：.lazyzcode/attestations/`（`v030-zp-pilot-20260925T033940Z.json`）。
+- **断言清单（零重复交付）**：试点分支 e573516..HEAD 恰 4 commit（基础设施 aef973a/注入 4182d45/修复 9080d13/标记 29347c3）——**修复 commit 恰一条**；`git diff e5735163 HEAD -- RemoteHomeView.swift` **0 行（blob 全同）**；goal done 4/4；三次 drive 段记录枚举无第二条修复提交。
+- **消耗实记**：墙钟=272.2+104.3+144.5=521.0s（drive 段记录）；积分=hostdb model_usage 按 sessionId 只读查询、core/cost.js ADR-0023 口径折算：drive#1 **3.27** + drive#2 **1.976** + drive#3 **1.74** = **6.986**（引擎模型 deepseek-v4.1-flash；`drive/points-summary.txt`+`drive/points-rows.txt`）。

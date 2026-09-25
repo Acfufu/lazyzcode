@@ -418,10 +418,16 @@ installs plugins and nothing else — enabling goes through the engine's officia
 
 ### Known limitations
 
-- Platform support (ADR-0011): macOS, Windows and Linux are all supported;
-  engine layouts are measured on each, the distribution matrix is
+- Platform support boundary (ADR-0011): macOS, Windows and Linux are all
+  supported; engine layouts are measured on each, the distribution matrix is
   arm64-live-verified (Windows 11 / Ubuntu ARM VMs), and x64 coverage follows
-  the official download matrix by documentation.
+  the official download matrix by documentation. The CI matrix (node 22/24 ×
+  ubuntu/windows, four legs) stays green on main; three test families are
+  explicitly skipped on win32 (kept until VM verification): SIGTERM kill
+  receipt semantics, gh CLI parsing semantics, and EACCES permission-denial
+  semantics (POSIX permission bits do not apply on win32) — skipped groups
+  are a support boundary, not a verified surface (debt-G recheck 2026-09-25:
+  the CI win32 legs run the rest of the suite green).
 - Driving the engine headlessly (`--prompt`) requires the desktop's injected
   model credentials; the mechanism is validated by probes, live headless
   acceptance is deferred.

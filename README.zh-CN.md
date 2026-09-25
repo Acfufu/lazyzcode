@@ -357,9 +357,12 @@ lazyzcode/
 
 ### 已知限制
 
-- 平台支持（ADR-0011）：macOS / Windows / Linux 三平台支持；三平台引擎布局均已
-  实测，分发矩阵按 arm64 实证（Windows 11 / Ubuntu ARM 虚拟机活体）——x64 覆盖
-  以官方下载矩阵文档声明。
+- 平台支持边界（ADR-0011）：macOS / Windows / Linux 三平台支持；三平台引擎布局均
+  已实测，分发矩阵按 arm64 实证（Windows 11 / Ubuntu ARM 虚拟机活体）——x64 覆盖
+  以官方下载矩阵文档声明。CI 矩阵（node 22/24 × ubuntu/windows 四腿）在 main 常绿；
+  三族测试在 win32 显式 skip（维持至 VM 实测）：SIGTERM 击杀回执语义、gh CLI 解析
+  语义、EACCES 权限拒绝语义（POSIX 权限位在 win32 不生效）——skip 组属支持边界而
+  非已验面（M3 债 G 补核 2026-09-25：CI win32 腿执行其余全量套件绿）。
 - headless（`--prompt`）驱动引擎需要桌面端注入的模型凭据；机制已由探针验证，
   活体 headless 验收顺延。
 

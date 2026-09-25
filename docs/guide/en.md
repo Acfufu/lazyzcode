@@ -758,7 +758,13 @@ Privacy: zero telemetry; diagnostics are computed locally and printed locally.
 - **macOS, Windows, and Linux** are supported for engine detection and the
   full install chain (ADR-0011); the distribution matrix is arm64-live-verified
   (Windows 11 / Ubuntu ARM VMs), x64 coverage follows the official download
-  matrix by documentation.
+  matrix by documentation. The CI matrix (node 22/24 × ubuntu/windows, four
+  legs) stays green on main; three test families are explicitly skipped on
+  win32 (kept until VM verification): SIGTERM kill receipt semantics, gh CLI
+  parsing semantics, and EACCES permission-denial semantics (POSIX permission
+  bits do not apply on win32) — skipped groups are a support boundary, not a
+  verified surface (debt-G recheck 2026-09-25: the CI win32 legs run the rest
+  of the suite green).
 - **Headless** driving of the engine (`--prompt`) needs the desktop's injected
   model credentials; the mechanism is probe-validated, live headless
   acceptance is deferred.

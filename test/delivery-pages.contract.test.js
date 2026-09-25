@@ -189,16 +189,25 @@ test("⑤readback C：迟来事实（对齐+marker）把 failed 收束为 done�
   }
 });
 
-test("⑥观察参数重瞄：failed 后以校正 marker/URL 重 act→done 且 attempt 记录前后值", async () => {
+test("⑥观察参数重瞄：failed 后以校正 marker/URL 重 act→done 且 attempt 记录前后值；本次抓取须用重瞄后 URL（内存对象同步）", async () => {
   const d = goalRepo("lzy-dpages-6-");
   try {
     await doneB(d);
     assert.throws(() => actDeliveryC(d, cOpts, fakeDeps({ pagesCommit: MERGE, body: "<html>旧内容</html>" })), /marker=MISSING/);
     assert.equal(intentC(d).status, "failed");
-    const r = actDeliveryC(d, { repo: REPO, expectMarker: "M4 报告页标题", contentUrl: "https://acfufu.github.io/lazyzcode/spikes/x/" }, fakeDeps({ pagesCommit: MERGE, body: "<html>M4 报告页标题</html>" }));
+    // 假 curl 按 URL 区分 body：旧 URL 无标记、重瞄后 URL 才有——钉死「用重瞄后 URL 抓取」
+    const bodies = { "https://old.example/": "<html>旧内容</html>", "https://new.example/": "<html>M4 报告页标题</html>" };
+    const seenUrls = [];
+    const deps = fakeDeps({ pagesCommit: MERGE });
+    deps.curlGet = (url) => {
+      seenUrls.push(url);
+      return { code: 0, stdout: `${bodies[url] ?? "???"}HTTPSTATUS:200`, stderr: "" };
+    };
+    const r = actDeliveryC(d, { repo: REPO, expectMarker: "M4 报告页标题", contentUrl: "https://new.example/" }, deps);
     assert.equal(r.intent.status, "done");
     assert.equal(r.intent.target.expectMarker, "M4 报告页标题");
-    assert.equal(r.intent.target.contentUrl, "https://acfufu.github.io/lazyzcode/spikes/x/");
+    assert.equal(r.intent.target.contentUrl, "https://new.example/");
+    assert.deepEqual(seenUrls, ["https://new.example/"], "重瞄后必须以新 URL 抓取");
     const reAim = r.intent.attempts.filter((a) => a.method === "re-aim");
     assert.equal(reAim.length, 1);
     assert.match(reAim[0].detail, /v030-m4-delivery-report/);

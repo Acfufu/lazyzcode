@@ -677,6 +677,8 @@ export function actDeliveryC(cwd, opts, deps = {}) {
       saveIntents(cwd, state);
       return it;
     });
+    // 内存对象同步（beginAct 返回的是重瞄前快照——不同步则本次 verifyPages 仍抓旧 URL）。
+    Object.assign(intent.target, Object.fromEntries(Object.entries(reAim).map(([k, [, nv]]) => [k, nv])));
   }
   const id = intent.id;
   // 轮询（拍板 7：15s×≤10）至 status=built ∧ commit==mergeSha。

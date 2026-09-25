@@ -531,10 +531,38 @@ export function actDeliveryB(cwd, opts, deps = {}) {
   }
   const upToDate = /up.to.date/i.test(String(pushRun.stderr ?? "") + String(pushRun.stdout ?? ""));
   noteAttempt(cwd, "B", id, { method: "push", outcome: "ok", detail: upToDate ? "Everything up-to-date" : "pushed" });
-  // 2) PR resolve/create（可逆步；create 幂等——已存在即转 resolve）
-  let pr = prView(deps, repo, target.prNumber ?? branch);
-  if (!pr.ok) {
-    if (pr.error?.code === "ENOENT") {
+  // 2) PR resolve/create（可逆步）：优先开放 PR（pr list --head）；无开放 PR 时——既有已
+  // 合并 PR 的 head 恰为本意图 HEAD=读回权威（他因已合并）；head 不符=前链已合并后的
+  // 新交付→create 新 PR（2026-09-25 首链缺陷修复：旧实现把前链 merged 误判成本意图完成）。
+  const lr = ghApi(deps, ["pr", "list", "--repo", repo, "--head", branch, "--state", "open", "--json", "number,headRefOid,baseRefName,state,url"], { timeoutMs: 30_000 });
+  let openPr = null;
+  if (lr.code === 0) {
+    try {
+      const arr = JSON.parse(lr.stdout);
+      openPr = Array.isArray(arr) && arr.length > 0 ? arr[0] : null;
+    } catch {
+      openPr = null;
+    }
+  }
+  let pr;
+  if (openPr) {
+    pr = prView(deps, repo, openPr.number);
+    if (!pr.ok) {
+      failAct(cwd, "B", id, "unknown", { method: "pr-resolve", outcome: "query-failed", detail: "开放 PR 读回失败" });
+      throw new DeliveryError(`开放 PR 读回失败（意图 ${id}）——先 lzy delivery readback B 核对（V10）`);
+    }
+    noteAttempt(cwd, "B", id, { method: "pr-resolve", outcome: "ok", detail: `#${pr.number} state=${pr.state} head=${String(pr.headRefOid ?? "").slice(0, 10)}（开放 PR）` });
+  } else {
+    const existing = prView(deps, repo, target.prNumber ?? branch);
+    if (existing.ok && existing.state === "MERGED" && existing.headRefOid === head) {
+      // 读回权威：本意图 HEAD 已随既有 PR 合并——done(observed)，绝不重发 merge。
+      const it = settleAct(cwd, "B", id, "done", {
+        attempt: { method: "drift-check", outcome: "already-merged", detail: `#${existing.number} 已处于 merged 且 head==意图 HEAD（读回权威）` },
+        observed: { mergeSha: existing.mergeSha, prNumber: existing.number, prUrl: existing.url ?? null, closedBy: "act-drift-observe" },
+      });
+      return { intent: it, alreadyMerged: true };
+    }
+    if (!existing.ok && existing.error?.code === "ENOENT") {
       failAct(cwd, "B", id, "failed", { method: "pr-resolve", outcome: "gh-missing", detail: "gh CLI 缺席" });
       throw new DeliveryError("gh CLI 缺席——安装 gh（https://cli.github.com）后重跑 act B");
     }
@@ -552,14 +580,6 @@ export function actDeliveryB(cwd, opts, deps = {}) {
   }
   noteAttempt(cwd, "B", id, { method: "pr-resolve", outcome: "ok", detail: `#${pr.number} state=${pr.state} head=${String(pr.headRefOid ?? "").slice(0, 10)}` });
   // 3) 漂移复核（V09）：state=open ∧ headRefOid==intent ∧ base==intent——任一不符=refused。
-  if (pr.state === "MERGED" && pr.mergeSha) {
-    // 他因已合并：读回权威——done(observed)，绝不重发 merge。
-    const it = settleAct(cwd, "B", id, "done", {
-      attempt: { method: "drift-check", outcome: "already-merged", detail: `#${pr.number} 已处于 merged（读回权威）` },
-      observed: { mergeSha: pr.mergeSha, prNumber: pr.number, prUrl: pr.url ?? null, closedBy: "act-drift-observe" },
-    });
-    return { intent: it, alreadyMerged: true };
-  }
   if (pr.state !== "OPEN" || pr.headRefOid !== head || pr.baseRefName !== base) {
     const detail = `state=${pr.state} head=${String(pr.headRefOid ?? "null").slice(0, 10)} base=${pr.baseRefName ?? "null"}（意图要求 OPEN/${head.slice(0, 10)}/${base}）`;
     failAct(cwd, "B", id, "refused", { method: "drift-check", outcome: "mismatch", detail });

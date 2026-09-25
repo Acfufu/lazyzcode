@@ -53,3 +53,26 @@
 ## 5. 执行日志
 
 - N1（2026-09-25/26）：基线冻结（本报告 §1）+骨架成文+评审三轮记录+F 面预注册。explorer 八问（§2）自规划期侦察转录，plan-reviewer R2/R3 已逐条实证引用。
+
+## 6. 执行日志（N1–N11）
+
+- **N1 基线冻结**（f3b373a）：§1 基线表+explorer 八问+评审三轮+F 预注册。
+- **N2 红半预捕**（n454-459，指纹 9326d4a954）：八项红半入账；三处谓词当场修正——(c) doctor 已有 M1 preview migrate 行→改钉无 stateVersion 读面（N4 由「增行」转「扩展行」）；(e) README.zh 已有平台薄行→改钉边界节实体缺位；(g) 本 goal 报告自身含 V12→排除式扩含。
+- **N3 迁移机器**（a288f2c）：apply 四阶段+journal 相位记账+state.json 版本入口（最后写=提交点）+classifyGoal 执法（corrupt/live 拒、僵尸租约可转换、runtime 不可读保守拒）+drafts 草案 authorization NONE+preserve 族 ⚠ 保字节+migration/drafts 家族登记（ANY_TMP_SCAN_DIRS）。冒烟六态全过。
+- **N4 CLI 接线**（176b480）：migrate preview|apply|status+doctor migrate 行扩展版本入口读面（纯信息面）；--root 值旗标沿 preview 既有。
+- **N5 契约测试**（9acb5cc）：11 件全绿（apply 全链/幂等/僵尸租约/活体拒/corrupt 停/state 损坏停/崩溃恢复/doctor 行/preview 回归）；执行期修正四处（租约形状补 acquiredAt·heartbeatAt、doctor 整体退出码属 install/files 行、journal 剥相位按行过滤、死 pid 构造 cross-platform）；全量 614/614 绿。
+- **N6 载荷一致**（3ae2559）：deployFiles 逐文件 sha256 对表+点残渣不部署+pack 白名单对表（npm12 对象包封归一）+外带 sess_ 三连；旧树夹具全链 v2：重组袋（20 approvals+32 attestations+salvage+evidence）preview 33 任务 0⚠→合成在途→apply 1 草案→status 0.3.0→备份↔源 56 文件 0 mismatch。
+- **N7 跨平台边界**（93dc4c5）：CI 四腿真值（run 36142988403 全绿@ab9e1ef）+win32 skip 六点三族归类（SIGTERM/gh 解析/EACCES 权限语义——维持 skip 记边界）+双语 README/guide「平台支持边界」节+债 G 补核结论（win32 腿执行其余全量绿；skip 组=边界非已验面）；docs-preview 链接 263/0 断+锚 44/44。
+- **N8 lazyzcode 腿回放 ×2**：④中断形态（SIGKILL→僵尸门→reclaim→重驱→积分止步 446.1→放宽续驱→done 6/6+att 194849Z）+⑤常态（积分止步 618.5→续驱→末段墙钟 SIGKILL→显式 finish→done 6/6+att 202623Z）——三仓回归报告 §1。
+- **N9 oc 腿回放 ×2**：④中断（孤儿引擎自交付修复 213968e97→僵尸门→reclaim→重驱 done 4/4+att 203940Z）+⑤常态（done 4/4+att 205918Z）+浏览器绿半（隔离 serve+外挂 opencode 1.18.18@14198：搜索 scrollbar 命中→点击→?settings=appearance 复选项在场，截图 sha256 6df2b875c9…）。
+- **N10 zp 腿回放 ×2**：④中断（红面 TEST FAILED→SIGKILL@150s→僵尸门→reclaim→重驱→修复 bc175f4+XCUITest 冒烟绿+blob 全同→done 4/4+att 213328Z）+⑤常态（done 4/4+att 215953Z）；红面 exit 码被管道 tail 吃（输出原文为权威红证据，瑕疵如实记）。
+- **N11 回归报告**：docs/spikes/v030-m5-regression-report.md——三仓各 3 次计数表+中断恢复形态行+复现配方+计量（缺面如实记）+V01–V12 全表（V12 本轮收口）。
+
+## 7. 债面处置（N12 拍板，逐条理据）
+
+- **债 F（scope 逐写执法升格，M1 记/M3 改挂/M4 待复评）→ 不升格，设计终局**：设计总案 §3.1 明文「机器保证 lzy 管理路径的状态与授权核对，不宣称可以阻止同权限恶意代理绕开 lzy 执行原生命令」——逐写执法与该威胁边界直接矛盾；M4 交付面落地已满足升格复评条件，复评结论=边界即终局（非回避）。记入本报告+decisions #36 关联说明。
+- **债 G（win32 执行语义未核，M2/M3 记）→ 收口于 N7**：CI 矩阵轮真值补核完成（四腿绿），三族 skip 逐条记入双语支持边界文档；「skip 组=支持边界非已验面」如实声明，VM 实测维持 ADR-0011 边界外。
+- **债 K（engine --json usage 第二计量源对账，M3 记/M4 无处置）→ 延后**：无低延迟计量需求证据（M4 交付面以 CI 轮询为主面未需亚段计量）；#32 近似语义已执法且本轮两次积分止步活体有效；待真实需求出现再拍板。
+- **债 M4-1（CI flake 根因未定论）→ 站岗**：readiness 原因明细已随 5dfcc83 落地（自诊断面在案）；本轮 CI 观察窗内零复现；复发即按 readiness 原因诊断，不预置修复。
+- **债 M4-2（d5 账本纠错未产品化）→ 延后**：correction attempt 留痕路径已足（一次发生+双留痕）；复发第二例或用户点名再产品化。
+- **债 M4-3（queue B/C 编排）/债 M4-4（C 面多页爬核）→ 重申后续版本**（原措辞明示延后，非 M5 义务）。

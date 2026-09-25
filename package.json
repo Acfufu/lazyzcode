@@ -1,6 +1,6 @@
 {
   "name": "lazyzcode",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "AI coding-workflow discipline layer for ZCode: plan, execute, take evidence, never stop half-done. Plugin + lightweight CLI (lzy).",
   "keywords": [
     "zcode",

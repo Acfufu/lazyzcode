@@ -2,7 +2,7 @@
 
 日期：2026-09-23。状态：**共识已确认；用户明确要求本会话不进入实施，交接另一会话**。
 基线：`fb61809`，包版本 0.2.3；已有 Unreleased workers 与债清改动不作为本轮新成果。
-依据：[访谈十项决策](design-v030-agent-first.md)、[一手研究与差距](research-agent-first-v030.md)、[术语](../CONTEXT.md)。
+依据：[访谈十项决策](design-v030-agent-first.md)、[一手研究与差距](research-agent-first-v030.md)、领域术语（`CONTEXT.md`，仓根非站点页）。
 
 ## 1. 交付目标
 
@@ -294,7 +294,7 @@ M0 若发现无法履行某项承诺，允许继续不依赖它的阶段，但�
 
 - [访谈记录](design-v030-agent-first.md)：十项已确认决策，不必重新逐项询问。
 - [研究底稿](research-agent-first-v030.md)：一手来源、本仓差距及事实与推论边界。
-- [领域术语](../CONTEXT.md)、[ADR-0024](adr/0024-agent-first-approval-boundary.md)、[ADR-0025](adr/0025-verification-dependency-scope.md)：已接受的设计边界。
+- 领域术语（`CONTEXT.md`，仓根非站点页）、[ADR-0024](adr/0024-agent-first-approval-boundary.md)、[ADR-0025](adr/0025-verification-dependency-scope.md)：已接受的设计边界。
 
 交接时六份规划文件均在本地工作区，尚未纳入 Git 提交；没有产品代码变更。
 已完成独立方案复审与 Markdown/本地链接检查，尚未取得三仓运行或预算硬顶能力证据。

@@ -217,6 +217,7 @@ config env; absent engine = skip, missing credentials = warn-only, 0.1.0) and �
 0.2.0 — the unattended drive channel (`drive`: credential two-state, active
 lease, run budget, and whether the open goal is drive-eligible; ADR-0020)
 (`claims`: who claimed it, stuck markers; zero claims = nobody is pullable under claim-gated pull-back — warn-only),
+an approval-record audit (`approvals`: recorded approvals counted with per-record shape validation, identity = file + at/sessionId fields — the ADR-0018 audit face), a contract authorization row (`contract`: the goal's bound contractHash has an approval on record with no later withdrawal; goals without a contract skip on the legacy planHash gate — ADR-0024), a project-manifest row (`project`: `lzy.project.json` parse, entry-present readiness, sha256 echo; skip without a manifest) and a migration census (`migrate`: legacy record family counts, version-entry presence, pointer to `lzy migrate preview` — `apply` is always explicit, never automatic; ADR-0029),
 whether the host is a git repository (`host-git`: warn with `git init` guidance when not — evidence binds git trees, ADR-0019),
 commit-ledger coverage (`ledger`: goal-era commits missing the `Goal:` trailer — warn-only),
 a `waterline` line (rolling 5-hour point burn vs the self-calibrated nudge threshold, plus

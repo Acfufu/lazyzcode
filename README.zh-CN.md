@@ -183,7 +183,12 @@ provider 同压）与模型档位建议行（`cost`：零限流窗+低滚动水�
 纯建议文本，不进谓词数学）、项目记忆采纳审计
 （`agents-md`，warn-only，含地图落后提示：基点后覆盖域 ≥50 提交即提醒重跑
 init-deep）、进行中目标的认领巡逻（`claims`：谁认领了它、
-stuck 停拉标记；零认领 = 资格制下无人会被拉回——warn-only）、宿主是否 git 仓
+stuck 停拉标记；零认领 = 资格制下无人会被拉回——warn-only）、批准记录审计（`approvals`：
+已录批准逐条形状校验，记录身份=文件+at/sessionId 字段——ADR-0018 审计面）、契约授权行
+（`contract`：现行目标所绑 contractHash 有批准记录且其后无撤回；未绑契约走现行 planHash
+人权门即 skip——ADR-0024）、项目清单行（`project`：`lzy.project.json` 解析+入口在场就绪度
++sha256 回显；无清单即 skip）与迁移清点行（`migrate`：旧记录家族计数+版本入口在场性+指路
+`lzy migrate preview`——apply 恒显式、绝不自动迁移；ADR-0029）、宿主是否 git 仓
 （`host-git`：非 git 时 warn 带 `git init` 指路——证据绑定 git 树，ADR-0019），
 提交账本覆盖率（`ledger`：goal 起点后缺 `Goal:` 尾注的提交——warn-only）、水位行（`waterline`：
 近 5h 滚动积分对比自参照警戒线，sqlite3 缺席时如实报降级原因）与本仓 unbound wake 的

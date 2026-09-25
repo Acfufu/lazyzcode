@@ -3,9 +3,9 @@
      若仓库改名或换组织，与 docs/_config.yml 的 url/baseurl 一起改。
      lastmod = 对应页面内容的最近提交日，内容有实质改动时顺手更新。 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://acfufu.github.io/lazyzcode/</loc><lastmod>2026-09-23</lastmod></url>
-  <url><loc>https://acfufu.github.io/lazyzcode/guide/en/</loc><lastmod>2026-09-23</lastmod></url>
-  <url><loc>https://acfufu.github.io/lazyzcode/guide/zh/</loc><lastmod>2026-09-23</lastmod></url>
+  <url><loc>https://acfufu.github.io/lazyzcode/</loc><lastmod>2026-09-26</lastmod></url>
+  <url><loc>https://acfufu.github.io/lazyzcode/guide/en/</loc><lastmod>2026-09-26</lastmod></url>
+  <url><loc>https://acfufu.github.io/lazyzcode/guide/zh/</loc><lastmod>2026-09-26</lastmod></url>
   <url><loc>https://acfufu.github.io/lazyzcode/developers/en/</loc><lastmod>2026-09-15</lastmod></url>
   <url><loc>https://acfufu.github.io/lazyzcode/developers/zh/</loc><lastmod>2026-09-15</lastmod></url>
 </urlset>

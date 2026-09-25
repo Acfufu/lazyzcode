@@ -488,6 +488,28 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - 0.2.0 三件套活体（scratch `C:\scratch020`，SYSTEM exec + `set "LOCALAPPDATA=…"` 引号形态）：**lease 互斥**（acquire fence 1 → 二次 acquire 拒「另一运行时持租（fence 1，至 …）」带僵尸恢复指路）· **fence 写拒**（活跃租约期 `--fence 9` 写 → 「写拒：fence 9 非现行（现行 1）——你已被接管，立即停手不写」）· **drive 门链**（executing 目标上 `lzy loop drive` → 凭据缺席拒带恢复文本；doctor `drive` 行四段齐「凭据缺席（headless 调用会停在认证门） · 活跃租约 fence=1 · 预算未初始化 · v020vm 可入 drive（risk=low）」）；lease 释放 ✔、scratch 清除 ✔。
 - 探针引号雷补记（host 侧驱动教训）：`set VAR=value && cmd` 会把**尾随空格**并进值（`LZY_ABLATE_HUMAN_GATE` 变 `"1 "` 消融判据不中、`LZY_ZCODE_ENGINE` 路径带空格失效）——SYSTEM exec 驱动一律 `set "VAR=value"` 引号形态（0.1.0 配方的静默变体，历次被引号形态掩盖）。
 
+## 执行记录（0.3.0，agent-first 六里程碑——机械件已备，publish 留用户）
+
+### 内容与定位
+
+- **minor 面（整弧首发）**：0.3.0 = agent-first 改造 M0–M5 六里程碑——M0 能力基线（近似限制拍板 #32）/ M1 项目与授权（需求契约+项目清单，ADR-0024）/ M2 验证机器面（验证回执+范围分级复用+集成验证+CI 身份，ADR-0025）/ M3 有界队列+累计预算（ADR-0027/#34）/ M4 有限交付 B/C（ADR-0028/#35）/ M5 迁移与发布收口（ADR-0029/#36）。规划入口 `docs/plan-v030-agent-first.md`；各步报告 `docs/spikes/`。
+- **行为升级（新命令族 queue/delivery/migrate/verify/project/contract 全新面）**：win32 VM 复测适用；降档与否归维护者拍板、如实记账。
+
+### Runbook（按序）
+
+1. **push main**：M0–M5 全弧提交 + 定版提交随行（定版提交无 `Goal:` 尾注——槽位被 done 态 `v030-m5-closeout` 占用，沿 0.2.x 先例，账本 warn 预期）。
+2. **CI 四腿绿**（判决=gh run view conclusion，不认 watch 伪绿）→ **tag v0.3.0 最后切**。
+3. **GitHub Release**（notes 三节：Highlights / Coverage boundary / Upgrade）。
+4. **publish（用户 2FA）**：载荷=从 tag 树打包的 tarball（`npm pack` 于 tag 树），`npm publish <tarball>`。
+5. **发后核验**：registry `latest=0.3.0`（curl HTTP 端点为真相源）；发布 shasum 与定版前 dry-run 逐字一致；隔离 prefix 冒烟（`--prefer-online` 绕 npm12 EALLOWREMOTE）；真机 `lzy update` 0.2.4→0.3.0 全链；doctor `payload-ver` 双 ✔。
+6. AGENTS §2 发布收官同步（四处固定位点）待 publish 后做。
+
+### 执行记录（2026-09-26，机械件直发未走 loop——维护者指令）
+
+- **版本五处**：`package.json` / `plugin/.zcode-plugin/plugin.json` / `.claude-plugin/marketplace.json`（version+ref→v0.3.0）/ `docs/_layouts/home.html` softwareVersion / `docs/sitemap.xml` 三页 lastmod→2026-09-26（首页+guide 双语——guide 本弧有 delivery/migrate 实质改动；developers 未动）；CHANGELOG `[Unreleased]`→`[0.3.0] - 2026-09-26`。
+- **发布前验证**（定版树实跑）：`npm test` **618/618**（env 剥离形态复现 CI，0.2.4 家法）；`provenance-ready` exit 0（三体 0.3.0 + ref 联锁 v0.3.0）；`npm publish --dry-run` **58 文件 / 1.0 MB / shasum `2760611153f60b5aa90d7da8aa4f09f5d80bc2ec`**（终值，README 补漏后重跑）；载荷清单仅 `cli/ core/ plugin/ + 四元数据`（新增 core 8 模块与 zw recipes 8 件全在案）；敏感串双级扫描：文件名层 0 命中，内容层 `sess_` 0 / `/Users/` 0 / `.mimosa` 2 文件=package.json files 排除模式+installer 守卫注释（设计内，沿 0.2.2 先例）；docs-preview **86 页 / 断链 0 / 锚点双语 22-22**；`lzy sync` 缓存 0.3.0 目录落位，doctor `payload` / `files`（25 文件逐字 sha256）/ `payload-ver`（CLI 0.3.0 一致）三 ✔、EXIT=0。
+- **发布前补漏两件**：①双语 README doctor 段补四行——0.3.0 新增 `contract`/`project`/`migrate` 三行 + `approvals` 行旧账（0.1.x 起该段缺席，顺带清账）；②docs 断链 11 条修复（0.3.0 弧规划/研究/设计三文件：CONTEXT/源码/载荷路径改代码字面量「仓内非站点页」、Symphony SPEC 外链去 `.md` 后缀）——M5 收口漏检面，本批闭环。
+
 ## 执行记录（0.2.4，双审修复轮 + fast 波编排收口——机械件已备，publish 留用户）
 
 ### Runbook（按序）

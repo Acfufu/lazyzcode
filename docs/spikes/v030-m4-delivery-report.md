@@ -54,3 +54,16 @@ Goal `v030-m4-delivery`（tier heavy · risk high · 契约 4a2efc76…59b · �
 - (c) `.lazyzcode/` 家族清单：**无 delivery/**（attestations/authorizations/contracts/drafts/evidence/loop/plans/verify；c-family-absence.txt）。
 - (d) 线上站点改前预抓取：index 200（内容含 0.2.4、**零** v030-m3/v030-m4 标记）；报告页两 URL 变体 **404**（d-site-fetch-meta.txt+d-marker-count.txt+原文 body×3）——F5 内容标记「合并后才存在」的改前不在场活体。
 
+### N10 真链 B 活体（2026-09-25）
+
+- **授权**：B 契约 86cfd50f、C 契约 10fce1cd 经 UPS 钩子在真实用户消息上批准（钩子批准分支对 delivery 契约零改动即生效——活体确认；撤回面扩展随链在案）。
+- **链**：`lzy delivery act B` 机器执行 push（76 提交上公网）→PR #1 建立→漂移复核→headSha CI 门：**首跑 180s 预算内未全绿=refused**（真 CI 无 shim）→重跑两次同拒（假拒根因见下）→裁决修复后 CI 绿→**merge --match-head-commit 绑 5ee8cb0**→读回实际 mergeSha=`61d1dc35415685f01980b34a96f56275e7ecda46`→merge SHA CI 轮询=**failed（如实「已合并、验证失败」）**。
+- **首链抓获真缺陷三枚（全部 fail-safe 方向，绝不假绿）**：(a) check-runs REST 面 status/conclusion 为小写，旧大写断言恒判 pending=假拒（dc0ee9d 归一修复）；(b) C 面 URL 形态猜错（/docs/spikes/ vs 站点根 /spikes/）与 marker 串猜错（slug 不在渲染体；真标记=报告页标题）——V11 门如实拦截，观察参数重瞄机制落地（8b84041）+重瞄后内存同步缺陷（86d732b，测试假件按 URL 区分 body 钉死）；(c) 修复全部在合并后落 main 本地（工作树态跑链，合并内容=已批准的 5ee8cb0 树）。
+- **merge SHA CI 偶发红 ×2（遗留）**：attempt1=budget-ledger ④（results 空），attempt2=⑤（同形态）——同树 PR CI 四腿全绿、本地 17 执行（含 CPU 饥饿模拟）零复现；M3 时代测试竞态、CI runner 特异。处置=测试断言插桩（stop 原因入失败报文）随 follow-up PR 走新授权（B2），不做盲赌重跑。
+
+### N11 真链 C 活体（2026-09-25）
+
+- Pages 构建 built @ 61d1dc35（== mergeSha，check-runs 亦见 pages build/deploy/report-build-status 三连绿）。
+- HTTPS 内容判据：报告页 `https://acfufu.github.io/lazyzcode/spikes/v030-m4-delivery-report/` → 200 ∧ 标题标记「v030-m4-delivery 试点报告」在场（改前预抓取已证 0.2.4 站点零 v030-m4 串）。
+- 浏览器关键路径截图：报告页整页（pages-report-full.png，1.17MB）+站点首页（pages-index.png），IAB 实流，sha256 绑 N12 账本。
+

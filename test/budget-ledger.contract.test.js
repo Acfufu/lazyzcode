@@ -136,7 +136,7 @@ test("④跨 reset/换 goal 累计不刷新：两项各自 finish+reset→ledger
         return { ok: true, cause: "fake 段数尽" };
       },
     });
-    assert.deepEqual(r.results.map((x) => x.outcome), ["completed", "completed"]);
+    assert.deepEqual(r.results.map((x) => x.outcome), ["completed", "completed"], `dispatch stop=${r.stop} results=${JSON.stringify(r.results)}`);
     const v = budgetView(d);
     assert.equal(v.wallMs, 12000); // 5000+7000：两次 reset/两个 goal，账本不分家
     assert.equal(loadLedger(d).entries.filter((e) => e.kind === "wall").length, 2);
@@ -171,7 +171,7 @@ test("⑤积分轴：逐会话 points 入账+达限停止下一次派发+在途�
       querySessionPoints: (sid) => ({ absent: false, unpriced: [], points: sid === "sess-1" ? 6 : 6 }),
     });
     // 第一项 6 分（<10）→完成；第二项入账 6→累计 12 越限→overrun 如实+停止
-    assert.equal(r.results[0].outcome, "completed");
+    assert.equal(r.results[0]?.outcome, "completed", `dispatch stop=${r.stop} results=${JSON.stringify(r.results)}`);
     assert.equal(r.results[1].outcome, "completed"); // 已派发的在途超额不抹（如实记账后完成）
     const ledger = loadLedger(d).entries;
     assert.equal(ledger.filter((e) => e.kind === "points").length, 2);

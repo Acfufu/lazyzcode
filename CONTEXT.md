@@ -46,6 +46,9 @@ _Avoid_: 可合并变更、生产发布
 **上线交付（deployed-and-verified delivery）**：变更已部署到约定线上环境并完成约定线上验证；采用此终点需要项目明确授权。
 _Avoid_: 部署命令成功、已合并、未经验证的上线
 
+**交付意图（delivery intent）**：外部交付动作（合并/Pages 核验）执行前落账的意图记录——目标身份（repo/base/HEAD/PR/标记判据）先于任何外部调用写入意图账本（.lazyzcode/delivery/）；读回（readback）=动作后核对分类，done 恒终，已成功动作绝不重复执行（0.3.0 M4，ADR-0028）。
+_Avoid_: 计划（执行计划另有权威）、日志（无身份绑定与状态机）
+
 ---
 
 # 产品术语表（自 AGENTS.md §8 迁入，2026-09-24，goal v030-m1#N10——唯一来源）

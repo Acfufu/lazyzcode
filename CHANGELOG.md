@@ -7,6 +7,18 @@ versioning is SemVer.
 
 ### Added
 
+- **Limited delivery B/C (merge & Pages)** (0.3.0 M4, goal `v030-m4-delivery`; ADR-0028):
+  `lzy delivery` family (request/status/act/readback). B and C each get a separate
+  delivery contract (endpoint hashed into the approval) riding the UPS approval channel
+  unchanged — the hook approval branch needs zero changes; withdrawal recognizes
+  delivery contract short codes. The merge action is machine-gated on B∧C dual
+  authorization (main is the Pages source), PR head/base drift re-check, and green CI
+  on the PR head; merge binds the PR head (`--match-head-commit`), reads back the
+  actual merge SHA, and polls CI on that SHA. Pages verification aligns the build
+  commit with the merge SHA and checks live HTTPS content against an expected marker.
+  An intent ledger records target identity before any external call; read-back
+  classifies outcomes (merged → done, open → re-arm); done is final — no blind
+  re-execution after timeouts or disconnects.
 - **Bounded queue & cumulative budget** (0.3.0 M3, goal `v030-m3`; ADR-0027): `lzy
   queue` family (add/list/show/budget/dispatch/reconcile/cancel). Multiple approved
   contracts run serially across interruptions: an item state machine (proposed →

@@ -238,6 +238,17 @@ dedupKey 不重复扣账。积分执法采近似限制语义：逐段按 session
 未计价模型/未决占用一律不算零——停止受积分限额约束的自动派发并显式记录，人工核对后
 `--resume-points` 恢复；SIGKILL 在途消耗以 killed-inflight 条目申报，绝不抹成零。
 
+## 有限交付 B/C（0.3.0 M4）
+
+交付到项目主干（终点 B）或已验证的线上环境（终点 C）需要在需求契约之外的单独授权：
+`lzy delivery request B|C --contract <文件>` 绑定按终点划分的交付契约并索取其哈希的
+UPS 批准。合并动作（`lzy delivery act B`）受机器门约束：B∧C 双授权（合并会触发部署的
+分支须两项都有效）、PR head/base 漂移复核、PR headSha 的必需 CI 全绿——然后绑定 PR
+HEAD 合并、读回实际 merge SHA、轮询该 SHA 的 CI。Pages 核验（`lzy delivery act C`）
+等待构建 commit 对齐 merge SHA，并按预期标记核对线上 HTTPS 内容。每个动作之前都有意图
+记录（目标身份与计划 argv）落 `.lazyzcode/delivery/`；超时或断连后用
+`lzy delivery readback B|C` 分类收束——done 恒终，已成功动作绝不重复执行。
+
 ## 目标循环命令
 
 ```

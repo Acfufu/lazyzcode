@@ -294,6 +294,22 @@ never counted as zero — point-limited dispatch stops with an explicit record u
 human resumes it via `--resume-points`; in-flight consumption at SIGKILL is declared as
 a killed-inflight entry, never flattened to zero.
 
+## Limited delivery B/C (0.3.0 M4)
+
+Delivering all the way to the project's main branch (endpoint B) or a verified live
+environment (endpoint C) needs its own authorization on top of the requirement
+contract: `lzy delivery request B|C --contract <file>` binds a per-endpoint delivery
+contract and asks for a UPS approval of its hash. The merge action (`lzy delivery act
+B`) is machine-gated: dual B∧C authorization (when merging to a branch that triggers a
+deploy), PR head/base drift re-check, and green required CI on the PR head — then it
+merges bound to the PR head, reads back the actual merge SHA, and polls CI on that SHA.
+Pages verification (`lzy delivery act C`) waits until the Pages build commit matches
+the merge SHA and checks the live HTTPS content against an expected marker. Every
+action is preceded by an intent record (target identity, planned argv) in
+`.lazyzcode/delivery/`, and `lzy delivery readback B|C` classifies outcomes after
+timeouts or disconnects — a done intent is final, so an already-successful action is
+never re-executed.
+
 ## Goal loop commands
 
 ```

@@ -207,11 +207,14 @@ export function prView(deps, repo, ref) {
   };
 }
 
-// check-runs 裁决：全 COMPLETED 且 conclusion ∈ {SUCCESS,NEUTRAL,SKIPPED}=绿；零 run=尚未开始。
+// check-runs 裁决：全 completed 且 conclusion ∈ {success,neutral,skipped}=绿；零 run=尚未开始。
+// 大小写归一比较——check-runs REST 面实为小写（活体实测），gh pr view 的 state 才是大写；
+// 归一让两族惯例都过（错判方向=fail-safe：假拒绝不假绿——首链试点即抓的缺陷，2026-09-25）。
 export function checkRunsVerdict(runs) {
   if (!Array.isArray(runs) || runs.length === 0) return { present: false, completed: false, ok: false, bad: [], pending: 0 };
-  const bad = runs.filter((c) => c.status === "COMPLETED" && !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(c.conclusion)).map((c) => `${c.name}:${c.conclusion}`);
-  const pending = runs.filter((c) => c.status !== "COMPLETED").length;
+  const norm = (s) => String(s ?? "").toUpperCase();
+  const bad = runs.filter((c) => norm(c.status) === "COMPLETED" && !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(norm(c.conclusion))).map((c) => `${c.name}:${c.conclusion}`);
+  const pending = runs.filter((c) => norm(c.status) !== "COMPLETED").length;
   return { present: true, completed: pending === 0, ok: bad.length === 0 && pending === 0, bad, pending };
 }
 
@@ -291,10 +294,24 @@ function authorizationGate(cwd, goal, ep, { needB, needC }) {
   return { ablated: false };
 }
 
-// 意图门（拍板 4）：done 恒拒；acting/unknown 先 readback；failed/refused 同身份可重试；
-// 身份漂移（repo/branch/head/base/marker 不符）=拒绝（新候选=新契约=新授权，V09）。
+// 意图按（endpoint∧交付身份）匹配：「已成功动作」=同一交付身份的动作，不是该端点的
+// 全部历史——follow-up 交付（新 HEAD/新 mergeSha）开新意图，历史意图永存账本。
+// B 身份=repo+branch+base+headSha；C 身份=repo+mergeSha。观察参数（C 面 expect-marker/
+// content-url）不在身份内（重瞄=attempt 记录）；B 面 headSha 恒硬。
+const OBSERVABLE_KEYS = new Set(["expectMarker", "contentUrl"]);
+function intentIdentity(ep, target) {
+  if (ep === "B") return JSON.stringify([target.repo, target.branch, target.base, target.headSha]);
+  return JSON.stringify([target.repo, target.mergeSha]);
+}
+// 锚=交付目标（B: repo+base=合并进哪条基线 / C: repo）——锚漂移=换了交付对象=新契约；
+// 滚动值（branch+headSha / mergeSha）新=同交付目标的 follow-up=新意图（换分支名不影响锚）。
+function intentAnchor(ep, target) {
+  return ep === "B" ? JSON.stringify([target.repo, target.base]) : JSON.stringify([target.repo]);
+}
 function intentGate(state, ep, target) {
-  const it = state.intents.find((x) => x.endpoint === ep);
+  const epIntents = state.intents.filter((x) => x.endpoint === ep);
+  const key = intentIdentity(ep, target);
+  const it = epIntents.find((x) => intentIdentity(ep, x.target) === key);
   if (it && it.status === "done") {
     throw new DeliveryError(`交付意图 ${it.id} 已 done（${it.observed ? JSON.stringify(it.observed).slice(0, 120) : "无 observed"}）——已成功动作绝不重复执行（V10）。读面：lzy delivery readback ${ep}`);
   }
@@ -302,7 +319,7 @@ function intentGate(state, ep, target) {
     throw new DeliveryError(`交付意图 ${it.id} 处于 ${it.status}——结果未定先读回收束，绝不盲目重发（V10）：lzy delivery readback ${ep}`);
   }
   if (it) {
-    const drift = Object.entries(target).filter(([k, v]) => v !== undefined && JSON.stringify(it.target[k]) !== JSON.stringify(v));
+    const drift = Object.entries(target).filter(([k, v]) => v !== undefined && !OBSERVABLE_KEYS.has(k) && JSON.stringify(it.target[k]) !== JSON.stringify(v));
     if (drift.length > 0) {
       throw new DeliveryError(
         `交付意图 ${it.id} 身份漂移：${drift.map(([k]) => k).join("、")} 与已声明意图不符` +
@@ -311,6 +328,14 @@ function intentGate(state, ep, target) {
       );
     }
     return { intent: it, created: false };
+  }
+  // 无同身份意图：同端点已有历史而锚全不符=换了交付对象=新契约（V09）；锚同=follow-up 放行。
+  const anchor = intentAnchor(ep, target);
+  if (epIntents.length > 0 && !epIntents.some((x) => intentAnchor(ep, x.target) === anchor)) {
+    throw new DeliveryError(
+      `交付意图身份漂移：${ep} 面已有交付历史而本次交付锚（${ep === "B" ? "repo/branch/base" : "repo"}）全不符` +
+        `——新交付面=新契约=新授权请求（V09），不以新身份偷渡进旧授权`,
+    );
   }
   return { intent: null, created: true };
 }
@@ -453,13 +478,20 @@ function annotateDone(cwd, ep, intentId, observedPatch, attempt) {
 }
 
 // CI 轮询（拍板 5：15s×≤12）：绿=present∧completed∧ok；有败=即拒；预算尽=pending（=拒，
-// 合并前置=CI 全绿——无 CI 仓此门永不绿，首版收窄如实声明）。query-failed=读面故障。
+// 合并前置=CI 全绿——无 CI 仓此门永不绿，首版收窄如实声明）。查询故障（网络 EOF 等）
+// 预算内重试——瞬时断连不判死（V10：读面故障重试后仍败才 query-failed）。
 function pollCi(deps, repo, sha) {
   const sleep = deps?.sleep ?? syncSleep;
+  let lastFail = null;
   for (let i = 1; i <= CI_POLL_MAX; i++) {
     const r = listCheckRuns(deps, repo, sha);
     if (!r.ok) {
-      return { verdict: "query-failed", polls: i, detail: String(r.stderr ?? r.error?.message ?? "").slice(0, 200) || "gh api 失败" };
+      lastFail = String(r.stderr ?? r.error?.message ?? "").slice(0, 200) || "gh api 失败";
+      if (i < CI_POLL_MAX) {
+        sleep(CI_POLL_INTERVAL_MS);
+        continue;
+      }
+      return { verdict: "query-failed", polls: i, detail: lastFail };
     }
     const v = checkRunsVerdict(r.runs);
     if (v.present && v.completed && v.ok) return { verdict: "green", polls: i, count: r.runs.length };
@@ -574,7 +606,7 @@ export function actDeliveryB(cwd, opts, deps = {}) {
 // 单查；open→intended（re-arm，合并未发生）；closed→failed；查询失败=原状+如实报文。
 export function readbackDeliveryB(cwd, opts = {}, deps = {}) {
   const state = loadIntents(cwd);
-  const it = state?.intents.find((x) => x.endpoint === "B");
+  const it = state?.intents.filter((x) => x.endpoint === "B").findLast(() => true); // 最新 B 意图（多链并存读最新）
   if (!it) throw new DeliveryError("无 B 交付意图可读回——先 lzy delivery act B（意图先于动作）");
   const repo = opts.repo ?? it.target.repo;
   if (!repo) throw new DeliveryError("读回缺 repo（意图 target 与 --repo 均缺席）");
@@ -647,9 +679,9 @@ export function actDeliveryC(cwd, opts, deps = {}) {
   if (!repo || !expectMarker) {
     throw new DeliveryError("act C 缺参数：--repo <owner/name> --expect-marker <合并后才存在的稳定串> [--content-url <具体页 URL>]");
   }
-  // B 前置：C 核验对象=B 产出的 mergeSha——B 意图须 done 且带 observed.mergeSha。
+  // B 前置：C 核验对象=最新 done B 链产出的 mergeSha（follow-up 合并后即指向新 mergeSha）。
   const pre = loadIntents(cwd);
-  const b = pre?.intents.find((x) => x.endpoint === "B");
+  const b = pre?.intents.filter((x) => x.endpoint === "B" && x.status === "done" && x.observed?.mergeSha).findLast(() => true);
   if (!b || b.status !== "done" || !b.observed?.mergeSha) {
     throw new DeliveryError(`C 面前置不满足：B 交付意图${!b ? "缺席" : `处于 ${b.status}`}且须带 observed.mergeSha——先完成 B 链（act B→readback B）再核验 Pages`);
   }
@@ -657,6 +689,23 @@ export function actDeliveryC(cwd, opts, deps = {}) {
   const target = { repo, expectMarker, mergeSha };
   if (opts.contentUrl) target.contentUrl = opts.contentUrl;
   const { intent } = beginAct(cwd, "C", { kind: "pages-verify", target, plannedArgv: [`gh api repos/${repo}/pages/builds/latest`, `curl ${opts.contentUrl ?? siteUrlOf(repo)}`] });
+  // 观察参数重瞄（初判猜错的仪器校正，非身份变更）：attempt 记录前后值——报告面如实。
+  const reAim = {};
+  if (opts.expectMarker && opts.expectMarker !== intent.target.expectMarker) reAim.expectMarker = [intent.target.expectMarker, opts.expectMarker];
+  if (opts.contentUrl && opts.contentUrl !== intent.target.contentUrl) reAim.contentUrl = [intent.target.contentUrl ?? "(站点根)", opts.contentUrl];
+  if (Object.keys(reAim).length > 0) {
+    withLock(cwd, () => {
+      const state = loadIntents(cwd);
+      const it = state.intents.find((x) => x.id === intent.id && x.endpoint === "C");
+      Object.assign(it.target, Object.fromEntries(Object.entries(reAim).map(([k, [, nv]]) => [k, nv])));
+      it.attempts.push({ at: new Date().toISOString(), method: "re-aim", outcome: "ok", detail: `观察参数校正（等效强度、交付身份 repo/mergeSha 不变）：${JSON.stringify(reAim)}` });
+      it.updatedAt = new Date().toISOString();
+      saveIntents(cwd, state);
+      return it;
+    });
+    // 内存对象同步（beginAct 返回的是重瞄前快照——不同步则本次 verifyPages 仍抓旧 URL）。
+    Object.assign(intent.target, Object.fromEntries(Object.entries(reAim).map(([k, [, nv]]) => [k, nv])));
+  }
   const id = intent.id;
   // 轮询（拍板 7：15s×≤10）至 status=built ∧ commit==mergeSha。
   const sleep = deps?.sleep ?? syncSleep;
@@ -707,7 +756,7 @@ export function actDeliveryC(cwd, opts, deps = {}) {
 // done 复验刷新 observed；未对齐=原状+如实 attempt。
 export function readbackDeliveryC(cwd, opts = {}, deps = {}) {
   const state = loadIntents(cwd);
-  const it = state?.intents.find((x) => x.endpoint === "C");
+  const it = state?.intents.filter((x) => x.endpoint === "C").findLast(() => true); // 最新 C 意图
   if (!it) throw new DeliveryError("无 C 交付意图可读回——先 lzy delivery act C");
   const repo = opts.repo ?? it.target.repo;
   const marker = opts.expectMarker ?? it.target.expectMarker;

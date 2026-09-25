@@ -634,8 +634,8 @@ export function siteUrlOf(repo) {
   return `https://${owner.toLowerCase()}.github.io/${name.toLowerCase()}/`;
 }
 
-function verifyPages(deps, repo, mergeSha, expectMarker) {
-  const siteUrl = siteUrlOf(repo);
+function verifyPages(deps, repo, mergeSha, expectMarker, contentUrl) {
+  const siteUrl = contentUrl ?? siteUrlOf(repo);
   const fetchRes = curlGet(deps, siteUrl);
   const httpOk = fetchRes.code === 0 && fetchRes.httpStatus === 200;
   const markerFound = httpOk && String(fetchRes.body ?? "").includes(expectMarker);
@@ -645,7 +645,7 @@ function verifyPages(deps, repo, mergeSha, expectMarker) {
 export function actDeliveryC(cwd, opts, deps = {}) {
   const { repo, expectMarker } = opts ?? {};
   if (!repo || !expectMarker) {
-    throw new DeliveryError("act C 缺参数：--repo <owner/name> --expect-marker <合并后才存在的稳定串> 必填");
+    throw new DeliveryError("act C 缺参数：--repo <owner/name> --expect-marker <合并后才存在的稳定串> [--content-url <具体页 URL>]");
   }
   // B 前置：C 核验对象=B 产出的 mergeSha——B 意图须 done 且带 observed.mergeSha。
   const pre = loadIntents(cwd);
@@ -654,7 +654,9 @@ export function actDeliveryC(cwd, opts, deps = {}) {
     throw new DeliveryError(`C 面前置不满足：B 交付意图${!b ? "缺席" : `处于 ${b.status}`}且须带 observed.mergeSha——先完成 B 链（act B→readback B）再核验 Pages`);
   }
   const mergeSha = b.observed.mergeSha;
-  const { intent } = beginAct(cwd, "C", { kind: "pages-verify", target: { repo, expectMarker, mergeSha }, plannedArgv: [`gh api repos/${repo}/pages/builds/latest`, `curl ${siteUrlOf(repo)}`] });
+  const target = { repo, expectMarker, mergeSha };
+  if (opts.contentUrl) target.contentUrl = opts.contentUrl;
+  const { intent } = beginAct(cwd, "C", { kind: "pages-verify", target, plannedArgv: [`gh api repos/${repo}/pages/builds/latest`, `curl ${opts.contentUrl ?? siteUrlOf(repo)}`] });
   const id = intent.id;
   // 轮询（拍板 7：15s×≤10）至 status=built ∧ commit==mergeSha。
   const sleep = deps?.sleep ?? syncSleep;
@@ -687,8 +689,8 @@ export function actDeliveryC(cwd, opts, deps = {}) {
     failAct(cwd, "C", id, "failed", { method: "pages-poll", outcome: "budget-exhausted", detail: `预算内未对齐（${PAGES_POLL_MAX}×${PAGES_POLL_INTERVAL_MS / 1000}s；latest=${build ? `${build.status}/${String(build.commit ?? "").slice(0, 10)}` : "无"}` });
     throw new DeliveryError(`Pages 构建未在预算内对齐 mergeSha（意图 ${id} 已记 failed）——readback C 可复验（V11：不假绿）`);
   }
-  // HTTPS 内容判据：200 ∧ 含 expect-marker。
-  const { siteUrl, fetchRes, httpOk, markerFound } = verifyPages(deps, repo, mergeSha, expectMarker);
+  // HTTPS 内容判据：200 ∧ 含 expect-marker（contentUrl 缺省=站点根，可指具体页=强判据）。
+  const { siteUrl, fetchRes, httpOk, markerFound } = verifyPages(deps, repo, mergeSha, expectMarker, intent.target.contentUrl);
   if (!httpOk || !markerFound) {
     const detail = `url=${siteUrl} http=${fetchRes.httpStatus ?? "n/a"} curlExit=${fetchRes.code} marker=${markerFound ? "found" : "MISSING"}${fetchRes.stderr ? ` stderr=${String(fetchRes.stderr).slice(0, 120)}` : ""}`;
     failAct(cwd, "C", id, "failed", { method: "https-verify", outcome: "mismatch", detail });
@@ -720,7 +722,7 @@ export function readbackDeliveryC(cwd, opts = {}, deps = {}) {
     const fresh = noteAttempt(cwd, "C", it.id, { method: "readback", outcome: "not-aligned", detail: `status=${r.status} commit=${String(r.commit ?? "").slice(0, 10)}（意图要求 ${String(it.target.mergeSha).slice(0, 10)}）` });
     return { intent: fresh, build: { status: r.status, commit: r.commit }, aligned: false };
   }
-  const { siteUrl, fetchRes, httpOk, markerFound } = verifyPages(deps, repo, it.target.mergeSha, marker);
+  const { siteUrl, fetchRes, httpOk, markerFound } = verifyPages(deps, repo, it.target.mergeSha, marker, it.target.contentUrl);
   const verified = httpOk && markerFound;
   if (it.status === "done") {
     const fresh = annotateDone(cwd, "C", it.id, { pagesBuild: { status: r.status, commit: r.commit }, http: { url: siteUrl, status: fetchRes.httpStatus ?? null, markerFound } }, { method: "readback", outcome: verified ? "ok" : "mismatch", detail: `aligned=${aligned} marker=${markerFound ? "found" : "MISSING"}` });

@@ -93,7 +93,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1485,9 +1485,9 @@ function cmdDelivery(args) {
     }
     if (ep === "C") {
       if (!f.repo || !f["expect-marker"]) {
-        throw new LoopError("用法：lzy delivery act C --repo <owner/name> --expect-marker <合并后才存在的稳定串>");
+        throw new LoopError("用法：lzy delivery act C --repo <owner/name> --expect-marker <合并后才存在的稳定串> [--content-url <具体页 URL>]");
       }
-      const r = actDeliveryC(cwd, { repo: f.repo, expectMarker: f["expect-marker"] });
+      const r = actDeliveryC(cwd, { repo: f.repo, expectMarker: f["expect-marker"], contentUrl: f["content-url"] ?? null });
       console.log(`✔ C 链完成：Pages 构建 ${r.build.status} @ ${String(r.build.commit).slice(0, 10)}（== mergeSha）`);
       console.log(`  HTTPS ${r.siteUrl} → 200 ∧ 内容标记在场——C 端点判据满足（A4）`);
       return;

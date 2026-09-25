@@ -54,3 +54,13 @@ goal `v030-zpigeon-ios-pilot`（HEAVY/risk med，契约 `.lazyzcode/contracts/v0
 - 宿主 npm test 改前计数：**567 pass / 0 fail**（90.8s，exit 0；与 oc 腿收口计数一致）——`baseline/host-npm-test-baseline.txt`。
 - 夹具 build/dd 增量探针：`xcodebuild build`（destination id=2D3A1192…，-derivedDataPath build/dd）→ **BUILD SUCCEEDED，21.4s**（M0 残留增量复用成立，不清重建）——`baseline/build-probe.txt`。
 - 红态复捕（M0 阻塞活体）：无配对无数据当前态下冒烟测试 **failed（26.5s）**，断言原文 `ZCodeWebParitySmokeUITests.swift:28: XCTAssertTrue failed - 远程面 web 首页分区头应存在(收起全部钮)`——与 M0 报告 §7 阻塞原文逐字同形——`red/red-m0-state-test.txt`（F1 红半）。
+
+### 5.1 N2 数据面配方与 M0 阻塞解阻（2026-09-25）
+
+- **配方三件按拍板 7 顺位一次通过，零换级**（KU1/KU2 首选支直接成立）：
+  1. 假中继：`pilot-relay.mjs`（零依赖 Node，silent 模式）起 127.0.0.1:18787 → app 连接回执 `[relay] upgrade accepted path=/ws`——http→ws 派生与静默升级窗成立（app 停 `.connecting` 显示「正在连接,先显示上次的任务列表」横幅，缓存卡列表持续渲染）。
+  2. 快照播种：`simctl spawn defaults write io.zpigeon.ZPigeon zpigeon.bootstrapSnapshot.v030zpilot -string '<合成 JSON>'`——**首试无 `-string` 类型被 defaults 旧式 plist 解析拒（如实记），显式 `-string` 后读数回执逐字节一致**；JSON 形状按消费端反推一次命中（workspaces[workspaceKey/workspacePath/label/kind]+tasks[taskId/title/displayStatus/createdAt/updatedAt/workspacePath]）。
+  3. 配对注入：`simctl launch io.zpigeon.ZPigeon -PairingURL 'http://127.0.0.1:18787/remote/v4?sid=v030zpilot&hash=<合成>&t=<毫秒>'`（ProcessInfo.arguments 通道）——Keychain 入库+设备切换器现「未命名设备」。
+- **M0 阻塞解阻实证截图**：`baseline/launch-paired-cards.png`（sha256 绑 F1）——分区头「当前设备上的工作区和任务 2 个工作区 · 2 个任务」+v030-ws-a 卡片「1 个任务」+任务行「v030 expand collapse probe」在场；通知权限弹框由 XCUITest runner 自然处理（M0 同款）。
+- **注入前基线绿 ×2**（KU1 连续一致性判据）：`testSmokeWorkspaceCardExpandCollapse passed` **13.347s**（run1）/ **11.110s**（run2），均 exit 0——`baseline/green-run1.txt`/`green-run2.txt`；对照红态复捕 :28 失败=配方前红、配方后绿，F1 红绿两半齐。
+- 配方回执汇总 `baseline/n2-recipe-receipt.txt`（relay 日志+seed 读数+截图 sha256）；回执文件 sha256：n2-recipe-receipt `f4a4aea447c10148…`、screenshot `168d2b34cf3e4881…`（终值绑证据账本）。

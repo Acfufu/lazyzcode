@@ -975,17 +975,17 @@ export function bindDeliveryContract(cwd, ep, contractPath, contractHash) {
   });
 }
 
-// pending 清除：expectHash 匹配才清（不清别的在途请求）；幂等（无 pending=no-op）。
-export function clearDeliveryPending(cwd, expectHash) {
-  return withLock(cwd, () => {
-    const goal = readGoal(cwd);
-    if (!goal?.contractPending) return null;
-    if (expectHash && goal.contractPending.contractHash !== expectHash) return goal.contractPending;
-    const cleared = goal.contractPending;
-    goal.contractPending = null;
-    writeGoal(cwd, goal);
-    return cleared;
-  });
+// pending 清除（0.3.0 M4）：expectHash 匹配才清（不动别的在途请求）；幂等；无锁——
+// 调用方须持 withLock（saveRuntime 同款注释家法；现调用点=core/delivery.js beginAct 门过即清，
+// request 同族替换由 bindDeliveryContract 覆写 pending 自然完成）。返回被清的 pending 或 null。
+export function settleDeliveryPending(cwd, expectHash) {
+  const goal = readGoal(cwd);
+  if (!goal?.contractPending) return null;
+  if (goal.contractPending.contractHash !== expectHash) return null;
+  const cleared = goal.contractPending;
+  goal.contractPending = null;
+  writeGoal(cwd, goal);
+  return cleared;
 }
 
 

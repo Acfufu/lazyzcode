@@ -16,7 +16,7 @@ import { join, dirname, basename, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { loadContract, effectiveAuthorization, ContractError } from "./contract.js";
-import { readGoal, withLock, LoopError } from "./loop.js";
+import { readGoal, settleDeliveryPending, withLock, LoopError } from "./loop.js";
 
 export const DELIVERY_VERSION = 1;
 export const DELIVERY_ENDPOINTS = ["B", "C"];
@@ -339,6 +339,9 @@ export function beginAct(cwd, ep, { kind, target, plannedArgv }) {
   return withLock(cwd, () => {
     const { goal, bound } = requireDeliveryContext(cwd, ep);
     const gate = authorizationGate(cwd, goal, ep, { needB: ep === "B", needC: true });
+    // 拍板 2：授权观察到有效即清本契约的 contractPending（settleDeliveryPending 无锁，
+    // 本处在 withLock 内；只清匹配哈希，request 同族替换由 bindDeliveryContract 覆写完成）。
+    const pendingCleared = settleDeliveryPending(cwd, bound.hash);
     const state = loadIntents(cwd) ?? { lastSeq: 0, intents: [] };
     const { intent, created } = intentGate(state, ep, target);
     let it = intent;
@@ -353,7 +356,7 @@ export function beginAct(cwd, ep, { kind, target, plannedArgv }) {
     it.attempts.push({ at: new Date().toISOString(), method: "act-begin", outcome: "ok", detail: `endpoint=${ep} kind=${kind}${gate.ablated ? " ablated=1" : ""}` });
     it.updatedAt = new Date().toISOString();
     saveIntents(cwd, state);
-    return { goal, bound, state, intent: it, created, ablated: gate.ablated };
+    return { goal, bound, state, intent: it, created, ablated: gate.ablated, pendingCleared };
   });
 }
 

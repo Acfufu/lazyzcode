@@ -23,6 +23,7 @@ import {
   formatRepoList,
   formatStatus,
   handoffGoal,
+  bindDeliveryContract,
   fingerprintSubjects,
   noGoalMessage,
   readGoal,
@@ -77,6 +78,14 @@ import {
   setQueueBudget,
   showQueueItem,
 } from "../core/queue.js";
+import {
+  actDeliveryB,
+  actDeliveryC,
+  deliveryStatus,
+  readbackDeliveryB,
+  readbackDeliveryC,
+  validateDeliveryContract,
+} from "../core/delivery.js";
 
 const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 
@@ -84,7 +93,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1066,6 +1075,20 @@ function printHelp() {
   lzy queue reconcile                       恢复判定表显式读面（未决事务先核对后动作）
   lzy queue cancel <id> --reason <原因>     取消（保留工件与历史，不清理用户改动）
 
+交付（lzy delivery，0.3.0 M4，ADR-0028）：
+  lzy delivery request <B|C> --contract <文件>
+                                            绑定 B/C 独立交付契约（endpoint 入哈希）并落批准请求；
+                                            批准=UPS 短语「批准 <短码>」，唯一写入口=钩子
+  lzy delivery status                       交付授权与意图读面（只读）
+  lzy delivery act B --repo <o/n> --branch <b> --base <基> --head <SHA>
+                 --pr-title <题> --pr-body-file <文件> [--pr <n>]
+                                            B 链：push→PR→漂移复核→CI 全绿→merge（绑 HEAD）
+                                            →读回 merge SHA→该 SHA CI 轮询；合并前置=B∧C 双授权
+  lzy delivery act C --repo <o/n> --expect-marker <串>
+                                            C 链：Pages 构建对齐 merge SHA+线上内容判据
+  lzy delivery readback <B|C>               读回收束（merged→done/open→re-arm/未对齐如实）；
+                                            超时/断连后先读回，绝不盲目重发
+
 环境：
   LZY_ZCODE_ENGINE  显式指定引擎 zcode.cjs 路径；设置后替换默认候选（默认找 /Applications/ZCode.app/...，
                     也因此可指向不存在路径来测试「引擎缺失→手动启用」回退）
@@ -1374,6 +1397,129 @@ function cmdQueue(args) {
   throw new LoopError("用法：lzy queue add|list|show|budget|dispatch|reconcile|cancel（有界队列，0.3.0 M3）");
 }
 
+// ── delivery 族（0.3.0 M4，ADR-0028）：B/C 外部动作的授权与执行面。授权写入口只有
+// UPS 钩子（批准/撤回短语）——request 仅落契约绑定+批准请求（contractPending），CLI 无
+// approve/withdraw（ADR-0018 禁令同族）；act/readback 受授权门+意图账本执法（防重复
+// 执行/漂移复核/unknown 先读回）。
+function formatIntentLine(it) {
+  const t = it.target ?? {};
+  const obs = it.observed ?? {};
+  const obsTxt = obs.mergeSha
+    ? `mergeSha=${String(obs.mergeSha).slice(0, 10)} ci=${obs.mergeCiState ?? "?"}`
+    : obs.pagesBuild
+      ? `pages=${obs.pagesBuild.status}/${String(obs.pagesBuild.commit ?? "").slice(0, 10)}`
+      : "";
+  const tgt = JSON.stringify({
+    repo: t.repo,
+    branch: t.branch,
+    headSha: t.headSha ? String(t.headSha).slice(0, 10) : undefined,
+    prNumber: t.prNumber,
+    mergeSha: t.mergeSha ? String(t.mergeSha).slice(0, 10) : undefined,
+    expectMarker: t.expectMarker,
+  });
+  return `  ${it.id} [${it.endpoint}] ${it.kind} · ${it.status}${obsTxt ? ` · ${obsTxt}` : ""} · target=${tgt} · attempts=${it.attempts.length}`;
+}
+
+function cmdDelivery(args) {
+  const { _, f } = parseArgs(args);
+  const action = _[0];
+  const cwd = process.cwd();
+  if (action === "request") {
+    const ep = _[1];
+    const contractFile = typeof f.contract === "string" ? f.contract : null;
+    if (!ep || !contractFile || _[2]) {
+      throw new LoopError("用法：lzy delivery request <B|C> --contract <契约文件>（B/C 各立独立契约，endpoint 入哈希）");
+    }
+    const v = validateDeliveryContract(cwd, ep, contractFile);
+    const bound = bindDeliveryContract(cwd, ep, v.path, v.hash);
+    console.log(`✔ delivery 契约已绑定：${ep} ← ${v.path}（contractHash ${v.hash.slice(0, 8)}…）`);
+    console.log(`  批准对象=契约完整哈希（ADR-0024/0028）：把「批准 ${bound.short}」原样转给用户；`);
+    console.log(`  批准由 UPS 钩子在真实用户消息上落账（本 CLI 无 approve 命令），随后 lzy delivery status 查授权面。`);
+    return;
+  }
+  if (action === "status") {
+    const s = deliveryStatus(cwd);
+    if (!s.goal) {
+      console.log("本目录没有进行中的目标——delivery 授权与意图挂 goal。");
+      return;
+    }
+    const pend = s.goal.contractPending ? `（pending ${String(s.goal.contractPending.contractHash).slice(0, 8)} 等待批准）` : "";
+    console.log(`目标 ${s.goal.slug}（${s.goal.status}）${pend}`);
+    for (const ep of ["B", "C"]) {
+      const c = s.contracts[ep];
+      console.log(
+        c.bound
+          ? `  ${ep}: 契约 ${c.contractPath}（${c.contractHash.slice(0, 8)}…）· 授权=${c.authorized ? "有效" : "未批准/已撤回"} · 授权事件 ${c.events}`
+          : `  ${ep}: 未绑定`,
+      );
+    }
+    if (s.intents.length === 0) console.log("  意图账本空。");
+    for (const it of s.intents) console.log(formatIntentLine(it));
+    return;
+  }
+  if (action === "act") {
+    const ep = _[1];
+    if (ep === "B") {
+      if (!f.repo || !f.branch || !f.base || !f.head || !f["pr-title"] || !f["pr-body-file"]) {
+        throw new LoopError("用法：lzy delivery act B --repo <owner/name> --branch <分支> --base <基线> --head <40位SHA> --pr-title <题> --pr-body-file <正文文件> [--pr <编号>]");
+      }
+      const r = actDeliveryB(cwd, {
+        repo: f.repo,
+        branch: f.branch,
+        base: f.base,
+        head: f.head,
+        prTitle: f["pr-title"],
+        prBodyFile: f["pr-body-file"],
+        pr: f.pr != null ? Number(f.pr) : null,
+      });
+      const o = r.intent.observed;
+      if (r.alreadyMerged) {
+        console.log(`✔ B 链读回权威：PR #${o.prNumber} 已处于 merged（mergeSha ${String(o.mergeSha).slice(0, 10)}）——绝不重发合并`);
+      } else {
+        console.log(`✔ B 链完成：PR #${o.prNumber} 已合并（--match-head-commit 绑定）→ 实际 mergeSha=${String(o.mergeSha).slice(0, 10)}`);
+      }
+      if (o.mergeCiState === "green") console.log(`  merge SHA CI 全绿（${o.mergeCiDetail}）——B 端点判据满足（A3）`);
+      else if (o.mergeCiState === "pending") console.log(`  ⚠ merge SHA CI 预算内未全绿（${o.mergeCiDetail}）——lzy delivery readback B 复验后再下结论`);
+      else console.log(`  ✖ merge SHA CI 失败（${o.mergeCiDetail ?? "详情见意图账本"}）——「已合并、验证失败」如实记账，不归 B completed（V09）`);
+      return;
+    }
+    if (ep === "C") {
+      if (!f.repo || !f["expect-marker"]) {
+        throw new LoopError("用法：lzy delivery act C --repo <owner/name> --expect-marker <合并后才存在的稳定串>");
+      }
+      const r = actDeliveryC(cwd, { repo: f.repo, expectMarker: f["expect-marker"] });
+      console.log(`✔ C 链完成：Pages 构建 ${r.build.status} @ ${String(r.build.commit).slice(0, 10)}（== mergeSha）`);
+      console.log(`  HTTPS ${r.siteUrl} → 200 ∧ 内容标记在场——C 端点判据满足（A4）`);
+      return;
+    }
+    throw new LoopError("用法：lzy delivery act <B|C>（B=合并链 / C=Pages 上线核验）");
+  }
+  if (action === "readback") {
+    const ep = _[1];
+    if (ep === "B") {
+      const r = readbackDeliveryB(cwd, { repo: f.repo, pr: f.pr != null ? Number(f.pr) : null });
+      const o = r.intent.observed ?? {};
+      if (r.intent.status === "done") {
+        console.log(`✔ readback B：PR #${o.prNumber ?? r.pr.number} merged（mergeSha ${String(o.mergeSha ?? r.pr.mergeSha).slice(0, 10)}，closedBy=${o.closedBy ?? "?"}）· merge CI=${o.mergeCiState ?? "query-failed"}`);
+      } else if (r.intent.status === "intended") {
+        console.log(`➖ readback B：PR #${r.pr.number} 仍 open——合并未发生，意图 ${r.intent.id} re-arm（r.rearmed ? "已从异常态恢复" : "本就 intended"）`);
+      } else {
+        console.log(`✖ readback B：PR #${r.pr.number} ${r.pr.state}——意图 ${r.intent.id}=${r.intent.status}`);
+      }
+      return;
+    }
+    if (ep === "C") {
+      const r = readbackDeliveryC(cwd, { repo: f.repo, expectMarker: f["expect-marker"] });
+      if (r.aligned && r.verified) console.log(`✔ readback C：构建对齐且内容标记在场（意图 ${r.intent.id}=${r.intent.status}）`);
+      else if (r.aligned) console.log(`⚠ readback C：构建对齐但内容判据不符（意图 ${r.intent.id}=${r.intent.status}）——V11 不假绿`);
+      else console.log(`➖ readback C：构建未对齐（意图 ${r.intent.id}=${r.intent.status}）——稍后复验`);
+      return;
+    }
+    throw new LoopError("用法：lzy delivery readback <B|C> [--repo <o/n>] [--pr <n>] [--expect-marker <串>]");
+  }
+  throw new LoopError("用法：lzy delivery request|status|act|readback（有限交付面，0.3.0 M4）");
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const cmd = args[0];
@@ -1418,6 +1564,8 @@ async function main() {
       return cmdVerify(args.slice(1));
     case "queue":
       return cmdQueue(args.slice(1));
+    case "delivery":
+      return cmdDelivery(args.slice(1));
     case "agents-md":
       return cmdAgentsMd();
     case "version":

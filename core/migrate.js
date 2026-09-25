@@ -311,17 +311,24 @@ export function classifyGoal(root, now = Date.now()) {
   }
   if (!ACTIVE_GOAL_STATES.has(goal.status)) return { kind: "finished", goal };
   let lease = null;
-  let runtimeUnreadable = false;
+  let runtimeError = null;
   try {
     lease = loadRuntime(root)?.activeLease ?? null;
-  } catch {
-    runtimeUnreadable = true; // 保守侧：活体判别不可定=按在场处理（同 holderPidAlive 不确定情形教义）
+  } catch (err) {
+    runtimeError = err; // 保守侧：活体判别不可定=按在场处理（同 holderPidAlive 不确定情形教义）
   }
   if (lease != null && typeof lease.expiresAtMs === "number" && lease.expiresAtMs > now && holderPidAlive(lease.hostPid) !== false) {
     return { kind: "live", goal, lease };
   }
-  if (runtimeUnreadable) {
-    return { kind: "live", goal, lease: null, reason: "runtime.json 不可读（活体判别不可定，保守侧拒绝）" };
+  if (runtimeError) {
+    // 拒绝且给可达恢复路径：转发 runtime 自身 RECOVERY（删文件重建=ADJ-35 文档化路径）——
+    // 「先收口/重跑」在此形态不可达（finish/abandon 同样依赖 runtime 可读），不指死路。
+    return {
+      kind: "live",
+      goal,
+      lease: null,
+      reason: `runtime.json 不可读（活体判别不可定，保守侧拒绝）——${runtimeError.message}`,
+    };
   }
   return { kind: "inflight", goal, leaseZombie: lease != null && typeof lease.expiresAtMs === "number" && lease.expiresAtMs > now };
 }
@@ -371,9 +378,13 @@ function acceptanceDraftsFor(root, slug) {
   return [];
 }
 
-function writeAtomic(p, data) {
+function writeAtomic(p, data, tmpDir) {
   mkdirSync(dirname(p), { recursive: true });
-  const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
+  // tmp 落点可指定到已登记家族（state.json 的 tmp 归 migration/——.lazyzcode 根不在
+  // 两面覆盖清单内，kill 落在写与 rename 之间会产孤儿，见 loop.js 家族登记家法）
+  const dir = tmpDir ?? dirname(p);
+  mkdirSync(dir, { recursive: true });
+  const tmp = join(dir, `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
   writeFileSync(tmp, data);
   renameSync(tmp, p);
 }
@@ -398,10 +409,13 @@ export function applyMigration(root) {
   }
   const state = loadMigrationState(root); // 损坏/未知 schema=此处抛（写前）
   const warnings = [];
-  const slug = cls.goal?.slug ?? "?";
+  const slug = cls.goal?.slug ?? "unknown";
   const converted = cls.kind === "inflight" && state?.tasks?.[slug]?.planHash === (cls.goal.planHash ?? null);
   const unfinished = listRuns(root).filter((r) => lastPhaseOf(root, r) !== "done");
   if (cls.kind !== "inflight" || converted) {
+    if (converted && state?.tasks?.[slug]?.draftFile && !existsSync(join(root, state.tasks[slug].draftFile))) {
+      warnings.push(`迁移记录在案但草案缺位（${state.tasks[slug].draftFile}）——恢复：人工核删该任务迁移记录后重跑，或手工重建草案`);
+    }
     return {
       root,
       mode: "noop",
@@ -449,12 +463,20 @@ function runPhases(root, cls, state, warnings, unfinished) {
   }
   appendJournal(root, runId, { phase: "backup", files: manifest.length, manifest: "manifest.json" });
   writeFileSync(join(backupDir, "manifest.json"), `${JSON.stringify({ runId, createdAt: new Date().toISOString(), files: manifest }, null, 2)}\n`);
-  // preserve 族损坏盘点（⚠ 记账不阻断——原样字节保留）
+  // preserve 族损坏盘点（⚠ 记账不阻断——原样字节保留）：json 族=不可解析；md 族=不可读
+  // （内容截断不可机检，草案素材缺席行是唯一补偿——如实声明非全量语义检查）
   for (const rel of ["attestations", "loop/approvals", "loop/snapshots", "evidence", "loop/salvage", "plans"]) {
     const dir = join(LZ_ROOT(root), rel);
     for (const f of listFilesRecursive(dir)) {
-      if (f.endsWith(".json")) {
-        if (readJsonSafe(f) === null) warnings.push(`${rel}/${f.split("/").pop()}：JSON 不可解析——⚠ 原样保留（备份含该字节）`);
+      const name = basename(f);
+      try {
+        if (f.endsWith(".json")) {
+          if (readJsonSafe(f) === null) warnings.push(`${rel}/${name}：JSON 不可解析——⚠ 原样保留（备份含该字节）`);
+        } else if (f.endsWith(".md")) {
+          readFileSync(f, "utf8");
+        }
+      } catch {
+        warnings.push(`${rel}/${name}：不可读——⚠ 原样保留（备份含该字节）`);
       }
     }
   }
@@ -508,7 +530,7 @@ function runPhases(root, cls, state, warnings, unfinished) {
   for (const s of staged) {
     next.tasks[s.slug] = { planHash: s.planHash, sourceStatus: s.sourceStatus, convertedAt: next.updatedAt, runId, draftFile: `.lazyzcode/drafts/${s.slug}.draft-contract.md` };
   }
-  writeAtomic(STATE_PATH(root), `${JSON.stringify(next, null, 2)}\n`);
+  writeAtomic(STATE_PATH(root), `${JSON.stringify(next, null, 2)}\n`, MIG_DIR(root));
   appendJournal(root, runId, { phase: "switch", draftsWritten: draftsWritten.length, draftsSkipped: draftsSkipped.length, stateUpdated: true });
   appendJournal(root, runId, { phase: "done", warnings: warnings.length });
   return {

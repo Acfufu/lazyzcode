@@ -62,15 +62,16 @@
 - **N4 CLI 接线**（176b480）：migrate preview|apply|status+doctor migrate 行扩展版本入口读面（纯信息面）；--root 值旗标沿 preview 既有。
 - **N5 契约测试**（9acb5cc）：11 件全绿（apply 全链/幂等/僵尸租约/活体拒/corrupt 停/state 损坏停/崩溃恢复/doctor 行/preview 回归）；执行期修正四处（租约形状补 acquiredAt·heartbeatAt、doctor 整体退出码属 install/files 行、journal 剥相位按行过滤、死 pid 构造 cross-platform）；全量 614/614 绿。
 - **N6 载荷一致**（3ae2559）：deployFiles 逐文件 sha256 对表+点残渣不部署+pack 白名单对表（npm12 对象包封归一）+外带 sess_ 三连；旧树夹具全链 v2：重组袋（20 approvals+32 attestations+salvage+evidence）preview 33 任务 0⚠→合成在途→apply 1 草案→status 0.3.0→备份↔源 56 文件 0 mismatch。
-- **N7 跨平台边界**（93dc4c5）：CI 四腿真值（run 36142988403 全绿@ab9e1ef）+win32 skip 六点三族归类（SIGTERM/gh 解析/EACCES 权限语义——维持 skip 记边界）+双语 README/guide「平台支持边界」节+债 G 补核结论（win32 腿执行其余全量绿；skip 组=边界非已验面）；docs-preview 链接 263/0 断+锚 44/44。
+- **N7 跨平台边界**（93dc4c5）：CI 四腿真值（run 36142988403 全绿@ab9e1ef）+win32 skip **四点三族**归类（verify-receipt:86 SIGTERM/ci-binding:19 gh 解析/human-gate:253+attempt-lineage:151 EACCES 权限——维持 skip 记边界；explorer 期所列另两处〔human-gate:301 路径转义、attestation-trailer:120 chmod〕系已修雷非 skip，实 grep 核正）+双语 README/guide「平台支持边界」节+债 G 补核结论（win32 腿执行其余全量绿；skip 组=边界非已验面）；docs-preview 链接 263/0 断+锚 44/44。
 - **N8 lazyzcode 腿回放 ×2**：④中断形态（SIGKILL→僵尸门→reclaim→重驱→积分止步 446.1→放宽续驱→done 6/6+att 194849Z）+⑤常态（积分止步 618.5→续驱→末段墙钟 SIGKILL→显式 finish→done 6/6+att 202623Z）——三仓回归报告 §1。
-- **N9 oc 腿回放 ×2**：④中断（孤儿引擎自交付修复 213968e97→僵尸门→reclaim→重驱 done 4/4+att 203940Z）+⑤常态（done 4/4+att 205918Z）+浏览器绿半（隔离 serve+外挂 opencode 1.18.18@14198：搜索 scrollbar 命中→点击→?settings=appearance 复选项在场，截图 sha256 6df2b875c9…）。
+- **N9 oc 腿回放 ×2**：④中断（孤儿引擎自交付修复 213968e97→僵尸门→reclaim→重驱 done 4/4+att 203940Z）+⑤常态（done 4/4+att 205918Z）+浏览器绿半（仅 replay⑤ 树执行：隔离 serve+外挂 opencode 1.18.18@14198：搜索 scrollbar 命中→点击→?settings=appearance 复选项在场，截图 sha256 6df2b875c9…；replay④ 两 F 面=fingerprint 级 attestation，无浏览器面）。
 - **N10 zp 腿回放 ×2**：④中断（红面 TEST FAILED→SIGKILL@150s→僵尸门→reclaim→重驱→修复 bc175f4+XCUITest 冒烟绿+blob 全同→done 4/4+att 213328Z）+⑤常态（done 4/4+att 215953Z）；红面 exit 码被管道 tail 吃（输出原文为权威红证据，瑕疵如实记）。
+- **zp-④ 红面归属补记**：脚本级红面核实死于环境（xcodegen 报 Invalid local package ZCodeKit→xcodeproj 缺席，TEST FAILED 未产出；exit 被管道吃）——真实红面=引擎自捕 F1.red 证据（/tmp/zp-m5-replay4/.lazyzcode/evidence/…F1.red….log，「XCTAssertTrue failed - 点卡头应展开」在案），红面成立不受影响；zp-④ 修复提交 bc175f4 带双 Goal 尾注（本 goal+试点世系标注混入，「恰一条」不受影响）。
 - **N11 回归报告**：docs/spikes/v030-m5-regression-report.md——三仓各 3 次计数表+中断恢复形态行+复现配方+计量（缺面如实记）+V01–V12 全表（V12 本轮收口）。
 
 ## 7. 债面处置（N12 拍板，逐条理据）
 
-- **债 F（scope 逐写执法升格，M1 记/M3 改挂/M4 待复评）→ 不升格，设计终局**：设计总案 §3.1 明文「机器保证 lzy 管理路径的状态与授权核对，不宣称可以阻止同权限恶意代理绕开 lzy 执行原生命令」——逐写执法与该威胁边界直接矛盾；M4 交付面落地已满足升格复评条件，复评结论=边界即终局（非回避）。记入本报告+decisions #36 关联说明。
+- **债 F（scope 逐写执法升格，M1 记/M3 改挂/M4 待复评）→ 不升格，设计终局**：设计总案 §3.1「机器保证 lzy 管理路径的状态与授权核对，不宣称可以阻止同权限恶意代理绕开 lzy 执行原生命令」——机器保证不覆盖逐写拦截，且 M3 复评已记成本/误伤比不利（m3-report §82）；M4 交付面落地已满足升格复评条件，复评结论=不升格（边界内取舍，非回避）。记入本报告+decisions #36 关联说明。
 - **债 G（win32 执行语义未核，M2/M3 记）→ 收口于 N7**：CI 矩阵轮真值补核完成（四腿绿），三族 skip 逐条记入双语支持边界文档；「skip 组=支持边界非已验面」如实声明，VM 实测维持 ADR-0011 边界外。
 - **债 K（engine --json usage 第二计量源对账，M3 记/M4 无处置）→ 延后**：无低延迟计量需求证据（M4 交付面以 CI 轮询为主面未需亚段计量）；#32 近似语义已执法且本轮两次积分止步活体有效；待真实需求出现再拍板。
 - **债 M4-1（CI flake 根因未定论）→ 站岗**：readiness 原因明细已随 5dfcc83 落地（自诊断面在案）；本轮 CI 观察窗内零复现；复发即按 readiness 原因诊断，不预置修复。

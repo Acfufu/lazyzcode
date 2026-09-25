@@ -257,3 +257,28 @@ test("迁移 preview：零写回回归维持（M1 契约测试同面复跑）", 
   assert.equal(before.size, after.size);
   for (const [p, h] of before) assert.equal(after.get(p), h, `preview 写回了 ${p}`);
 });
+
+test("迁移 apply：runtime.json 不可读=保守拒（写前停止，报文转发恢复配方）", () => {
+  const { d, HOME, lz } = legacyRoot({ status: "executing" });
+  writeFileSync(join(lz, "loop", "runtime.json"), "{corrupt");
+  const r = lzyAt(["migrate", "apply", d], d, HOME);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /保守侧拒绝/);
+  assert.match(r.out, /runtime\.json 不可读/);
+  assert.match(r.out, /恢复|RECOVERY|重建/);
+  assert.equal(existsSync(join(lz, "migration")), false, "拒后仍写了 migration/");
+  assert.equal(existsSync(join(lz, "state.json")), false, "拒后仍写了 state.json");
+});
+
+test("迁移 apply：slug 缺失形态幂等收敛（兜底同值回归钉）", () => {
+  const { d, HOME, lz } = legacyRoot({ goalRaw: JSON.stringify({ version: 1, status: "planning", planHash: "c".repeat(64) }) });
+  const r1 = lzyAt(["migrate", "apply", d], d, HOME);
+  assert.equal(r1.code, 0, r1.out);
+  assert.match(r1.out, /迁移 apply 完成/);
+  assert.ok(existsSync(join(lz, "drafts", "unknown.draft-contract.md")));
+  const backups1 = readdirSync(join(lz, "migration", "backup")).length;
+  const r2 = lzyAt(["migrate", "apply", d], d, HOME);
+  assert.equal(r2.code, 0, r2.out);
+  assert.match(r2.out, /幂等 no-op/);
+  assert.equal(readdirSync(join(lz, "migration", "backup")).length, backups1, "幂等重跑新增备份 run");
+});

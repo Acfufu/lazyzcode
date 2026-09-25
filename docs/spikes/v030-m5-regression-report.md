@@ -6,8 +6,8 @@ goal `v030-m5-closeout`（0.3.0 M5）· 采集 2026-09-25/26 · 设计总案 §1
 
 | 仓 / 代表任务 | 回放 | 形态 | 结果 | attestation / 证据锚 |
 | --- | --- | --- | --- | --- |
-| lazyzcode@4b54f77（drive --workers 0 拒绝修复） | ①v030-m2 试点（2026-09-24） | 常态+中断恢复（F3：SIGKILL→孤儿交付→僵尸门→reclaim→重驱） | done 7/7+修复 blob 全同 | v030-m2-report.md §5.2 |
-| 〃 | ②v030-m3 队列试点（2026-09-25） | 队列项+段中 SIGKILL→reconcile 恢复 | done+队列确认 | v030-m3-report.md §5 |
+| lazyzcode@4b54f77（drive --workers 0 拒绝修复；**计数成员=①②④三行**） | ①v030-m2 试点（2026-09-24） | 常态+中断恢复（F3：SIGKILL→孤儿交付→僵尸门→reclaim→重驱） | done 7/7+修复 blob 全同 | v030-m2-report.md §5.2 |
+| 〃 | ②v030-m3 队列试点（2026-09-25）〔**额外面，非本表计数成员**——设计总案 §9 系另一代表任务「队列两连续项」，自身仅 1 次回放，其 ≥3 回放账不在本 goal 契约 A5 算术内，如实注记〕 | 队列项+段中 SIGKILL→reconcile 恢复 | done+队列确认 | v030-m3-report.md §5 |
 | 〃 | ③v030-m5-replay4 | **中断恢复**：SIGKILL@100s→僵尸租约门（原文在案）→reclaim→重驱 fence2→N1 修复交付→**积分止步**（水位 446.1≥400，handoff 自写）→放宽续驱 fence3 六段 | done 6/6 | v030-m5-replay4-20260925T194849Z.json |
 | 〃 | ④v030-m5-replay5 | 常态：直驱 3/6→积分止步（618.5）→续驱 6/6（末段墙钟 SIGKILL 抢在 finish 前→显式 finish 过） | done 6/6 | v030-m5-replay5-20260925T202623Z.json |
 | openchamber@5df72db2（scrollbar 搜索映射修复） | ①v030-oc-pilot（2026-09-25） | 中断恢复（SIGKILL→僵尸门→reclaim→fence2）+浏览器实流取证 | done+att | v030-oc-pilot-20260925T020411Z.json |
@@ -17,7 +17,7 @@ goal `v030-m5-closeout`（0.3.0 M5）· 采集 2026-09-25/26 · 设计总案 §1
 | 〃 | ②v030-m5-zp-replay4 | **中断恢复**：红面 TEST FAILED→SIGKILL@150s→僵尸门（原文）→reclaim→重驱→修复 bc175f4+XCUITest 冒烟绿+blob 全同 | done 4/4 | v030-m5-zp-replay4-20260925T213328Z.json |
 | 〃 | ③v030-m5-zp-replay5 | 常态：直驱 done 4/4（修复 a0012a0 恰一条） | done 4/4 | v030-m5-zp-replay5-20260925T215953Z.json |
 
-**计数**：三仓各 3 次独立回放 ✓；每仓 ≥1 次中断恢复形态 ✓（且新回放各含一次真引擎僵尸租约/积分止步收束链）。
+**计数**：三仓各 3 次独立回放 ✓——计数成员：lazyzcode=M2 试点+replay4+replay5；oc=试点+oc-replay4+oc-replay5；zp=试点+zp-replay4+zp-replay5。每仓 ≥1 次中断恢复形态 ✓（且新回放各含一次真引擎僵尸租约/积分止步收束链）。lazyzcode-M3 队列代表任务的回放账（现 1 次）如实开列为缺面：不在本 goal 契约 A5 算术（「既有 1 次+新增 2 次」即 M2 试点任务）内，留后续版本按需补足。
 
 ## 2. 复现入口配方（回放④/⑤）
 

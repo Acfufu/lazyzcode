@@ -7,6 +7,19 @@ versioning is SemVer.
 
 ### Added
 
+- **Complete migration machine (apply/status)** (0.3.0 M5, goal `v030-m5-closeout`; ADR-0029):
+  the M1 read-only `lzy migrate preview` is joined by explicit `apply` and `status`.
+  apply runs backup (full-tree copy of the six legacy record families with a sha256
+  manifest), staging (in-flight goals become draft contracts), validation, and an
+  atomic switch; `.lazyzcode/state.json` is the version entry, written last as the
+  commit point. A per-run journal makes reruns crash-safe and idempotent per task
+  identity (slug+planHash) — existing drafts are never overwritten, backups never
+  duplicated. Enforcement split: a corrupt or unknown-version goal.json stops before
+  any write; corrupt preserve-family records are warned and kept byte-exact. A live
+  lease/process refuses migration; executing with a dead holder (zombie lease) counts
+  as in-flight convertible. Drafts carry authorization NONE and no scope, so they
+  cannot be registered directly — conversion never escalates old approvals.
+  `lzy update`/`sync` never migrate automatically.
 - **Limited delivery B/C (merge & Pages)** (0.3.0 M4, goal `v030-m4-delivery`; ADR-0028):
   `lzy delivery` family (request/status/act/readback). B and C each get a separate
   delivery contract (endpoint hashed into the approval) riding the UPS approval channel

@@ -95,3 +95,5 @@ _Avoid_: 计划（执行计划另有权威）、日志（无身份绑定与状�
 **范围档（scope tier）**：配方声明 inputPaths 且过对抗资格后按依赖复用回执的档位——四问（清单非空/资格在案/输入快照一致/清单与环境未变）任一不过即具名保守回退全树；复用只追加适用性判定不改写旧回执（ADR-0025）。_Avoid_: 增量测试、缓存（无资格语义）
 **整合验证（integration verification）**：workers 波末对合并候选树真实执行 check 清单并落回执的屏障面——失败 windDownW(false) 阻塞交付 A；替代已退役的「屏障重锚」（重锚 ≠ 复验）。_Avoid_: 屏障重锚（已退役）、冒烟（泛化）
 **候选（candidate）**：交付 A 的被测对象=工人变更整合后的本地可合并分支态（HEAD+复合指纹绑定）；无远端 CI 时如实标注「CI 缺席」，不冒充已合并。_Avoid_: 主干（未合入）、产物（泛化）
+**版本入口（state entry）**：`.lazyzcode/state.json` 的树级状态版本戳（schemaVersion+stateVersion+逐任务迁移记录；apply 最后写=提交点）——未知版本或损坏=迁移写前 fail-closed，reset 不清（0.3.0 M5，ADR-0029）。_Avoid_: 包版本（另一物）、schema 工具（泛化）
+**迁移日志（migration journal）**：`migration/journal/<runId>.jsonl` 的逐相位追加账（start/backup/stage/validate/switch/done）——崩溃重跑探测未收尾 run、按任务身份（slug+planHash）幂等续跑不覆盖源的依据（0.3.0 M5）。_Avoid_: attempt 世系（另一层）、操作日志（泛化）

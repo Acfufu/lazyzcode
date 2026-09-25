@@ -249,6 +249,16 @@ HEAD 合并、读回实际 merge SHA、轮询该 SHA 的 CI。Pages 核验（`lz
 记录（目标身份与计划 argv）落 `.lazyzcode/delivery/`；超时或断连后用
 `lzy delivery readback B|C` 分类收束——done 恒终，已成功动作绝不重复执行。
 
+## 迁移（0.3.0 M5）
+
+旧项目目录升到 0.3.0 后，旧循环残档显式迁移：`lzy migrate preview <根路径>` 只读预览
+（契约草案 authorization=NONE，活跃 goal 在场拒）；`lzy migrate apply <根路径>` 走
+备份→暂存→校验→原子切换四阶段，落 `.lazyzcode/state.json` 版本入口（最后写=提交点），
+在途目标转 drafts/ 契约草案（授权 NONE——转正须人工立契+全新 UPS 批准，旧批准零升级），
+已完成目标与旧证据原样字节保留；按任务身份幂等、journal 相位记账崩溃可续跑；
+`lzy migrate status` 只读读面。活跃 lease/进程在场拒写；goal.json 损坏或未知版本写前
+停止；update/sync 永不自动迁移（ADR-0029）。
+
 ## 目标循环命令
 
 ```

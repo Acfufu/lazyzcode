@@ -8,11 +8,11 @@
 做 ZCode 版的 [lazycodex](https://github.com/code-yeongyu/lazycodex)（OmO 引擎的 Codex 发行版，MIT）。形态：**ZCode 插件 + 轻量 CLI（`lzy`）**——插件承载 skills/hooks/agents（纪律层），CLI 承载目标循环状态机与安装器。背景见 `docs/reports/index.html`。
 
 
-## 2. 当前状态（2026-09-25 短表；完整历史档案 → docs/history.md）
+## 2. 当前状态（2026-09-26 短表；完整历史档案 → docs/history.md）
 
 - **已发布**：npm `lazyzcode` 0.2.4（registry latest；升级见 README）。
-- **开发线 0.3.0 agent-first 改造进行中**：规划六文件已入库（入口 docs/plan-v030-agent-first.md + design/research + ADR-0024/0025）；M0 能力与基线已落地（V08=近似限制语义〔拍板〕，#32）；M1 项目与授权已落地（2026-09-24，goal v030-m1；#33）；M2 验证机器面+lazyzcode 试点 A 已落地（2026-09-24，goal v030-m2）；M3 有界队列+累计预算已落地（2026-09-25，goal v030-m3；#34/ADR-0027）；M2 三仓腿 openchamber+zpigeon-ios 两试点已落地（2026-09-25——三仓 A 出口 3/3）；**M4 有限交付 B/C 已落地（2026-09-25，goal v030-m4-delivery：delivery 授权动作面+首条 B/C 真实闭环；#35/ADR-0028）**；各步报告 → docs/spikes/。
-- 全部历史里程碑（P0 落地→六轮双审→0.0.5 首发→0.1.x/0.2.x 全弧线→0.3.0 M0-M3+oc 腿）、消融账本锚点、双审报告索引 → docs/history.md。
+- **开发线 0.3.0 agent-first 改造进行中**：规划六文件入库（入口 docs/plan-v030-agent-first.md）；M0 能力基线（V08=近似限制语义〔拍板〕#32）；M1 项目与授权（09-24，#33）；M2 验证机器面+lazyzcode 试点 A（09-24）；M3 有界队列+累计预算（09-25，#34/ADR-0027）；M2 三仓腿 oc+zp 试点（09-25，三仓 A 出口 3/3）；**M4 有限交付 B/C（09-25，delivery 授权动作面+首条 B/C 真实闭环；#35/ADR-0028）**；**M5 迁移与发布收口（09-26，迁移机器 apply+state 版本入口+三仓回归补账+V12；#36/ADR-0029）**；各步报告 → docs/spikes/。
+- 全部历史里程碑（P0→双审→0.0.5 首发→0.1.x/0.2.x→0.3.0 弧线）、消融账本锚点、双审报告索引 → docs/history.md。
 - 发布机械件（定版/tag/publish/pages）按 docs/release-checklist.md 执行；docs/reviews/ 为评审报告库。
 
 ## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19；引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔3.12.x 代 0.16.5→3.14.0 代 0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕，设计前必读）；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组（插件记录字段逐字相同），lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**——0.1.2 期 engine-3140-sync 即因只锚版本而漏检，代价是 0.16.9 宿主上 status/doctor 的 `enabled` 行 fail 级误报翻退出码
@@ -42,6 +42,7 @@
 | #33 | M1 契约授权 | 批准对象=contractHash、撤回=UPS 短码、契约内重规划免人权门、无契约 goal 保持现行门 |
 | #34 | M3 队列与累计预算 | 队列/预算家族在 loop/ 外（reset 不清）；预算绑定 (slug, contractHash) 不另铸授权 id；近似限制记账=逐段计量+三类「不算零」显式记录+seq 基人工恢复（ADR-0027） |
 | #35 | M4 交付授权 | B/C 各立独立 delivery 契约（endpoint 入哈希）不扩授权记录形状；批准复用 UPS contractPending（钩子批准分支零改动）；撤回短码集合=[主契约, …delivery]；合并前置=B∧C 双授权+漂移复核+CI 门；意图账本 done 恒终防重复执行（ADR-0028） |
+| #36 | M5 迁移机器 | 版本入口 state.json 最后写=提交点；apply=备份/暂存/校验/原子切换+journal 按任务身份幂等续跑；在途→drafts 草案授权 NONE（转正须人工立契+新批准）；执法分界=goal 损坏写前停/preserve 族 ⚠ 保字节；update/sync 永不自动迁移（ADR-0029） |
 
 其余 #1-#24 全表 → docs/decisions.md（含北星路径、产品形态、状态目录、证据时效、认领制、完整性内核、DAG 等全部拍板原文）。
 

@@ -310,6 +310,19 @@ action is preceded by an intent record (target identity, planned argv) in
 timeouts or disconnects — a done intent is final, so an already-successful action is
 never re-executed.
 
+## Migration (0.3.0 M5)
+
+Explicit migration for legacy loop state: `lzy migrate preview <root>` is a read-only
+preview (draft contracts with authorization NONE; refuses with an active goal);
+`lzy migrate apply <root>` runs backup → staging → validation → atomic switch and
+stamps the `.lazyzcode/state.json` version entry (written last = commit point).
+In-flight goals become drafts in `drafts/` (authorization NONE — turning one into a
+real contract needs a fresh UPS approval; old approvals never escalate); finished
+goals and legacy evidence are preserved byte-exact. Reruns are idempotent per task
+identity with a phase journal for crash recovery; `lzy migrate status` is the
+read-only face. A live lease/process refuses migration; a corrupt or unknown-version
+goal.json stops before any write; update/sync never migrate automatically (ADR-0029).
+
 ## Goal loop commands
 
 ```

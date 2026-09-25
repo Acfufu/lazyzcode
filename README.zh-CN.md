@@ -154,6 +154,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | 验证回执与范围档 | `lzy verify run/reuse/qualify/list/show/ci` | 受控执行器产生校验和回执（原始输出分离保存，`.lazyzcode/verify/`）；声明输入复用须经对抗资格，否则具名保守回退（ADR-0025）；CI check-runs 只读绑定，非现行/blocked 如实呈现 |
 | 有界队列与累计预算 | `lzy queue add/list/show/budget/dispatch/reconcile/cancel` | 多项已授权工作跨中断连续完成（`.lazyzcode/queue/`+`.lazyzcode/budget/`，reset 不清）：状态机授权门、派发事务崩溃恢复（先核对后动作）、累计预算绑定契约哈希跨重启不刷新；计量缺席/未决占用不算零——停受积分限额约束的派发并显式记录（ADR-0027） |
 | 有限交付 B/C | `lzy delivery request/status/act/readback` | 合并主干（B）与 Pages 上线核验（C）各立独立交付契约、复用 UPS 批准通道（ADR-0028）：合并前置=B∧C 双授权+PR head/base 漂移复核+CI 绿，绑 PR HEAD、读回实际 merge SHA 并轮询该 SHA 的 CI；C=Pages 构建对齐 merge SHA+线上 HTTPS 内容标记判据；意图账本先于动作落身份、读回分类收束——绝不盲目重发 |
+| 完整迁移机器 | `lzy migrate preview/apply/status` | 旧树显式迁移（ADR-0029）：预览零写回→六族备份（sha256 清单）→在途暂存草案→校验→原子切换+state.json 版本入口（最后写=提交点）；在途转 drafts 契约草案（授权 NONE、无 scope 不可直注——旧批准零升级）；按任务身份幂等+journal 崩溃续跑；goal 损坏写前停、preserve 族 ⚠ 保字节；活跃 lease/进程在场拒写；update/sync 永不自动迁移 |
 | 交接 | `lzy loop handoff --snapshot <文件>` | 登记干净交接——下个 Stop 放行一次，不消耗续跑预算 |
 | 跨仓清单 | `lzy loop list [--root <目录>]` | 只读扫同级仓的目标循环（状态/进度/认领/新鲜度/存根）；匿名放行计数跨 reset 永续 |
 | 目标谱系 | `lzy loop history` | 只读并集证据包 ∪ salvage 存根 ∪ git 尾注——每个历史目标的状态、提交数与最近活动 |

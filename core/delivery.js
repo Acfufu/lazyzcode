@@ -207,11 +207,14 @@ export function prView(deps, repo, ref) {
   };
 }
 
-// check-runs 裁决：全 COMPLETED 且 conclusion ∈ {SUCCESS,NEUTRAL,SKIPPED}=绿；零 run=尚未开始。
+// check-runs 裁决：全 completed 且 conclusion ∈ {success,neutral,skipped}=绿；零 run=尚未开始。
+// 大小写归一比较——check-runs REST 面实为小写（活体实测），gh pr view 的 state 才是大写；
+// 归一让两族惯例都过（错判方向=fail-safe：假拒绝不假绿——首链试点即抓的缺陷，2026-09-25）。
 export function checkRunsVerdict(runs) {
   if (!Array.isArray(runs) || runs.length === 0) return { present: false, completed: false, ok: false, bad: [], pending: 0 };
-  const bad = runs.filter((c) => c.status === "COMPLETED" && !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(c.conclusion)).map((c) => `${c.name}:${c.conclusion}`);
-  const pending = runs.filter((c) => c.status !== "COMPLETED").length;
+  const norm = (s) => String(s ?? "").toUpperCase();
+  const bad = runs.filter((c) => norm(c.status) === "COMPLETED" && !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(norm(c.conclusion))).map((c) => `${c.name}:${c.conclusion}`);
+  const pending = runs.filter((c) => norm(c.status) !== "COMPLETED").length;
   return { present: true, completed: pending === 0, ok: bad.length === 0 && pending === 0, bad, pending };
 }
 

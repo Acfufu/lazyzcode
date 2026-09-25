@@ -1417,7 +1417,8 @@ function formatIntentLine(it) {
     mergeSha: t.mergeSha ? String(t.mergeSha).slice(0, 10) : undefined,
     expectMarker: t.expectMarker,
   });
-  return `  ${it.id} [${it.endpoint}] ${it.kind} · ${it.status}${obsTxt ? ` · ${obsTxt}` : ""} · target=${tgt} · attempts=${it.attempts.length}`;
+  const n = typeof it.attempts === "number" ? it.attempts : (it.attempts?.length ?? 0);
+  return `  ${it.id} [${it.endpoint}] ${it.kind} · ${it.status}${obsTxt ? ` · ${obsTxt}` : ""} · target=${tgt} · attempts=${n}`;
 }
 
 function cmdDelivery(args) {

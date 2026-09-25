@@ -511,6 +511,13 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - **发布前补漏两件**：①双语 README doctor 段补四行——0.3.0 新增 `contract`/`project`/`migrate` 三行 + `approvals` 行旧账（0.1.x 起该段缺席，顺带清账）；②docs 断链 11 条修复（0.3.0 弧规划/研究/设计三文件：CONTEXT/源码/载荷路径改代码字面量「仓内非站点页」、Symphony SPEC 外链去 `.md` 后缀）——M5 收口漏检面，本批闭环。
 - **Pages 构建红两推修复（tag 后 docs-only，载荷冻结不变）**：CI 四腿绿、tag 切出后发现 `pages-build-deployment` **已连续三推 failure**（44a4352 起）——`docs/spikes/v030-m5-closeout-report.md` 第 84/97 行的**字面双花括号**（该报告自述「裸 <code>&#123;&#123;</code> 零命中」的行本身携带裸花括号——反引号挡不住 Liquid，N12 检查在报告入库前跑、报告提交时点无复查）炸 Jekyll 全站构建（memory jekyll-liquid-docs-hazard 第三形态：**最终内容提交后再跑一次花括号 grep**，与「终树采集排最后」同族）。修复=HTML 实体 `&#123;&#123;`（0.0.5 先例）；reviews/evidence/history.md 的历史命中因 `_config.yml` exclude（第 13-16 行）不参与构建、不动——排除面以外的 md 经 defaults bare 布局全量过 Liquid，花括号 grep 口径=排除面外零命中。
 
+### 发后核验（2026-09-26，publish 用户 2FA，全过）
+
+- **registry 直证**：CDN 传播窗 ≈100s 后 `dist-tags.latest=0.3.0`（curl HTTP 端点 20s 轮询 5 次翻转，历代同族）；发布 shasum `2760611153f60b5aa90d7da8aa4f09f5d80bc2ec` 与定版前 dry-run / tag 树 tarball **三方逐字一致** ✔；`engines>=22`、`bin.lzy=cli/lzy.js` 无误。
+- **隔离 prefix 冒烟 ✔**：`npm i -g lazyzcode@0.3.0 --prefix /tmp/lzy-smoke-030 --prefer-online` 首试即 200 → `lzy 0.3.0（插件载荷同版本）· 引擎 0.16.9`；载荷新面抽检 **8/8 core 新模块 + 8/8 zw recipes** 在装。
+- **真机 `lzy update` 0.2.4→0.3.0 全链 EXIT=0**（「sync 已由新装子进程执行」=ADR-0012 活体）；升级前版本行自报「插件载荷 0.3.0 与 CLI 不同」——载荷领先的反向中间态自名（发布前 sync 所致），与 0.2.2 记录对称；升级后 doctor EXIT=0：`payload 0.3.0` / `install 缓存 0.3.0` / `files 25 文件逐字 sha256` / `enabled hooks:6` / `payload-ver 19 版本目录·CLI 0.3.0 一致` / `migrate` 新行活体（版本入口缺位态如实自报）。
+- **AGENTS 发布收官同步**：§2 已发布行 0.2.4→**0.3.0**+弧收官句、§7 ADR 区间 0001..0029+0.3.0 五案注记；压缩回预算 **12287≤12288**。交接勘误一笔：publish tarball 路径首传误写（`lzy030-tagtree` 误作 `lzyzcode-tagtree`）致用户 ENOENT 空跑一趟——lesson=交接命令的路径先 `ls` 实证再发出。
+
 ## 执行记录（0.2.4，双审修复轮 + fast 波编排收口——机械件已备，publish 留用户）
 
 ### Runbook（按序）

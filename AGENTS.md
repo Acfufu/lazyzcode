@@ -10,8 +10,8 @@
 
 ## 2. 当前状态（2026-09-26 短表；完整历史档案 → docs/history.md）
 
-- **已发布**：npm `lazyzcode` 0.2.4（registry latest；升级见 README）。
-- **开发线 0.3.0 agent-first 改造进行中**：规划六文件入库（入口 docs/plan-v030-agent-first.md）；M0 能力基线（V08=近似限制语义〔拍板〕#32）；M1 项目与授权（09-24，#33）；M2 验证机器面+lazyzcode 试点 A（09-24）；M3 有界队列+累计预算（09-25，#34/ADR-0027）；M2 三仓腿 oc+zp 试点（09-25，三仓 A 出口 3/3）；**M4 有限交付 B/C（09-25，delivery 授权动作面+首条 B/C 真实闭环；#35/ADR-0028）**；**M5 迁移与发布收口（09-26，迁移机器 apply+state 版本入口+三仓回归补账+V12；#36/ADR-0029）**；各步报告 → docs/spikes/。
+- **已发布**：npm `lazyzcode` **0.3.0**（registry latest；升级见 README）。
+- **0.3.0 agent-first 弧发布收官（09-26）**：M0 能力基线（#32 近似限制）；M1 项目与授权（09-24，#33）；M2 验证机器面+lazyzcode 试点 A（09-24）；M3 有界队列+累计预算（09-25，#34/ADR-0027）；M2 三仓腿 oc+zp 试点（09-25，三仓 A 出口 3/3）；**M4 有限交付 B/C（09-25，delivery 授权动作面+首条 B/C 真实闭环；#35/ADR-0028）**；**M5 迁移与发布收口（09-26，迁移机器 apply+state 版本入口+三仓回归补账+V12；#36/ADR-0029）**；规划入口与各步报告 → docs/spikes/。
 - 全部历史里程碑（P0→双审→0.0.5 首发→0.1.x/0.2.x→0.3.0 弧线）、消融账本锚点、双审报告索引 → docs/history.md。
 - 发布机械件（定版/tag/publish/pages）按 docs/release-checklist.md 执行；docs/reviews/ 为评审报告库。
 
@@ -73,7 +73,7 @@ docs/
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
-  adr/0001..0026-*.md         ← 0022=H3R 车道边界（休眠原型、开关语义反转）；enable 走引擎 CLI+config 零写入 / init-deep 角色 / 无人值守宿主自动化 / 拉回走认领制 / 透明账本尾注 / 宿主工作区就地语义 / 已知未知+消融账本 / 传输死亡诊断面 / 交接放行 / unbound wake 调度 / 三平台 0.0.6 支持 / lzy update 子进程 sync / 完整性内核（0013）/ 失效 DAG+红绿 manifest（0014）/ 真消融特赦窗口+kill-switch 落主线（0015）/ 世系+传播双轴（0016）/ headless 原语（0017）/ UPS exact-hash 人权门（0018）/ 拉回资格制+standdown（0004 修正案四·0009 修订节）/ 非 git 宿主政策+降级形态立项（0019）/ runtime 运行时账本 lease·fencing·budget+risk 机器面（0020）/ 引擎面契约唯一边界归一+逐面契约测试（0021）/ 多 provider 计价口径：单位明文（元/百万 token）·有源才入表的枚举式覆盖·水位 SQL 由表生成（0023）
+  adr/0001..0029-*.md         ← 0022=H3R 车道边界（休眠原型、开关语义反转）；enable 走引擎 CLI+config 零写入 / init-deep 角色 / 无人值守宿主自动化 / 拉回走认领制 / 透明账本尾注 / 宿主工作区就地语义 / 已知未知+消融账本 / 传输死亡诊断面 / 交接放行 / unbound wake 调度 / 三平台 0.0.6 支持 / lzy update 子进程 sync / 完整性内核（0013）/ 失效 DAG+红绿 manifest（0014）/ 真消融特赦窗口+kill-switch 落主线（0015）/ 世系+传播双轴（0016）/ headless 原语（0017）/ UPS exact-hash 人权门（0018）/ 拉回资格制+standdown（0004 修正案四·0009 修订节）/ 非 git 宿主政策+降级形态立项（0019）/ runtime 运行时账本 lease·fencing·budget+risk 机器面（0020）/ 引擎面契约唯一边界归一+逐面契约测试（0021）/ 多 provider 计价口径：单位明文（元/百万 token）·有源才入表的枚举式覆盖·水位 SQL 由表生成（0023）/ 0.3.0 弧五案=契约授权 0024·验证回执 0025·队列预算 0027·交付 B/C 0028·迁移机器 0029
   reviews/ release-checklist.md  ← 评审报告/处置记录（2026-09-06/07/08）+ 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist（2026-09-13）
   diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
 plugin/ core/ cli/ test/ .github/  ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）+ 契约测试（node:test 零依赖）+ CI 骨架

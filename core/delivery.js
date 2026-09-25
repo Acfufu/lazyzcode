@@ -303,10 +303,10 @@ function intentIdentity(ep, target) {
   if (ep === "B") return JSON.stringify([target.repo, target.branch, target.base, target.headSha]);
   return JSON.stringify([target.repo, target.mergeSha]);
 }
-// 锚=交付面（B: repo+branch+base / C: repo）——锚漂移=换了交付对象=新契约；滚动值
-//（B: headSha / C: mergeSha）新=同交付面的 follow-up=新意图。
+// 锚=交付目标（B: repo+base=合并进哪条基线 / C: repo）——锚漂移=换了交付对象=新契约；
+// 滚动值（branch+headSha / mergeSha）新=同交付目标的 follow-up=新意图（换分支名不影响锚）。
 function intentAnchor(ep, target) {
-  return ep === "B" ? JSON.stringify([target.repo, target.branch, target.base]) : JSON.stringify([target.repo]);
+  return ep === "B" ? JSON.stringify([target.repo, target.base]) : JSON.stringify([target.repo]);
 }
 function intentGate(state, ep, target) {
   const epIntents = state.intents.filter((x) => x.endpoint === ep);

@@ -270,3 +270,41 @@ test("⑩follow-up 合并流：head1 done 后以新 head2 act=开新意图（旧
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+test("⑪前链已合并+新 HEAD：read-back-authority 须核对 headRefOid==意图 HEAD，否则 create 新 PR（d5 缺陷回归钉）", () => {
+  const d = goalRepo("lzy-dgate-11-");
+  try {
+    const { b, c } = bindBoth(d);
+    for (const h of [b.hash, c.hash]) recordAuthorization(d, { kind: "approval", slug: "dgate", contractHash: h, sessionId: "t", at: new Date().toISOString() });
+    const HEAD2 = "e".repeat(40);
+    const MERGE2 = "f".repeat(40);
+    const calls = [];
+    let created = false;
+    let mergedNow = false;
+    const deps = {
+      sleep: () => {},
+      gitPush: () => { calls.push("git-push"); return { code: 0, stdout: "", stderr: "" }; },
+      ghApi: (args) => {
+        calls.push(args.join(" "));
+        if (args[0] === "pr" && args[1] === "list") return { code: 0, stdout: "[]", stderr: "" };
+        if (args[0] === "pr" && args[1] === "view") {
+          if (!created) return { code: 0, stdout: JSON.stringify({ state: "MERGED", headRefOid: HEAD, baseRefName: "main", number: 2, url: "u2", mergeCommit: { oid: MERGE } }), stderr: "" };
+          const st = mergedNow ? "MERGED" : "OPEN";
+          return { code: 0, stdout: JSON.stringify({ state: st, headRefOid: HEAD2, baseRefName: "main", number: 3, url: "u3", mergeCommit: mergedNow ? { oid: MERGE2 } : null }), stderr: "" };
+        }
+        if (args[0] === "pr" && args[1] === "create") { created = true; return { code: 0, signal: null, stdout: "", stderr: "" }; }
+        if (args[0] === "pr" && args[1] === "merge") { mergedNow = true; return { code: 0, signal: null, stdout: "", stderr: "" }; }
+        if (args[0] === "api" && String(args[1] ?? "").includes("check-runs")) return { code: 0, stdout: JSON.stringify([{ name: "ci", status: "COMPLETED", conclusion: "SUCCESS" }]), stderr: "" };
+        return { code: 1, stdout: "", stderr: "no match" };
+      },
+      _calls: calls,
+    };
+    const r = actDeliveryB(d, { ...opts, head: HEAD2 }, deps);
+    assert.equal(r.intent.status, "done");
+    assert.equal(r.intent.observed.mergeSha, MERGE2, "mergeSha=新 PR 的合并事实");
+    assert.ok(calls.some((x) => x.startsWith("pr create")), "必须 create 新 PR 而非误判前链已合并");
+    assert.equal(loadIntents(d).intents.filter((x) => x.endpoint === "B").length, 1, "同意图内完成");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

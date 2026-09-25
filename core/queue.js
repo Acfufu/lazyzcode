@@ -703,7 +703,10 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
         if (pending.length > 0 && v.pointsStopped) {
           return { stop: "无 ready 项且受积分限额约束的派发已停止（计量缺席/未决占用在案，#32）——lzy queue budget --resume-points 人工恢复", kind: "points-stopped" };
         }
-        return { stop: onlyItem ? `条目 ${onlyItem} 非 ready` : "无 ready 项（全部终态或未就绪）", kind: "idle" };
+        // 止步原因带 readiness 明细（CI 偶发「无 ready」的自诊断面——2026-09-25 首链试点）。
+        const reasons = pending.slice(0, 3).flatMap((x) => describeReadiness(cwd, x, v).reasons.map((r) => `${x.id}:${r}`));
+        const why = reasons.length > 0 ? `——原因：${reasons.join("；")}` : "";
+        return { stop: onlyItem ? `条目 ${onlyItem} 非 ready${why}` : `无 ready 项（全部终态或未就绪）${why}`, kind: "idle" };
       }
       const item = ready.sort((a, b) => a.seq - b.seq)[0];
       // 占用登记=锁内 pre-spawn 写 tx（未决时按上限保守计入——崩溃不假零）

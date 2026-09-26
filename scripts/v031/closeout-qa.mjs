@@ -606,6 +606,157 @@ async function receiptBindingCase(outDir) {
   return { blocked: null, assertions, steps };
 }
 
+// ── delivery-completion 案例（F3 终验面；R0.3）────────────────────────────
+// 判据（docs/plan-v031-closeout.md R0.3）：B 须匹配实际 merge 身份且其必需 CI 满足；
+// 「已合并未验证」保留意图 done、队列不得 completed、恢复走 readback（不重发 merge）。
+// 四组 merge-CI 矩阵（pending/failed/query-fail/green）× 三路径（dispatch / 死亡 reconcile /
+// 人工 readback reconcile），全部真 CLI（queue dispatch/reconcile、delivery readback），
+// 外部 gh/curl 走假件注入面（scripts/v031/queue-bridge-e2e.mjs --merge-ci）。
+async function deliveryCompletionCase(outDir) {
+  const { loadQueue, loadDispatch, saveDispatch } = await import("../../core/queue.js");
+  const { loadIntents } = await import("../../core/delivery.js");
+  const steps = [];
+  const E2E = join(REPO, "scripts", "v031", "queue-bridge-e2e.mjs");
+  const groups = ["pending", "failed", "query-fail", "green"];
+  const facts = [];
+  const seen = {};
+
+  for (const g of groups) {
+    const dir = join(fixtureRoot, `dc-${g}-${Date.now()}`);
+    gitInitFixture(dir, {
+      "lzy.project.json": '{"schemaVersion":1,"capabilities":{"check":[{"id":"smoke","argv":["node","-e","process.exit(0)"],"timeoutMs":30000}]}}\n',
+      "c-main-b.md": "task: qa-dc\nendpoint: B\nscope: .\nrecipe: none\n\n- [A1] x\n",
+      "cb.md": "task: qa-dc B\nendpoint: B\nscope: .\nrecipe: none\nrepo: Acfufu/lazyzcode\nbase: main\nbranch: v031\npr-title: qa\n\n- [A1] x\n",
+      "cc.md": "task: qa-dc C\nendpoint: C\nscope: .\nrecipe: none\nrepo: Acfufu/lazyzcode\nexpect-marker: v0.3.1\n\n- [A1] x\n",
+      "p.md": "- [N1] x\n- [F1] y\naccepts: A1\n",
+    });
+    // 交付契约声明 branch: v031 ⇒ 夹具须有该本地分支（act B 的 push 目标）
+    const mkBranch = run("git", ["branch", "v031"], { cwd: dir });
+    if (mkBranch.code !== 0) return { blocked: `夹具分支 v031 建失败（${g}）：${mkBranch.stderr}`, assertions: [], steps };
+    const bare = join(dir, "..", `${basename(dir)}-origin.git`);
+    const mkBare = run("git", ["init", "-q", "--bare", bare], { cwd: dir });
+    const addRemote = run("git", ["remote", "add", "origin", bare], { cwd: dir });
+    if (mkBare.code !== 0 || addRemote.code !== 0) {
+      return { blocked: `夹具 origin 建失败（${g}）：${mkBare.stderr}${addRemote.stderr}`, assertions: [], steps };
+    }
+    const add = cli(["queue", "add", "qa-dc", "--contract", "c-main-b.md", "--plan", "p.md", "--endpoint", "B", "--delivery-b", "cb.md", "--delivery-c", "cc.md", "--goal-slug", "qa-dc"], { cwd: dir });
+    steps.push({ step: `${g}:queue add`, ...add });
+    const q = readJsonMaybe(join(dir, ".lazyzcode", "queue", "queue.json"));
+    const item = q?.items?.[0] ?? null;
+    if (!item) return { blocked: `queue add 未落条目（${g}）：${add.stdout}${add.stderr}`, assertions: [], steps };
+    const bShort = String(item.delivery?.B?.hash ?? "").slice(0, 8);
+    const mShort = String(item.contractHash ?? "").slice(0, 8);
+    steps.push({ step: `${g}:hook B`, ...hookApprove(dir, `批准 ${bShort}`) });
+    const cShort = String(item.delivery?.C?.hash ?? "").slice(0, 8);
+    steps.push({ step: `${g}:hook C`, ...hookApprove(dir, `批准 ${cShort}`) });
+    // 主契约批准：钩子只认 goal 级 contractPending——先 register+plan（拒）落 pending，批准后 reset
+    // （authorizations/ 在 loop/ 外，reset 不清；bat1 approveall 同款配方）
+    steps.push({ step: `${g}:register`, ...cli(["loop", "register", "qa-dc", "--title", "qa dc", "--contract", "c-main-b.md"], { cwd: dir }) });
+    steps.push({ step: `${g}:plan#1`, ...cli(["loop", "plan", "p.md"], { cwd: dir }) });
+    steps.push({ step: `${g}:hook main`, ...hookApprove(dir, `批准 ${mShort}`) });
+    steps.push({ step: `${g}:reset`, ...cli(["loop", "reset"], { cwd: dir }) });
+
+    // 路径 1：dispatch（真 CLI + 假外部 + 夹具驱动）
+    const e2e = run(process.execPath, [E2E, dir, "--merge-ci", g], { cwd: dir, env: { QA_MERGE_CI: g }, timeoutMs: 300_000 });
+    steps.push({ step: `${g}:e2e dispatch`, code: e2e.code, stdout: e2e.stdout, stderr: e2e.stderr });
+    let summary = null;
+    try {
+      // e2e stdout 前置真 CLI 日志行 ⇒ 从首个 "{" 起解析（摘要恒为末尾单对象）
+      summary = JSON.parse(e2e.stdout.slice(e2e.stdout.indexOf("{")));
+    } catch {
+      summary = null;
+    }
+    if (!summary) return { blocked: `e2e 输出非 JSON（${g}）：${e2e.stdout.slice(0, 400)}${e2e.stderr.slice(0, 400)}`, assertions: [], steps };
+    const afterDispatch = summary.item?.state ?? null;
+    const mergeCalls1 = summary.mergeCalls;
+
+    // 路径 2：交付持有进程死亡后的 reconcile（注入 delivery-in-flight + 死 pid）
+    const itNow = loadQueue(dir)?.items?.[0] ?? null;
+    const dj = loadDispatch(dir) ?? { txs: [] };
+    dj.txs.push({
+      txId: "t-dc-dead", itemId: itNow.id, goalSlug: itNow.goalSlug, phase: "open",
+      openedAt: nowIso(), settledAt: null, limits: { wallMs: null, points: null },
+      segments: [{ sessionId: "sess-dc-dead", durationMs: 1000, exitCode: 0, endedAt: nowIso() }],
+      note: "delivery-in-flight", deliveringSinceMs: Date.now() - 12 * 60 * 1000, deliveringPid: 999999,
+    });
+    saveDispatch(dir, dj);
+    const recDead = cli(["queue", "reconcile"], { cwd: dir });
+    steps.push({ step: `${g}:reconcile(dead)`, ...recDead });
+    const afterDead = loadQueue(dir)?.items?.[0]?.state ?? null;
+
+    // 路径 3：人工 readback 修复 + reconcile 追认（假 gh 切回 green——只读复验、不重发 merge）
+    // 假 gh/curl 注入须显式带上（否则真 gh 被调——只读查询也会打到真远端）
+    const fakeEnv = {
+      QA_MERGE_CI: "green",
+      LZY_GH_BIN: join(process.env.HOME ?? "/tmp", ".v031-fakes", basename2(dir), "fake-gh.mjs"),
+      LZY_CURL_BIN: join(process.env.HOME ?? "/tmp", ".v031-fakes", basename2(dir), "fake-curl.mjs"),
+    };
+    const rb = cli(["delivery", "readback", "B"], { cwd: dir, env: fakeEnv });
+    steps.push({ step: `${g}:readback B`, ...rb });
+    const recAfter = cli(["queue", "reconcile"], { cwd: dir, env: fakeEnv });
+    steps.push({ step: `${g}:reconcile(readback)`, ...recAfter });
+    const stFinal = loadQueue(dir)?.items?.[0] ?? null;
+    const intents = (loadIntents(dir)?.intents ?? []).filter((x) => x.origin?.itemId === itNow.id);
+    const ghState = readJsonMaybe(join(process.env.HOME ?? "/tmp", ".v031-fakes", basename2(dir), "gh-state.json"));
+    const mergeCallsFinal = Number(ghState?.mergeCalls) || 0;
+
+    seen[g] = {
+      afterDispatch,
+      dispatchBlockedReason: String(summary.item?.blockedReason ?? "").slice(0, 120),
+      intentStatus: summary.intents?.[0]?.status ?? null,
+      mergeCiState: summary.intents?.[0]?.mergeCiState ?? null,
+      mergeCalls1,
+      afterDead,
+      deadExit: recDead.code,
+      deadVerdicts: (recDead.stdout + recDead.stderr).split("\n").filter((l) => /追认|killed|delivering|failed|completed|未竟/.test(l)).slice(0, 2).join(" ｜ "),
+      afterReadback: stFinal?.state ?? null,
+      readbackExit: rb.code,
+      mergeCallsFinal,
+      intentStatusFinal: intents.findLast(() => true)?.status ?? null,
+      intentMergeCiFinal: intents.findLast(() => true)?.observed?.mergeCiState ?? null,
+    };
+    facts.push(`### 组 ${g}\n${JSON.stringify({ ...seen[g], intents: intents.map((x) => ({ ep: x.endpoint, status: x.status, mergeCiState: x.observed?.mergeCiState ?? null, mergeSha: x.observed?.mergeSha ?? null })) }, null, 2)}`);
+  }
+
+  writeFileSync(join(outDir, "delivery-matrix-facts.txt"), facts.join("\n\n"));
+  const nonGreen = ["pending", "failed", "query-fail"];
+  const assertions = [
+    {
+      id: "D1",
+      ok: groups.every((g) => seen[g].mergeCalls1 === 1 && seen[g].mergeCallsFinal === 1),
+      expected: "零重复外发：四组 merge 调用计数恒 1（含 readback 恢复后不重发）",
+      observed: groups.map((g) => `${g}:${seen[g].mergeCalls1}→${seen[g].mergeCallsFinal}`).join(" "),
+      evidence: "artifacts/.../delivery-matrix-facts.txt",
+    },
+    {
+      id: "D2",
+      ok: nonGreen.every((g) => seen[g].afterDispatch !== "completed") && seen.green.afterDispatch === "completed",
+      expected: "merge CI 未满足（pending/failed/query-fail）不得 completed；green 才达契约终点",
+      observed: groups.map((g) => `${g}:${seen[g].afterDispatch}(ci=${seen[g].mergeCiState})`).join(" "),
+      evidence: "artifacts/.../delivery-matrix-facts.txt",
+    },
+    {
+      id: "D3",
+      ok: nonGreen.every((g) => seen[g].afterDead !== "completed") && groups.every((g) => seen[g].deadExit === 0),
+      expected: "交付持有进程死亡后 reconcile：不死锁（exit 0）且未验证组不得 completed",
+      observed: groups.map((g) => `${g}:dead=${seen[g].afterDead}(exit ${seen[g].deadExit})`).join(" "),
+      evidence: "artifacts/.../delivery-matrix-facts.txt",
+    },
+    {
+      id: "D4",
+      ok: nonGreen.every((g) => seen[g].afterReadback === "completed" && seen[g].readbackExit === 0),
+      expected: "人工 readback（迟来绿事实）后 reconcile 追认 completed——恢复走验证不走重发",
+      observed: groups.map((g) => `${g}:${seen[g].afterReadback}(rb exit ${seen[g].readbackExit})`).join(" "),
+      evidence: "artifacts/.../delivery-matrix-facts.txt",
+    },
+  ];
+  return { blocked: null, assertions, steps };
+}
+
+function basename2(p) {
+  return p.split("/").filter(Boolean).pop() ?? p;
+}
+
 // ── case 分派 ──────────────────────────────────────────────────────────────
 const started = nowIso();
 let result;
@@ -620,7 +771,7 @@ if (CASE === "budget") {
 } else if (CASE === "receipt-binding") {
   result = await receiptBindingCase(outDir);
 } else if (CASE === "delivery-completion") {
-  result = { blocked: `case delivery-completion 尚未接线（N8 落地后启用）——按契约报阻塞、不计通过`, cap: null };
+  result = await deliveryCompletionCase(outDir);
 } else {
   die(`未知 --case：${CASE}（budget|receipt-binding|delivery-completion）`);
 }

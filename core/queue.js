@@ -22,7 +22,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { LoopError, readGoal, registerGoal, adoptPlan, startLoop, finishLoop, resetLoop, withLock, bindDeliveryContract } from "./loop.js";
 import { runDrive } from "./drive.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
-import { actDeliveryB, actDeliveryC, readbackDeliveryB, readbackDeliveryC, loadIntents, validateDeliveryContract, DELIVERY_CHAIN_MAX_MS } from "./delivery.js";
+import { actDeliveryB, actDeliveryC, readbackDeliveryB, readbackDeliveryC, loadIntents, validateDeliveryContract, deliveryResultVerdict, DELIVERY_CHAIN_MAX_MS } from "./delivery.js";
 import { loadProjectManifest } from "./project.js";
 import { computePoints, querySessionPoints } from "./cost.js";
 import { loadRuntime, holderPidAlive, reclaimLease } from "./runtime.js";
@@ -682,18 +682,19 @@ function settleTxLedger(cwd, { tx, item, provenance, queryPoints = querySessionP
 //     goal 续跑，不重新 register）
 // (b) 同 slug 且 done → tx 补 settle（诚实归账），item completed
 // (c) goal 缺失或异 slug → tx=reconciled-orphan，item=failed（人工核查指路）——不静默重注册
-// 交付账本判定（0.3.1 棒1，§一.F.5）：item 声明的交付端点是否全部 done（按 origin 归属）。
+// 交付账本判定（0.3.1 棒1 §一.F.5；0.3.1 收口 R0.3 改判据单源）：item 声明的交付端点是否
+// **结果达成**（不只看意图 done）——谓词在 core/delivery.js（deliveryResultVerdict）：
+// B 须 merge 身份在场 ∧ merge CI green；C 须全页核过。意图 done 但未验证 ⇒ allDone:false
+// 且 missing 具名（队列不得 completed，恢复走 readback/验证，绝不重发 merge）。
 function deliveryAllDone(cwd, item) {
   let intents = null;
   try {
     intents = loadIntents(cwd)?.intents ?? [];
   } catch {
-    return { allDone: false, unreadable: true, missing: deliveryEpsOf(item) };
+    return { allDone: false, unreadable: true, missing: requiredActsFor(item) };
   }
-  const missing = requiredActsFor(item).filter(
-    (ep) => !intents.some((x) => x.origin?.itemId === item.id && x.endpoint === ep && x.status === "done"),
-  );
-  return { allDone: missing.length === 0, unreadable: false, missing };
+  const v = deliveryResultVerdict(intents, item);
+  return { allDone: v.ok, unreadable: false, missing: v.unmet, unmet: v.unmet };
 }
 
 // 交付墙钟条目（观测上界；死亡路径与收束路径共用，dedupKey 幂等）。
@@ -961,7 +962,7 @@ function runDeliveryChain(cwd, { item, txId, queryPoints, deps = {} }) {
     let list = readIntents();
     if (list === null) return abortDelivery(cwd, txId, item, "意图账本不可读（fail-closed）", queryPoints);
     const mine = () => (readIntents() ?? []).filter((x) => x.origin?.itemId === item.id && x.endpoint === ep);
-    if (mine().some((x) => x.status === "done")) continue; // 幂等跳过
+    // 幂等跳过：意图 done ⇒ 不重发动作（不可逆外发绝不重复）；是否**达成**由下方结果谓词判
     const origin = { kind: "queue", itemId: item.id, slug: item.goalSlug };
     try {
       if (ep === "B") {
@@ -1016,10 +1017,14 @@ function runDeliveryChain(cwd, { item, txId, queryPoints, deps = {} }) {
     }
     const finals = mine();
     const latest = finals.length > 0 ? finals[finals.length - 1] : null;
-    if (latest?.status === "done") continue;
+    // 端点达成判据=结果谓词（0.3.1 收口 R0.3）：done 且判据满足才 continue；
+    // done 但未验证（merge CI 非绿/页面未全过）⇒ 不重发动作，如实报未达成（恢复走 readback）。
+    const epVerdict = deliveryResultVerdict(finals, item, { endpoints: [ep] });
+    if (epVerdict.ok) continue;
     const lastAttempt = latest?.attempts?.[latest.attempts.length - 1];
     const detail = lastAttempt?.detail ? `（${String(lastAttempt.detail).slice(0, 120)}）` : "";
-    return { ok: false, note: `${ep} ${latest?.status ?? "无意图"}：${lastAttempt?.method ?? "?"}/${lastAttempt?.outcome ?? "?"}${detail}` };
+    const tail = latest?.status === "done" ? "已合并未验证——恢复=lzy delivery readback " + ep + " 复验，绝不重发" : `${lastAttempt?.method ?? "?"}/${lastAttempt?.outcome ?? "?"}`;
+    return { ok: false, note: `${ep} ${epVerdict.unmet.join("、")}：${tail}${detail}` };
   }
   return { ok: true, note: null };
 }

@@ -86,6 +86,49 @@ function assertIntents(state, p) {
   for (const it of state.intents) assertIntent(it, p);
 }
 
+// ── 交付结果判定单源（0.3.1 收口 R0.3，ADR-0028/#35 的完成面收口）─────────────────
+// 「意图 done」= 不可重复外发（恒终，不因未验证回退）；「交付结果达成」= 另有判据：
+//   B = 意图 done ∧ observed.mergeSha 在场（实际 merge 身份）∧ observed.mergeCiState === "green"；
+//   C = 意图 done ∧ observed.pages 全页逐条 ok（httpStatus 200 ∧ marker 在场）∧ B 前置成立。
+// 已合并但未验证（pending/failed/查询失败）⇒ 不达成：意图保持 done、队列不得 completed、
+// 恢复走 delivery readback / 重跑验证（绝不重发 merge）。本函数是队列侧完成判定的唯一来源
+//（core/queue.js deliveryAllDone 消费），也是 CLI 报文的判据面。
+export function requiredDeliveryActs(item) {
+  if (!item) return [];
+  if (item.endpoint === "B") return ["B"];
+  if (item.endpoint === "C") return ["B", "C"];
+  return [];
+}
+
+export function deliveryResultVerdict(intents, item, { endpoints = null } = {}) {
+  const unmet = [];
+  const eps = endpoints ?? requiredDeliveryActs(item);
+  const mine = (ep) =>
+    (intents ?? []).filter((x) => x.origin?.itemId === item?.id && x.endpoint === ep).findLast(() => true) ?? null;
+  for (const ep of eps) {
+    const it = mine(ep);
+    if (!it) {
+      unmet.push(`${ep}:缺意图`);
+      continue;
+    }
+    if (it.status !== "done") {
+      unmet.push(`${ep}:意图 ${it.status}`);
+      continue;
+    }
+    const o = it.observed ?? {};
+    if (ep === "B") {
+      if (!o.mergeSha) unmet.push("B:merge 身份缺席");
+      else if (o.mergeCiState !== "green") unmet.push(`B:merge CI ${o.mergeCiState ?? "查询失败/未验证"}`);
+    } else if (ep === "C") {
+      const pages = Array.isArray(o.pages) ? o.pages : [];
+      const bad = pages.filter((p) => !(p && p.httpStatus === 200 && p.markerFound === true));
+      if (pages.length === 0) unmet.push("C:声明页面明细缺席");
+      else if (bad.length > 0) unmet.push(`C:失败页 ${bad.map((p) => p.path).join(",")}`);
+    }
+  }
+  return { ok: unmet.length === 0, unmet };
+}
+
 // 读意图账本：仅 ENOENT 视缺席；JSON/校验和/版本/形状四层 fail-closed（queue.js 家法：
 // 不可读被静默当缺席时，下一写命令会整文件覆写）。
 export function loadIntents(cwd) {
@@ -609,9 +652,18 @@ export function actDeliveryB(cwd, opts, deps = {}) {
     const existing = prView(deps, repo, target.prNumber ?? branch);
     if (existing.ok && existing.state === "MERGED" && existing.headRefOid === head) {
       // 读回权威：本意图 HEAD 已随既有 PR 合并——done(observed)，绝不重发 merge。
+      // 0.3.1 收口 R0.3：merge SHA 的 CI 结果一并记入（与主路径 :711 同源查询）——否则
+      // 「已合并未验证」在队列侧无从判定（deliveryResultVerdict 读它）。
+      const ci = listCheckRuns(deps, repo, existing.mergeSha);
+      const v = ci.ok ? checkRunsVerdict(ci.runs) : null;
+      const mergeCiState = v ? (v.completed && v.ok ? "green" : v.completed ? "failed" : "pending") : null;
       const it = settleAct(cwd, "B", id, "done", {
-        attempt: { method: "drift-check", outcome: "already-merged", detail: `#${existing.number} 已处于 merged 且 head==意图 HEAD（读回权威）` },
-        observed: { mergeSha: existing.mergeSha, prNumber: existing.number, prUrl: existing.url ?? null, closedBy: "act-drift-observe" },
+        attempt: { method: "drift-check", outcome: "already-merged", detail: `#${existing.number} 已处于 merged 且 head==意图 HEAD（读回权威；merge CI=${mergeCiState ?? "query-failed"}）` },
+        observed: {
+          mergeSha: existing.mergeSha, prNumber: existing.number, prUrl: existing.url ?? null,
+          closedBy: "act-drift-observe", mergeCiState,
+          mergeCiDetail: mergeCiState === null ? "merge SHA check-runs 查询失败——未验证，须 readback 复验" : v?.completed ? `${v.count ?? ""} checks ${v.ok ? "green" : "failed"}` : "预算内未全绿（readback B 复验）",
+        },
       });
       return { intent: it, alreadyMerged: true };
     }

@@ -11,15 +11,18 @@
 // `.lazyzcode/queue/dispatch.json`（派发事务事件账）、`.lazyzcode/budget/ledger.json`
 //（消耗事实账，dedupKey 防相同回执重复扣账）。校验和/原子写/errno 判别家法照 core/runtime.js。
 // 首版边界（契约 non-goals 如实）：单工串行派发（workers 不入队列）、无自动重试（失败即
-// failed 阻塞依赖；重试不变量〔仅暂时性错误、≤2 次、计入原预算〕为未来启用时硬约束）、
-// endpoint 仅 A、队列项 goal 恒 LIGHT。依赖方向 queue.js → loop/drive/contract/project/
-// cost/hostdb/runtime/git 单向（免循环）。
+// failed 阻塞依赖；重试不变量〔仅暂时性错误、≤2 次、计入原预算〕为未来启用时硬约束——0.3.1
+// 棒1 申报：前半仍不兑现，见 ADR-0030 §〇.3）；0.3.1 棒1 起 endpoint 支持 A|B|C（矩阵见
+// addQueueItem；B/C 须声明交付契约）、队列项 tier 由契约/入队参数定（HEAVY 凭入队前评审
+// PASS + planHash 入队）。依赖方向 queue.js → loop/drive/contract/delivery/project/
+// cost/hostdb/runtime/git 单向（delivery 边=0.3.1 棒1 桥接新增，免循环）。
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { LoopError, readGoal, registerGoal, adoptPlan, startLoop, finishLoop, resetLoop, withLock } from "./loop.js";
+import { LoopError, readGoal, registerGoal, adoptPlan, startLoop, finishLoop, resetLoop, withLock, bindDeliveryContract } from "./loop.js";
 import { runDrive } from "./drive.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
+import { actDeliveryB, actDeliveryC, readbackDeliveryB, readbackDeliveryC, loadIntents, validateDeliveryContract, DELIVERY_CHAIN_MAX_MS } from "./delivery.js";
 import { loadProjectManifest } from "./project.js";
 import { computePoints } from "./cost.js";
 import { queryHostDb } from "./hostdb.js";
@@ -105,12 +108,30 @@ function assertItem(it, p) {
     if (typeof it[k] !== "string" || !it[k]) bad(`${k} 缺席或非字符串`);
   }
   if (!/^[0-9a-f]{64}$/.test(it.contractHash)) bad("contractHash 须为 64 hex");
-  if (it.endpoint !== "A") bad(`endpoint 首版仅 A（当前 ${JSON.stringify(it.endpoint)}）`);
+  if (!["A", "B", "C"].includes(it.endpoint)) bad(`endpoint 不识别：${JSON.stringify(it.endpoint)}（A|B|C——0.3.1 棒1 起 B/C 为队列目标终点，ADR-0030）`);
   if (!ITEM_STATES.includes(it.state)) bad(`state 不识别：${it.state}`);
   if (!Array.isArray(it.deps) || it.deps.some((d) => typeof d !== "string")) bad("deps 须为字符串数组");
   if (it.blockedReason != null && typeof it.blockedReason !== "string") bad("blockedReason 须为字符串或 null");
   if (it.completedEndpoint != null && typeof it.completedEndpoint !== "string") bad("completedEndpoint 须为字符串或 null");
   if (it.state === "completed" && typeof it.completedEndpoint !== "string") bad("completed 须注 completedEndpoint（达到 A/B/C 哪个终点）");
+  // 交付编排面可选字段（0.3.1 棒1；旧 item 无这些键=逐字兼容）
+  if (it.tier != null && !["light", "heavy"].includes(it.tier)) bad(`tier 不识别：${it.tier}（light|heavy）`);
+  if (it.risk != null && !["low", "med", "high", "restricted"].includes(it.risk)) bad(`risk 不识别：${it.risk}`);
+  if (it.planReview != null && (typeof it.planReview !== "string" || !it.planReview.trim())) bad("planReview 须为非空字符串或 null");
+  if (it.planHash != null && !/^[0-9a-f]{64}$/.test(it.planHash)) bad("planHash 须为 64 hex 或 null");
+  if (it.delivery != null) {
+    if (typeof it.delivery !== "object" || Array.isArray(it.delivery)) bad("delivery 须为对象或 null");
+    for (const [ep, d] of Object.entries(it.delivery)) {
+      if (ep !== "B" && ep !== "C") bad(`delivery 端点不识别：${ep}（B|C）`);
+      if (!d || typeof d.path !== "string" || !d.path) bad(`delivery.${ep}.path 缺席或非字符串`);
+      if (typeof d.hash !== "string" || !/^[0-9a-f]{64}$/.test(d.hash)) bad(`delivery.${ep}.hash 须为 64 hex`);
+    }
+  }
+  // 端点-交付矩阵（读侧同判，防绕过 API 的写入；delivery=null 也不得逃逸）：
+  // A 禁声明；B 须 B；C 须 B∧C（C 核验对象=最新 done B 意图的 mergeSha）。
+  if (it.endpoint === "A" && it.delivery != null) bad("endpoint A 不得声明 delivery（A 无外部动作）");
+  if (it.endpoint !== "A" && !it.delivery?.B) bad(`endpoint ${it.endpoint} 缺 delivery.B（端点矩阵：B⇒B 契约）`);
+  if (it.endpoint === "C" && !it.delivery?.C) bad("endpoint C 须 delivery.B∧C 两契约（C 核验对象=最新 done B 意图的 mergeSha）");
 }
 
 function assertQueueShape(q, p) {
@@ -345,11 +366,17 @@ function refreshStates(cwd, q) {
 
 // ── 条目生命周期 ──
 
-export function addQueueItem(cwd, { title, contractFile, planFile, endpoint = "A", deps = [], goalSlug = null }) {
+export function addQueueItem(cwd, { title, contractFile, planFile, endpoint = "A", deps = [], goalSlug = null, tier = "light", risk = "low", planReview = null, planHash = null, delivery = null }) {
   if (typeof title !== "string" || !title.trim()) throw new QueueError("条目标题不能为空");
   if (title.trim().length > 300) throw new QueueError(`条目标题超上限 300 字符（当前 ${title.trim().length}）`);
-  if (endpoint !== "A") {
-    throw new QueueError(`endpoint 仅支持 A（可合并候选）；B/C 外部交付归 M4（拒绝 ${JSON.stringify(endpoint)}）`);
+  // endpoint 矩阵（0.3.1 棒1，ADR-0030 §〇.4）：A 可合并候选 | B 合并主干 | C 上线验证。
+  if (!["A", "B", "C"].includes(endpoint)) {
+    throw new QueueError(`endpoint 不识别：${JSON.stringify(endpoint)}（A 可合并候选 | B 合并主干 | C 上线验证——B/C 须声明交付契约）`);
+  }
+  if (!["light", "heavy"].includes(tier)) throw new QueueError(`tier 不识别：${JSON.stringify(tier)}（light|heavy）`);
+  // risk 门：HIGH+ 不入无人值守车道（ADR-0020——drive 入口 assertDriveEligible 机器拒 HIGH+，入队即拒早暴露）。
+  if (!["low", "med"].includes(risk)) {
+    throw new QueueError(`risk 仅支持 low|med（当前 ${JSON.stringify(risk)}）——HIGH+ 不入无人值守车道（ADR-0020）；高风险工作请交互会话内推进`);
   }
   const loaded = (() => {
     try {
@@ -358,6 +385,56 @@ export function addQueueItem(cwd, { title, contractFile, planFile, endpoint = "A
       throw new QueueError(`契约无效：${e?.message ?? e}`);
     }
   })();
+  // endpoint 交叉校验：item.endpoint 与主契约 endpoint 字段一致（同一终点两处声明必须一致）。
+  if (loaded.endpoint !== endpoint) {
+    throw new QueueError(`endpoint 与主契约不一致：条目=${endpoint}，契约=${loaded.endpoint}（契约 endpoint 字段=任务目标终点；改终点=新契约）`);
+  }
+  // HEAVY 门（ADR-0030 §一.G）：评审发生在入队前——PASS 记录 + 计划哈希双件，缺一即拒。
+  if (tier === "heavy") {
+    if (typeof planReview !== "string" || !planReview.trim()) {
+      throw new QueueError('HEAVY 条目须带计划评审 PASS（--plan-review "plan-reviewer: PASS — …"）——评审发生在入队前；缺位=机器拒');
+    }
+    if (!/PASS/.test(planReview) || /REVISE/.test(planReview)) {
+      throw new QueueError(`--plan-review 判决非 PASS 形态：${planReview.slice(0, 120)}——HEAVY 采纳门机器拒非 PASS（core/loop.js:1058 家法）`);
+    }
+    if (typeof planHash !== "string" || !/^[0-9a-f]{64}$/.test(planHash)) {
+      throw new QueueError("HEAVY 条目须带计划哈希（--plan 现算 sha256）——派发前比对：计划已改=评审作废");
+    }
+  }
+  // 交付契约（delivery{B,C}）：validateDeliveryContract（endpoint 匹配+哈希）+ 队列承载必填键矩阵
+  // （对齐动作面硬要求，无人值守无法交互补参）。
+  const deliveryNorm = {};
+  if (delivery != null) {
+    if (typeof delivery !== "object" || Array.isArray(delivery)) throw new QueueError("delivery 须为 {B: <文件>, C: <文件>} 对象");
+    for (const ep of ["B", "C"]) {
+      const file = delivery[ep];
+      if (file == null) continue;
+      let v;
+      try {
+        v = validateDeliveryContract(cwd, ep, file);
+      } catch (e) {
+        throw new QueueError(`${ep} 交付契约无效：${e?.message ?? e}`);
+      }
+      const c = loadContract(v.path, cwd);
+      const need = ep === "B"
+        ? [["repo", c.repo], ["base", c.base], ["branch", c.branch], ["pr-title", c.prTitle]]
+        : [["repo", c.repo], ["expect-marker", c.expectMarker]];
+      const missing = need.filter(([, val]) => !val).map(([k]) => k);
+      if (missing.length > 0) {
+        throw new QueueError(`${ep} 交付契约缺队列承载必填键：${missing.join("/")}（无人值守无法交互补参——契约补声明后重新入队）`);
+      }
+      deliveryNorm[ep] = { path: relative(cwd, v.path) || v.path, hash: v.hash };
+    }
+  }
+  if (endpoint === "A" && Object.keys(deliveryNorm).length > 0) {
+    throw new QueueError("endpoint A 不得声明交付契约（A 无外部动作——交付链只在 B/C 终点存在）");
+  }
+  if (endpoint === "B" && !deliveryNorm.B) {
+    throw new QueueError("endpoint B 须声明 --delivery-b <B 契约文件>（端点矩阵：B⇒B 契约；无交付契约的 B 终点无意义）");
+  }
+  if (endpoint === "C" && !(deliveryNorm.B && deliveryNorm.C)) {
+    throw new QueueError(`endpoint C 须同时声明 --delivery-b ∧ --delivery-c（缺 ${deliveryNorm.B ? "C" : "B"}；C 核验对象=最新 done B 意图的 mergeSha——ADR-0028/0030）`);
+  }
   if (!planFile) throw new QueueError("计划缺位：add 须带 --plan <文件>（该项 goal 的执行计划；缺位不得 ready）");
   const planAbs = resolve(cwd, planFile);
   if (!existsSync(planAbs)) throw new QueueError(`计划文件不存在：${planAbs}`);
@@ -383,6 +460,10 @@ export function addQueueItem(cwd, { title, contractFile, planFile, endpoint = "A
       planPath: relative(cwd, planAbs) || planAbs,
       endpoint, deps: [...deps], state: "proposed",
       blockedReason: null, completedEndpoint: null,
+      tier, risk,
+      planReview: tier === "heavy" ? planReview.trim() : null,
+      planHash: tier === "heavy" ? planHash : null,
+      delivery: Object.keys(deliveryNorm).length > 0 ? deliveryNorm : null,
       createdAt: now, updatedAt: now,
     };
     q.items.push(item);

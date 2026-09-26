@@ -2,7 +2,8 @@
 // lzy — LazyZCode CLI：install / sync / status / uninstall / loop / step。
 // loop = 目标循环状态机（注册→计划门→逐步派发→证据验证→完成），状态在 .lazyzcode/。
 import { join, resolve } from "node:path";
-import { readdirSync, watch } from "node:fs";
+import { readdirSync, readFileSync, watch } from "node:fs";
+import { createHash } from "node:crypto";
 import { assertNodeFloor, install, sync, uninstall, readRepoManifest, readRegistry } from "../core/installer.js";
 import { createUpdater } from "../core/update.js";
 import { collectStatus } from "../core/status.js";
@@ -101,7 +102,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1348,18 +1349,43 @@ function cmdQueue(args) {
     const title = _[1];
     const contractFile = typeof f.contract === "string" ? f.contract : null;
     if (!title || !contractFile) {
-      throw new LoopError("用法：lzy queue add <标题> --contract <文件> --plan <文件> [--endpoint A] [--deps q1,q2] [--goal-slug s]");
+      throw new LoopError("用法：lzy queue add <标题> --contract <文件> --plan <文件> [--endpoint A|B|C] [--deps q1,q2] [--goal-slug s] [--tier heavy --plan-review \"plan-reviewer: PASS …\"] [--risk low|med] [--delivery-b <B契约>] [--delivery-c <C契约>]");
     }
     const deps = typeof f.deps === "string" && f.deps.trim() ? f.deps.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const planFile = typeof f.plan === "string" ? f.plan : null;
+    // planHash 由 CLI 现算（0.3.1 棒1）：HEAVY 条目的计划评审绑定——计划改动=评审作废（派发前比对）。
+    let planHash = null;
+    if (planFile) {
+      try {
+        planHash = createHash("sha256").update(readFileSync(resolve(cwd, planFile))).digest("hex");
+      } catch {
+        planHash = null; // 计划缺席/不可读：addQueueItem 的计划门负责报错（单点报错，勿双报）
+      }
+    }
     const item = addQueueItem(cwd, {
       title,
       contractFile,
-      planFile: typeof f.plan === "string" ? f.plan : null,
+      planFile,
       endpoint: typeof f.endpoint === "string" ? f.endpoint : "A",
       deps,
       goalSlug: typeof f["goal-slug"] === "string" && f["goal-slug"].trim() ? f["goal-slug"].trim() : null,
+      tier: typeof f.tier === "string" ? f.tier : "light",
+      risk: typeof f.risk === "string" ? f.risk : "low",
+      planReview: typeof f["plan-review"] === "string" ? f["plan-review"] : null,
+      planHash,
+      delivery: (() => {
+        const d = {};
+        if (typeof f["delivery-b"] === "string") d.B = f["delivery-b"];
+        if (typeof f["delivery-c"] === "string") d.C = f["delivery-c"];
+        return Object.keys(d).length > 0 ? d : null;
+      })(),
     });
     console.log(`✔ 条目已登记：${item.id}（${item.state}）· goal=${item.goalSlug} · 契约 ${item.contractHash.slice(0, 8)}… · 计划 ${item.planPath}`);
+    if (item.delivery) {
+      for (const ep of ["B", "C"]) {
+        if (item.delivery[ep]) console.log(`  交付 ${ep} 契约 ${item.delivery[ep].hash.slice(0, 8)}…（${item.delivery[ep].path}）——批准「批准 ${item.delivery[ep].hash.slice(0, 8)}」后本面交付授权生效`);
+      }
+    }
     console.log("  下一步：批准该契约（UPS 短码=contractHash 前 8 位）后条目自动 authorized；lzy queue list 看就绪面");
     return;
   }

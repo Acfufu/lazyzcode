@@ -95,12 +95,13 @@ function captureStdout(fn) {
   }).then((r) => ({ result: r, lines: lines.join("\n") }));
 }
 
-const passDeps = (run) => ({
+const passDeps = (run, extra = {}) => ({
   enginePath: "/fake/engine.cjs",
   detectAuth: () => ({ oauth: false, envAuth: true, ok: true }),
   run: run ?? (() => ({ exitCode: 0, stdout: "{}", stderr: "" })),
   querySessionPoints: () => ({ absent: false, unpriced: [], points: 0 }), // 逐段归因假读数：0 分（不触积分收束；必填缝见 drive.contract 注释）
   cliPath: CLI, // deps.cliPath seam：node --test 下 argv[1] 是测试文件自身，不可当 CLI
+  ...extra,
 });
 
 // 假工人 run：可注入时长（Atomics.wait 忙等→durationMs 反映）与行为（mutate(cwd, argv)）。
@@ -777,6 +778,33 @@ test("⑳c 无 pending 步 ⇒ drive 自走 finish 链收口（done + 清理相�
     assert.match(lines, /✔ goal done/);
     const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
     assert.equal(goal.status, "done", "drive 须自走 finish 链把目标收口");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(siblingRoot(d), { recursive: true, force: true });
+  }
+});
+
+// ── ⑮ 积分归因（0.3.1 棒2）：两工人两会话 ⇒ 任务 Σ=两会话求和（逐会话计，非按波/工人数叠加）──
+test("⑮积分归因：两工人各自会话 100 分 ⇒ 任务 Σ=200 入账；两会话各查一次（逐会话去重）", async () => {
+  const d = repo("lzy-dw-meter-").dir;
+  const seen = [];
+  try {
+    const { lines } = await captureStdout(() =>
+      runDrive(
+        d,
+        { workers: 2, maxSegments: 1 },
+        passDeps(fakeWorker({ mutate: (cwd, wid) => fakeAddFile(wid)(cwd) }), {
+          querySessionPoints: (sid) => {
+            seen.push(sid);
+            return { absent: false, unpriced: [], points: 100 };
+          },
+        }),
+      ),
+    );
+    assert.match(lines, /波 1\/1/, lines);
+    assert.equal(loadRuntime(d).budget.spentPoints, 200, `两会话各 100 分求和：${lines}`);
+    assert.equal(new Set(seen).size, 2, "两工人各一会话（逐会话查询）");
+    assert.equal(seen.length, 2, "逐会话只查一次（不去重会按段/工人叠加）");
   } finally {
     rmSync(d, { recursive: true, force: true });
     rmSync(siblingRoot(d), { recursive: true, force: true });

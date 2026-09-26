@@ -306,6 +306,26 @@ test("budget-ref=none（契约声明）：只执法墙钟——跳积分归因�
   }
 });
 
+test("积分归因：同会话跨两段只计一次（增量表去重，非按段累加）", async () => {
+  const d = executingRepo("lzy-drive-meter5-");
+  let n = 0;
+  const run = () => {
+    n += 1;
+    if (n <= 2) markFirstStepDone(d);
+    return { exitCode: 0, stdout: JSON.stringify({ sessionId: "sess-dedup" }), stderr: "" };
+  };
+  try {
+    const { result, lines } = await captureStdout(() =>
+      runDrive(d, { maxSegments: 2 }, passDeps(run, { querySessionPoints: () => ({ absent: false, unpriced: [], points: 100 }) })),
+    );
+    assert.equal(result.ok, true, lines);
+    assert.match(lines, /收束：段数尽（2 段）/);
+    assert.equal(loadRuntime(d).budget.spentPoints, 100, `同会话两段只计一次（累计 100 不翻倍）：${lines}`);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
 test("budget-ref 漂移：盘上契约哈希与绑定不符 ⇒ 声明不可信、照常执法（更严方向）", async () => {
   const d = executingRepo("lzy-drive-brefd-");
   try {

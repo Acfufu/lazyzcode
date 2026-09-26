@@ -54,7 +54,7 @@ const CASE = typeof f.case === "string" ? f.case : null;
 const FIXTURE_ARG = typeof f.fixture === "string" ? f.fixture : null;
 const OUT_ARG = typeof f.out === "string" ? f.out : null;
 const CLI = resolve(typeof f.cli === "string" ? f.cli : join(REPO, "cli", "lzy.js"));
-const WALL_MS = f["wall-ms"] != null ? Number.parseInt(f["wall-ms"], 10) : 180_000;
+const WALL_MS = f["wall-ms"] != null ? Number.parseInt(f["wall-ms"], 10) : 600_000;
 const MAX_SEGMENTS = f["max-segments"] != null ? Number.parseInt(f["max-segments"], 10) : 2;
 const KEEP = f.keep === true;
 
@@ -244,10 +244,8 @@ function budgetCase() {
   const planBody = [
     "# qa-budget 夹具计划",
     "",
-    `- [N1] 在夹具内创建 qa-out-1.txt（一行任意内容）并 git add+commit，然后 node ${CLI} step done N1 --note "qa 夹具 N1 落盘"`,
-    `- [N2] 在夹具内创建 qa-out-2.txt（一行任意内容）并 git add+commit，然后 node ${CLI} step done N2 --note "qa 夹具 N2 落盘"`,
-    `- [N3] 在夹具内创建 qa-out-3.txt（一行任意内容）并 git add+commit，然后 node ${CLI} step done N3 --note "qa 夹具 N3 落盘"`,
-    `- [F1] 核 qa-out-1.txt/qa-out-2.txt/qa-out-3.txt 均在场且非空，然后 node ${CLI} step done F1 --evidence "qa-out-*.txt 在场且非空"`,
+    ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `- [N${n}] 在夹具内创建 qa-out-${n}.txt（一行任意内容）并 git add+commit，然后 node ${CLI} step done N${n} --note "qa 夹具 N${n} 落盘"`),
+    `- [F1] 核 qa-out-1..8.txt 均在场且非空，然后 node ${CLI} step done F1 --evidence "qa-out-*.txt 在场且非空"`,
     "",
   ].join("\n");
 
@@ -349,11 +347,126 @@ function budgetCase() {
   return { blocked: null, cap, premise, steps, runs, assertions };
 }
 
+// ── budget 案例的队列账本档（真实 CLI：queue reconcile / queue show / loop reset）──────
+// 判据（docs/plan-v031-closeout.md R0.1 N3）：三类「不算零」在真实账本落条目 + 跨 reset 累计
+// 不刷新。注入只落夹具 dispatch.json（先例 scripts/v031/inject-txs.mjs），其余全走真 CLI。
+async function queueLedgerTier(outDir) {
+  const { loadQueue, loadDispatch, saveDispatch } = await import("../../core/queue.js");
+  const runRoot = join(fixtureRoot, `queue-${Date.now()}`);
+  rmSync(runRoot, { recursive: true, force: true });
+  mkdirSync(runRoot, { recursive: true });
+  const planBody = [
+    "# qa-queue 夹具计划",
+    "",
+    `- [N1] 在夹具内创建 qa-q.txt 并 git add+commit，然后 node ${CLI} step done N1 --note "qa 队列夹具"`,
+    "",
+  ].join("\n");
+  gitInitFixture(runRoot, {
+    "lzy.project.json": '{"schemaVersion":1,"capabilities":{"check":[{"id":"smoke","argv":["node","-e","process.exit(0)"],"timeoutMs":30000}]}}\n',
+    "c-main.md": "task: qa\nendpoint: A\nscope: .\nrecipe: none\n\n- [A1] x\n",
+    ".lazyzcode/plans/qa-q.md": planBody,
+  });
+  const steps = [];
+  const add = cli(["queue", "add", "qa-ledger", "--contract", "c-main.md", "--plan", ".lazyzcode/plans/qa-q.md", "--goal-slug", "qa-q"], { cwd: runRoot });
+  steps.push({ step: "queue add", ...add });
+  const short = (loadQueue(runRoot)?.items?.[0]?.contractHash ?? "").slice(0, 8) || null;
+  if (!short) return { blocked: `queue add 未落契约哈希：${add.stdout}${add.stderr}`, assertions: [], steps };
+  steps.push({ step: "hook-approve(contract)", ...hookApprove(runRoot, `批准 ${short}`) });
+  steps.push({ step: "queue budget", ...cli(["queue", "budget", "--points", "100", "--note", "qa 夹具"], { cwd: runRoot }) });
+  steps.push({ step: "register", ...cli(["loop", "register", "qa-q", "--title", "qa 队列夹具（closeout-qa）"], { cwd: runRoot }) });
+  const adopt1 = cli(["loop", "plan", ".lazyzcode/plans/qa-q.md"], { cwd: runRoot });
+  steps.push({ step: "plan#1", ...adopt1 });
+  const pshort = (adopt1.stdout + adopt1.stderr).match(/批准 ([0-9a-f]{8})/)?.[1] ?? null;
+  if (pshort) {
+    steps.push({ step: "hook-approve(plan)", ...hookApprove(runRoot, `批准 ${pshort}`) });
+    steps.push({ step: "plan#2", ...cli(["loop", "plan", ".lazyzcode/plans/qa-q.md"], { cwd: runRoot }) });
+  }
+  steps.push({ step: "start", ...cli(["loop", "start"], { cwd: runRoot }) });
+
+  const it = loadQueue(runRoot).items[0];
+  const seg = (sid) => ({ sessionId: sid, durationMs: 1000, exitCode: 0, endedAt: nowIso() });
+  const txBase = {
+    itemId: it.id, goalSlug: "qa-q", phase: "open", openedAt: nowIso(), settledAt: null,
+    limits: { wallMs: null, points: null }, segments: [], note: "qa 注入",
+  };
+  let dj = loadDispatch(runRoot) ?? { txs: [] };
+  dj.txs.push({ ...txBase, txId: "t-qa-killed", segments: [seg("qa-fake-sid-k")] });
+  saveDispatch(runRoot, dj);
+  const recKilled = cli(["queue", "reconcile"], { cwd: runRoot });
+  steps.push({ step: "reconcile(killed)", ...recKilled });
+  // 目标置 done（夹具状态注入，先例 inject-txs.mjs）⇒ 次一轮 reconcile 走 settle 补账
+  const gp = join(runRoot, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  g.status = "done";
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+  dj = loadDispatch(runRoot) ?? { txs: [] };
+  dj.txs.push({ ...txBase, txId: "t-qa-settle", segments: [seg("qa-fake-sid-s1"), seg("qa-fake-sid-s2")] });
+  saveDispatch(runRoot, dj);
+  const recSettle = cli(["queue", "reconcile"], { cwd: runRoot });
+  steps.push({ step: "reconcile(settle)", ...recSettle });
+
+  const ledger1 = readJsonMaybe(join(runRoot, ".lazyzcode", "budget", "ledger.json"));
+  const show = cli(["queue", "show", it.id], { cwd: runRoot });
+  steps.push({ step: "queue show", ...show });
+  // 停派读数面：queue budget 无旗标=只读（completd 项的 show 不列就绪理由）
+  const budgetRead = cli(["queue", "budget"], { cwd: runRoot });
+  steps.push({ step: "queue budget(read)", ...budgetRead });
+  steps.push({ step: "loop reset", ...cli(["loop", "reset"], { cwd: runRoot }) });
+  const ledger2 = readJsonMaybe(join(runRoot, ".lazyzcode", "budget", "ledger.json"));
+  const kinds = (ledger1?.entries ?? []).map((e) => e.kind);
+  const count = (k) => kinds.filter((x) => x === k).length;
+  writeFileSync(join(outDir, "budget-queue-reconcile.stdout.txt"), [
+    `### queue add\n${add.stdout}${add.stderr}`,
+    `### reconcile(killed)\n${recKilled.stdout}${recKilled.stderr}`,
+    `### reconcile(settle)\n${recSettle.stdout}${recSettle.stderr}`,
+    `### queue show\n${show.stdout}${show.stderr}`,
+    `### queue budget(read)\n${budgetRead.stdout}${budgetRead.stderr}`,
+    `### ledger entries\n${JSON.stringify(ledger1?.entries ?? [], null, 2)}`,
+  ].join("\n\n"));
+  const assertions = [
+    {
+      id: "Q1",
+      ok: count("killed-inflight") >= 1,
+      expected: "在途死亡不算零：真 CLI reconcile 落 killed-inflight 条目（假零申报禁止，#32）",
+      observed: `kinds=${JSON.stringify([...new Set(kinds)])}`,
+      evidence: "artifacts/.../budget-queue-reconcile.stdout.txt",
+    },
+    {
+      id: "Q2",
+      ok: count("metering-absent") >= 1,
+      expected: "查询缺席不算零：结算面逐段查询无完成行 ⇒ metering-absent 条目在场",
+      observed: `metering-absent=${count("metering-absent")} wall=${count("wall")}`,
+      evidence: "artifacts/.../budget-queue-reconcile.stdout.txt",
+    },
+    {
+      id: "Q3",
+      ok: /受积分限额约束的派发已停止|计量缺席/.test(budgetRead.stdout + budgetRead.stderr),
+      expected: "受积分限额约束的派发停止在案（queue budget 只读面点名）",
+      observed: (budgetRead.stdout + budgetRead.stderr).split("\n").filter((l) => /停止|积分/.test(l)).slice(0, 2).join(" ｜ "),
+      evidence: "artifacts/.../budget-queue-reconcile.stdout.txt",
+    },
+    {
+      id: "Q4",
+      ok: JSON.stringify(ledger1?.entries ?? null) === JSON.stringify(ledger2?.entries ?? null) && (ledger2?.entries?.length ?? 0) > 0,
+      expected: "跨 reset 累计不刷新：loop reset 后账本条目逐字不变（预算家族在 loop/ 外）",
+      observed: `entries=${ledger1?.entries?.length ?? 0} → ${ledger2?.entries?.length ?? 0}`,
+      evidence: "artifacts/.../budget-queue-reconcile.stdout.txt",
+    },
+  ];
+  return { blocked: null, assertions, steps, runRoot };
+}
+
 // ── case 分派 ──────────────────────────────────────────────────────────────
 const started = nowIso();
 let result;
 if (CASE === "budget") {
   result = budgetCase();
+  if (!result.blocked) {
+    const q = await queueLedgerTier(outDir);
+    if (q.blocked) result.blocked = q.blocked;
+    result.assertions = [...(result.assertions ?? []), ...(q.assertions ?? [])];
+    result.steps = [...(result.steps ?? []), ...(q.steps ?? [])];
+  }
 } else if (CASE === "receipt-binding" || CASE === "delivery-completion") {
   result = { blocked: `case ${CASE} 尚未接线（N5/N8 落地后启用）——按契约报阻塞、不计通过`, cap: null };
 } else {

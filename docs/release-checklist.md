@@ -518,6 +518,13 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - **真机 `lzy update` 0.2.4→0.3.0 全链 EXIT=0**（「sync 已由新装子进程执行」=ADR-0012 活体）；升级前版本行自报「插件载荷 0.3.0 与 CLI 不同」——载荷领先的反向中间态自名（发布前 sync 所致），与 0.2.2 记录对称；升级后 doctor EXIT=0：`payload 0.3.0` / `install 缓存 0.3.0` / `files 25 文件逐字 sha256` / `enabled hooks:6` / `payload-ver 19 版本目录·CLI 0.3.0 一致` / `migrate` 新行活体（版本入口缺位态如实自报）。
 - **AGENTS 发布收官同步**：§2 已发布行 0.2.4→**0.3.0**+弧收官句、§7 ADR 区间 0001..0029+0.3.0 五案注记；压缩回预算 **12287≤12288**。交接勘误一笔：publish tarball 路径首传误写（`lzy030-tagtree` 误作 `lzyzcode-tagtree`）致用户 ENOENT 空跑一趟——lesson=交接命令的路径先 `ls` 实证再发出。
 
+### win32 VM 复测（2026-09-26，Windows 11 aarch64，prlctl exec SYSTEM 上下文自驱动——0.3.0 顺延项补测）
+
+- **台态与 update 链**：VM 全局 0.2.3（0.2.3 场次遗留）→ `lzy update` **0.2.3→0.3.0 跨两版 EXIT=0**（「sync 已由新装子进程执行」=ADR-0012 win32 再活体；缓存落 systemprofile 既知形态）；doctor EXIT=0：`payload 0.3.0`/`files 25 文件逐字`/`payload-ver [0.0.7..0.3.0]·CLI 一致`/`contract·project·migrate` 三新行 skip 形态在案；engine/platform ⚠=SYSTEM 上下文既知态非缺陷；`hook-node` 兜底 C:\Tools\node（ADJ-23 护栏态）。驱动通道=宿主 http.server+客户机 curl 下发 node 驱动脚本（0.1.1 配方；git/钩子全 node spawn 绕 cmd 引号雷）。
+- **契约 goal 全链（M1 主场，win32 首发活体）**：`register --contract`（contractHash b0e24b2b…）→ 首采拒落 contractPending（拒绝报文带 ADR-0024 全文+禁令）→ **UPS 钩子 ASCII 批准句**（stdin JSON，`approve <短码>`，正式通道记录 "Human approval recorded for contract"）→ 重采纳过契约门（快照 sha256）→ start → 改面+尾注提交 → F1 绿绑指纹 → **finish 被「未完成即停」门正确拦下**（N1 未收口——诚实门活体）→ 补 N1 → finish 过完整性闸门 → **LOOP_COMPLETE attestation 落盘**。**严格面发现（语义非缺陷）**：同契约对新 goal **不自动重放批准**（c-gate2 需再次 UPS 批准）——授权按 goal 绑定，与迁移四禁令第一条同源。
+- **0.3.0 新面活体**：①`project check` 清单校验过（内容 sha256 回显；就绪半如实报「入口缺失」静态读数）；②**`verify run` 回执全径**（runId 绑候选 HEAD+复合指纹+清单哈希，原始输出分离落 `.lazyzcode/verify/`）；③`queue add/budget/list` 活体（q1 proposed+预算 120 带 provenance；就绪面如实报「契约授权无效」——同一 goal 绑定语义的读数，与上条同源一致）；④**`migrate` 全径**：preview（只读、六族计数、提权禁止四点）→ apply 对 finished 终态=**幂等 no-op**（终态归档原样保留）→ 立 executing 态 goal 后 apply **全径**：备份 6 文件→drafts 草案（授权 NONE）→**state.json 版本入口 stateVersion=0.3.0 落盘**→status 读 journal 相位=done；⑤**reset 不清 queue/budget**（M3 语义活体：q1+预算 120 穿越两次 reset/迁移在场）。
+- 收尾：scratch 与驱动脚本已清、宿主 http.server 已停、VM 保持运行态（=开工前）；VM 全局停 0.3.0（本次升级物）。复测闭环，0.3.0 无 VM 遗留。
+
 ## 执行记录（0.2.4，双审修复轮 + fast 波编排收口——机械件已备，publish 留用户）
 
 ### Runbook（按序）

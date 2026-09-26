@@ -227,3 +227,102 @@ test("⑦C 交付身份漂移拒：repo 不符→身份漂移（观察参数豁�
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+// ── 0.3.1 棒1（债 M4-4，ADR-0030 §一.A/B）：多页核验 + 契约取值面 ──
+// 逐 URL 假 curl（多页三态驱动）；契约声明 repo/expect-marker/page 后 act 空参数可跑（无人值守面）。
+function bindCRich(d, extraLines) {
+  const body = `task: C rich\nendpoint: C\nscope: .\nrecipe: none\n${extraLines.join("\n")}\n\n- [A1] x\n`;
+  writeFileSync(join(d, "cc-rich.md"), body);
+  const v = validateDeliveryContract(d, "C", join(d, "cc-rich.md"));
+  bindDeliveryContract(d, "C", join(d, "cc-rich.md"), v.hash);
+  return v;
+}
+
+function depsByUrl(map, { pagesCommit = MERGE, pagesStatus = "built" } = {}) {
+  const deps = fakeDeps({ pagesCommit, pagesStatus });
+  const seen = [];
+  deps.curlGet = (url) => {
+    seen.push(url);
+    const v = map[url];
+    if (v == null) return { code: 0, stdout: `HTTPSTATUS:404`, stderr: "" };
+    return { code: 0, stdout: `${v}HTTPSTATUS:200`, stderr: "" };
+  };
+  deps._seen = seen;
+  return deps;
+}
+
+test("⑧多页全过：契约 page 声明 + 空参数 act（契约取值）→ 逐页 200∧marker → done，observed.pages 明细与 URL 拼接在场", async () => {
+  const d = goalRepo("lzy-dpages-8-");
+  try {
+    await doneB(d);
+    bindCRich(d, ["repo: Acfufu/lazyzcode", "expect-marker: v0.3.1", "page: /guide/zh.html", "page: /adr/index.html"]);
+    const deps = depsByUrl({
+      "https://acfufu.github.io/lazyzcode/": "<html>v0.3.1</html>",
+      "https://acfufu.github.io/lazyzcode/guide/zh.html": "<html>v0.3.1 中文</html>",
+      "https://acfufu.github.io/lazyzcode/adr/index.html": "<html>ADR v0.3.1</html>",
+    });
+    const r = actDeliveryC(d, {}, deps); // 空参数：repo/expect-marker/pages 全来自契约
+    assert.equal(r.intent.status, "done");
+    assert.deepEqual(deps._seen, [
+      "https://acfufu.github.io/lazyzcode/",
+      "https://acfufu.github.io/lazyzcode/guide/zh.html",
+      "https://acfufu.github.io/lazyzcode/adr/index.html",
+    ]);
+    assert.equal(r.pages.length, 3);
+    assert.ok(r.pages.every((p) => p.ok));
+    assert.equal(r.intent.observed.pages.length, 3);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑨单页 404 拒：失败页清单在场、intent failed（不假绿）", async () => {
+  const d = goalRepo("lzy-dpages-9-");
+  try {
+    await doneB(d);
+    bindCRich(d, ["repo: Acfufu/lazyzcode", "expect-marker: v0.3.1", "page: /guide/zh.html", "page: /missing.html"]);
+    const deps = depsByUrl({
+      "https://acfufu.github.io/lazyzcode/": "<html>v0.3.1</html>",
+      "https://acfufu.github.io/lazyzcode/guide/zh.html": "<html>v0.3.1</html>",
+      // /missing.html → 默认 404
+    });
+    assert.throws(() => actDeliveryC(d, {}, deps), /失败页=\/missing\.html/);
+    assert.equal(intentC(d).status, "failed");
+    const last = intentC(d).attempts.at(-1);
+    assert.match(last.detail, /\/missing\.html\(http=404/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑩单页 200 缺 marker 拒：失败页标记 MISSING", async () => {
+  const d = goalRepo("lzy-dpages-10-");
+  try {
+    await doneB(d);
+    bindCRich(d, ["repo: Acfufu/lazyzcode", "expect-marker: v0.3.1", "page: /stale.html"]);
+    const deps = depsByUrl({
+      "https://acfufu.github.io/lazyzcode/": "<html>v0.3.1</html>",
+      "https://acfufu.github.io/lazyzcode/stale.html": "<html>旧内容</html>",
+    });
+    assert.throws(() => actDeliveryC(d, {}, deps), /失败页=\/stale\.html/);
+    assert.match(intentC(d).attempts.at(-1).detail, /\/stale\.html\(http=200 marker=MISSING\)/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑪缺省 pages=仅站点根（单页行为逐字：curl 只打站点根一次，URL 与旧实现一致）", async () => {
+  const d = goalRepo("lzy-dpages-11-");
+  try {
+    await doneB(d);
+    bindCRich(d, ["repo: Acfufu/lazyzcode", "expect-marker: v0.3.1"]); // 无 page:
+    const deps = depsByUrl({ "https://acfufu.github.io/lazyzcode/": "<html>v0.3.1</html>" });
+    const r = actDeliveryC(d, {}, deps);
+    assert.equal(r.intent.status, "done");
+    assert.deepEqual(deps._seen, ["https://acfufu.github.io/lazyzcode/"]);
+    assert.equal(r.pages.length, 1);
+    assert.equal(r.pages[0].path, "/");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

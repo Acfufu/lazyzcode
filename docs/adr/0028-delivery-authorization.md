@@ -21,3 +21,20 @@ scope 字段）。生效判定照走 effectiveAuthorization 后到者赢；act �
 同哈希计数多批准区分 B/C=记录不可区分且可伪仿；B/C 交付入队列项=M3 队列已明拒 B/C
 （core/queue.js:351-353 指路 M4），首版交付链单条不排队。代价：一个交付两份契约文件+两次
 批准短语（用户侧成本换授权粒度）；8hex 前缀碰撞概率 ~2^-32 每对，拒猜兜底。
+
+## 修正节（2026-09-26，0.3.1 棒1 实施期）：状态判据放宽一档 executing ∨ (done ∧ bound)
+
+本文原判「delivery 面在执行期运作」（requireDeliveryContext 只认 goal `executing`）。队列桥
+（ADR-0030）的编排顺位=drive → finish → **交付 act/readback → completed**：交付链只在 goal
+已 `done` 时开跑（读回 done 才记队列项 completed），故状态判据放宽一档：
+
+1. **可 act 两态**：`executing`，或 `done` 且本面（ep）delivery 契约**已绑**。「done∧bound」
+   只在同一次尝试内可达——reset 清 goal.json 整件 ⇒ 绑定必属本尝试，不放宽 abandoned /
+   planning / 未绑定三态（各自照拒，错误文案列明当前态与绑定态）。
+2. **不变面**：授权门（B∧C 双授权）、PR head/base 漂移复核、CI 全绿门、意图账本 done 恒终、
+   读回恒拒再执行——状态放宽不触及任何授权或身份判据。
+3. **记账口径**：交付链耗时以 wall 条目入队列 ledger（ADR-0030 §4「不计积分、计入墙钟」）；
+   `DELIVERY_CHAIN_MAX_MS` 常量导出供队列 reconcile 的「在途是否已死」活性兜底。
+
+实施与测试：core/delivery.js requireDeliveryContext（done∧bound 一档）+ test/delivery-gate
+⑧⑨⑩（状态矩阵/done 未绑拒/planning 拒）；人驱 CLI 路径（M4 契约流程）行为不变。

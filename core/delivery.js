@@ -30,6 +30,11 @@ export const CI_POLL_INTERVAL_MS = 15_000;
 export const CI_POLL_MAX = 12;
 export const PAGES_POLL_INTERVAL_MS = 15_000;
 export const PAGES_POLL_MAX = 10;
+// 交付链上界（0.3.1 棒1）：queue reconcile 判断「delivery-in-flight 标记是否已死」的活性兜底。
+// 由本模块轮询常量求和：B 面两次 CI 轮（headCi+mergeCi，各 CI_POLL_MAX×CI_POLL_INTERVAL_MS）
+// + C 面 Pages 轮 + gh/curl 超时余量 ⇒ 630s（≈10.5 分钟；上界口径：宁可判活久一点）。
+export const DELIVERY_CHAIN_MAX_MS =
+  CI_POLL_MAX * CI_POLL_INTERVAL_MS * 2 + PAGES_POLL_MAX * PAGES_POLL_INTERVAL_MS + 120_000;
 const MERGE_CI_STATE = ["green", "pending", "failed"];
 
 export class DeliveryError extends Error {}
@@ -67,6 +72,10 @@ function assertIntent(it, p) {
   }
   if (it.observed !== null && it.observed !== undefined && typeof it.observed !== "object") bad("observed 类型");
   if (it.observed?.mergeCiState != null && !MERGE_CI_STATE.includes(it.observed.mergeCiState)) bad(`mergeCiState=${it.observed.mergeCiState}`);
+  if (it.origin !== undefined) {
+    if (!it.origin || typeof it.origin !== "object") bad("origin 类型");
+    if (typeof it.origin.itemId !== "string" || typeof it.origin.slug !== "string") bad("origin.itemId/slug 类型");
+  }
 }
 
 function assertIntents(state, p) {
@@ -169,6 +178,16 @@ function gitPushDefault(cwd, branch, { timeoutMs = 120_000 } = {}) {
   return { code: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "", error: r.error ?? null, signal: r.signal ?? null, timedOut: r.signal != null || r.error?.code === "ETIMEDOUT" };
 }
 
+// 工作区 HEAD（0.3.1 棒1）：B 面 head 的兜底来源——候选=目标终提交，契约不可预钉。
+// deps.gitHead 注入缝（测试/平台回落），默认 git rev-parse HEAD。
+function gitHeadDefault(cwd) {
+  const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd, shell: false, timeout: 30_000, encoding: "utf8" });
+  if (r.status !== 0) {
+    throw new DeliveryError(`工作区 HEAD 不可解析（git rev-parse HEAD 退出 ${r.status}）——act B 需在目标工作区内运行，或显式 --head <40 位 SHA>`);
+  }
+  return String(r.stdout ?? "").trim();
+}
+
 // HTTPS 只读抓取（Pages 内容核验）：curl 同步面（macOS/win10+ 原生 curl；prlctl VM 家法）。
 // -w HTTPSTATUS:%{http_code} 尾注带回状态码（-sS 静默体不含元数据）。
 export function curlGet(deps, url, { timeoutMs = 15_000 } = {}) {
@@ -256,14 +275,35 @@ function requireDeliveryContext(cwd, ep) {
   }
   const goal = readGoal(cwd);
   if (!goal) throw new DeliveryError("本目录没有进行中的目标——delivery 授权与意图挂 goal（先 lzy loop register）");
-  if (goal.status !== "executing") {
-    throw new DeliveryError(`目标 ${goal.slug} 非 executing（${goal.status}）——delivery 面在执行期运作`);
-  }
   const bound = goal.delivery?.[ep];
+  // 状态判据（0.3.1 棒1，ADR-0028 修正节）：executing ∨ (done ∧ 本面试图已绑)。
+  // 「done 且已绑」只在同一次尝试内可达（reset 清 goal.json 整件 ⇒ 绑定必属本尝试）——
+  // 队列桥在 finish 之后编排交付（读回 done 才记 completed）走此档；planning/未绑/abandoned 照拒。
+  const executing = goal.status === "executing";
+  const doneWithBound = goal.status === "done" && !!bound?.hash;
+  if (!executing && !doneWithBound) {
+    throw new DeliveryError(
+      `目标 ${goal.slug} 非 executing 且非「done 且已绑 ${ep} 契约」（当前 ${goal.status}${bound?.hash ? "，已绑" : "，未绑"}）——` +
+        `delivery 面在执行期、或已绑本面契约的完成态运作（planning/未绑定/abandoned 照拒）`,
+    );
+  }
   if (!bound?.hash) {
     throw new DeliveryError(`目标 ${goal.slug} 未绑定 ${ep} delivery 契约——先 lzy delivery request ${ep} --contract <file>（批准对象=契约哈希，UPS 短语「批准 <短码>」）`);
   }
   return { goal, bound };
+}
+
+// 契约取值面（0.3.1 棒1）：动作参数可从 goal.delivery[ep] 绑定契约读取（队列无人值守无法
+// 交互补参）；CLI 人驱旗标优先（显式 > 契约）。读面 fail-soft：契约坏→返回 null，由调用方
+// 的参数门给出缺参报错（不在读面抛，保持门序单一）。
+function contractOpts(cwd, goal, ep) {
+  const path = goal?.delivery?.[ep]?.path;
+  if (!path) return null;
+  try {
+    return loadContract(path, cwd);
+  } catch {
+    return null;
+  }
 }
 
 // 授权门（拍板 3）：act B 须 B∧C 双授权（main=Pages 发布源，合并即触发部署）；act C 须 C。
@@ -298,7 +338,7 @@ function authorizationGate(cwd, goal, ep, { needB, needC }) {
 // 全部历史——follow-up 交付（新 HEAD/新 mergeSha）开新意图，历史意图永存账本。
 // B 身份=repo+branch+base+headSha；C 身份=repo+mergeSha。观察参数（C 面 expect-marker/
 // content-url）不在身份内（重瞄=attempt 记录）；B 面 headSha 恒硬。
-const OBSERVABLE_KEYS = new Set(["expectMarker", "contentUrl"]);
+const OBSERVABLE_KEYS = new Set(["expectMarker", "contentUrl", "pages"]);
 function intentIdentity(ep, target) {
   if (ep === "B") return JSON.stringify([target.repo, target.branch, target.base, target.headSha]);
   return JSON.stringify([target.repo, target.mergeSha]);
@@ -340,7 +380,7 @@ function intentGate(state, ep, target) {
   return { intent: null, created: true };
 }
 
-function newIntent(state, ep, kind, target, plannedArgv, ablated) {
+function newIntent(state, ep, kind, target, plannedArgv, ablated, origin) {
   const id = `d${state.lastSeq + 1}`;
   return {
     id,
@@ -354,13 +394,16 @@ function newIntent(state, ep, kind, target, plannedArgv, ablated) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ablated: ablated || undefined,
+    // 来源标记（0.3.1 棒1）：队列桥创建的意图带 {kind:"queue", itemId, slug}——reconcile 归属
+    // 判定与桥幂等（跳过已 done）用它；人驱意图无此字段（逐字兼容）。
+    origin: origin && typeof origin === "object" ? { kind: origin.kind ?? "queue", itemId: origin.itemId, slug: origin.slug } : undefined,
   };
 }
 
 // act 开场（锁内）：全部门序走完、意图落账（intended→acting 前置于任何外部调用）——
 // 意图先于动作（主方案 §6）。返回 {goal, intent, state}；外部链随后锁外执行，终态经
 // settleAct 落账（crash 留 acting → readback 收束路径恒在）。
-export function beginAct(cwd, ep, { kind, target, plannedArgv }) {
+export function beginAct(cwd, ep, { kind, target, plannedArgv, origin }) {
   return withLock(cwd, () => {
     const { goal, bound } = requireDeliveryContext(cwd, ep);
     const gate = authorizationGate(cwd, goal, ep, { needB: ep === "B", needC: true });
@@ -371,7 +414,7 @@ export function beginAct(cwd, ep, { kind, target, plannedArgv }) {
     const { intent, created } = intentGate(state, ep, target);
     let it = intent;
     if (created) {
-      it = newIntent(state, ep, kind, target, plannedArgv, gate.ablated);
+      it = newIntent(state, ep, kind, target, plannedArgv, gate.ablated, origin);
       state.intents.push(it);
       state.lastSeq += 1;
     }
@@ -446,6 +489,7 @@ export function deliveryStatus(cwd) {
     intents: (state?.intents ?? []).map((it) => ({
       id: it.id, endpoint: it.endpoint, kind: it.kind, status: it.status,
       target: it.target, attempts: it.attempts.length, observed: it.observed, updatedAt: it.updatedAt,
+      origin: it.origin ?? null,
     })),
   };
 }
@@ -506,17 +550,25 @@ function pollCi(deps, repo, sha) {
 // 不可逆点=merge：超时/断连→unknown（读回分类后方可收束，绝不盲目重发，V10）；
 // 其余确定性失败→failed/refused（同身份重试门序全重走）。
 export function actDeliveryB(cwd, opts, deps = {}) {
-  const { repo, branch, head, base, prTitle, prBodyFile } = opts ?? {};
+  // 契约取值（0.3.1 棒1）：旗标优先，B 契约兜底（repo/base/branch/pr-title/pr-body）；
+  // head 恒不可由契约预钉——旗标优先（人驱路径沿 M4），缺省取工作区当前 HEAD（队列桥不传旗标）。
+  const c = contractOpts(cwd, readGoal(cwd), "B");
+  const repo = opts?.repo ?? c?.repo;
+  const base = opts?.base ?? c?.base;
+  const branch = opts?.branch ?? c?.branch;
+  const prTitle = opts?.prTitle ?? c?.prTitle;
+  const prBodyFile = opts?.prBodyFile ?? c?.prBody;
+  const head = opts?.head ?? (deps?.gitHead ?? gitHeadDefault)(cwd);
   if (!repo || !branch || !base || !prTitle || !prBodyFile) {
-    throw new DeliveryError("act B 缺参数：--repo <owner/name> --branch <分支> --base <基线> --pr-title <题> --pr-body-file <正文文件> 必填");
+    throw new DeliveryError("act B 缺参数：--repo <owner/name> --branch <分支> --base <基线> --pr-title <题> --pr-body-file <正文文件> 必填（或由 B 契约声明 repo/base/branch/pr-title/pr-body）");
   }
   if (!/^[0-9a-f]{40}$/.test(String(head ?? ""))) {
     throw new DeliveryError(`--head 须为 40 位完整提交 SHA（漂移复核与 --match-head-commit 都以完整 SHA 为判据）：${head ?? "缺席"}`);
   }
   const target = { repo, base, branch, headSha: head };
-  if (opts.pr != null) target.prNumber = opts.pr;
+  if (opts?.pr != null) target.prNumber = opts.pr;
   const plannedArgv = ["git push origin <branch>", `gh pr create --head ${branch} --base ${base}`, `gh pr merge <n> --merge --match-head-commit ${head}`];
-  const { goal, intent } = beginAct(cwd, "B", { kind: "merge-chain", target, plannedArgv });
+  const { goal, intent } = beginAct(cwd, "B", { kind: "merge-chain", target, plannedArgv, origin: opts?.origin });
   const id = intent.id;
   // 1) push（幂等；超时=unknown，确定性拒绝=failed）
   const pushRun = (deps?.gitPush ?? gitPushDefault)(cwd, branch);
@@ -686,18 +738,54 @@ export function siteUrlOf(repo) {
   return `https://${owner.toLowerCase()}.github.io/${name.toLowerCase()}/`;
 }
 
-function verifyPages(deps, repo, mergeSha, expectMarker, contentUrl) {
+// 站点根基准：以 contentUrl（或站点根 URL）的「目录」为基准——多页路径语义=站点根绝对
+// （/guide/zh.html 指站点自身根下的路径，而非域名根；GitHub Pages 项目站的关键差异）。
+function pageBaseUrl(siteUrl) {
+  try {
+    return new URL(".", siteUrl).toString();
+  } catch {
+    return siteUrl.endsWith("/") ? siteUrl : `${siteUrl}/`;
+  }
+}
+
+// 多页核验（0.3.1 棒1，债 M4-4）：pages=契约声明的页路径数组（以 / 起），逐页判据
+// 200 ∧ 含 expect-marker；缺省/空=仅站点根（单页行为逐字不变）。
+// 返回形状：fetchRes/httpOk/markerFound 恒取站点根（既有调用点逐字兼容），pages[] 逐页明细，
+// allOk=全页通过（调用方判据用 allOk）。
+function verifyPages(deps, repo, mergeSha, expectMarker, contentUrl, pages = []) {
   const siteUrl = contentUrl ?? siteUrlOf(repo);
-  const fetchRes = curlGet(deps, siteUrl);
-  const httpOk = fetchRes.code === 0 && fetchRes.httpStatus === 200;
-  const markerFound = httpOk && String(fetchRes.body ?? "").includes(expectMarker);
-  return { siteUrl, fetchRes, httpOk, markerFound };
+  const base = pageBaseUrl(siteUrl);
+  const list = ["/", ...(Array.isArray(pages) ? pages.filter((p) => p !== "/") : [])];
+  const details = [];
+  let rootRes = null;
+  let rootOk = false;
+  let rootMarker = false;
+  for (const p of list) {
+    const url = p === "/" ? siteUrl : `${base}${String(p).replace(/^\//, "")}`;
+    const res = curlGet(deps, url);
+    const ok = res.code === 0 && res.httpStatus === 200;
+    const marker = ok && String(res.body ?? "").includes(expectMarker);
+    details.push({ path: p, url, httpStatus: res.httpStatus ?? null, curlExit: res.code, markerFound: marker, ok: ok && marker });
+    if (p === "/") {
+      rootRes = res;
+      rootOk = ok;
+      rootMarker = marker;
+    }
+  }
+  const allOk = details.every((d) => d.ok);
+  return { siteUrl, fetchRes: rootRes, httpOk: rootOk, markerFound: rootMarker, pages: details, allOk };
 }
 
 export function actDeliveryC(cwd, opts, deps = {}) {
-  const { repo, expectMarker } = opts ?? {};
+  // 契约取值（0.3.1 棒1）：旗标优先，契约兜底（goal.delivery.C 绑定契约的 repo/expect-marker/
+  // content-url/pages）——队列无人值守无法交互补参；C 的 repo 以 C 契约声明为准（无 B 回落）。
+  const c = contractOpts(cwd, readGoal(cwd), "C");
+  const repo = opts?.repo ?? c?.repo;
+  const expectMarker = opts?.expectMarker ?? c?.expectMarker;
+  const contentUrl = opts?.contentUrl ?? c?.contentUrl;
+  const pages = opts?.pages ?? c?.pages ?? [];
   if (!repo || !expectMarker) {
-    throw new DeliveryError("act C 缺参数：--repo <owner/name> --expect-marker <合并后才存在的稳定串> [--content-url <具体页 URL>]");
+    throw new DeliveryError("act C 缺参数：--repo <owner/name> --expect-marker <合并后才存在的稳定串> [--content-url <具体页 URL>]（或由 C 契约声明 repo/expect-marker）");
   }
   // B 前置：C 核验对象=最新 done B 链产出的 mergeSha（follow-up 合并后即指向新 mergeSha）。
   const pre = loadIntents(cwd);
@@ -707,12 +795,16 @@ export function actDeliveryC(cwd, opts, deps = {}) {
   }
   const mergeSha = b.observed.mergeSha;
   const target = { repo, expectMarker, mergeSha };
-  if (opts.contentUrl) target.contentUrl = opts.contentUrl;
-  const { intent } = beginAct(cwd, "C", { kind: "pages-verify", target, plannedArgv: [`gh api repos/${repo}/pages/builds/latest`, `curl ${opts.contentUrl ?? siteUrlOf(repo)}`] });
+  if (contentUrl) target.contentUrl = contentUrl;
+  if (Array.isArray(pages) && pages.length > 0) target.pages = [...pages];
+  const { intent } = beginAct(cwd, "C", { kind: "pages-verify", target, plannedArgv: [`gh api repos/${repo}/pages/builds/latest`, `curl ${contentUrl ?? siteUrlOf(repo)}`], origin: opts?.origin });
   // 观察参数重瞄（初判猜错的仪器校正，非身份变更）：attempt 记录前后值——报告面如实。
   const reAim = {};
-  if (opts.expectMarker && opts.expectMarker !== intent.target.expectMarker) reAim.expectMarker = [intent.target.expectMarker, opts.expectMarker];
-  if (opts.contentUrl && opts.contentUrl !== intent.target.contentUrl) reAim.contentUrl = [intent.target.contentUrl ?? "(站点根)", opts.contentUrl];
+  if (opts?.expectMarker && opts.expectMarker !== intent.target.expectMarker) reAim.expectMarker = [intent.target.expectMarker, opts.expectMarker];
+  if (opts?.contentUrl && opts.contentUrl !== intent.target.contentUrl) reAim.contentUrl = [intent.target.contentUrl ?? "(站点根)", opts.contentUrl];
+  if (Array.isArray(pages) && pages.length > 0 && JSON.stringify(intent.target.pages) !== JSON.stringify(pages)) {
+    reAim.pages = [intent.target.pages ?? [], [...pages]];
+  }
   if (Object.keys(reAim).length > 0) {
     withLock(cwd, () => {
       const state = loadIntents(cwd);
@@ -758,18 +850,19 @@ export function actDeliveryC(cwd, opts, deps = {}) {
     failAct(cwd, "C", id, "failed", { method: "pages-poll", outcome: "budget-exhausted", detail: `预算内未对齐（${PAGES_POLL_MAX}×${PAGES_POLL_INTERVAL_MS / 1000}s；latest=${build ? `${build.status}/${String(build.commit ?? "").slice(0, 10)}` : "无"}` });
     throw new DeliveryError(`Pages 构建未在预算内对齐 mergeSha（意图 ${id} 已记 failed）——readback C 可复验（V11：不假绿）`);
   }
-  // HTTPS 内容判据：200 ∧ 含 expect-marker（contentUrl 缺省=站点根，可指具体页=强判据）。
-  const { siteUrl, fetchRes, httpOk, markerFound } = verifyPages(deps, repo, mergeSha, expectMarker, intent.target.contentUrl);
-  if (!httpOk || !markerFound) {
-    const detail = `url=${siteUrl} http=${fetchRes.httpStatus ?? "n/a"} curlExit=${fetchRes.code} marker=${markerFound ? "found" : "MISSING"}${fetchRes.stderr ? ` stderr=${String(fetchRes.stderr).slice(0, 120)}` : ""}`;
+  // HTTPS 内容判据：站点根与契约声明页皆 200 ∧ 含 expect-marker（缺省 pages=仅站点根，单页行为不变）。
+  const { siteUrl, fetchRes, httpOk, markerFound, pages: pageDetails, allOk } = verifyPages(deps, repo, mergeSha, expectMarker, intent.target.contentUrl, intent.target.pages);
+  if (!allOk) {
+    const failedPages = pageDetails.filter((d) => !d.ok).map((d) => `${d.path}(http=${d.httpStatus ?? "n/a"} marker=${d.markerFound ? "found" : "MISSING"})`);
+    const detail = `url=${siteUrl} http=${fetchRes.httpStatus ?? "n/a"} curlExit=${fetchRes.code} marker=${markerFound ? "found" : "MISSING"} 失败页=${failedPages.join("、")}${fetchRes.stderr ? ` stderr=${String(fetchRes.stderr).slice(0, 120)}` : ""}`;
     failAct(cwd, "C", id, "failed", { method: "https-verify", outcome: "mismatch", detail });
     throw new DeliveryError(`Pages 内容核验拒绝（意图 ${id} 已记 failed）：${detail}——构建对齐但内容判据不符（V11：不归 completed）`);
   }
   const it = settleAct(cwd, "C", id, "done", {
-    attempt: { method: "https-verify", outcome: "ok", detail: `200 ∧ marker found @ ${siteUrl}` },
-    observed: { pagesBuild: build, http: { url: siteUrl, status: 200, markerFound: true }, closedBy: "act" },
+    attempt: { method: "https-verify", outcome: "ok", detail: `200 ∧ marker found @ ${siteUrl}（${pageDetails.length} 页）` },
+    observed: { pagesBuild: build, http: { url: siteUrl, status: 200, markerFound: true }, pages: pageDetails, closedBy: "act" },
   });
-  return { intent: it, build, siteUrl };
+  return { intent: it, build, siteUrl, pages: pageDetails };
 }
 
 // readback C（幂等读面）：构建对齐+内容判据的迟来事实可把 failed/intended 收束为 done；
@@ -791,19 +884,20 @@ export function readbackDeliveryC(cwd, opts = {}, deps = {}) {
     const fresh = noteAttempt(cwd, "C", it.id, { method: "readback", outcome: "not-aligned", detail: `status=${r.status} commit=${String(r.commit ?? "").slice(0, 10)}（意图要求 ${String(it.target.mergeSha).slice(0, 10)}）` });
     return { intent: fresh, build: { status: r.status, commit: r.commit }, aligned: false };
   }
-  const { siteUrl, fetchRes, httpOk, markerFound } = verifyPages(deps, repo, it.target.mergeSha, marker, it.target.contentUrl);
-  const verified = httpOk && markerFound;
+  const { siteUrl, fetchRes, httpOk, markerFound, pages: pageDetails, allOk } = verifyPages(deps, repo, it.target.mergeSha, marker, it.target.contentUrl, it.target.pages);
+  const verified = allOk;
   if (it.status === "done") {
-    const fresh = annotateDone(cwd, "C", it.id, { pagesBuild: { status: r.status, commit: r.commit }, http: { url: siteUrl, status: fetchRes.httpStatus ?? null, markerFound } }, { method: "readback", outcome: verified ? "ok" : "mismatch", detail: `aligned=${aligned} marker=${markerFound ? "found" : "MISSING"}` });
+    const fresh = annotateDone(cwd, "C", it.id, { pagesBuild: { status: r.status, commit: r.commit }, http: { url: siteUrl, status: fetchRes.httpStatus ?? null, markerFound }, pages: pageDetails }, { method: "readback", outcome: verified ? "ok" : "mismatch", detail: `aligned=${aligned} marker=${markerFound ? "found" : "MISSING"} 页=${pageDetails.length}` });
     return { intent: fresh, aligned: true, verified };
   }
   if (!verified) {
-    const fresh = noteAttempt(cwd, "C", it.id, { method: "readback", outcome: verified ? "ok" : "mismatch", detail: `aligned=${aligned} http=${fetchRes.httpStatus ?? "n/a"} marker=${markerFound ? "found" : "MISSING"}` });
+    const failedPages = pageDetails.filter((d) => !d.ok).map((d) => d.path);
+    const fresh = noteAttempt(cwd, "C", it.id, { method: "readback", outcome: verified ? "ok" : "mismatch", detail: `aligned=${aligned} http=${fetchRes.httpStatus ?? "n/a"} marker=${markerFound ? "found" : "MISSING"} 失败页=${failedPages.join("、")}` });
     return { intent: fresh, aligned: true, verified: false };
   }
   const fresh = settleAct(cwd, "C", it.id, "done", {
-    attempt: { method: "readback", outcome: "ok", detail: `200 ∧ marker found @ ${siteUrl}（读回收束）` },
-    observed: { pagesBuild: { status: r.status, commit: r.commit }, http: { url: siteUrl, status: 200, markerFound: true }, closedBy: "readback" },
+    attempt: { method: "readback", outcome: "ok", detail: `200 ∧ marker found @ ${siteUrl}（读回收束，${pageDetails.length} 页）` },
+    observed: { pagesBuild: { status: r.status, commit: r.commit }, http: { url: siteUrl, status: 200, markerFound: true }, pages: pageDetails, closedBy: "readback" },
   });
   return { intent: fresh, aligned: true, verified: true };
 }

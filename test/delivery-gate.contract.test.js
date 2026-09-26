@@ -308,3 +308,70 @@ test("⑪前链已合并+新 HEAD：read-back-authority 须核对 headRefOid==�
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+// ── 0.3.1 棒1（ADR-0028 修正节/ADR-0030 §一.B）：状态判据 executing ∨ (done ∧ bound) + origin 穿线 ──
+function setStatus(d, status) {
+  const p = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(p, "utf8"));
+  g.status = status;
+  writeFileSync(p, `${JSON.stringify(g, null, 2)}\n`);
+}
+
+test("⑧状态矩阵：done∧bound 可 act（同尝试绑定档）；done 未绑照拒；planning 照拒（文案区分三态）", () => {
+  const d = goalRepo("lzy-dgate-8-");
+  try {
+    const { b, c } = bindBoth(d);
+    recordAuthorization(d, { kind: "approval", slug: "dgate", contractHash: b.hash, sessionId: "t", at: new Date().toISOString() });
+    recordAuthorization(d, { kind: "approval", slug: "dgate", contractHash: c.hash, sessionId: "t", at: new Date().toISOString() });
+    setStatus(d, "done");
+    const deps = fakeDeps();
+    const r = actDeliveryB(d, opts, deps); // done∧bound：队列桥 finish 后编排交付档
+    assert.equal(r.intent.status, "done");
+    assert.ok(deps._calls.length > 0, "done∧bound 应真实执行链");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑨done 未绑照拒；planning 照拒（同一谓词两态文案在场）", () => {
+  const d1 = goalRepo("lzy-dgate-9a-");
+  try {
+    setStatus(d1, "done"); // 未绑定任何 delivery 契约
+    assert.throws(() => actDeliveryB(d1, opts, fakeDeps()), /非 executing 且非「done 且已绑 B 契约」（当前 done，未绑）/);
+  } finally {
+    rmSync(d1, { recursive: true, force: true });
+  }
+  const d2 = goalRepo("lzy-dgate-9b-");
+  try {
+    bindBoth(d2);
+    setStatus(d2, "planning");
+    assert.throws(() => actDeliveryB(d2, opts, fakeDeps()), /非 executing 且非「done 且已绑 B 契约」（当前 planning，已绑）/);
+  } finally {
+    rmSync(d2, { recursive: true, force: true });
+  }
+});
+
+test("⑩origin 穿线：beginAct 携 origin→意图记录在场+delivery status 投影可见；畸形 origin 写入前拒", () => {
+  const d = goalRepo("lzy-dgate-10-");
+  try {
+    const { b, c } = bindBoth(d);
+    recordAuthorization(d, { kind: "approval", slug: "dgate", contractHash: b.hash, sessionId: "t", at: new Date().toISOString() });
+    recordAuthorization(d, { kind: "approval", slug: "dgate", contractHash: c.hash, sessionId: "t", at: new Date().toISOString() });
+    const r = actDeliveryB(d, { ...opts, origin: { kind: "queue", itemId: "q1", slug: "dgate" } }, fakeDeps());
+    assert.deepEqual(r.intent.origin, { kind: "queue", itemId: "q1", slug: "dgate" });
+    const st = deliveryStatus(d);
+    assert.deepEqual(st.intents.at(-1).origin, { kind: "queue", itemId: "q1", slug: "dgate" });
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+  const d2 = goalRepo("lzy-dgate-10b-");
+  try {
+    const { b: b2, c: c2 } = bindBoth(d2);
+    recordAuthorization(d2, { kind: "approval", slug: "dgate", contractHash: b2.hash, sessionId: "t", at: new Date().toISOString() });
+    recordAuthorization(d2, { kind: "approval", slug: "dgate", contractHash: c2.hash, sessionId: "t", at: new Date().toISOString() });
+    // 畸形 origin：缺 itemId/slug ⇒ saveIntents 侧 assertIntent 写入前拒（fail-closed）
+    assert.throws(() => actDeliveryB(d2, { ...opts, origin: { kind: "queue" } }, fakeDeps()), /origin\.itemId\/slug 类型/);
+  } finally {
+    rmSync(d2, { recursive: true, force: true });
+  }
+});

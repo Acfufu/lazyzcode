@@ -1015,6 +1015,74 @@ function assertAcceptanceCoverage(contract, items) {
   }
 }
 
+// ── 契约事实只读面（0.4.0 M1，core/gate.js 消费）：assertContractGate 四查的纯判定版 ──
+// 零写零 throw，逐查具名。写侧闸（contractGateReject 落 contractPending + 抛）仍归
+// assertContractGate；两处共用同一底层原语（loadContract/effectiveAuthorization/
+// manifestHashIfPresent/isInsideOrEqual），查体语义以此判定为单源、写侧逐查对照——
+// 改查序/查体必须同批改两处（钩子副本家法：两侧注释互指）。
+export function evaluateContractGateFacts(cwd, goal) {
+  if (!goal?.contract) return { applicable: false, checks: [], contract: null };
+  const checks = [];
+  const bound = goal.contract.contractHash;
+  let contract;
+  try {
+    contract = loadContract(goal.contract.path, cwd);
+  } catch (e) {
+    checks.push({ id: "a.contract-readable", ok: false, reason: `契约文件不可读或结构非法——${e?.message ?? e}` });
+    return { applicable: true, checks, contract: null };
+  }
+  checks.push({ id: "a.contract-readable", ok: true });
+  const unmutated = contract.hash === bound;
+  checks.push({
+    id: "a.contract-unmutated",
+    ok: unmutated,
+    ...(unmutated ? {} : { reason: `契约已变（盘上 ${contract.hash.slice(0, 10)}…≠绑定 ${bound.slice(0, 10)}…）——新哈希=新授权请求` }),
+  });
+  const auth = effectiveAuthorization(cwd, goal.slug, bound);
+  const authReason = auth.authorized
+    ? null
+    : auth.lastEvent?.kind === "withdrawal"
+      ? `契约授权已被用户撤回（撤回于 ${auth.lastEvent.at}，短码 ${bound.slice(0, 8)}）`
+      : `契约 ${goal.contract.path}（短码 ${bound.slice(0, 8)}）等待人类批准（UPS exact-hash）`;
+  checks.push({ id: "b.authorized", ok: auth.authorized, ...(authReason ? { reason: authReason } : {}) });
+  const outside = [resolve(cwd), ...goal.subjects].filter((root) => !contract.scope.some((s) => isInsideOrEqual(root, s)));
+  checks.push({
+    id: "d.subjects-within-scope",
+    ok: outside.length === 0,
+    ...(outside.length > 0 ? { reason: `写入范围越界——${outside.join("、")} 不在任何 scope 条目内（scope：${contract.scopeRaw.join("、")}）` } : {}),
+  });
+  if (contract.recipe !== "none") {
+    const current = manifestHashIfPresent(cwd);
+    const currentShort = current ? current.slice(0, 8) : null;
+    const recipeOk = currentShort === contract.recipe;
+    checks.push({
+      id: "e.manifest-matches-recipe",
+      ok: recipeOk,
+      ...(recipeOk ? {} : { reason: `项目配方已漂移——契约绑定 ${contract.recipe}，磁盘现为 ${currentShort ?? "缺席"}` }),
+    });
+  } else {
+    checks.push({ id: "e.manifest-matches-recipe", ok: true, reason: "契约 recipe=none——无配方绑定（如实记录）" });
+  }
+  return { applicable: true, checks, contract };
+}
+
+// 验收覆盖只读面（0.4.0 M1）：assertAcceptanceCoverage（ADR-0024 查 c）的纯判定版——
+// 返回 {ok, unknownIds, missingIds}，不抛。写侧语义单源同上（两侧注释互指，同批改）。
+export function evaluateAcceptanceCoverage(contract, items) {
+  if (!contract) return { applicable: false, unknownIds: [], missingIds: [] };
+  const contractIds = new Set(contract.acceptances.map((a) => a.id));
+  const covered = new Set();
+  const unknownIds = new Set();
+  for (const it of items ?? []) {
+    for (const ref of it.accepts ?? []) {
+      if (contractIds.has(ref)) covered.add(ref);
+      else unknownIds.add(`${it.id}→${ref}`);
+    }
+  }
+  const missingIds = [...contractIds].filter((id) => !covered.has(id));
+  return { applicable: true, unknownIds: [...unknownIds], missingIds };
+}
+
 // supersede（0.1.0 棒B，ADR-0016）：executing 期改计划的 forward-only 出口——同一采纳
 // 门（评审/快照/计划节点全照走），旧 attempt 置 superseded、开 attempt+1 新代次。
 export function supersedePlan(cwd, planFile, opts = {}) {

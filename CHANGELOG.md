@@ -63,6 +63,13 @@ versioning is SemVer.
   while the result is unverified (pending/failed/query-failed merge CI); recovery is
   `lzy delivery readback`, never a re-merge. The already-merged drift branch of
   `act B` now records the merge-CI state so the fact exists to judge.
+- **Authorization-ledger records no longer overwrite each other** (0.3.1 closeout, CI
+  fix): `recordAuthorization` filenames gained a pid + in-process sequence. Two
+  approvals written in the same millisecond for the same contract (e.g. one contract
+  file authorizing two queue slugs) previously collided into one file and silently
+  dropped the first approval — an append-only ledger truncated. Ordering semantics
+  are unchanged (timestamp primary, filename tiebreak). Hook-written approvals are
+  unaffected in practice (one per real user message, distinct codes).
 - **Delivery acts accept a finished, bound goal** (same goal; ADR-0028 amendment): the
   acting precondition is now `executing` OR (`done` AND the endpoint's delivery
   contract was bound in this attempt) — the queue's post-finish delivery chain needs

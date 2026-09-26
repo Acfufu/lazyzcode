@@ -425,6 +425,61 @@ export function judgeReuse(cwd, checkId, baseRunId) {
     : { ok: false, reasons, recipe, base };
 }
 
+// 成功侧判定（0.4.0 M1，V03 面）：judgeReuse 只判适用，成功义务单独判——exit.code 必须
+// 显式 0。失败但可复用的回执保留原时点原观察事实（ADR-0025），但「可复用」仅构成适用性，
+// 不满足成功义务；超时/错误/CI 查询面形态各给具名原因（fail-closed：形态不识别=不可判成功）。
+export function judgeReceiptSuccess(base) {
+  if (!base || typeof base !== "object") return { ok: false, reasons: ["base 回执缺席"] };
+  const e = base.exit;
+  if (e && typeof e === "object" && !Array.isArray(e)) {
+    if (e.code === 0) return { ok: true, reasons: ["exit.code==0（真实执行零退出）"] };
+    if (e.code !== undefined)
+      return { ok: false, reasons: [`exit.code==${e.code}（非 0）——失败回执可复用仅构成适用性事实，不满足成功义务（V03）`] };
+    if (e.timeout) return { ok: false, reasons: [`回执为超时击杀形态（signal=${e.signal ?? "n/a"}）——不满足成功义务`] };
+    if (e.error) return { ok: false, reasons: [`回执为错误形态（${String(e.error).slice(0, 120)}）——不满足成功义务`] };
+    if (e.blocked || e.noRemoteCommit)
+      return { ok: false, reasons: ["回执为 CI 查询面形态（blocked/无远端提交）——成功义务不由本判定承载，须必需集合严判"] };
+  }
+  return { ok: false, reasons: ["回执 exit 形态不识别——不可判成功（fail-closed）"] };
+}
+
+// 身份判定（0.4.0 M1，V02 面）：候选/契约/清单三轴与现行一致，独立导出供统一门按
+// 「适用 ∧ 成功 ∧ 身份」三元消费。judgeReuse 的 (iv)(v) 问覆盖清单+契约，本判定另加
+// 候选轴（回执复合指纹=当前候选）——候选在回执后前移=对旧候选的事实，不冒充现行绿。
+export function judgeReceiptIdentity(cwd, base) {
+  const reasons = [];
+  let goal = null;
+  try {
+    goal = readGoal(cwd);
+  } catch {}
+  const goalHash = goal?.contract?.contractHash ?? null;
+  if ((base?.contractHash ?? null) !== goalHash) {
+    reasons.push(
+      `契约归属不符（回执 ${base?.contractHash?.slice(0, 8) ?? "null"} ≠ 现行 ${goalHash?.slice(0, 8) ?? "null"}）——他契约/契约启用前的回执不构成现行覆盖`,
+    );
+  }
+  let loaded = null;
+  try {
+    loaded = loadProjectManifest(cwd);
+  } catch (err) {
+    reasons.push(`项目清单不可读（${err?.message?.slice(0, 80) ?? err}）——身份无锚（fail-closed）`);
+  }
+  if (loaded && (base?.recipe?.manifestHash ?? null) !== loaded.hash) {
+    reasons.push(
+      `清单漂移（回执 ${base?.recipe?.manifestHash?.slice(0, 8) ?? "null"} ≠ 现行 ${loaded.hash.slice(0, 8)}）——配方身份变化，适用性重估`,
+    );
+  }
+  const now = candidateIdentity(cwd);
+  if (JSON.stringify(base?.candidate ?? null) !== JSON.stringify(now)) {
+    reasons.push(
+      `候选已前移（回执 head=${base?.candidate?.headSha?.slice(0, 8) ?? "null"} ≠ 现行 ${now.headSha?.slice(0, 8) ?? "null"}）——对现行候选重验`,
+    );
+  }
+  return reasons.length === 0
+    ? { ok: true, reasons: ["契约归属/清单/候选三轴一致"], nowCandidate: now }
+    : { ok: false, reasons };
+}
+
 // 显式复用（kind=reuse）：判定过→追加适用性判定回执（保留 base 原时点/退出/工件引用）；
 // 判不过→保守回退（返回 ok:false 与回退原因，调用方指路 verify run 重验）。
 export function reuseRun(cwd, checkId, baseRunId, { accepts = [], note = null } = {}) {

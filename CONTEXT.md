@@ -49,6 +49,9 @@ _Avoid_: 部署命令成功、已合并、未经验证的上线
 **交付意图（delivery intent）**：外部交付动作（合并/Pages 核验）执行前落账的意图记录——目标身份（repo/base/HEAD/PR/标记判据）先于任何外部调用写入意图账本（.lazyzcode/delivery/）；读回（readback）=动作后核对分类，done 恒终，已成功动作绝不重复执行（0.3.0 M4，ADR-0028）。
 _Avoid_: 计划（执行计划另有权威）、日志（无身份绑定与状态机）
 
+**交付编排（delivery orchestration）**：队列项在其目标达可合并候选后，自动执行其挂载 delivery 契约（request→act→readback）直至读回 done 的编排面——读回 done 才记队列项 completed；队列项「挂」delivery 契约是同一声明的一部分，不是新增独立队列项类型（0.3.1 棒1，ADR-0030）。
+_Avoid_: 自动发布（只描述 C 面一半）、交付独立队列项（同一目标身份，非独立项类型）
+
 ---
 
 # 产品术语表（自 AGENTS.md §8 迁入，2026-09-24，goal v030-m1#N10——唯一来源）

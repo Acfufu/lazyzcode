@@ -27,7 +27,7 @@
 8. **cache 安装型插件默认禁用**：装载需「安装+启用」两步，启用态在 config `plugins.enabledPlugins`（Spike 2 实测）；cache 清单候选仅 `.zcode/.claude/.codex` 三种，`.cursor-plugin` 仅工作区 walk-up 路径接受。3.12.3 起应用随包内置官方插件目录 `Resources/glm/packages/`（3.14.0 代 **14 载荷**：document-skills 拆 documents/pdf/presentations/spreadsheets 四件各 0.1.7，新增 image-search 0.1.1/node-repl-host 0.6.0/plugin-creator 0.1.1，bump browser-use 0.5.1/computer-use 0.6.1/zcode-guide 0.2.0；`defaultEnabled` 自 manifest 迁入引擎内置 seed 表〔14 个 manifest 全无此键；表值 10 真 4 假〕；seed 进用户 cache 前缀 `official/`，marketplace 安装为 `cache/` 前缀；`plugins list` 活体 15 条=官方 13 显+video2code 市场装+lazyzcode 本地，zcode-guide 知识包仍不入列）；启用态=seed 缺省×用户覆盖、仍归引擎管理，config.json 零写入红线不涉。
 
 
-## 4. 决策速查表（现行摘要；全表迁移 → docs/decisions.md——决策变更须同步该表 + 日期）
+## 4. 决策速查表（现行摘要；全表 → docs/decisions.md；变更须同步该表+日期）
 
 | # | 决策 | 一句话定案 |
 |---|------|------|
@@ -40,11 +40,13 @@
 | #31 | fast 形态 | --workers 波编排保留主线、LIGHT only、不默认化 |
 | #32 | 积分预算执法 | 近似限制语义（逐请求完成检测+停止下一次派发+在途超额如实记账） |
 | #33 | M1 契约授权 | 批准对象=contractHash、撤回=UPS 短码、契约内重规划免人权门、无契约 goal 保持现行门 |
-| #34 | M3 队列与累计预算 | 队列/预算家族在 loop/ 外（reset 不清）；预算绑定 (slug, contractHash) 不另铸授权 id；近似限制记账=逐段计量+三类「不算零」显式记录+seq 基人工恢复（ADR-0027） |
-| #35 | M4 交付授权 | B/C 各立独立 delivery 契约（endpoint 入哈希）不扩授权记录形状；批准复用 UPS contractPending（钩子批准分支零改动）；撤回短码集合=[主契约, …delivery]；合并前置=B∧C 双授权+漂移复核+CI 门；意图账本 done 恒终防重复执行（ADR-0028） |
-| #36 | M5 迁移机器 | 版本入口 state.json 最后写=提交点；apply=备份/暂存/校验/原子切换+journal 按任务身份幂等续跑；在途→drafts 草案授权 NONE（转正须人工立契+新批准）；执法分界=goal 损坏写前停/preserve 族 ⚠ 保字节；update/sync 永不自动迁移（ADR-0029） |
+| #34 | M3 队列与累计预算 | 家族在 loop/ 外（reset 不清）；预算绑定 (slug, contractHash) 不另铸授权 id；近似限制记账=逐段计量+三类「不算零」+seq 基人工恢复（ADR-0027） |
+| #35 | M4 交付授权 | B/C 各立 delivery 契约（endpoint 入哈希）；批准复用 UPS contractPending；撤回短码=[主契约, …delivery]；合并前置=B∧C+漂移复核+CI；意图账本 done 恒终（ADR-0028） |
+| #36 | M5 迁移机器 | state.json 最后写=提交点；apply=备份/暂存/校验/原子切换+journal 幂等续跑；在途→drafts 授权 NONE；执法=goal 损坏写前停/preserve 保字节；update/sync 永不自动迁移（ADR-0029） |
+| #37 | 交付编排桥 | 队列项挂 delivery 契约+endpoint B/C+HEAVY 入队解封+多页爬核；批准复用 UPS 通道（ADR-0030） |
+| #38 | 积分 gauge 归因 | 执法面=逐段 sessionId usage；账号级水位降 doctor 建议行；budget-ref=none=只留墙钟（ADR-0027 修正节） |
 
-其余 #1-#24 全表 → docs/decisions.md（含北星路径、产品形态、状态目录、证据时效、认领制、完整性内核、DAG 等全部拍板原文）。
+其余 #1-#24 全表 → docs/decisions.md。
 
 ## 5. 设计宪法与红线
 

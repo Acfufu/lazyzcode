@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { effectiveAuthorization, recordAuthorization } from "../core/contract.js";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const CLI = join(ROOT, "cli", "lzy.js");
@@ -236,4 +237,24 @@ test("账本家族：authorizations reset 存活；孤儿 tmp 计数可见（两
   const status = lzy(["loop", "status"], s);
   assert.equal(status.code, 0); // 无 goal 读面：恢复式报文（不静默接管），退出码 0
   assert.match(status.out, /没有目标循环状态/);
+});
+
+// ── 授权账本文件名唯一化（v031-closeout CI 实锤）：同毫秒同 (kind,hash8,sid) 双写两记录共存 ──
+// 原实现文件名只带 Date.now()：同一契约文件授权两个 slug 的相邻两写同毫秒即同名互覆——
+// 追加式账本被静默截断（q1 批准丢失 ⇒ 契约授权无效）。补 pid+进程内单调序后必须钉住。
+test("授权账本：同毫秒同 (kind,hash8,sid) 双写两记录共存（追加式不互覆）", () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-cg-authname-"));
+  try {
+    const rec = { kind: "approval", slug: "s", contractHash: "a".repeat(64), sessionId: "t", at: new Date().toISOString() };
+    recordAuthorization(d, rec);
+    recordAuthorization(d, rec);
+    const dir = join(d, ".lazyzcode", "authorizations");
+    const names = readdirSync(dir).filter((n) => n.endsWith(".json"));
+    assert.equal(names.length, 2, `同毫秒两条都落盘：${names.join(",")}`);
+    const eff = effectiveAuthorization(d, "s", "a".repeat(64));
+    assert.equal(eff.authorized, true);
+    assert.equal(eff.events.length, 2, "两事件都在案（后到者赢语义不受影响）");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
 });

@@ -248,6 +248,7 @@ export function effectiveAuthorization(cwd, slug, contractHash) {
   };
 }
 
+let authNameSeq = 0; // 同毫秒文件名唯一化序（见 recordAuthorization 注记）
 // 追加一条授权记录（原子 tmp+rename 0600，文件名带时戳序）。唯一常规写者是 UPS 钩子
 // （自包含 inline 同形实现）；本函数供测试与未来受信写者复用，CLI 不暴露写命令。
 export function recordAuthorization(cwd, record) {
@@ -256,7 +257,10 @@ export function recordAuthorization(cwd, record) {
   const dir = authorizationsDir(cwd);
   mkdirSync(dir, { recursive: true });
   const safeSid = record.sessionId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 24);
-  const name = `${record.kind}-${record.contractHash.slice(0, 8)}-${safeSid}-${Date.now()}.json`;
+  // 文件名唯一化（0.3.1 收口 CI 实锤）：同毫秒同 (kind,hash8,sid) 的两条记录（例：测试/批量批准里
+  // 同一契约文件授权两个 slug）原实现同名互覆——追加式账本被静默截断。补 pid+进程内单调序，排序语义
+  // 不变（at 为主键、文件名次键，同毫秒内按名字典序仍确定性成立）。
+  const name = `${record.kind}-${record.contractHash.slice(0, 8)}-${safeSid}-${Date.now()}-${process.pid}-${(authNameSeq += 1)}.json`;
   const p = join(dir, name);
   const tmp = join(dir, `.${name}.${process.pid}.tmp`);
   writeFileSync(tmp, `${JSON.stringify({ ...record, version: AUTHORIZATION_VERSION }, null, 2)}\n`, { mode: 0o600 });

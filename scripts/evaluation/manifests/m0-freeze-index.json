@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "title": "0.4.0 M0 冻结清单汇总索引",
+  "frozenAt": "2026-09-27T03:20:00+08:00",
+  "goal": "v040-m0-capability",
+  "reports": ["docs/spikes/v040-m0-report.md"],
+  "manifests": {
+    "lazyzcode": "scripts/evaluation/manifests/m0-freeze-lazyzcode.json",
+    "openchamber": "scripts/evaluation/manifests/m0-freeze-openchamber.json",
+    "zpigeon-ios": "scripts/evaluation/manifests/m0-freeze-zpigeon-ios.json"
+  },
+  "ciVerdicts": {
+    "lazyzcode": "real（deliveryCap=mergeable）",
+    "openchamber": "fork-without-runs（deliveryCap=local-verified-only）",
+    "zpigeon-ios": "none（deliveryCap=local-verified-only）"
+  },
+  "evalSet": {
+    "sealedRoot": "artifacts/v040/M0/evalsets",
+    "files": 19,
+    "tasks": 6,
+    "perRepo": { "lazyzcode": 2, "openchamber": 2, "zpigeon-ios": 2 },
+    "coverageCategories": ["edge-case", "error-handling", "integration-boundary", "state-restore"],
+    "manifestSha256": "fa6adba9b908e153b478e095c0ac3278631cd6aa9802d739fc946216d93fee0a",
+    "manifestSha256VerifiedBy": "shasum -a 256 独立复核（宿主侧，2026-09-27）",
+    "sealedBy": "independent-subagent（独立上下文；宿主未读封存内容——泄露即作废该批独立性）",
+    "excludedDevDefectFamilies": ["--workers 0 拒绝", "scrollbar 查询映射", "workspace 卡片展开收起", "授权账本同毫秒互覆", "回执 contractHash 字段错配", "交付完成谓词缺口"]
+  },
+  "runOrder": {
+    "rule": "seed 派生确定性交错序（arm×task×trial），M5 run-pairs.mjs 消费；执行前整批序列冻结进 batch manifest（无 RNG、可重放）",
+    "seed": 20260927
+  },
+  "probeBudget": {
+    "preregistered": "单案例 ≤8 会话（计划预注册）",
+    "devRunsActual": "run1=5 + meter=0 + run2=5（超注见报告 §3）",
+    "finalVerificationRun": "冻结树上 5 会话，F1–F3 取证时入账"
+  }
+}

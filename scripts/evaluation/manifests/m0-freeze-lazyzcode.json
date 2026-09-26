@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "repo": "lazyzcode",
+  "frozenHeadSha": "54cb37632767671ea9c61ec02febd6be58e8889f",
+  "frozenAt": "2026-09-27T03:20:00+08:00",
+  "environment": {
+    "os": "macOS 26.7 (arm64)",
+    "node": "v24.19.0",
+    "gh": "2.95.0",
+    "engine": "ZCode 3.14.0 代（/Applications/ZCode.app Resources/glm/zcode.cjs）"
+  },
+  "ci": {
+    "workflows": ["ci.yml"],
+    "latestObserved": [{ "workflow": "ci.yml", "conclusion": "success", "headSha": "94a46df008585158f6ea84cce31c4b3f09f7c873" }],
+    "verdict": "real",
+    "deliveryCap": "mergeable"
+  },
+  "devSet": {
+    "tasks": [
+      { "id": "dev-lz-1", "source": "docs/spikes/v030-m0-report.md §8", "title": "workers 波末重锚假新鲜（step done 重绑不复跑断言）——回归型重注入", "kind": "evidence-freshness" },
+      { "id": "dev-lz-2", "source": "commit 4c1e504（0.3.1 CI ubuntu-22 实锤）", "title": "授权账本同毫秒同 (kind,hash8,sid) 双写互覆", "kind": "concurrency" },
+      { "id": "dev-lz-3", "source": "ADR-0021", "title": "plugins list 包封漂移（0.16.5 对象包封 vs 0.16.9 裸数组）", "kind": "engine-contract" }
+    ]
+  },
+  "evalSet": {
+    "sealedRoot": "artifacts/v040/M0/evalsets/lazyzcode",
+    "manifestRef": "artifacts/v040/M0/evalsets/MANIFEST.json",
+    "taskCount": 2,
+    "coverageCategories": ["edge-case", "error-handling"],
+    "manifestSha256": "fa6adba9b908e153b478e095c0ac3278631cd6aa9802d739fc946216d93fee0a",
+    "status": "sealed"
+  },
+  "budget": { "wallMsPerRun": 1800000, "pointsPerRun": 400, "note": "每次运行预注册上限；M5 batch manifest 只可调低；突破须重新冻结" },
+  "notes": "本仓 CI 四腿（含 windows）为正式配对的必需检查标识来源；必需集合=ci.yml 全腿 success。"
+}

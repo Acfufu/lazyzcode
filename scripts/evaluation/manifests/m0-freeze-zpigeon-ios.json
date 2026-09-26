@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "repo": "zpigeon-ios",
+  "frozenHeadSha": "08ebd3eaa1c942eca9cedeaf2690d6ec433cc469",
+  "frozenAt": "2026-09-27T03:20:00+08:00",
+  "headDrift": { "observedEarlierSameDay": "2981358", "note": "该仓当日仍被其他会话推进；M5 执行前须重新核对冻结值并按需重冻结" },
+  "environment": {
+    "os": "macOS 26.7 (arm64)",
+    "xcode": "27.0 (27A266a)",
+    "iosRuntime": "26.5",
+    "siblingKit": "/Users/acfufu/Codehub/zpigeon @ 8cf05a8（ZCodeKit 相对路径契约，夹具侧符号链接）"
+  },
+  "ci": {
+    "workflows": [],
+    "remoteActionsRunsTotal": 0,
+    "verdict": "none",
+    "deliveryCap": "local-verified-only",
+    "note": "无任何 workflow、Actions 运行总数 0；M5 前须建真实对应 CI，否则该仓配对全程按本地已验证候选口径（不冒充可合并变更，§11.3 不伪装）"
+  },
+  "devSet": {
+    "tasks": [
+      { "id": "dev-zp-1", "source": "docs/spikes/v030-m0-report.md §7", "title": "工作区卡片无法展开/收起", "kind": "ui-interaction" },
+      { "id": "dev-zp-2", "source": "docs/spikes/v030-m0-report.md §7 夹具配方", "title": "ZCodeKit 兄弟依赖路径重绑（夹具侧符号链接）", "kind": "build-graph" },
+      { "id": "dev-zp-3", "source": "zpigeon-ios 试点数据面配方（memory：defaults write 必须 -string + PairingURL）", "title": "配对/数据面 defaults 类型陷阱", "kind": "data-plane" }
+    ]
+  },
+  "evalSet": {
+    "sealedRoot": "artifacts/v040/M0/evalsets/zpigeon-ios",
+    "manifestRef": "artifacts/v040/M0/evalsets/MANIFEST.json",
+    "taskCount": 2,
+    "coverageCategories": ["state-restore", "edge-case"],
+    "manifestSha256": "fa6adba9b908e153b478e095c0ac3278631cd6aa9802d739fc946216d93fee0a",
+    "status": "sealed"
+  },
+  "budget": { "wallMsPerRun": 1800000, "pointsPerRun": 400, "note": "每次运行预注册上限；M5 batch manifest 只可调低；突破须重新冻结" },
+  "notes": "UI 断言等待具体 UI 状态/事件（不照搬固定 sleep）；数据准备（配对 web 面+任务数据）是执行前置；XCUITest runner 为唯一已验证弹框交互通道。"
+}

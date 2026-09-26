@@ -162,7 +162,7 @@ test("②交付未竟（endpoint B，PR 不合并）：item failed+指路、不�
     const final = itemOf(d, it.id);
     assert.equal(final.state, "failed");
     assert.match(final.blockedReason, /^交付未竟：B /);
-    assert.match(final.blockedReason, /lzy delivery readback\/act/);
+    assert.match(final.blockedReason, /lzy delivery act <ep> --origin-item q1/);
     assert.equal(final.completedEndpoint, null);
     assert.equal(loadDispatch(d).txs.at(-1).phase, "settled");
     const ledger = loadLedger(d).entries;

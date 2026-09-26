@@ -81,6 +81,7 @@ import {
   budgetView,
   cancelQueueItem,
   formatQueueList,
+  loadQueue,
   QueueError,
   reconcileDispatch,
   runQueueDispatch,
@@ -102,7 +103,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1351,6 +1352,15 @@ function cmdVerify(args) {
 
 // 有界队列（0.3.0 M3，主方案 §5）：add/list/show/budget/dispatch/reconcile/cancel。
 // 一切队列命令以「goal 根」为 cwd（.lazyzcode/ 解析不向上走——试点以夹具根为 cwd）。
+// 队列归属（0.3.1 棒1）：--origin-item <条目 id> → 意图 origin{kind:queue,itemId,slug}——
+// 人工修复交付后 queue reconcile 的追认遍与桥的幂等跳过按它归属；不给=人驱普通意图（无 origin）。
+function queueOrigin(cwd, itemId) {
+  if (typeof itemId !== "string" || !itemId) return undefined;
+  const it = loadQueue(cwd)?.items?.find((x) => x.id === itemId);
+  if (!it) throw new LoopError(`--origin-item ${itemId} 不在队列中——先 lzy queue list 核对条目 id`);
+  return { kind: "queue", itemId: it.id, slug: it.goalSlug };
+}
+
 function cmdQueue(args) {
   const { _, f } = parseArgs(args);
   const action = _[0];
@@ -1530,9 +1540,8 @@ function cmdDelivery(args) {
   if (action === "act") {
     const ep = _[1];
     if (ep === "B") {
-      if (!f.repo || !f.branch || !f.base || !f.head || !f["pr-title"] || !f["pr-body-file"]) {
-        throw new LoopError("用法：lzy delivery act B --repo <owner/name> --branch <分支> --base <基线> --head <40位SHA> --pr-title <题> --pr-body-file <正文文件> [--pr <编号>]");
-      }
+      // 参数可省（0.3.1 棒1）：旗标 > B 契约字段（repo/base/branch/pr-title/pr-body），head 缺省=工作区 HEAD；
+      // 缺参由 core 统一报（列两条来源）——不做预校验，避免掩盖契约兜底路径。
       const r = actDeliveryB(cwd, {
         repo: f.repo,
         branch: f.branch,
@@ -1541,6 +1550,7 @@ function cmdDelivery(args) {
         prTitle: f["pr-title"],
         prBodyFile: f["pr-body-file"],
         pr: f.pr != null ? Number(f.pr) : null,
+        origin: queueOrigin(cwd, f["origin-item"]),
       });
       const o = r.intent.observed;
       if (r.alreadyMerged) {
@@ -1554,10 +1564,8 @@ function cmdDelivery(args) {
       return;
     }
     if (ep === "C") {
-      if (!f.repo || !f["expect-marker"]) {
-        throw new LoopError("用法：lzy delivery act C --repo <owner/name> --expect-marker <合并后才存在的稳定串> [--content-url <具体页 URL>]");
-      }
-      const r = actDeliveryC(cwd, { repo: f.repo, expectMarker: f["expect-marker"], contentUrl: f["content-url"] ?? null });
+      // 参数可省（0.3.1 棒1）：旗标 > C 契约字段（repo/expect-marker/content-url/page）
+      const r = actDeliveryC(cwd, { repo: f.repo, expectMarker: f["expect-marker"], contentUrl: f["content-url"] ?? null, origin: queueOrigin(cwd, f["origin-item"]) });
       console.log(`✔ C 链完成：Pages 构建 ${r.build.status} @ ${String(r.build.commit).slice(0, 10)}（== mergeSha）`);
       console.log(`  HTTPS ${r.siteUrl} → 200 ∧ 内容标记在场——C 端点判据满足（A4）`);
       return;

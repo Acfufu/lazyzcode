@@ -834,7 +834,7 @@ export function reconcileDispatch(cwd, deps = {}) {
               item.completedEndpoint = item.completedEndpoint ?? item.endpoint;
             } else {
               item.state = "failed";
-              item.blockedReason = `交付未竟：交付链进程死亡（${since != null ? `${Math.round((Date.now() - since) / 1000)}s 前在途，超上界或持有进程已死` : "在途标记缺时间"}），未收束端点 ${v.missing.join("/")}——goal 已 done 且 attestation 在案；恢复=lzy delivery readback/act <ep> 后 lzy queue reconcile 追认`;
+              item.blockedReason = `交付未竟：交付链进程死亡（${since != null ? `${Math.round((Date.now() - since) / 1000)}s 前在途，超上界或持有进程已死` : "在途标记缺时间"}），未收束端点 ${v.missing.join("/")}——goal 已 done 且 attestation 在案；恢复=lzy delivery act <ep> --origin-item ${item.id}（或 readback 复验）后 lzy queue reconcile 追认`;
             }
             item.updatedAt = new Date().toISOString();
           }
@@ -860,7 +860,7 @@ export function reconcileDispatch(cwd, deps = {}) {
           } else {
             settled = settleTxLedger(cwd, { tx, item, provenance: `reconcile:${tx.txId}`, queryPoints });
             item.state = "failed";
-            item.blockedReason = `交付未竟：goal 已 done 而交付链未收束（缺 ${v.missing.join("/")}${v.unreadable ? "；账本不可读" : ""}）——恢复=lzy delivery readback/act <ep> 后 lzy queue reconcile 追认`;
+            item.blockedReason = `交付未竟：goal 已 done 而交付链未收束（缺 ${v.missing.join("/")}${v.unreadable ? "；账本不可读" : ""}）——恢复=lzy delivery act <ep> --origin-item ${item.id}（或 readback 复验）后 lzy queue reconcile 追认`;
             item.updatedAt = new Date().toISOString();
           }
           patchTx(cwd, tx.txId, {
@@ -1244,7 +1244,7 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
         } else if (finishOk && !deliveryOk) {
           // 交付未竟：goal 已 done 且 attestation 在案——终态 failed + 人工恢复指路（含轻路线）
           it.state = "failed";
-          it.blockedReason = `交付未竟：${deliveryNote ?? "未知"}——goal 已 done 且 attestation 在案；恢复=lzy delivery readback/act <ep> 后 lzy queue reconcile 追认（B 已成仅差 C 时走此轻路线），勿重跑目标`;
+          it.blockedReason = `交付未竟：${deliveryNote ?? "未知"}——goal 已 done 且 attestation 在案；恢复=lzy delivery act <ep> --origin-item ${item.id}（或 readback 复验）后 lzy queue reconcile 追认，勿重跑目标`;
           it.updatedAt = new Date().toISOString();
           patchTx(cwd, tx.txId, { phase: "settled", settledAt: new Date().toISOString(), note: `交付未竟（${String(deliveryNote ?? "").slice(0, 120)}）——消耗如实结算` });
           console.log(`[queue] ${item.id} 交付未竟（${String(deliveryNote ?? "").slice(0, 120)}）——failed+指路，勿重跑目标`);

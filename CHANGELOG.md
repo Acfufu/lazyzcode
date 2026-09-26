@@ -37,6 +37,32 @@ versioning is SemVer.
 
 ### Changed
 
+- **Drive's points axis now meters this run's own segments** (0.3.1 closeout, goal
+  `v031-closeout`; ADR-0027 amendment): the drive points hard cap is judged on the
+  run's own per-segment `sessionId` usage (queried from the host billing DB, deduped
+  per session, delta-accounted into the runtime budget) — the account-level 5h rolling
+  waterline is retired to a `lzy doctor` advisory line and no longer stops a task
+  because another session consumed points (debt O). A contract declaring
+  `budget-ref: none` skips the points axis entirely and keeps wall clock only
+  (contract-byte drift falls back to enforcing — the stricter direction). Metering
+  gaps (no completed usage rows / unpriced models / no session id) are reported and
+  never counted as zero. The shared metering primitive moved to `core/cost.js`
+  (`querySessionPoints`; `core/queue.js` keeps a re-export).
+- **Verification receipts bind the registered contract hash** (same goal; ADR-0025
+  follow-up): the four receipt writers (`run`/`reuse`/`qualification`/`ci`) read
+  `goal.contract.contractHash` — previously they read a field that never existed, so
+  every receipt recorded `null`. Reuse judging gained a fifth question (contract
+  ownership): a receipt taken under another contract, or before any contract was
+  bound, no longer counts as valid coverage (conservative fallback, re-verify).
+  `lzy verify list` shows the ownership column (null is labelled "pre-contract").
+- **Delivery completion is judged by the delivery result, not by intent status**
+  (same goal; ADR-0028 semantics): `deliveryResultVerdict` in `core/delivery.js` is
+  the single source — B requires the actual merge identity plus green merge-SHA CI,
+  C additionally requires every declared page to pass. An intent is still `done`
+  (irreversible actions are never re-sent) but the queue item is **not** completed
+  while the result is unverified (pending/failed/query-failed merge CI); recovery is
+  `lzy delivery readback`, never a re-merge. The already-merged drift branch of
+  `act B` now records the merge-CI state so the fact exists to judge.
 - **Delivery acts accept a finished, bound goal** (same goal; ADR-0028 amendment): the
   acting precondition is now `executing` OR (`done` AND the endpoint's delivery
   contract was bound in this attempt) — the queue's post-finish delivery chain needs

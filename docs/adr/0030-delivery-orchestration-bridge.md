@@ -1,6 +1,6 @@
 # ADR-0030：交付编排桥（队列项挂 delivery 契约，0.3.1 棒1）
 
-日期：2026-09-26。状态：已拍板待实施（goal v031-roadmap-grill 记账；落地归 0.3.1 棒1，落地后翻「已接受」）。
+日期：2026-09-26。状态：**已接受并落地**（goal v031-bat1-delivery-orchestration 实施；2026-09-26 收口 goal v031-closeout R0.3 修订完成面判据——见 ADR-0028 语义面：意图 done=不可重复外发，交付结果达成另有判据）。
 
 0.3.0 把 delivery B/C（ADR-0028）与有界队列（ADR-0027）分别落地，两能力彼此隔离：queue 在
 add 时硬拒 endpoint≠A（core/queue.js:108 拒语「B/C 外部交付归 M4」），M4 实施期保持隔离并记

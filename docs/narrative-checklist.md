@@ -67,12 +67,14 @@
 
 ## 收尾验证链（必跑）
 
-1. `npm test` —— 基线以收窄发现面为准（2026-09-14 起 `node --test "test/**/*.test.js"`，幻影 pass 结构性根治——裸 cwd 发现已废；Node ≥22 对 `--test` 位置参数按 glob 解释，目录字面量形态不可用）。快照 **618/618**（2026-09-26 0.3.0 定版树实跑刷新，env 剥离形态复现 CI〔0.2.4 家法〕；前值 491/491 0.2.4 定版、446/446 0.2.3——见变更史行；再前 2026-09-21 0.2.2 棒1 实跑刷新〔`node --test "test/**/*.test.js"`：tests 394 · pass 394 · fail 0〕；本棒新增 19 例＝handoff-dir 3 + progress 4 + drive 长步 1 + lock-instrument 6 + cost 3 + ablation-spawn 2；前值 375/375 0.2.1 定版；前值 369/369 v021 修复轮 N6——其间修复轮后段又增 4 例，本轮 reclaim 契约 2 例；前值 343/343 v021 评审轮；前值 320/320 v020 棒2、309/309 v020 棒1、297/297 v011——此处曾漏刷）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
+1. `npm test` —— 基线以收窄发现面为准（2026-09-14 起 `node --test "test/**/*.test.js"`，幻影 pass 结构性根治——裸 cwd 发现已废；Node ≥22 对 `--test` 位置参数按 glob 解释，目录字面量形态不可用）。快照 **658/658**（2026-09-26 goal v031-closeout R0.1–R0.3 树实跑刷新（+40：逐段归因/回执绑定/交付完成三面新例）；前值 618/618 系 0.3.0 定版树实跑，env 剥离形态复现 CI〔0.2.4 家法〕；前值 491/491 0.2.4 定版、446/446 0.2.3——见变更史行；再前 2026-09-21 0.2.2 棒1 实跑刷新〔`node --test "test/**/*.test.js"`：tests 394 · pass 394 · fail 0〕；本棒新增 19 例＝handoff-dir 3 + progress 4 + drive 长步 1 + lock-instrument 6 + cost 3 + ablation-spawn 2；前值 375/375 0.2.1 定版；前值 369/369 v021 修复轮 N6——其间修复轮后段又增 4 例，本轮 reclaim 契约 2 例；前值 343/343 v021 评审轮；前值 320/320 v020 棒2、309/309 v020 棒1、297/297 v011——此处曾漏刷）；出红先分「既有 flake / 新回归」再动手，不硬凑旧数字。
 2. `node scripts/docs-preview/build.mjs && node scripts/docs-preview/check-anchors.mjs && node scripts/docs-preview/check-links.mjs` —— 断链 0、锚点双语对齐、页面数稳定。
 3. 动了 `plugin/` 时：`lzy sync` + grep 安装缓存。
 4. 提交带尾注 `Goal: <slug>#<步号>`（ADR-0005）。
 
 ## 变更史
+
+- 2026-09-26 收口刷新（goal v031-closeout R0.1–R0.3）：测试基线 618→**658**（三面新例：drive 逐段归因 4 例、消耗去重 2 例、回执契约绑定 1 例、复用归属问 1 例、queue/receipt harness 配套）；**五面计数位点零漂移**（README 表 32/语言、guide CLI 栅栏 58/语言、帮助枚举 loop 族 23、枚举串 22、对比表 11——本批未增删命令）；**叙事面新增两条口径**：①drive 积分轴=本 run 逐段 sessionId 用量（账号级滚动水位降为 doctor 建议行，不再执法，ADR-0027 修正节）；②交付完成=结果谓词（B 须 merge 身份+merge CI 绿；意图 done 仅表「不可重复外发」，队列不得据此 completed）。
 
 - 2026-09-13 初版入库：吸收 goal narrative-pricing-alignment（README 双语八处 schedule 计价措辞收口 + 六类计数位点回归）的断言方法与漏网教训；事实快照刷新至 plan-v2-phase2 / pisper-absorption 之后（CLI 表 +history/cost、doctor +waterline/orphan-wake、测试基线 117/117）。
 - 2026-09-16 增补（goal v006-closeout）：README 检查面加「十件事对比表」与「市场 B 路安装路径」两行；发布清单第 11 步（市场 manifest）从占位转实（配方+每发布同步+runbook 订单 lesson）。

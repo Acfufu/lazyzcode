@@ -592,7 +592,9 @@ Since 0.2.0 a wake-up also has an **in-wake execution channel**: `lzy loop
 drive` spawns headless engine segments inside one wake and pushes the
 executing goal segment by segment. Between segments it checks the gates — the
 run holds a minutes-scale lease (one runtime holder at a time, renewed by
-heartbeat), each run gets a fresh wall-clock + points budget, and HIGH+
+heartbeat), each run gets a fresh wall-clock + points budget (the points axis meters
+this run's own per-segment session usage — the account-level rolling waterline is a
+`lzy doctor` advisory only), and HIGH+
 risk goals are machine-rejected before anything spawns. Every segment's `lzy`
 writes carry the run's fence token, so a taken-over run fails closed on write
 instead of corrupting loop state. Wind-down is clean and enumerated: `done`,

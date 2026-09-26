@@ -38,7 +38,7 @@ goal……reset 当前目标不能删除它们」，但未钉死存储位阶、�
 （HEAVY 终验 comparator 面不入首版队列）、「未知外部结果单独核对状态」收窄为 failed+人工
 指路（M4 交付面重评）。
 
-## 修正节（2026-09-26，0.3.1 棒2 待实施）：积分执法 gauge 归因口径
+## 修正节（2026-09-26，0.3.1 棒2 **已落地**：goal v031-closeout R0.1，提交 efb20f8）：积分执法 gauge 归因口径
 
 本文第 3 条的积分计量（受控段 sessionId 计量）为队列预算执法面；drive 侧积分硬顶的执法
 gauge 当时沿用**账号级 5h 滚动水位**（core/drive.js 头注自认「不是本 run 的消费累计」）。
@@ -51,6 +51,20 @@ zpigeon 试点实伤（债 O）：宿主交互会话自身消耗即把账号级�
 2. **budget-ref=none 契约语义收口=跳积分执法只留墙钟**（显式语义，不再靠 env 放宽缓解）。
 3. **#32 近似限制语义不变**（逐请求完成检测+停止下一次派发+在途超额如实记账），本次仅变更
    归因口径（谁的水位），不改执法语义。
+
+落地结果（2026-09-26 实测，goal v031-closeout N1–N3/F1）：
+
+- **计量原语单源**：`querySessionPoints` 迁 `core/cost.js`（queue 侧保留 re-export）；drive 与队列
+  共用同一查询面，不另建积分权威。
+- **drive 执法面**=本 run 逐段 sessionId 归因（会话去重 + 增量入 runtime 账本）；两路由同源
+  （>cap 由 recordSpend 超顶路由先触，段界 Σ≥cap 兜「恰等」）。实测：改前树账号水位 605.4 ≥
+  硬顶 363 即在首段界误伤收束；改后同夹具两段实跑至「段数尽」，cap=1 档以「预算超顶」按本任务
+  归因收束（红绿同 harness：`scripts/v031/closeout-qa.mjs --case budget`）。
+- **两处「缺席」语义差异（如实声明）**：drive 侧计量缺席/未计价/无 sessionId ⇒ 如实注记、
+  **该轮不执法**（沿旧「读数缺席即不执法」）；queue 侧同类 ⇒ **停受积分限额约束的派发**
+  （core/queue.js budgetView.pointsStopped，本修正节不改）。
+- **budget-ref=none 生效域=drive 侧积分硬顶**（契约盘上哈希漂移 ⇒ 声明不可信、照常执法=更严方向）；
+  queue 侧积分限额仍由显式 `queue budget` 值驱动（本修正节不改）。
 
 ## 修正节（2026-09-26，0.3.1 棒1）：两行边界随之修订
 

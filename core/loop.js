@@ -34,7 +34,7 @@ import {
 export const GOAL_VERSION = 1;
 const ACTIVE_STATES = new Set(["planning", "executing"]);
 // risk_class 轴序（0.2.0 棒1，ADR-0020）：只升不降的比较基准。
-const RISK_ORDER = ["low", "med", "high", "restricted"];
+export const RISK_ORDER = ["low", "med", "high", "restricted"];
 
 // --note / --evidence 入账上限（评审 R2-9）
 export const NOTE_MAX = 300;
@@ -2351,6 +2351,7 @@ const ANY_TMP_SCAN_DIRS = (cwd) => [
   join(cwd, ".lazyzcode", "delivery"), // 0.3.0 M4 交付意图账本（core/delivery.js，同上位阶）
   join(cwd, ".lazyzcode", "migration"), // 0.3.0 M5 迁移机器账本（backup/stage/journal，core/migrate.js，同上位阶）
   join(cwd, ".lazyzcode", "drafts"), // 0.3.0 M5 迁移转换产物（契约草案，core/migrate.js，同上位阶）
+  join(cwd, ".lazyzcode", "policy"), // 0.4.0 M1 策略身份与义务记录（core/policy.js——观测面与清扫面同一判据）
 ];
 
 // 孤儿 tmp 计数（doctor 用）：与 cleanupLoopResidue 同一家族表、同一扫描面（ADJ-13，0.2.1）。

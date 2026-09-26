@@ -1,0 +1,282 @@
+// 策略身份与义务生成（0.4.0 M1，docs/plan-v040-engineering-policy.md §3/§7；ADR-0033 的
+// 记录底座）。职责边界：本模块从冻结输入**确定性导出**义务集——同输入二次生成逐字节恒等
+//（V01）；不做模型执行、不取证、不外发、不产生授权。义务=带稳定 id 的判定对象
+//（id/type/source/适用理由/验收映射/满足条件/依赖边界/版本），type∈check/review/ci/
+// delivery-audit。底线义务（通用正确性评审）只增不删（§3.2）：M1 无删除路径，取消须独立
+// 复判（M3 交付 reassess 面）。影响扩大=显式 expand 追加并记前后差异；任务运行期间固定
+// 策略版本——输入身份漂移按阻塞判（V02），不自动重导（静默换策略=未授权放行面）。
+// 记录家族 `.lazyzcode/policy/<slug>.a<attempt>.json`：loadFamilyFile/saveFamilyFile
+// 家法（校验和+版本+形状 fail-closed，原子写 0600）；tmp 登记面=core/loop.js
+// ANY_TMP_SCAN_DIRS（观测面与清扫面同一判据）。
+// 适用域（拍板 5/7）：仅 v2（带策略身份）目标；v1 旧目标按旧规则延续，政策裁决不适用。
+import { createHash } from "node:crypto";
+import { join } from "node:path";
+import { loadProjectManifest } from "./project.js";
+import { loadContract } from "./contract.js";
+import { readGoal } from "./loop.js";
+import { loadFamilyFile, saveFamilyFile, QueueError } from "./queue.js";
+
+export const POLICY_VERSION = 1; // 记录家族 schema 版本
+export const DUTY_TABLE_VERSION = 1; // 默认义务表版本（§3.1「少量配置」）
+// M1 事实：受控评审运行器未接入（M2）。翻面时必须同批 bump DUTY_TABLE_VERSION——
+// 该旗标参与 rulesHash，翻面=策略身份变化=新策略版本（不自动替换在途记录，§3.1）。
+export const REVIEW_RUNNER_FACE = Object.freeze({ available: false, plannedPhase: "M2" });
+export const OBLIGATION_TYPES = ["check", "review", "ci", "delivery-audit"];
+export const BASELINE_REVIEW_ID = "review.general-correctness";
+
+export class PolicyError extends Error {}
+
+// 规则内容哈希（§3.1 记录面）：覆盖塑形导出的配置面（义务表版本/类型域/运行器旗标），
+// 不覆盖导出产物本身（那是 obligations 内容，随输入走）。
+export function policyRulesHash() {
+  return createHash("sha256")
+    .update(JSON.stringify({ dutyTableVersion: DUTY_TABLE_VERSION, types: OBLIGATION_TYPES, runnerFace: REVIEW_RUNNER_FACE }))
+    .digest("hex");
+}
+
+// 稳定序列化：键序归一——同输入恒同串（V01 的确定性底座；对象键无序是 JS 事实）。
+export function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function identityStableHash(identity) {
+  return createHash("sha256").update(stableStringify(identity)).digest("hex");
+}
+
+// 输入身份（§3.1 冻结输入；候选身份不在轴内——gate 快照承载时点绑定）。契约文件磁盘
+// 字节与绑定哈希不符时如实带旗（contractDrift），由闸面判无效——policy 不冒充仲裁。
+export function computePolicyIdentity(cwd, goal) {
+  const identity = {
+    slug: goal.slug,
+    attempt: goal.attempt ?? 0,
+    goalVersion: goal.version,
+    tier: goal.tier ?? null,
+    risk: goal.risk ?? null,
+    contractHash: goal.contract?.contractHash ?? null,
+    endpoint: null,
+    contractDrift: false,
+    manifestPresent: false,
+    manifestHash: null,
+    checkIds: [],
+    ciRequiredChecks: [], // N3 接线：project.js 承认 capabilities.ci 后由 loadProjectManifest 供源
+  };
+  if (goal.contract) {
+    try {
+      const loaded = loadContract(goal.contract.path, cwd);
+      identity.endpoint = loaded.endpoint;
+      if (loaded.hash !== goal.contract.contractHash) identity.contractDrift = true;
+    } catch {
+      identity.endpoint = null;
+      identity.contractDrift = true; // 契约文件不可读/解析失败——闸面按无效判，不猜
+    }
+  }
+  const manifest = loadProjectManifest(cwd); // 损坏=ProjectError 上抛（fail-closed，闸面报身份无效）
+  if (manifest) {
+    identity.manifestPresent = true;
+    identity.manifestHash = manifest.hash;
+    identity.checkIds = manifest.manifest.capabilities.check.map((r) => r.id).sort();
+  }
+  return identity;
+}
+
+// 确定性义务导出（V01）：顺序恒定（review→checkIds 字典序→ci→delivery-audit），无时戳、
+// 无环境读数。纯函数——测试同输入两调逐字节断言。
+export function deriveObligations(identity) {
+  const obligations = [];
+  const manifestRef = identity.manifestPresent ? `manifest:${identity.manifestHash.slice(0, 8)}` : "manifest:absent";
+  // ① 通用正确性评审（底线，§3.1 必选）：全部 v2 目标恒生成，无契约亦生成（拍板 7）。
+  obligations.push({
+    id: BASELINE_REVIEW_ID,
+    type: "review",
+    baseline: true,
+    source: `policy.dutyTable.v${DUTY_TABLE_VERSION}`,
+    appliesBecause: "首版评审职责通用正确性必选（§3.1）——全部 v2 目标",
+    acceptanceIds: [],
+    satisfaction: REVIEW_RUNNER_FACE.available
+      ? "覆盖本职责的受控评审真实运行在案且经独立复核（复用依据另行适用性判定）"
+      : "受控评审运行器未接入（M2）——本阶段恒不可满足，诚实阻塞",
+    dependsOn: REVIEW_RUNNER_FACE.available ? ["runner:controlled-review"] : ["runner:m2-controlled-review"],
+    version: POLICY_VERSION,
+  });
+  // ② check 义务：项目清单 check 类配方逐条（清单为源；映射经回执 acceptanceIds 承载）。
+  for (const id of identity.checkIds) {
+    obligations.push({
+      id: `check.${id}`,
+      type: "check",
+      baseline: false,
+      source: `${manifestRef}.capabilities.check[]`,
+      appliesBecause: `项目清单（${identity.manifestPresent ? identity.manifestHash.slice(0, 8) : "absent"}）check 类配方声明——v2 目标必需检查`,
+      acceptanceIds: [],
+      satisfaction: "同 checkId 回执在案：契约归属一致 ∧ 适用（judgeReuse）∧ 成功（exit==0）∧ 候选=现行",
+      dependsOn: identity.manifestPresent ? [manifestRef] : [],
+      version: POLICY_VERSION,
+    });
+  }
+  // ③ CI 义务：清单声明必需集合时生成一条（V10 严判：仅 success 计绿）。
+  if (identity.ciRequiredChecks.length > 0) {
+    obligations.push({
+      id: "ci.required-checks",
+      type: "ci",
+      baseline: false,
+      source: `${manifestRef}.capabilities.ci.requiredChecks`,
+      appliesBecause: `项目清单声明必需 CI 集合（${identity.ciRequiredChecks.length} 项）——§6 必需集合语义`,
+      acceptanceIds: [],
+      requiredChecks: [...identity.ciRequiredChecks],
+      satisfaction: "必需集合逐项在当前候选提交上 conclusion==success；缺项/空结果/neutral/skipped/cancelled/pending/查询失败均非绿",
+      dependsOn: identity.manifestPresent ? [manifestRef, "candidate:head"] : ["candidate:head"],
+      version: POLICY_VERSION,
+    });
+  }
+  // ④ 交付核对义务：endpoint B/C 契约目标（ADR-0028）。无在案意图=无可核对事实，评定期
+  // 不阻塞（首外发由 delivery 面既有门执法）——生成只看契约 endpoint，不看运行时账。
+  if (identity.endpoint === "B" || identity.endpoint === "C") {
+    obligations.push({
+      id: "delivery.audit",
+      type: "delivery-audit",
+      baseline: false,
+      source: `contract:${identity.contractHash ? identity.contractHash.slice(0, 8) : "null"}.endpoint`,
+      appliesBecause: `契约 endpoint=${identity.endpoint}——交付事实核对（ADR-0028）`,
+      acceptanceIds: [],
+      satisfaction: "交付意图在案时核对：合并事实保留 ∧ merge CI 非失败；无在案意图=无可核对事实，不阻塞",
+      dependsOn: ["delivery:intents"],
+      version: POLICY_VERSION,
+    });
+  }
+  return obligations;
+}
+
+function policyRecordPath(cwd, slug, attempt) {
+  return join(cwd, ".lazyzcode", "policy", `${slug}.a${attempt ?? 0}.json`);
+}
+
+function assertObligationShape(o, where) {
+  const bad = (m) => new QueueError(`策略记录义务形状非法（${where}）：${m}`);
+  if (!o || typeof o !== "object") throw bad("须为对象");
+  for (const k of ["id", "type", "source", "appliesBecause", "satisfaction"]) {
+    if (typeof o[k] !== "string" || !o[k]) throw bad(`${k} 缺席或为空`);
+  }
+  if (!OBLIGATION_TYPES.includes(o.type)) throw bad(`type 不识别：${o.type}（合法：${OBLIGATION_TYPES.join("|")}）`);
+  if (!Array.isArray(o.acceptanceIds)) throw bad("acceptanceIds 须为数组");
+  if (!Array.isArray(o.dependsOn)) throw bad("dependsOn 须为数组");
+  if (o.version !== POLICY_VERSION) throw bad(`version 不符（${o.version} ≠ ${POLICY_VERSION}）`);
+  if (o.baseline !== undefined && typeof o.baseline !== "boolean") throw bad("baseline 须为布尔或缺席");
+}
+
+function assertPolicyShape(rec, p) {
+  const bad = (m) => new QueueError(`策略记录形状非法：${m}：${p}`);
+  for (const k of ["slug", "inputsHash", "rulesHash"]) {
+    if (typeof rec[k] !== "string" || !rec[k]) throw bad(`${k} 缺席或为空`);
+  }
+  if (typeof rec.attempt !== "number") throw bad("attempt 须为数字");
+  if (rec.policyVersion !== POLICY_VERSION) throw bad(`policyVersion 不符（${rec.policyVersion}）`);
+  if (rec.dutyTableVersion !== DUTY_TABLE_VERSION) throw bad(`dutyTableVersion 不符（${rec.dutyTableVersion}）`);
+  if (!rec.inputs || typeof rec.inputs !== "object") throw bad("inputs 缺席");
+  if (!Array.isArray(rec.obligations) || rec.obligations.length === 0) throw bad("obligations 须为非空数组");
+  const seen = new Set();
+  for (const o of rec.obligations) {
+    assertObligationShape(o, p);
+    if (seen.has(o.id)) throw bad(`义务 id 重复：${o.id}`);
+    seen.add(o.id);
+  }
+  // 底线不可删（§3.2）：读侧即验——篡改/手补绕不过形状关。
+  if (!rec.obligations.some((o) => o.id === BASELINE_REVIEW_ID && o.baseline === true)) {
+    throw bad(`底线义务 ${BASELINE_REVIEW_ID}（baseline:true）缺席——底线只增不删`);
+  }
+  if (!Array.isArray(rec.obligationsLog)) throw bad("obligationsLog 须为数组");
+  for (const e of rec.obligationsLog) {
+    if (!e || typeof e.at !== "string" || typeof e.event !== "string") throw bad("obligationsLog 项须有 at/event");
+    if (!Array.isArray(e.added) || !Array.isArray(e.removed)) throw bad("obligationsLog 项 added/removed 须为数组");
+    if (e.removed.length > 0) throw bad("obligationsLog 项 removed 非空——M1 无删除路径，取消须独立复判（M3）");
+    if (!Array.isArray(e.obligationsAfter)) throw bad("obligationsLog 项 obligationsAfter 须为数组");
+  }
+}
+
+export function loadPolicyRecord(cwd, slug, attempt) {
+  return loadFamilyFile(policyRecordPath(cwd, slug, attempt), {
+    versionKey: "schemaVersion",
+    version: POLICY_VERSION,
+    label: "策略记录",
+    shapeFn: assertPolicyShape,
+  });
+}
+
+// ensure：读在案记录（v1 目标={applicable:false}，不建不读）；无记录→生成落档；有记录且
+// 输入身份一致→原样返回；有记录但漂移→**不重导**，drifted=true 连原因返回（闸面阻塞，
+// V02）。expand=true 才允许输入扩大下的重导：只增不删（删除即 PolicyError），差异入
+// obligationsLog。返回不携带写失败的中间态——写失败即抛（原子写家法）。
+export function ensurePolicyRecord(cwd, goal, { expand = false, reason = null } = {}) {
+  if (!goal || goal.version !== 2) return { applicable: false };
+  const identity = computePolicyIdentity(cwd, goal);
+  const inputsHash = identityStableHash(identity);
+  const prev = loadPolicyRecord(cwd, goal.slug, goal.attempt);
+  if (prev && prev.inputsHash === inputsHash) {
+    return { applicable: true, record: prev, created: false, expanded: false, drifted: false };
+  }
+  if (prev && !expand) {
+    return {
+      applicable: true,
+      record: prev,
+      created: false,
+      expanded: false,
+      drifted: true,
+      driftReasons: [
+        `策略输入身份漂移（在案 ${prev.inputsHash.slice(0, 8)} ≠ 现算 ${inputsHash.slice(0, 8)}）` +
+          `——任务运行期间固定策略版本（§3.1），漂移按阻塞判（V02）；影响合法扩大走显式 expand`,
+      ],
+    };
+  }
+  const obligations = deriveObligations(identity);
+  let log = [];
+  if (prev && expand) {
+    const prevIds = new Set(prev.obligations.map((o) => o.id));
+    const added = obligations.filter((o) => !prevIds.has(o.id)).map((o) => o.id);
+    const removed = prev.obligations.filter((o) => !obligations.some((o2) => o2.id === o.id)).map((o) => o.id);
+    if (removed.length > 0) {
+      throw new PolicyError(
+        `expand 不得删义务（${removed.join("、")}）——额外义务因影响消失而取消须独立复判（M3，§3.2）`,
+      );
+    }
+    for (const o of prev.obligations) {
+      if (o.baseline === true && !obligations.some((o2) => o2.id === o.id && o2.baseline === true)) {
+        throw new PolicyError(`expand 不得降格底线义务：${o.id}（§3.2 底线不可撤销）`);
+      }
+    }
+    log = [
+      ...prev.obligationsLog,
+      {
+        at: new Date().toISOString(),
+        event: "expand",
+        from: prev.inputsHash,
+        to: inputsHash,
+        added,
+        removed: [],
+        obligationsAfter: obligations.map((o) => o.id),
+        reason: reason ?? "影响扩大重导（显式 expand）",
+      },
+    ];
+  }
+  const record = {
+    schemaVersion: POLICY_VERSION,
+    slug: goal.slug,
+    attempt: goal.attempt ?? 0,
+    policyVersion: POLICY_VERSION,
+    dutyTableVersion: DUTY_TABLE_VERSION,
+    rulesHash: policyRulesHash(),
+    runnerFace: { ...REVIEW_RUNNER_FACE },
+    inputs: identity,
+    inputsHash,
+    obligations,
+    obligationsLog: log,
+  };
+  saveFamilyFile(policyRecordPath(cwd, goal.slug, goal.attempt), record, {
+    versionKey: "schemaVersion",
+    version: POLICY_VERSION,
+    label: "策略记录",
+    shapeFn: assertPolicyShape,
+  });
+  return { applicable: true, record, created: !prev, expanded: Boolean(prev && expand), drifted: false };
+}

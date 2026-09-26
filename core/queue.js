@@ -58,7 +58,7 @@ function checksumOf(payload) {
 
 // 通用校验和单文件读：errno 判别（仅 ENOENT 视缺席）+ JSON/校验和/版本三层 fail-closed
 //（runtime.js:104-134 家法：不可读被静默当缺席时，下一写命令会整文件覆写）。
-function loadFamilyFile(p, { versionKey, version, label, shapeFn }) {
+export function loadFamilyFile(p, { versionKey, version, label, shapeFn }) {
   let text;
   try {
     text = readFileSync(p, "utf8");
@@ -85,7 +85,7 @@ function loadFamilyFile(p, { versionKey, version, label, shapeFn }) {
 
 // 通用原子写：tmp 0600+rename（runtime.js:139-159 家法）；tmp 落家族根顶层
 //（ANY_TMP_SCAN_DIRS 只扫顶层——verify.js:151-153 同款注释纪律）；写前形状校验（写侧毒化防护）。
-function saveFamilyFile(p, payload, { versionKey, version, label, shapeFn }) {
+export function saveFamilyFile(p, payload, { versionKey, version, label, shapeFn }) {
   const normalized = { ...payload, [versionKey]: version };
   shapeFn(normalized, "memory(写入前)");
   mkdirSync(dirname(p), { recursive: true });

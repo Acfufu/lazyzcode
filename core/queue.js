@@ -455,7 +455,7 @@ export function addQueueItem(cwd, { title, contractFile, planFile, endpoint = "A
       if (missing.length > 0) {
         throw new QueueError(`${ep} 交付契约缺队列承载必填键：${missing.join("/")}（无人值守无法交互补参——契约补声明后重新入队）`);
       }
-      deliveryNorm[ep] = { path: relative(cwd, v.path) || v.path, hash: v.hash };
+      deliveryNorm[ep] = { path: v.path, hash: v.hash }; // v.path 已是相对 cwd 的路径（树外契约=绝对档，loadContract 两态皆认）
     }
   }
   if (endpoint === "A" && Object.keys(deliveryNorm).length > 0) {
@@ -693,12 +693,61 @@ function settleTxLedger(cwd, { tx, item, provenance, queryPoints = querySessionP
 //     goal 续跑，不重新 register）
 // (b) 同 slug 且 done → tx 补 settle（诚实归账），item completed
 // (c) goal 缺失或异 slug → tx=reconciled-orphan，item=failed（人工核查指路）——不静默重注册
+// 交付账本判定（0.3.1 棒1，§一.F.5）：item 声明的交付端点是否全部 done（按 origin 归属）。
+function deliveryAllDone(cwd, item) {
+  let intents = null;
+  try {
+    intents = loadIntents(cwd)?.intents ?? [];
+  } catch {
+    return { allDone: false, unreadable: true, missing: deliveryEpsOf(item) };
+  }
+  const missing = deliveryEpsOf(item).filter(
+    (ep) => !intents.some((x) => x.origin?.itemId === item.id && x.endpoint === ep && x.status === "done"),
+  );
+  return { allDone: missing.length === 0, unreadable: false, missing };
+}
+
+// 交付墙钟条目（观测上界；死亡路径与收束路径共用，dedupKey 幂等）。
+function appendDeliveryWall(cwd, { tx, item, ms, note }) {
+  return appendLedgerEntry(cwd, {
+    kind: "wall", dedupKey: `wall:${tx.txId}:delivery`,
+    authorization: { slug: item.goalSlug, contractHash: item.contractHash },
+    provenance: `tx:${tx.txId}:delivery`, itemId: item.id, txId: tx.txId, sessionId: null,
+    ms: Math.max(0, ms ?? 0), note,
+  });
+}
+
+// 交付追认（0.3.1 棒1，§一.F.5）：failed 且声明 delivery 的条目重读桥来源意图——全声明
+// 端点 done ⇒ 翻 completed（幂等，沿 :643 补账家法）。人工 lzy delivery readback/act 修复
+// 交付后，queue reconcile 即追认；deps 链不再永久 blocked。返回追认条数。
+function acknowledgeDeliveries(cwd, q, verdicts) {
+  let acked = 0;
+  for (const it of q.items) {
+    if (it.state !== "failed" || deliveryEpsOf(it).length === 0) continue;
+    if (!/^交付未竟|^基建中止/.test(it.blockedReason ?? "")) continue; // 只追认交付面 failed（不动其它 failed 语义）
+    const v = deliveryAllDone(cwd, it);
+    if (!v.allDone) continue;
+    it.state = "completed";
+    it.completedEndpoint = it.completedEndpoint ?? it.endpoint;
+    it.updatedAt = new Date().toISOString();
+    verdicts.push({ txId: null, verdict: `交付追认（${it.id}：全端点 done ⇒ completed）`, goalSlug: it.goalSlug });
+    acked += 1;
+  }
+  return acked;
+}
+
 export function reconcileDispatch(cwd, deps = {}) {
   return withLock(cwd, () => {
     const d = loadDispatch(cwd);
     const open = (d?.txs ?? []).filter((t) => t.phase === "open");
     const verdicts = [];
-    if (open.length === 0) return { verdicts, reconciled: 0 };
+    if (open.length === 0) {
+      // 快速路径也跑交付追认（0.3.1 棒1）：未竟收束后 tx 已 settle，若无此遍则 failed 条目
+      // 永远不能被人工修复后的 reconcile 追认（有候选才写盘）。
+      const qFast = loadQueue(cwd);
+      if (qFast && acknowledgeDeliveries(cwd, qFast, verdicts) > 0) saveQueue(cwd, refreshStates(cwd, qFast));
+      return { verdicts, reconciled: verdicts.length };
+    }
     const q = loadQueue(cwd);
     const goal = (() => {
       try {
@@ -754,6 +803,63 @@ export function reconcileDispatch(cwd, deps = {}) {
         } catch {}
         verdicts.push({ txId: tx.txId, verdict: "killed（item 回 ready）", goalSlug: tx.goalSlug });
       } else if (goal && goal.slug === tx.goalSlug && goal.status === "done") {
+        // 交付感知（0.3.1 棒1，§一.F.5）：声明 delivery 的 item 不得凭 goal.status 直接 completed。
+        const declaredEps = item ? deliveryEpsOf(item) : [];
+        const inFlight = tx.note === "delivery-in-flight";
+        if (inFlight && declaredEps.length > 0) {
+          const since = Number.isFinite(tx.deliveringSinceMs) ? tx.deliveringSinceMs : null;
+          const withinBound = since != null && Date.now() - since <= DELIVERY_CHAIN_MAX_MS;
+          const holderAlive = holderPidAlive(tx.deliveringPid) !== false;
+          if (withinBound && holderAlive) {
+            verdicts.push({ txId: tx.txId, verdict: "delivering（交付链在途——不核销，留待其自然收束）", goalSlug: tx.goalSlug });
+            continue;
+          }
+          // 超界或持有进程已死（ESRCH）⇒ 视同死亡：落回账本判定 + 诚实收束（不死锁）
+          const v = deliveryAllDone(cwd, item);
+          let settled = null;
+          if (item) {
+            settled = settleTxLedger(cwd, { tx, item, provenance: `reconcile:${tx.txId}`, queryPoints });
+            if (v.allDone) {
+              item.state = "completed";
+              item.completedEndpoint = item.completedEndpoint ?? item.endpoint;
+            } else {
+              item.state = "failed";
+              item.blockedReason = `交付未竟：交付链进程死亡（${since != null ? `${Math.round((Date.now() - since) / 1000)}s 前在途，超上界或持有进程已死` : "在途标记缺时间"}），未收束端点 ${v.missing.join("/")}——goal 已 done 且 attestation 在案；恢复=lzy delivery readback/act <ep> 后 lzy queue reconcile 追认`;
+            }
+            item.updatedAt = new Date().toISOString();
+          }
+          appendDeliveryWall(cwd, {
+            tx, item, ms: since != null ? Date.now() - since : null,
+            note: `交付链墙钟（观测上界）；死亡收束：${v.allDone ? "账本全 done 追认 completed" : `未收束 ${v.missing.join("/")}`}`,
+          });
+          patchTx(cwd, tx.txId, {
+            phase: "settled", settledAt: new Date().toISOString(),
+            note: `交付链进程死亡（超 ${DELIVERY_CHAIN_MAX_MS}ms 上界或持有进程已死）——按账本判定收束（${v.allDone ? "completed" : "failed"}），不死锁`,
+          });
+          verdicts.push({ txId: tx.txId, verdict: `delivery-dead（${v.allDone ? "追认 completed" : "failed+指路"}：wall ${settled?.wallEntries ?? 0} 条）`, goalSlug: tx.goalSlug });
+          continue;
+        }
+        if (item && declaredEps.length > 0) {
+          const v = deliveryAllDone(cwd, item);
+          let settled = null;
+          if (v.allDone) {
+            settled = settleTxLedger(cwd, { tx, item, provenance: `reconcile:${tx.txId}`, queryPoints });
+            item.state = "completed";
+            item.completedEndpoint = item.completedEndpoint ?? item.endpoint;
+            item.updatedAt = new Date().toISOString();
+          } else {
+            settled = settleTxLedger(cwd, { tx, item, provenance: `reconcile:${tx.txId}`, queryPoints });
+            item.state = "failed";
+            item.blockedReason = `交付未竟：goal 已 done 而交付链未收束（缺 ${v.missing.join("/")}${v.unreadable ? "；账本不可读" : ""}）——恢复=lzy delivery readback/act <ep> 后 lzy queue reconcile 追认`;
+            item.updatedAt = new Date().toISOString();
+          }
+          patchTx(cwd, tx.txId, {
+            phase: "settled", settledAt: new Date().toISOString(),
+            note: `goal 已 done 而事务未决——交付感知收束（${v.allDone ? "账本全 done ⇒ completed" : "未全 done ⇒ failed+指路"}）`,
+          });
+          verdicts.push({ txId: tx.txId, verdict: `settled（交付感知：${v.allDone ? "completed" : "failed+指路"}，wall ${settled?.wallEntries ?? 0} 条）`, goalSlug: tx.goalSlug });
+          continue;
+        }
         let settled = null;
         if (item) {
           settled = settleTxLedger(cwd, { tx, item, provenance: `reconcile:${tx.txId}`, queryPoints });
@@ -781,13 +887,147 @@ export function reconcileDispatch(cwd, deps = {}) {
         verdicts.push({ txId: tx.txId, verdict: "reconciled-orphan（item failed）", goalSlug: tx.goalSlug });
       }
     }
-    if (q) saveQueue(cwd, refreshStates(cwd, q));
+    if (q) {
+      acknowledgeDeliveries(cwd, q, verdicts);
+      saveQueue(cwd, refreshStates(cwd, q));
+    }
     return { verdicts, reconciled: verdicts.length };
   });
 }
 
 // ── 派发循环（拍板 5）：锁内门序→逐项串行→结算→腾槽→下一项 ──
 // deps 注入（测试家法）：deps.run→spawnHeadless、deps.drive→runDrive 替身、deps.enginePath。
+
+// 派发前拒绝检查（0.3.1 棒1，§一.F.1；非抛——返回 reason 字符串或 null）：在锁内门序、
+// openTx **之前**判，拒绝即 item failed+指路 + {stop}（不 openTx ⇒ 零 killed-inflight、
+// 无未决占用、不误触 pointsStopped；且不以 throw 表达——throw 会落进大 catch 把 item 回 ready）。
+function preDispatchCheck(cwd, item) {
+  for (const ep of deliveryEpsOf(item)) {
+    const { path, hash } = item.delivery[ep];
+    let cur = null;
+    try {
+      cur = loadContract(path, cwd).hash;
+    } catch (e) {
+      return `交付契约不可读/无效（${ep}）：${String(e?.message ?? e).slice(0, 120)}——修复后重新入队`;
+    }
+    if (cur !== hash) {
+      return `交付契约已改=新哈希（${ep}）：入队 ${hash.slice(0, 8)}… vs 现值 ${String(cur).slice(0, 8)}…——重新入队并重新批准`;
+    }
+  }
+  if (item.tier === "heavy" && item.planHash) {
+    let curPlan = null;
+    try {
+      curPlan = createHash("sha256").update(readFileSync(resolve(cwd, item.planPath))).digest("hex");
+    } catch {
+      return `计划不可读：${item.planPath}——修复后重新派发`;
+    }
+    if (curPlan !== item.planHash) {
+      return `计划已改=评审作废（入队 ${item.planHash.slice(0, 8)}… vs 现值 ${curPlan.slice(0, 8)}…）——重新评审后重入队`;
+    }
+  }
+  return null;
+}
+
+// 交付链基建中止（0.3.1 棒1，§一.F.3②；R3 评审实证：回 ready 是死环——交付链仅在 finishOk
+// 后开跑 ⇒ goal 已 done ⇒ 下轮 bindDeliveryContract 状态闸必抛，残留 open tx 又被判交付未竟）。
+// 捕获点即落：item failed+「基建中止」+ tx 锁内诚实收束（killed）+ 交付墙钟条目 + drive 段结算。
+function abortDelivery(cwd, txId, item, cause, queryPoints) {
+  withLock(cwd, () => {
+    const q = loadQueue(cwd);
+    const it = q.items.find((x) => x.id === item.id);
+    if (it && !TERMINAL_STATES.includes(it.state)) {
+      it.state = "failed";
+      it.blockedReason = `基建中止：${String(cause).slice(0, 160)}——非交付失败；处置根因后重新入队`;
+      it.updatedAt = new Date().toISOString();
+      saveQueue(cwd, q);
+    }
+    const txNow = patchTx(cwd, txId, {});
+    if (Array.isArray(txNow.segments) && txNow.segments.length > 0) {
+      settleTxLedger(cwd, { tx: txNow, item, provenance: `tx:${txId}`, queryPoints });
+    }
+    appendLedgerEntry(cwd, {
+      kind: "wall", dedupKey: `wall:${txId}:delivery`,
+      authorization: { slug: item.goalSlug, contractHash: item.contractHash },
+      provenance: `tx:${txId}:delivery`, itemId: item.id, txId, sessionId: null,
+      ms: Math.max(0, Date.now() - (txNow.deliveringSinceMs ?? Date.now())),
+      note: `交付链墙钟（观测上界）；基建中止：${String(cause).slice(0, 100)}`,
+    });
+    patchTx(cwd, txId, { phase: "killed", settledAt: new Date().toISOString(), note: `交付链基建中止（${String(cause).slice(0, 120)}）——终局稳定；不回 ready（回 ready 是死环）` });
+  });
+  return { ok: false, abort: true, note: `基建中止：${String(cause).slice(0, 160)}` };
+}
+
+// 交付链（0.3.1 棒1，§一.F.3）：逐 ep（B→C）——先查意图账本（本 item 来源 origin ∧ endpoint
+// ∧ done 即跳过 act：幂等重派/崩溃续跑）；act→readback；per-ep 异常二分（有本轮意图=确定性
+// 失败⇒分类取账本最新 attempt，不取异常文案；无意图=基建类⇒abortDelivery）。绝不外抛。
+function runDeliveryChain(cwd, { item, txId, queryPoints, deps = {} }) {
+  const readIntents = () => {
+    try {
+      return loadIntents(cwd)?.intents ?? [];
+    } catch {
+      return null;
+    }
+  };
+  for (const ep of deliveryEpsOf(item)) {
+    let list = readIntents();
+    if (list === null) return abortDelivery(cwd, txId, item, "意图账本不可读（fail-closed）", queryPoints);
+    const mine = () => (readIntents() ?? []).filter((x) => x.origin?.itemId === item.id && x.endpoint === ep);
+    if (mine().some((x) => x.status === "done")) continue; // 幂等跳过
+    const origin = { kind: "queue", itemId: item.id, slug: item.goalSlug };
+    try {
+      if (ep === "B") {
+        const opts = { origin };
+        const c = (() => {
+          try {
+            return loadContract(item.delivery.B.path, cwd);
+          } catch {
+            return null;
+          }
+        })();
+        if (!c?.prBody) {
+          // pr-body 缺省=桥生成（item 标题+契约 task+attestation 指针）
+          const rel = join(".lazyzcode", "delivery", `pr-body-${item.id}.md`);
+          mkdirSync(dirname(join(cwd, rel)), { recursive: true });
+          writeFileSync(join(cwd, rel), `# ${item.title}\n\n队列条目 ${item.id} · goal ${item.goalSlug} · 契约 ${item.contractHash.slice(0, 8)}…\n\n交付契约：${c?.task ?? "(不可读)"}\n`);
+          opts.prBodyFile = rel;
+        }
+        actDeliveryB(cwd, opts, deps);
+        try {
+          readbackDeliveryB(cwd, {}, deps);
+        } catch {
+          /* 读回失败=保持账本现状，分类由下方账本判决给出 */
+        }
+      } else {
+        actDeliveryC(cwd, { origin }, deps);
+        try {
+          readbackDeliveryC(cwd, {}, deps);
+        } catch {
+          /* 同上 */
+        }
+      }
+    } catch (err) {
+      const after = readIntents();
+      if (after !== null && after.filter((x) => x.origin?.itemId === item.id && x.endpoint === ep).length === 0) {
+        // 无本轮意图=基建类（withLock 5s 死线/账本损坏等）——绝不误报「交付失败」
+        return abortDelivery(cwd, txId, item, String(err?.message ?? err).slice(0, 160), queryPoints);
+      }
+      try {
+        if (ep === "B") readbackDeliveryB(cwd, {}, deps);
+        else readbackDeliveryC(cwd, {}, deps);
+      } catch {
+        /* 读回失败=分类取账本现状 */
+      }
+    }
+    const finals = mine();
+    const latest = finals.length > 0 ? finals[finals.length - 1] : null;
+    if (latest?.status === "done") continue;
+    const lastAttempt = latest?.attempts?.[latest.attempts.length - 1];
+    const detail = lastAttempt?.detail ? `（${String(lastAttempt.detail).slice(0, 120)}）` : "";
+    return { ok: false, note: `${ep} ${latest?.status ?? "无意图"}：${lastAttempt?.method ?? "?"}/${lastAttempt?.outcome ?? "?"}${detail}` };
+  }
+  return { ok: true, note: null };
+}
+
 export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
   const onlyItem = typeof opts.item === "string" ? opts.item : null;
   const results = [];
@@ -822,6 +1062,16 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
         return { stop: onlyItem ? `条目 ${onlyItem} 非 ready${why}` : `无 ready 项（全部终态或未就绪）${why}`, kind: "idle" };
       }
       const item = ready.sort((a, b) => a.seq - b.seq)[0];
+      // 派发前拒绝（0.3.1 棒1，§一.F.1）：非 throw——锁内落 item failed+指路 + {stop}（不 openTx）。
+      const rejectReason = preDispatchCheck(cwd, item);
+      if (rejectReason) {
+        const it = q.items.find((x) => x.id === item.id);
+        it.state = "failed";
+        it.blockedReason = rejectReason;
+        it.updatedAt = new Date().toISOString();
+        saveQueue(cwd, q);
+        return { stop: `条目 ${item.id} 派发前拒绝：${rejectReason}`, kind: "rejected" };
+      }
       // 占用登记=锁内 pre-spawn 写 tx（未决时按上限保守计入——崩溃不假零）
       const remainWall = v.wallRemainingMs;
       const wallMs = Number.isInteger(opts.wallMs) && opts.wallMs > 0
@@ -884,6 +1134,13 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
       } else {
         console.log(`[queue] goal ${item.goalSlug} 仍 executing——同 goal 续跑（不重复注册）`);
       }
+      // 3.5) 交付契约绑定（0.3.1 棒1，§一.F.2）：goal 此刻 executing（register+start 后）；
+      // 门序已验现字节哈希（preDispatchCheck），此处四参齐 bind（幂等=同哈希重绑覆写同值）。
+      const declaredEps = deliveryEpsOf(item);
+      for (const ep of declaredEps) {
+        bindDeliveryContract(cwd, ep, item.delivery[ep].path, item.delivery[ep].hash);
+      }
+      if (declaredEps.length > 0) console.log(`[queue] 交付契约已绑定：${declaredEps.join("/")}（goal ${item.goalSlug}）`);
       // 4) 执行（单工 drive；段记录入 tx——结算输入）
       const segmentRecords = [];
       const driveRes = await (deps.drive
@@ -920,18 +1177,54 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
         finishOk = false;
         finishCause = String(err?.message ?? err).slice(0, 200);
       }
+      // 5.5) 交付链（0.3.1 棒1，§一.F.3）：仅 finishOk=true 时执行；在下方 withLock 之外
+      //（delivery 写面各自 withLock——嵌套会 5s 死线）。进链前打 tx 在途标记（活性判据用）。
+      let deliveryOk = true;
+      let deliveryNote = null;
+      let deliveryAborted = false;
+      if (finishOk && declaredEps.length > 0) {
+        patchTx(cwd, tx.txId, { note: "delivery-in-flight", deliveringSinceMs: Date.now(), deliveringPid: process.pid });
+        const outcome = runDeliveryChain(cwd, { item, txId: tx.txId, queryPoints, deps });
+        if (outcome.abort) {
+          // 基建中止：捕获点已落（failed+「基建中止」+tx killed+墙钟条目+drive 段结算）——跳过完成写入
+          results.push({ item: item.id, outcome: "failed", cause: outcome.note });
+          console.log(`[queue] ${item.id} ${outcome.note}`);
+          break;
+        }
+        deliveryOk = outcome.ok;
+        deliveryNote = outcome.note;
+        deliveryAborted = outcome.abort === true;
+      }
       withLock(cwd, () => {
         const q = loadQueue(cwd);
         const it = q.items.find((x) => x.id === item.id);
         // 结算（消耗事实账，幂等）
         const txNow = patchTx(cwd, tx.txId, {});
         const settled = settleTxLedger(cwd, { tx: txNow, item: it, provenance: `tx:${tx.txId}`, queryPoints });
-        if (finishOk) {
+        if (declaredEps.length > 0) {
+          // 交付段墙钟入账（ADR-0030 §4「不计积分、计入墙钟」；路径覆盖=成功/未竟/基建中止
+          //（后者在 abortDelivery 内已入账，dedupKey 幂等兜底）；死亡路径在 reconcile 侧入账）。
+          appendLedgerEntry(cwd, {
+            kind: "wall", dedupKey: `wall:${tx.txId}:delivery`,
+            authorization: { slug: item.goalSlug, contractHash: item.contractHash },
+            provenance: `tx:${tx.txId}:delivery`, itemId: item.id, txId: tx.txId, sessionId: null,
+            ms: Math.max(0, Date.now() - (txNow.deliveringSinceMs ?? Date.now())),
+            note: deliveryOk ? "交付链墙钟（观测；成功）" : "交付链墙钟（观测；交付未竟）",
+          });
+        }
+        if (finishOk && deliveryOk) {
           it.state = "completed";
           it.completedEndpoint = item.endpoint;
           it.updatedAt = new Date().toISOString();
           patchTx(cwd, tx.txId, { phase: "settled", settledAt: new Date().toISOString(), note: `完成（endpoint ${item.endpoint}）：wall ${settled.wallEntries} 段/积分 ${Math.round(settled.points * 100) / 100}` });
           console.log(`[queue] ${item.id} 完成（endpoint ${item.endpoint}）：墙钟 ${settled.wallEntries} 段 · 积分 ${Math.round(settled.points * 100) / 100}`);
+        } else if (finishOk && !deliveryOk) {
+          // 交付未竟：goal 已 done 且 attestation 在案——终态 failed + 人工恢复指路（含轻路线）
+          it.state = "failed";
+          it.blockedReason = `交付未竟：${deliveryNote ?? "未知"}——goal 已 done 且 attestation 在案；恢复=lzy delivery readback/act <ep> 后 lzy queue reconcile 追认（B 已成仅差 C 时走此轻路线），勿重跑目标`;
+          it.updatedAt = new Date().toISOString();
+          patchTx(cwd, tx.txId, { phase: "settled", settledAt: new Date().toISOString(), note: `交付未竟（${String(deliveryNote ?? "").slice(0, 120)}）——消耗如实结算` });
+          console.log(`[queue] ${item.id} 交付未竟（${String(deliveryNote ?? "").slice(0, 120)}）——failed+指路，勿重跑目标`);
         } else {
           it.state = "ready"; // 未竟：回 ready 待续（重驱同 goal 续跑）——不以假完成收场
           it.updatedAt = new Date().toISOString();

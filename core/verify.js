@@ -301,7 +301,7 @@ export function runCheck(cwd, checkId, { accepts = [], note = null } = {}) {
     runId,
     checkId,
     acceptanceIds: [...new Set(accepts)],
-    contractHash: goal.contract?.hash ?? null,
+    contractHash: goal.contract?.contractHash ?? null,
     candidate: candidateIdentity(cwd),
     recipe: { id: recipe.id, argv: recipe.argv, cwd: recipe.cwd ?? ".", timeoutMs, manifestHash: loaded.hash },
     inputSnapshot: inputSnapshot(cwd, recipe.inputPaths ?? []),
@@ -344,7 +344,10 @@ function sameSnapshot(a, b) {
 }
 
 // 四问判定（不落盘，判定面）：(i) 配方有非空 inputPaths；(ii) 同 checkId 且同 manifestHash
-// 的 qualification 在案；(iii) 现算输入快照与 base 回执快照一致；(iv) 清单哈希与环境指纹未变。
+// 的 qualification 在案；(iii) 现算输入快照与 base 回执快照一致；(iv) 清单哈希与环境指纹未变；
+// **(v) 契约归属一致（v031-closeout R0.2 第五问）**——回执载明它是在哪份契约下取得的：
+// 契约 goal 只认同归属回执，历史 null（契约启用前）与异契约回执一律不构成有效覆盖（保守
+// 回退 + 指路重新取证）；无契约 goal = null 对 null 放行（旧语义不变）。
 export function judgeReuse(cwd, checkId, baseRunId) {
   const reasons = [];
   const loaded = loadProjectManifest(cwd);
@@ -354,6 +357,15 @@ export function judgeReuse(cwd, checkId, baseRunId) {
   if (!Array.isArray(recipe.inputPaths) || recipe.inputPaths.length === 0) {
     return { ok: false, reasons: ["配方无 inputPaths（无已验证输入清单）——恒全树档，不冒充范围资格"] };
   }
+  const goal = (() => {
+    try {
+      return readGoal(cwd);
+    } catch {
+      return null;
+    }
+  })();
+  const goalHash = goal?.contract?.contractHash ?? null;
+  const ownReceipt = (r) => (r?.contractHash ?? null) === goalHash;
   let base = null;
   for (const rcpt of listReceipts(cwd)) {
     if (rcpt.runId === baseRunId) base = rcpt;
@@ -361,17 +373,28 @@ export function judgeReuse(cwd, checkId, baseRunId) {
   if (!base || base.kind !== "run" || base.checkId !== checkId) {
     reasons.push(`base 回执 ${baseRunId} 不在案或非同 checkId 的 run 回执`);
   }
+  if (base && !ownReceipt(base)) {
+    reasons.push(
+      `base 回执契约归属不符（回执 ${base.contractHash ?? "null（契约启用前）"} ≠ 现行 ${goalHash ?? "null"}）` +
+        `——他契约/契约启用前的回执不构成有效覆盖，重验（lzy verify run ${checkId}）取新回执`,
+    );
+  }
   if (base && base.recipe.manifestHash !== loaded.hash) {
     reasons.push("清单自 base 执行后已变更（manifestHash 不符）——配方身份变化，旧回执适用性重估");
   }
   if (base && base.inputSnapshot === null) {
     reasons.push("base 回执无输入快照（执行于范围档启用前）——不可复用");
   }
-  const quals = listReceipts(cwd).filter(
+  const qualsAll = listReceipts(cwd).filter(
     (rcpt) => rcpt.kind === "qualification" && rcpt.checkId === checkId && rcpt.recipe.manifestHash === loaded.hash,
   );
+  const quals = qualsAll.filter(ownReceipt);
   if (quals.length === 0) {
-    reasons.push(`无同 checkId+manifestHash 的 qualification 资格回执——先 lzy verify qualify ${checkId}`);
+    reasons.push(
+      qualsAll.length > 0
+        ? `在案 qualification 契约归属不符（${qualsAll.map((r) => r.contractHash ?? "null").join("/")} ≠ 现行 ${goalHash ?? "null"}）——归属不符不构成资格覆盖，重取资格：lzy verify qualify ${checkId}`
+        : `无同 checkId+manifestHash 的 qualification 资格回执——先 lzy verify qualify ${checkId}`,
+    );
   }
   let nowSnap = null;
   if (base && base.inputSnapshot !== null && base.recipe.manifestHash === loaded.hash) {
@@ -385,7 +408,20 @@ export function judgeReuse(cwd, checkId, baseRunId) {
     reasons.push("环境指纹变化（platform/node/TZ/名单变量）——环境变化无法解释即回退（ADR-0025）");
   }
   return reasons.length === 0
-    ? { ok: true, reasons: ["(i) inputPaths 非空", `(ii) qualification 在案×${quals.length}`, "(iii) 输入快照一致", "(iv) 清单哈希与环境指纹未变"], nowSnapshot: nowSnap, recipe, base }
+    ? {
+        ok: true,
+        reasons: [
+          "(i) inputPaths 非空",
+          `(ii) qualification 在案×${quals.length}`,
+          "(iii) 输入快照一致",
+          "(iv) 清单哈希与环境指纹未变",
+          `(v) 契约归属一致（${goalHash ? goalHash.slice(0, 8) : "无契约（null）"}）`,
+        ],
+        nowSnapshot: nowSnap,
+        recipe,
+        base,
+        qualRunId: quals.findLast(() => true)?.runId ?? null,
+      }
     : { ok: false, reasons, recipe, base };
 }
 
@@ -405,7 +441,7 @@ export function reuseRun(cwd, checkId, baseRunId, { accepts = [], note = null } 
     runId,
     checkId,
     acceptanceIds: [...new Set(accepts)],
-    contractHash: goal.contract?.hash ?? null,
+    contractHash: goal.contract?.contractHash ?? null,
     candidate: candidateIdentity(cwd),
     recipe: base.recipe,
     inputSnapshot: judgment.nowSnapshot,
@@ -419,9 +455,7 @@ export function reuseRun(cwd, checkId, baseRunId, { accepts = [], note = null } 
     reuseJudgment: {
       judgedAt: new Date().toISOString(),
       reasons: judgment.reasons,
-      qualificationRunId: listReceipts(cwd).find(
-        (rcpt) => rcpt.kind === "qualification" && rcpt.checkId === checkId,
-      )?.runId ?? null,
+      qualificationRunId: judgment.qualRunId ?? null,
     },
   };
   const p = writeReceipt(cwd, receipt);
@@ -513,7 +547,7 @@ export function qualifyCheck(cwd, checkId, { note = null } = {}) {
     runId,
     checkId,
     acceptanceIds: [],
-    contractHash: goal.contract?.hash ?? null,
+    contractHash: goal.contract?.contractHash ?? null,
     candidate: candidateIdentity(cwd),
     recipe: { id: recipe.id, argv: recipe.argv, cwd: recipe.cwd ?? ".", timeoutMs: recipe.timeoutMs ?? DEFAULT_TIMEOUT_MS, manifestHash: loaded.hash },
     inputSnapshot: baseline.receipt.inputSnapshot,
@@ -584,7 +618,7 @@ export function queryCiChecks(cwd, { repo = null, sha = null, note = null } = {}
     runId,
     checkId: "ci-check-runs",
     acceptanceIds: [],
-    contractHash: goal.contract?.hash ?? null,
+    contractHash: goal.contract?.contractHash ?? null,
     candidate: candidateIdentity(cwd),
     recipe: { id: "gh api check-runs（只读）", argv: ["gh", "api"], cwd: ".", timeoutMs: 30_000, manifestHash: null },
     inputSnapshot: null,

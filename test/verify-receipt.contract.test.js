@@ -8,7 +8,7 @@ import { test } from "node:test";
 process.env.LZY_ABLATE_HUMAN_GATE = "1"; // 人权门非本文件被测面
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
@@ -19,12 +19,12 @@ const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
 const HOME = mkdtempSync(join(tmpdir(), "lzy-vr-home-"));
 
-function lzyIn(d, args) {
+function lzyIn(d, args, extraEnv = {}) {
   const r = spawnSync(process.execPath, [CLI, ...args], {
     cwd: d,
     encoding: "utf8",
     timeout: 120_000,
-    env: { ...process.env, HOME, USERPROFILE: HOME, LZY_ZCODE_ENGINE: "/nonexistent-lzy-suppressed", LZY_ABLATE_HUMAN_GATE: "1" },
+    env: { ...process.env, HOME, USERPROFILE: HOME, LZY_ZCODE_ENGINE: "/nonexistent-lzy-suppressed", LZY_ABLATE_HUMAN_GATE: "1", ...extraEnv },
   });
   return { status: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
@@ -161,6 +161,53 @@ test("家族 tmp 登记：reset 清 verify/ 顶层孤儿 tmp，回执本体保�
     assert.equal(r.status, 0, r.out);
     assert.ok(!existsSync(join(verifyDir(d), ".receipt-999-x.tmp")), "孤儿 tmp 被清扫（ANY_TMP_SCAN_DIRS 登记且 tmp 落家族根）");
     assert.equal(listReceipts(d).length, 1, "回执本体不被 reset 清");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ── 契约绑定（v031-closeout R0.2）：四类回执 contractHash == 登记值；无契约如实 null ──────
+// 改前反例见 scripts/v031/closeout-qa.mjs --case receipt-binding（红半：四类全 null）；
+// 本用例钉改后语义，含 reuse 的契约归属执法（v 问）与 qualification 同归属筛选。
+const CONTRACT_BODY = ["task: vr-own", "endpoint: A", "scope: .", "recipe: none", "", "- [A1] x", ""].join("\n");
+
+test("契约绑定：四类回执 contractHash 严格等于 goal.contract.contractHash；无契约 goal 如实 null", () => {
+  const d = repo("lzy-vr-own-", {
+    schemaVersion: 1,
+    capabilities: { check: [{ id: "dir-check", argv: [process.execPath, "-e", "process.exit(0)"], timeoutMs: 30_000, env: ["TZ"], inputPaths: ["a.txt"] }] },
+  });
+  try {
+    // 无契约期（repo() 已 register+plan+start 无契约）：回执如实 null，不猜测归属
+    assert.equal(lzyIn(d, ["verify", "run", "dir-check"]).status, 0);
+    assert.equal(listReceipts(d).find((r) => r.kind === "run").contractHash, null, "无契约 legacy 记录如实保留 null");
+    // 转契约 goal：重置槽后带 --contract 重注册（消融放行采纳）
+    assert.equal(lzyIn(d, ["loop", "reset"]).status, 0);
+    writeFileSync(join(d, "c.md"), CONTRACT_BODY);
+    const reg = lzyIn(d, ["loop", "register", "vr", "--title", "t", "--contract", "c.md"]);
+    assert.equal(reg.status, 0, reg.out);
+    assert.equal(lzyIn(d, ["loop", "plan", "p.md"]).status, 0);
+    assert.equal(lzyIn(d, ["loop", "start"]).status, 0);
+    const goalHash = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8")).contract.contractHash;
+    assert.match(goalHash, /^[0-9a-f]{64}$/);
+    // 四类回执
+    assert.equal(lzyIn(d, ["verify", "run", "dir-check", "--accepts", "A1"]).status, 0);
+    assert.equal(lzyIn(d, ["verify", "qualify", "dir-check"]).status, 0);
+    const base = listReceipts(d).filter((r) => r.kind === "run").findLast(() => true);
+    assert.equal(lzyIn(d, ["verify", "reuse", "dir-check", "--of", base.runId]).status, 0);
+    const fakeGh = join(d, "fake-gh.mjs");
+    writeFileSync(
+      fakeGh,
+      "#!/usr/bin/env node\nconst a = process.argv.slice(2).join(' ');\nif (a.includes('check-runs')) { process.stdout.write(JSON.stringify([{ name: 'ci', conclusion: 'success', details_url: 'u' }])); process.exit(0); }\nprocess.exit(1);\n",
+    );
+    chmodSync(fakeGh, 0o755);
+    const ci = lzyIn(d, ["verify", "ci", "--repo", "Acfufu/lazyzcode"], { LZY_GH_BIN: fakeGh });
+    assert.equal(ci.status, 0, ci.out);
+    const recs = listReceipts(d);
+    for (const k of ["run", "qualification", "reuse", "ci"]) {
+      const r = recs.filter((x) => x.kind === k).findLast(() => true);
+      assert.ok(r, `缺 ${k} 回执`);
+      assert.equal(r.contractHash, goalHash, `${k} 回执契约绑定=登记值`);
+    }
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

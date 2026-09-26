@@ -331,7 +331,7 @@ export function registerGoal(cwd, slug, title, { tier = "light", risk = "low", c
         `非 git 宿主的 finish 不可达。先 git init 并完成首次提交，再重新注册（ADR-0019）`,
     );
   }
-  // 契约绑定（0.3.0 M1，ADR-0024）：register 时校验契约并落 goal.contract={path,hash}。
+  // 契约绑定（0.3.0 M1，ADR-0024）：register 时校验契约并落 goal.contract={path,contractHash}。
   // 校验（结构键/A 项/scope 存在性）在锁外做（纯读）；哈希=注册时点文件字节，采纳门
   // 每次重查磁盘哈希（漂移=重新 register）。授权批准发生在第一次采纳拒绝之后
   //（contractPending 由契约门落位）——注册本身不索批准。

@@ -157,7 +157,7 @@ export function parseContract(text, hostRoot) {
   };
 }
 
-// 读+解析一步：调用方拿 hash 与 goal.contract.hash 比对（漂移检测在闸不在读）。
+// 读+解析一步：调用方拿 hash 与 goal.contract.contractHash 比对（漂移检测在闸不在读）。
 export function loadContract(contractPath, hostRoot) {
   const abs = isAbsolute(contractPath) ? resolve(contractPath) : resolve(join(hostRoot, contractPath));
   const { hash, text } = readContractFile(abs);

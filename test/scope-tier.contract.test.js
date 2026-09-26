@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { judgeReuse, listReceipts, qualifyCheck, reuseRun, runCheck } from "../core/verify.js";
+import { loadContract } from "../core/contract.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
@@ -89,7 +90,8 @@ test("qualification 活体：目录条目未知新文件注入检测+原样恢�
     assert.equal(r.ok, true, JSON.stringify(r.reasons ?? r));
     assert.equal(r.receipt.kind, "reuse");
     assert.equal(r.receipt.baseRunId, base.runId);
-    assert.equal(r.receipt.reuseJudgment.reasons.length, 4, "四问全✔各一条");
+    assert.equal(r.receipt.reuseJudgment.reasons.length, 5, "五问全✔各一条（v031-closeout R0.2 增契约归属问）");
+    assert.match(r.receipt.reuseJudgment.reasons.join("；"), /契约归属一致（无契约（null））/, "无契约 goal=null 对 null 放行");
     // base 原时点原事实保留：reuse 回执的 startedAt/exit/artifacts=base 的
     assert.equal(r.receipt.startedAt, base.startedAt);
     assert.deepEqual(r.receipt.exit, base.exit);
@@ -202,6 +204,41 @@ test("CLI 复用拒绝面：--of 不在案 runId→非零退出+恢复指路（�
     assert.equal(r.status, 1);
     assert.match(r.out, /保守回退|不在案/);
     assert.match(r.out, /verify run/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ── 归属问（v031-closeout R0.2 第五问）：契约 goal 只认同归属回执 ─────────────────────
+// 判据：历史 null（契约启用前）与异契约回执一律不构成有效覆盖；无契约 goal=null 对 null 放行。
+test("归属问：契约 goal 上旧 null 回执被拒并指路重验；同归属回执放行（五问全过）", () => {
+  const d = repo("lzy-st-own-");
+  try {
+    // 先无契约采回执（历史 null）
+    const base = runCheck(d, "dir-check", {});
+    qualifyCheck(d, "dir-check", {});
+    // 把契约绑到 goal（夹具状态注入，先例 scripts/v031/inject-txs.mjs）——模拟「契约启用前的旧回执」
+    const gp = join(d, ".lazyzcode", "loop", "goal.json");
+    const g = JSON.parse(readFileSync(gp, "utf8"));
+    const cFile = join(d, "c-own.md");
+    writeFileSync(cFile, ["task: own", "endpoint: A", "scope: .", "recipe: none", "", "- [A1] x", ""].join("\n"));
+    const { hash } = loadContract(cFile, d);
+    g.contract = { path: cFile, contractHash: hash };
+    writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+    // 旧 null base + 旧 null qualification ⇒ 归属不符 ⇒ 拒并指路重验
+    const j = judgeReuse(d, "dir-check", base.receipt.runId);
+    assert.equal(j.ok, false, JSON.stringify(j.reasons));
+    assert.match(j.reasons.join("；"), /契约归属不符/);
+    assert.match(j.reasons.join("；"), /重验/);
+    const r = reuseRun(d, "dir-check", base.receipt.runId);
+    assert.equal(r.ok, false, "旧 null 不构成有效覆盖");
+    // 同归属重取：run+qualify 都带现行契约哈希 ⇒ 五问全过
+    const base2 = runCheck(d, "dir-check", {});
+    assert.equal(base2.receipt.contractHash, hash, "新回执绑定现行契约");
+    qualifyCheck(d, "dir-check", {});
+    const r2 = reuseRun(d, "dir-check", base2.receipt.runId);
+    assert.equal(r2.ok, true, JSON.stringify(r2.reasons ?? r2));
+    assert.equal(r2.receipt.reuseJudgment.reasons.length, 5);
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

@@ -1298,7 +1298,9 @@ function cmdVerify(args) {
     console.log(`执行回执 · ${receipts.length} 条（.lazyzcode/verify/ · reset 不清 · 校验和 fail-closed）`);
     for (const r of receipts) {
       const exitDesc = r.exit.blocked ? "blocked" : r.exit.noRemoteCommit ? "远端无此提交" : r.exit.timeout ? "timeout" : r.exit.error ? "error" : `exit ${r.exit.code}`;
-      console.log(`  ${r.startedAt}  ${r.kind.padEnd(13)} ${r.checkId.padEnd(14)} ${exitDesc.padEnd(10)} ${r.runId}`);
+      // 契约归属（v031-closeout R0.2 展示面）：null=契约启用前的历史回执——如实标注、不猜测归属
+      const own = r.contractHash ? `契约 ${String(r.contractHash).slice(0, 8)}` : "契约启用前（null）";
+      console.log(`  ${r.startedAt}  ${r.kind.padEnd(13)} ${r.checkId.padEnd(14)} ${exitDesc.padEnd(10)} ${own.padEnd(18)} ${r.runId}`);
     }
     return;
   }

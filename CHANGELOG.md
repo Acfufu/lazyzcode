@@ -3,6 +3,53 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Queue x delivery orchestration** (0.3.1, goal `v031-bat1-delivery-orchestration`; ADR-0030):
+  a queue item can target endpoint B or C and attach delivery contracts at enqueue time
+  (`lzy queue add ... --endpoint B|C --delivery-b <file> [--delivery-c <file>]`; A takes
+  none, B needs B, C needs both). After the goal finishes normally, dispatch runs the
+  delivery chain itself — bind, act/read-back B (then C) — and only a done read-back
+  marks the item completed (`completedEndpoint` records the reached endpoint). The
+  delivery segment's wall time is recorded in the budget ledger (never points).
+- **Pre-enqueue delivery approvals** (goal `v031-bat1-delivery-orchestration`; ADR-0030
+  amendment): the UPS approval hook gained a queue-pending resolution source — when no
+  goal-side pending exists, 「批准 <short>」 resolves against declared delivery contracts
+  of non-terminal queue items (same phrase, same record shape, same authorizations/
+  directory; multi-match refuses to guess; corrupt/absent queue state falls back
+  open). Approval codes are printed by `queue add` and an item missing any declared
+  approval is never ready.
+- **Delivery contract action fields** (same goal): B/C contracts may declare the action
+  parameters (`repo`/`base`/`branch`/`pr-title`/`pr-body`, `expect-marker`/
+  `content-url`) so unattended runs need no interactive flags; queue-carried contracts
+  must declare their required keys (rejected at enqueue otherwise), and dispatch
+  re-verifies the contract bytes against the enqueued hash before spending anything.
+- **Multi-page Pages verification** (same goal; debt M4-4): C contracts accept repeated
+  `page:` lines (site-root absolute paths) and the live check requires 200 + the
+  expected marker on every declared page (root included), reporting the failed page
+  list; with no `page:` the single-page behaviour is byte-identical.
+- **HEAVY items in the queue** (same goal; debt I): queue items carry `tier`/`risk`
+  (HEAVY requires a pre-enqueue plan-review PASS plus the plan hash, re-checked before
+  dispatch; risk is restricted to low/med — HIGH+ never enters unattended lanes) and
+  dispatch passes them into goal registration and plan adoption.
+
+### Changed
+
+- **Delivery acts accept a finished, bound goal** (same goal; ADR-0028 amendment): the
+  acting precondition is now `executing` OR (`done` AND the endpoint's delivery
+  contract was bound in this attempt) — the queue's post-finish delivery chain needs
+  the second arm; planning/unbound/abandoned still refuse.
+- **Delivery acts may source parameters from the delivery contract** (flag first,
+  contract as fallback) and B's `head` defaults to the workspace HEAD (a contract can
+  never pin it). Delivery intents created by the queue carry an `origin` marker so
+  reconcile can attribute them and skip already-done endpoints on resume.
+- **Delivery-aware reconcile** (same goal): an in-flight delivery is not settled while
+  its holder is alive and within the chain bound; a dead chain settles from the intent
+  ledger; a failed item whose delivery later completes is acknowledged (flipped to
+  completed) by `lzy queue reconcile`.
+
 ## [0.3.0] - 2026-09-26
 
 ### Added

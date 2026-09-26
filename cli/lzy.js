@@ -1075,7 +1075,12 @@ function printHelp() {
 有界队列与累计预算（0.3.0 M3，主方案 §5——多项已授权工作跨中断连续完成；一切命令以 goal 根为 cwd）：
   lzy queue add <标题> --contract <文件> --plan <文件>
                                             登记待办（proposed；批准该契约=UPS「批准 <短码>」后
-                                            自动 authorized）[--endpoint A] [--deps q1,q2] [--goal-slug s]
+                                            自动 authorized）[--endpoint A|B|C] [--deps q1,q2]
+                                            [--goal-slug s] [--tier heavy --plan-review "…PASS…"]
+                                            [--risk low|med] [--delivery-b <B契约>] [--delivery-c <C契约>]
+                                            B/C 目标终点：B 须 --delivery-b、C 须两契约（ADR-0030）；
+                                            交付契约批准=UPS「批准 <短码>」（入队前可批）；HEAVY 条目
+                                            须入队前计划评审 PASS（--plan-review）
   lzy queue list                            条目与就绪面（授权/依赖/项目/预算/租约/计划六查）
   lzy queue show <id>                       条目全文+派发事务账+就绪判定
   lzy queue budget [--points N] [--wall-ms M] [--note 来源]
@@ -1083,7 +1088,9 @@ function printHelp() {
                                             --resume-points 人工恢复被 #32 停止的积分限派发
   lzy queue dispatch [--item id] [--wall-ms N] [--max-segments N]
                                             取 ready 项派发（锁内占用登记→register/续跑→drive→
-                                            finish→结算→确认→腾槽→下一项；崩溃恢复判定表先行）
+                                            finish→[交付链 act/readback B→C]→结算→确认→腾槽→下一项；
+                                            崩溃恢复判定表先行；交付未竟=failed+指路，人工 readback/act 后
+                                            lzy queue reconcile 追认）
   lzy queue reconcile                       恢复判定表显式读面（未决事务先核对后动作）
   lzy queue cancel <id> --reason <原因>     取消（保留工件与历史，不清理用户改动）
 
@@ -1092,12 +1099,15 @@ function printHelp() {
                                             绑定 B/C 独立交付契约（endpoint 入哈希）并落批准请求；
                                             批准=UPS 短语「批准 <短码>」，唯一写入口=钩子
   lzy delivery status                       交付授权与意图读面（只读）
-  lzy delivery act B --repo <o/n> --branch <b> --base <基> --head <SHA>
-                 --pr-title <题> --pr-body-file <文件> [--pr <n>]
+  lzy delivery act B [--repo <o/n>] [--branch <b>] [--base <基>] [--head <SHA>]
+                 [--pr-title <题>] [--pr-body-file <文件>] [--pr <n>]
                                             B 链：push→PR→漂移复核→CI 全绿→merge（绑 HEAD）
                                             →读回 merge SHA→该 SHA CI 轮询；合并前置=B∧C 双授权
-  lzy delivery act C --repo <o/n> --expect-marker <串>
-                                            C 链：Pages 构建对齐 merge SHA+线上内容判据
+                                            参数可省=由 B 契约字段取值（repo/base/branch/pr-title/
+                                            pr-body）；head 缺省=工作区当前 HEAD（契约不可预钉）
+  lzy delivery act C [--repo <o/n>] [--expect-marker <串>] [--content-url <URL>]
+                                            C 链：Pages 构建对齐 merge SHA+线上内容判据；参数可省=
+                                            由 C 契约取值（repo/expect-marker/content-url/page 多页）
   lzy delivery readback <B|C>               读回收束（merged→done/open→re-arm/未对齐如实）；
                                             超时/断连后先读回，绝不盲目重发
 

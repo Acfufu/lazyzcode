@@ -310,6 +310,42 @@ action is preceded by an intent record (target identity, planned argv) in
 timeouts or disconnects — a done intent is final, so an already-successful action is
 never re-executed.
 
+### Queue x delivery orchestration (0.3.1)
+
+Items can target a delivery endpoint directly: `lzy queue add ... --endpoint B
+--delivery-b <B contract>` (endpoint C needs both `--delivery-b` and `--delivery-c`;
+endpoint A takes no delivery contract). After the goal finishes normally, dispatch runs
+the delivery chain itself: bind contracts, act/read-back B (then C), and only a done
+read-back marks the item completed (completedEndpoint records the reached endpoint).
+Delivery approval codes are available at **enqueue time**: `queue add` prints each
+contract's short code and 「批准 <short>」 is recorded through the same UPS approval
+channel (the goal does not exist yet before dispatch - the approval attaches to the
+item); an item missing any declared approval is never ready. For unattended runs the
+action parameters come from the contract (B: `repo/base/branch/pr-title/pr-body`; C:
+`repo/expect-marker/content-url` plus multi-page `page:` lines, each checked for
+200-and-marker) - a contract missing required keys is rejected at enqueue, not at
+dispatch time. HEAVY items enter on a pre-enqueue plan-review PASS plus a plan hash
+(re-checked before dispatch: a changed plan voids the review); high-risk work stays
+out of the queue (HIGH+ never enters unattended lanes).
+
+Delivery not completed (PR unmerged / build not aligned): the item lands in `failed`
+with the recovery route in its blockedReason - repair with `lzy delivery
+readback/act`, then `lzy queue reconcile` acknowledges it as completed without
+re-running the goal. A dead delivery chain (past the bound or a dead holder process) is
+settled from the intent ledger by reconcile - never a deadlock; infrastructure aborts
+(lock contention / corrupt intent ledger) end as a distinct "infrastructure abort"
+state so the two causes stay tellable apart.
+
+### Cross-project verification recipes (pilot notes)
+
+Three field rules from driving other projects to end-to-end acceptance (0.3.0
+three-repo pilots): (1) projects whose config layer ignores XDG (e.g. openchamber's
+hard-coded `os.homedir()/.config/...`) need **HOME overridden as well** for isolated
+runs, or they will write the user's real config; (2) **pin version lines** (e.g. an
+opencode v2 vs 1.18.x fixture break) - isolated installs in the recipe, never the
+system's current version; (3) **rebuild before browser evidence** on source-tree
+projects (`build:web` etc.) - a stale dist yields false red/green.
+
 ## Migration (0.3.0 M5)
 
 Explicit migration for legacy loop state: `lzy migrate preview <root>` is a read-only

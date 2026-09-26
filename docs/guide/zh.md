@@ -249,6 +249,32 @@ HEAD 合并、读回实际 merge SHA、轮询该 SHA 的 CI。Pages 核验（`lz
 记录（目标身份与计划 argv）落 `.lazyzcode/delivery/`；超时或断连后用
 `lzy delivery readback B|C` 分类收束——done 恒终，已成功动作绝不重复执行。
 
+### 队列 × 交付编排（0.3.1）
+
+条目可以直奔交付终点：`lzy queue add … --endpoint B --delivery-b <B契约>`（终点 C 须
+`--delivery-b` ∧ `--delivery-c`；A 不接受交付契约）。派发时队列在 goal 正常运行收口后自动
+执行交付链：绑定契约 → act/readback B（→C）→ **读回 done 才记条目 completed**（completedEndpoint
+记录到达终点）。交付批准的短码在**入队时**即可拿到：`queue add` 回显每面契约短码，
+「批准 <短码>」由同一 UPS 批准通道记录（入队前 goal 尚不存在——批准挂条目而不是 pending 的
+goal）；未批准齐备的条目永不 ready。无人值守语义下动作参数来自契约声明（B 面
+`repo/base/branch/pr-title/pr-body`；C 面 `repo/expect-marker/content-url` 与多页 `page:` 逐页
+200∧标记判据）——契约缺项在入队即拒（不会跑到派发才炸）。HEAVY 条目凭**入队前**计划评审
+PASS 与计划哈希入队（派发前比对：计划改动=评审作废）；risk 高的工作不入口（HIGH+ 不入
+无人值守车道）。
+
+交付未竟（PR 未合并/构建未对齐）：条目落 `failed` 并把恢复路线写进 blockedReason——
+`lzy delivery readback/act` 修复后用 `lzy queue reconcile` **追认**翻 completed，不必重跑目标。
+交付链进程死亡（超上界或持有进程已死）由 reconcile 按意图账本收束，绝不卡死；基建异常
+（锁冲突/意图账本损坏）落「基建中止」终局并指路——与「交付未竟」两种指向可辨。
+
+### 跨项目验证配方（试点沉淀）
+
+驱动其他项目做端到端验收时的三条现场纪律（0.3.0 三仓试点沉淀）：①**服务端配置面不吃 XDG**
+的项目（如 openchamber：`os.homedir()/.config/...` 硬编码）——隔离验收必须**同时覆写 HOME**
+（双 XDG + HOME 三层隔离），否则会写进用户真实配置；②**版本线钉死**（如 opencode v2 与夹具
+所需 1.18.x 断代）——环境配方写明隔离安装版本，不依赖系统当前版本；③**源码态浏览器取证前
+必须重跑构建**（`build:web` 等）——陈旧 dist 会产出假性红/绿。
+
 ## 迁移（0.3.0 M5）
 
 旧项目目录升到 0.3.0 后，旧循环残档显式迁移：`lzy migrate preview <根路径>` 只读预览

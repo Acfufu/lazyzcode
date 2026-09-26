@@ -2,8 +2,9 @@
 // 家族 .lazyzcode/delivery/（loop/ 外 reset 不清，位阶同 authorizations/、queue/、budget/）：
 //   intents.json —— 交付意图账本（校验和家法同 queue.js loadFamilyFile/saveFamilyFile）。
 // 授权模型：B 与 C 各立独立 delivery 契约（endpoint 入哈希，contract.js 解析复用）；批准
-// 复用 contractPending UPS 通道（goal.json 写面归 loop.js bindDeliveryContract，钩子批准
-// 分支零改动即生效）；撤回面=trigger.js 短码匹配集合扩展 [goal.contract, …goal.delivery]。
+// 复用 contractPending UPS 通道（goal.json 写面归 loop.js bindDeliveryContract）——0.3.1 棒1
+// 起钩子另有 queue-pending 解析支（入队前预批准，ADR-0030 修正节）；撤回面=trigger.js 短码
+// 匹配集合扩展 [goal.contract, …goal.delivery]。
 // 纪律（V09/V10/V11）：意图先于动作落账；动作后读回核对；done 恒拒再执行（防重复写入）；
 // 超时/断连=unknown，读回分类后方可收束；合并前置=B∧C 双授权（main=Pages 发布源，主方案
 // §6）+PR head/base 漂移复核+PR headSha CI 全绿。

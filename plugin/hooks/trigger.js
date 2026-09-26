@@ -52,6 +52,90 @@ const WITHDRAW_RE = /(?:撤回|withdraw|revoke)\s*([0-9a-f]{8})\b/i;
 const WITHDRAW_NEG_RE =
   /(?:不要?|不准|别|未|请勿|拒绝|勿|don['’]?t|do\s+not|not)\s*[^。！？\n，,、；;.?!]{0,6}(?:撤回|withdraw|revoke)/i;
 
+// queue-pending 批准解析（0.3.1 棒1，ADR-0030 修正节）：入队时 goal 尚不存在，UPS 批准
+// 解析需第三个来源——扫 `.lazyzcode/queue/queue.json` 的已声明交付契约（delivery[ep].hash
+// 前 8 位）。自包含 inline（钩子不 import core，家族校验和算法与 core/queue.js checksumOf
+// 逐字同形：strip checksum → JSON.stringify(rest) → sha256）。返回 null=零命中或读面异常
+// （fail-open，落回既有诊断支，绝不炸钩子）；返回对象=恰一次 emit。文案零时间戳零文件名。
+// 写入面=同族同目录（.lazyzcode/authorizations/，记录形状与 contractPending 支逐字同构）。
+function queueDeliveryVerdict(cwd, short, sessionId) {
+  let q;
+  try {
+    const obj = JSON.parse(readFileSync(join(cwd, ".lazyzcode", "queue", "queue.json"), "utf8"));
+    const { checksum, ...rest } = obj ?? {};
+    if (checksum !== createHash("sha256").update(JSON.stringify(rest)).digest("hex")) return null;
+    q = rest;
+  } catch {
+    return null; // 缺席/损坏/校验和不符：fail-open
+  }
+  const items = Array.isArray(q?.items) ? q.items : [];
+  const hits = [];
+  const pendingCands = [];
+  for (const it of items) {
+    if (!it || ["completed", "failed", "cancelled"].includes(it.state)) continue;
+    for (const ep of ["B", "C"]) {
+      const h = it?.delivery?.[ep]?.hash;
+      if (typeof h !== "string") continue;
+      pendingCands.push(`${it.id}/${ep}（${h.slice(0, 8)}）`);
+      if (h.slice(0, 8).toLowerCase() === short) hits.push({ it, ep, hash: h, path: it.delivery[ep].path });
+    }
+  }
+  if (hits.length === 0) {
+    // 有候选但不匹配：给出可诊断的短码列表（零写入）；无候选=真零命中，落回既有诊断支。
+    if (pendingCands.length === 0) return null;
+    return {
+      additionalContext:
+        `[lzy] No pending approval matches this code. Queue delivery contracts awaiting approval: ${pendingCands.join("、")}. ` +
+        `Ask the model for the exact approval sentence (「批准 <短码>」) and send it again. Nothing was recorded.`,
+    };
+  }
+  if (hits.length > 1) {
+    const cands = hits.map((x) => `${x.it.id}/${x.ep}（${x.hash.slice(0, 8)}）`).join("、");
+    return {
+      additionalContext:
+        `[lzy] Delivery approval code matches multiple queue items — refusing to guess (nothing was recorded): ${cands}. ` +
+        `Ask the user to confirm which item/endpoint this approval is for.`,
+    };
+  }
+  const { it, ep, hash, path } = hits[0];
+  // exact-hash 复核：入队时记录的契约路径现字节须仍哈希到该值（入队后改契约=批准对象已变=作废）。
+  let cur = null;
+  try {
+    cur = createHash("sha256").update(readFileSync(resolve(cwd, path))).digest("hex");
+  } catch {}
+  if (cur !== hash) {
+    return {
+      additionalContext:
+        `[lzy] Delivery contract of queue item ${it.id} (${ep}) changed since it was enqueued — the short code is void. ` +
+        `Ask the model to re-enqueue the item with the updated contract for a fresh code. Nothing was recorded.`,
+    };
+  }
+  const authDir = join(cwd, ".lazyzcode", "authorizations");
+  try {
+    mkdirSync(authDir, { recursive: true });
+    const sid = String(sessionId ?? "unknown");
+    const name = `approval-${short}-${sanitizeSessionId(sid).slice(0, 24)}-${Date.now()}.json`;
+    const tmp = join(authDir, `.${name}.${process.pid}.tmp`);
+    writeFileSync(
+      tmp,
+      `${JSON.stringify({ version: 1, kind: "approval", slug: it.goalSlug, contractHash: hash, at: new Date().toISOString(), sessionId: sid }, null, 2)}\n`,
+    );
+    renameSync(tmp, join(authDir, name));
+  } catch (err) {
+    const reason = err?.code ?? err?.name ?? "unknown";
+    return {
+      additionalContext:
+        `[lzy] Delivery approval was valid but the authorization record could not be written (${reason}) — nothing was recorded and the queue gate stays closed. ` +
+        `Check that .lazyzcode/authorizations is writable (not blocked by a file or a read-only mount) and that the disk has free space, then re-send the approval sentence.`,
+    };
+  }
+  return {
+    additionalContext:
+      `[lzy] Human approval recorded for delivery ${ep} of queue item ${it.id} (short code ${short}). ` +
+      `The queue readiness gate releases the item once all declared authorizations are in place — run lzy queue list to see the readiness face.`,
+  };
+}
+
 // 返回 null=落回既有触发词逻辑（零输出零 exit）；返回对象=恰一次 emit 后 exit 0
 // （由调用方执行）。emit 文案零时间戳零文件名（双跑确定性不变量）；全分支异常
 // fail-open——批准面绝不劫持会话，门保持关闭由 CLI 侧重试。
@@ -122,6 +206,11 @@ function approvalVerdict(input) {
     }
     const pending = goal?.approvalPending;
     if (!pending?.planHash) {
+      // queue-pending 解析支（0.3.1 棒1，ADR-0030 修正节）：goal 侧双 pending 皆缺席（或
+      // goal 缺席）时才扫队列——否则会抢本 goal 自身的 legacy 计划批准支。命中即返回
+      // （含写记录或 fail-soft 诊断）；零命中/读面异常返回 null，落回下方既有诊断支。
+      const qv = queueDeliveryVerdict(cwd, m[1].toLowerCase(), inputSessionId(input));
+      if (qv) return qv;
       // 债 E（ADR-0018 修正案）：批准正则已命中却读不到 goal/pending——旧实现静默
       // return null，用户发出的批准句零反馈，L2 门失败完全无声（2026-09-20 zpigeon
       // 事故被误诊为「引擎 hook 调度未生效」）。两条诊断分支各 emit 一次即接管本回合

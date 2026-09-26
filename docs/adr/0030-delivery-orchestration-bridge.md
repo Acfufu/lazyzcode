@@ -24,3 +24,27 @@ add 时硬拒 endpoint≠A（core/queue.js:108 拒语「B/C 外部交付归 M4�
 
 与 ADR-0027/0028 的关系：本件是两件的接续而非重定义——0027 的「endpoint 仅 A」「队列项恒
 LIGHT」与 0028 的 delivery 动作面各自保鲜，桥只加编排；本件落地时两件的相应行加修正引用注记。
+
+## 修正节（2026-09-26，0.3.1 棒1 实施期）：两处显式偏离申报
+
+本文 §2 的两句在实施期复核后须修订，如实申报（不静默改）：
+
+1. **钩子批准分支由「零改动」修订为「增 queue-pending 解析支」**。UPS 钩子的批准解析只认
+   活体 goal 的 contractPending（plugin/hooks/trigger.js:74-121），而入队时 goal 尚不存在
+   （queue add 不注册 goal）——「入队前预批准」在零钩子改动下不可达，替代路径是
+   register→start→request→批准×2→reset 八命令舞。故 trigger.js 增一个**附加解析来源**：
+   goal 侧 contractPending 与 approvalPending **皆缺席**（或 goal 缺席）时，扫
+   `.lazyzcode/queue/queue.json` 非终态条目的 `delivery[ep].hash` 前 8 位；命中经 exact-hash
+   复核后写**同族记录**（`{version,kind:"approval",slug,contractHash,at,sessionId}`、
+   同 `.lazyzcode/authorizations/` 目录、同命名族）。**零新门**：同短语、同记录形状、同
+   目录、同消融轴（LZY_ABLATE_HOOK_HUMAN_GATE）。边界：多命中=拒猜列候选零写入（同
+   ADR-0028 8hex 碰撞家法）；读面异常（queue.json 缺席/损坏/校验和不符）=fail-open 落回
+   既有诊断支；有候选而不匹配=列待批准短码的可诊断文案。实施与测试见
+   plugin/hooks/trigger.js + test/delivery-hook.contract.test.js ⑥–⑪。
+2. **本文 §2 的「ADR-0027 预留硬约束随解封兑现」只兑现后半**：`unknown 外部结果单独核对
+   收窄为 failed+人工` 已兑现（交付未竟=failed+指路+reconcile 追认）；**前半（重试不变量：
+   仅暂时性错误、≤2 次、计入原预算）不兑现**——队列仍无自动重试，自动重试面属 drive/后续
+   版本，ADR-0027 的该条保持「未来启用时硬约束」原状。
+
+相关件修正引用：ADR-0027 的「endpoint 仅 A」「队列项 goal 恒 LIGHT」两行已随之修订
+（见其修正节）；ADR-0028 增「状态判据放宽一档 executing ∨ (done ∧ bound)」修正节。

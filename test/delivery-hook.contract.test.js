@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -126,6 +126,137 @@ test("⑤零命中：mismatch 诊断列出全部合法短码且零记录", () =>
     assert.match(r.out, new RegExp(dbHash.slice(0, 8)));
     assert.match(r.out, /Nothing was recorded/);
     assert.equal(loadAuthorizations(d).length, before, "零命中零记录");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ── 0.3.1 棒1（ADR-0030 修正节，N5）：钩子 queue-pending 批准解析支 ──
+// 夹具：真 CLI queue add（endpoint B + delivery 契约）→ 入队时 goal 尚不存在，
+// 批准须由队列待批准面解析（同短语/同记录形状/同目录）。
+function queueDeliveryRepo(prefix, { twoItems = false } = {}) {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+  g(["init", "-q"]);
+  g(["config", "user.email", "t@l"]);
+  g(["config", "user.name", "t"]);
+  writeFileSync(join(d, "a.txt"), "a\n");
+  writeFileSync(
+    join(d, "lzy.project.json"),
+    JSON.stringify({ schemaVersion: 1, capabilities: { check: [{ id: "smoke", argv: ["node", "-e", "process.exit(0)"], timeoutMs: 30000 }] } }),
+  );
+  writeFileSync(join(d, "c-main-b.md"), "task: main B\nendpoint: B\nscope: .\nrecipe: none\n\n- [A1] x\n");
+  writeFileSync(join(d, "cb.md"), "task: B 交付\nendpoint: B\nscope: .\nrepo: Acfufu/lazyzcode\nbase: main\nbranch: v031\npr-title: t\n\n- [A1] x\n");
+  writeFileSync(join(d, "p.md"), "- [N1] x\n- [F1] marker\n");
+  g(["add", "-A"]);
+  g(["commit", "-qm", "fixture"]);
+  const args = ["queue", "add", "b-item", "--contract", "c-main-b.md", "--plan", "p.md", "--endpoint", "B", "--delivery-b", "cb.md", "--goal-slug", "qb1"];
+  const r1 = lzyIn(d, args);
+  if (r1.status !== 0) throw new Error(`queue add 失败：${r1.out}`);
+  if (twoItems) {
+    const r2 = lzyIn(d, [...args, "--goal-slug", "qb2"]);
+    if (r2.status !== 0) throw new Error(`queue add2 失败：${r2.out}`);
+  }
+  const hash = loadContract(join(d, "cb.md"), d).hash;
+  return { d, hash, short: hash.slice(0, 8) };
+}
+
+const authTotal = (d) => loadAuthorizations(d).length;
+
+test("⑥queue-pending 批准：短码命中→同族记录（slug=条目 goalSlug/hash=交付契约）+确认文案含 item/ep；双跑字节一致", () => {
+  const { d, hash, short } = queueDeliveryRepo("lzy-dhook-6-");
+  try {
+    const before = authTotal(d);
+    const r1 = hookRun(d, `批准 ${short}`);
+    assert.match(r1.out, new RegExp(`Human approval recorded for delivery B of queue item q1 \\(short code ${short}\\)`));
+    assert.equal(authTotal(d), before + 1, "须恰写一条记录");
+    const rec = loadAuthorizations(d).at(-1);
+    assert.equal(rec.kind, "approval");
+    assert.equal(rec.slug, "qb1");
+    assert.equal(rec.contractHash, hash);
+    assert.equal(effectiveAuthorization(d, "qb1", hash).authorized, true);
+    // 双跑确定性：同态同输入 → 逐字节同输出
+    const r2 = hookRun(d, `批准 ${short}`);
+    assert.equal(r2.out, r1.out, "二次同态批准输出须逐字节一致");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑦错码：有候选不匹配→列出待批准短码且零记录（可诊断不出刀）", () => {
+  const { d, short } = queueDeliveryRepo("lzy-dhook-7-");
+  try {
+    const before = authTotal(d);
+    const r = hookRun(d, "批准 deadbeef");
+    assert.match(r.out, /No pending approval matches this code/);
+    assert.match(r.out, new RegExp(`q1/B（${short}）`));
+    assert.match(r.out, /Nothing was recorded/);
+    assert.equal(authTotal(d), before, "错码零记录");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑧漂移作废：入队后改交付契约→短码作废且零记录", () => {
+  const { d, short } = queueDeliveryRepo("lzy-dhook-8-");
+  try {
+    const before = authTotal(d);
+    writeFileSync(join(d, "cb.md"), "task: B 交付（改）\nendpoint: B\nscope: .\nrepo: Acfufu/lazyzcode\nbase: main\nbranch: v031\npr-title: t\n\n- [A1] x\n");
+    const r = hookRun(d, `批准 ${short}`);
+    assert.match(r.out, /changed since it was enqueued/);
+    assert.match(r.out, /Nothing was recorded/);
+    assert.equal(authTotal(d), before, "漂移零记录");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑨多命中拒猜：两条目共用同一交付契约→列候选且零记录（沿 8hex 碰撞家法）", () => {
+  const { d, short } = queueDeliveryRepo("lzy-dhook-9-", { twoItems: true });
+  try {
+    const before = authTotal(d);
+    const r = hookRun(d, `批准 ${short}`);
+    assert.match(r.out, /matches multiple queue items — refusing to guess/);
+    assert.match(r.out, /q1\/B/);
+    assert.match(r.out, /q2\/B/);
+    assert.equal(authTotal(d), before, "多命中零记录");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑩queue.json 损坏/缺席：fail-open 落回既有诊断支（零记录零崩溃）", () => {
+  const { d, short } = queueDeliveryRepo("lzy-dhook-10-");
+  try {
+    const before = authTotal(d);
+    writeFileSync(join(d, ".lazyzcode", "queue", "queue.json"), "{ 坏 JSON");
+    const r = hookRun(d, `批准 ${short}`);
+    assert.equal(r.status, 0, "损坏面不得炸钩子");
+    assert.match(r.out, /no goal loop is registered/);
+    assert.equal(authTotal(d), before, "损坏零记录");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("⑪优先级钉子：goal 侧 approvalPending 在场时 queue 支不得抢先（计划批准走 legacy 分支）", () => {
+  const { d, short } = queueDeliveryRepo("lzy-dhook-11-");
+  try {
+    // 造 goal 侧 pending：register + 首次采纳（未批准 → approvalPending 落盘）
+    const r1 = lzyIn(d, ["loop", "register", "dprio", "--title", "t"]);
+    if (r1.status !== 0) throw new Error(r1.out);
+    const r2 = lzyIn(d, ["loop", "plan", "p.md"]);
+    assert.notEqual(r2.status, 0, "首采应停在人权门");
+    const pending = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8")).approvalPending;
+    assert.ok(pending?.planHash, "须有 plan pending");
+    const before = authTotal(d);
+    const r = hookRun(d, `批准 ${pending.planHash.slice(0, 8)}`);
+    assert.match(r.out, /Human approval recorded for plan dprio/, "goal 侧计划批准必须走 legacy 分支");
+    assert.equal(authTotal(d), before, "queue 支不得越权写 authorizations");
+    // 反向：交付码在 goal pending 在场时也不得被 queue 支解析
+    const r2b = hookRun(d, `批准 ${short}`);
+    assert.match(r2b.out, /Approval code mismatch — the pending plan short code is/, "goal pending 在场时按 legacy 报错（含其短码）");
+    assert.equal(authTotal(d), before, "零误写");
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

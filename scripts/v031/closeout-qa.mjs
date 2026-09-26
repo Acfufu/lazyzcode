@@ -20,7 +20,7 @@
 //      非真人会话触发，属测试先例（test/contract-gate.contract.test.js:65-70），证据里如实记录。
 //   3. 夹具段的真实会话由真引擎 headless 驱动，模型消耗计入宿主计费库（这正是本案例的被测面）。
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -456,6 +456,156 @@ async function queueLedgerTier(outDir) {
   return { blocked: null, assertions, steps, runRoot };
 }
 
+// ── receipt-binding 案例（F2 终验面；R0.2）──────────────────────────────────
+// 判据（docs/plan-v031-closeout.md R0.2）：四类回执的 contractHash 严格等于登记值；
+// 旧 null 回执与错契约回执**不得**充当契约 goal 的有效覆盖（复用判定归属问）。
+// 全部走真 CLI（register --contract + 真实钩子批准 + verify run/qualify/reuse/ci）；
+// gh 用假件注入（LZY_GH_BIN 缝），如实申报「不证明远端 CI 通过」。
+async function receiptBindingCase(outDir) {
+  const { listReceipts } = await import("../../core/verify.js");
+  const { loadContract } = await import("../../core/contract.js");
+  const steps = [];
+  const fakesDir = join(fixtureRoot, "fakes");
+  mkdirSync(fakesDir, { recursive: true });
+  const fakeGh = join(fakesDir, "fake-gh.mjs");
+  writeFileSync(
+    fakeGh,
+    "#!/usr/bin/env node\n" +
+      'const a = process.argv.slice(2).join(" ");\n' +
+      'if (a.includes("check-runs")) { process.stdout.write(JSON.stringify([{ name: "ci", conclusion: "success", details_url: "u" }])); process.exit(0); }\n' +
+      'process.stderr.write("fake-gh 未匹配：" + a);\nprocess.exit(1);\n',
+  );
+  chmodSync(fakeGh, 0o755);
+  const MANIFEST = {
+    schemaVersion: 1,
+    capabilities: {
+      check: [{ id: "dir-check", argv: [process.execPath, "-e", "process.exit(0)"], timeoutMs: 30_000, env: ["TZ"], inputPaths: ["src"] }],
+    },
+  };
+  const CONTRACT = (task) => `task: ${task}\nendpoint: A\nscope: .\nrecipe: none\n\n- [A1] x\n`;
+  const PLAN = "- [N1] x\n";
+
+  // 建一个绑契约的夹具并走到 executing（契约门 = 真实钩子批准）
+  function buildContractedGoal(dir, slug, task) {
+    gitInitFixture(dir, {
+      "lzy.project.json": `${JSON.stringify(MANIFEST, null, 2)}\n`,
+      "c.md": CONTRACT(task),
+      "p.md": PLAN,
+      "src/a.txt": "alpha\n",
+    });
+    const reg = cli(["loop", "register", slug, "--title", "qa 回执绑定夹具", "--contract", "c.md"], { cwd: dir });
+    steps.push({ step: `${slug}:register`, ...reg });
+    const adopt1 = cli(["loop", "plan", "p.md"], { cwd: dir });
+    steps.push({ step: `${slug}:plan#1`, ...adopt1 });
+    const conn = readJsonMaybe(join(dir, ".lazyzcode", "loop", "goal.json"));
+    const short = (conn?.contractPending?.contractHash ?? "").slice(0, 8) || null;
+    if (!short) return { dir, hash: null, blocked: `契约 pending 未落短码：${adopt1.stdout}${adopt1.stderr}` };
+    steps.push({ step: `${slug}:hook-approve`, ...hookApprove(dir, `批准 ${short}`) });
+    const adopt2 = cli(["loop", "plan", "p.md"], { cwd: dir });
+    steps.push({ step: `${slug}:plan#2`, ...adopt2 });
+    steps.push({ step: `${slug}:start`, ...cli(["loop", "start"], { cwd: dir }) });
+    return { dir, hash: loadContract(join(dir, "c.md"), dir).hash, blocked: null };
+  }
+
+  // A：契约 goal，四类回执全采
+  const A = buildContractedGoal(join(fixtureRoot, `rb-a-${Date.now()}`), "qa-rb-a", "qa-rb-a");
+  if (A.blocked) return { blocked: A.blocked, assertions: [], steps };
+  const runA = cli(["verify", "run", "dir-check", "--accepts", "A1"], { cwd: A.dir });
+  steps.push({ step: "verify run", ...runA });
+  const qualA = cli(["verify", "qualify", "dir-check"], { cwd: A.dir });
+  steps.push({ step: "verify qualify", ...qualA });
+  const listA = listReceipts(A.dir);
+  const baseRunId = listA.find((r) => r.kind === "run")?.runId ?? null;
+  const reuseA = cli(["verify", "reuse", "dir-check", "--of", String(baseRunId)], { cwd: A.dir });
+  steps.push({ step: "verify reuse", ...reuseA });
+  const ciA = cli(["verify", "ci", "--repo", "Acfufu/lazyzcode"], { cwd: A.dir, env: { LZY_GH_BIN: fakeGh } });
+  steps.push({ step: "verify ci", ...ciA });
+
+  const recA = listReceipts(A.dir);
+  const byKind = (k) => recA.filter((r) => r.kind === k).findLast(() => true) ?? null;
+  const observedHash = (k) => byKind(k)?.contractHash ?? null;
+
+  // L：无契约 goal 先出回执（历史 null），再把契约绑到 goal 上（模拟「契约启用前的旧回执」）
+  const L = join(fixtureRoot, `rb-legacy-${Date.now()}`);
+  gitInitFixture(L, {
+    "lzy.project.json": `${JSON.stringify(MANIFEST, null, 2)}\n`,
+    "c.md": CONTRACT("qa-rb-legacy"),
+    "p.md": PLAN,
+    "src/a.txt": "alpha\n",
+  });
+  const regL = cli(["loop", "register", "qa-rb-l", "--title", "qa 旧回执夹具"], { cwd: L });
+  steps.push({ step: "legacy:register", ...regL });
+  const adoptL1 = cli(["loop", "plan", "p.md"], { cwd: L });
+  const lshort = (adoptL1.stdout + adoptL1.stderr).match(/批准 ([0-9a-f]{8})/)?.[1] ?? null;
+  steps.push({ step: "legacy:plan#1", ...adoptL1 });
+  if (lshort) steps.push({ step: "legacy:hook-approve", ...hookApprove(L, `批准 ${lshort}`) });
+  steps.push({ step: "legacy:plan#2", ...cli(["loop", "plan", "p.md"], { cwd: L }) });
+  steps.push({ step: "legacy:start", ...cli(["loop", "start"], { cwd: L }) });
+  steps.push({ step: "legacy:verify run", ...cli(["verify", "run", "dir-check"], { cwd: L }) });
+  steps.push({ step: "legacy:verify qualify", ...cli(["verify", "qualify", "dir-check"], { cwd: L }) });
+  const legacyRec = listReceipts(L).find((r) => r.kind === "run") ?? null;
+  const legacyNull = legacyRec ? String(legacyRec.contractHash) : "missing";
+  const legacyRunId = listReceipts(L).find((r) => r.kind === "run")?.runId ?? null;
+  // 绑契约到 goal（夹具状态注入，先例 scripts/v031/inject-txs.mjs）——此后旧回执与现行契约归属不符
+  const gL = JSON.parse(readFileSync(join(L, ".lazyzcode", "loop", "goal.json"), "utf8"));
+  gL.contract = { path: join(L, "c.md"), contractHash: loadContract(join(L, "c.md"), L).hash };
+  writeFileSync(join(L, ".lazyzcode", "loop", "goal.json"), `${JSON.stringify(gL, null, 2)}\n`);
+  const reuseLegacy = cli(["verify", "reuse", "dir-check", "--of", String(legacyRunId)], { cwd: L });
+  steps.push({ step: "legacy:verify reuse", ...reuseLegacy });
+
+  // B：另一契约的异源回执（复制真回执字节进 A 的 verify 家族——不改字节，只挪位置）
+  const B = buildContractedGoal(join(fixtureRoot, `rb-b-${Date.now()}`), "qa-rb-b", "qa-rb-b");
+  if (B.blocked) return { blocked: B.blocked, assertions: [], steps };
+  steps.push({ step: "B:verify run", ...cli(["verify", "run", "dir-check"], { cwd: B.dir }) });
+  const bRec = listReceipts(B.dir).find((r) => r.kind === "run");
+  if (bRec) {
+    const bDirVerify = join(B.dir, ".lazyzcode", "verify", "qa-rb-b");
+    const bFile = readdirSync(bDirVerify).find((n) => /^receipt-.*\.json$/.test(n));
+    if (bFile) {
+      mkdirSync(join(A.dir, ".lazyzcode", "verify", "qa-rb-a"), { recursive: true });
+      writeFileSync(join(A.dir, ".lazyzcode", "verify", "qa-rb-a", `receipt-999-${bFile}`), readFileSync(join(bDirVerify, bFile)));
+    }
+  }
+  const reuseForeign = cli(["verify", "reuse", "dir-check", "--of", String(bRec?.runId ?? "x")], { cwd: A.dir });
+  steps.push({ step: "foreign:verify reuse", ...reuseForeign });
+
+  writeFileSync(
+    join(outDir, "receipt-binding-facts.txt"),
+    [
+      `### A（契约 goal）goal.contractHash=${A.hash}`,
+      `四类回执 contractHash：run=${observedHash("run")} qualification=${observedHash("qualification")} reuse=${observedHash("reuse")} ci=${observedHash("ci")}`,
+      `### A receipts\n${JSON.stringify(recA.map((r) => ({ kind: r.kind, runId: r.runId, contractHash: r.contractHash })), null, 2)}`,
+      `### legacy（无契约期回执）run.contractHash=${String(legacyNull)}（期望 null）；绑契约后 reuse 输出：\n${reuseLegacy.stdout}${reuseLegacy.stderr}`,
+      `### 异源回执（B 契约）reuse 输出：\n${reuseForeign.stdout}${reuseForeign.stderr}`,
+      `### ci 面（假 gh 注入，**不证明远端 CI 通过**）：\n${ciA.stdout}${ciA.stderr}`,
+    ].join("\n\n"),
+  );
+  const assertions = [
+    ...["run", "qualification", "reuse", "ci"].map((k, i) => ({
+      id: `R${i + 1}`,
+      ok: observedHash(k) !== null && observedHash(k) === A.hash,
+      expected: `${k} 回执 contractHash 严格等于 goal.contract.contractHash`,
+      observed: `${k}:${String(observedHash(k)).slice(0, 12)} vs goal:${String(A.hash).slice(0, 12)}`,
+      evidence: "artifacts/.../receipt-binding-facts.txt",
+    })),
+    {
+      id: "R5",
+      ok: reuseLegacy.code !== 0 && /契约归属/.test(reuseLegacy.stdout + reuseLegacy.stderr),
+      expected: "旧 null 回执不构成契约 goal 的有效覆盖（复用被拒并指路重验）",
+      observed: `run.contractHash=${String(legacyNull)} reuse.exit=${reuseLegacy.code}：${(reuseLegacy.stdout + reuseLegacy.stderr).trim().split("\n").slice(0, 2).join(" ").slice(0, 160)}`,
+      evidence: "artifacts/.../receipt-binding-facts.txt",
+    },
+    {
+      id: "R6",
+      ok: reuseForeign.code !== 0 && /契约归属/.test(reuseForeign.stdout + reuseForeign.stderr),
+      expected: "异契约回执不构成有效覆盖（复用被拒）",
+      observed: `reuse.exit=${reuseForeign.code}：${(reuseForeign.stdout + reuseForeign.stderr).trim().split("\n").slice(0, 2).join(" ").slice(0, 160)}`,
+      evidence: "artifacts/.../receipt-binding-facts.txt",
+    },
+  ];
+  return { blocked: null, assertions, steps };
+}
+
 // ── case 分派 ──────────────────────────────────────────────────────────────
 const started = nowIso();
 let result;
@@ -467,8 +617,10 @@ if (CASE === "budget") {
     result.assertions = [...(result.assertions ?? []), ...(q.assertions ?? [])];
     result.steps = [...(result.steps ?? []), ...(q.steps ?? [])];
   }
-} else if (CASE === "receipt-binding" || CASE === "delivery-completion") {
-  result = { blocked: `case ${CASE} 尚未接线（N5/N8 落地后启用）——按契约报阻塞、不计通过`, cap: null };
+} else if (CASE === "receipt-binding") {
+  result = await receiptBindingCase(outDir);
+} else if (CASE === "delivery-completion") {
+  result = { blocked: `case delivery-completion 尚未接线（N8 落地后启用）——按契约报阻塞、不计通过`, cap: null };
 } else {
   die(`未知 --case：${CASE}（budget|receipt-binding|delivery-completion）`);
 }

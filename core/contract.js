@@ -14,7 +14,18 @@ import { createHash } from "node:crypto";
 export const AUTHORIZATION_VERSION = 1;
 export const AUTHORIZATION_KINDS = new Set(["approval", "withdrawal"]);
 export const CONTRACT_ENDPOINTS = new Set(["A", "B", "C"]);
-const HEADER_KEYS = new Set(["task", "endpoint", "scope", "recipe", "budget-ref", "non-goals"]);
+// 结构键白名单（0.3.1 棒1 扩展）：基础键 + 交付动作面键（B 面 repo/base/branch/pr-title/pr-body；
+// C 面 repo/expect-marker/content-url + 可重复 page）。扩展键解析层全可选、端点无关——
+// 「队列承载时按端点强制必填」在 core/queue.js add 门（ADR-0030 §一.A）。
+const HEADER_KEYS = new Set([
+  "task", "endpoint", "scope", "recipe", "budget-ref", "non-goals",
+  "repo", "base", "branch", "pr-title", "pr-body",
+  "expect-marker", "content-url", "page",
+]);
+const REPEATABLE_HEADER_KEYS = new Set(["scope", "page"]);
+const HEADER_KEYS_HINT =
+  "task/endpoint/scope/recipe/budget-ref/non-goals + 交付面 repo/base/branch/pr-title/pr-body/expect-marker/content-url/page";
+const REPO_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const HEADER_RE = /^([A-Za-z][A-Za-z-]*):\s*(.*)$/;
 const A_ITEM_RE = /^-\s*\[A(\d+)\]\s*(.+)$/;
 const HASH8_RE = /^[0-9a-f]{8}$/;
@@ -42,7 +53,11 @@ export function readContractFile(absPath) {
 // 须存在；recipe = 8hex 或 none；验收项 A+数字、稳定 id、重复拒、至少 1 条。
 export function parseContract(text, hostRoot) {
   const lines = text.split(/\r?\n/);
-  const header = { task: null, endpoint: null, recipe: null, budgetRef: null, nonGoals: null, scope: [] };
+  const header = {
+    task: null, endpoint: null, recipe: null, budgetRef: null, nonGoals: null, scope: [],
+    repo: null, base: null, branch: null, prTitle: null, prBody: null,
+    expectMarker: null, contentUrl: null, pages: [],
+  };
   const seen = new Set();
   let i = 0;
   for (; i < lines.length; i++) {
@@ -52,9 +67,9 @@ export function parseContract(text, hostRoot) {
     if (!m) break;
     const key = m[1].toLowerCase();
     if (!HEADER_KEYS.has(key)) {
-      throw new ContractError(`契约结构键不认识：${m[1]}（合法键：task/endpoint/scope/recipe/budget-ref/non-goals；结构键只认文件顶部前导块）`);
+      throw new ContractError(`契约结构键不认识：${m[1]}（合法键：${HEADER_KEYS_HINT}；结构键只认文件顶部前导块）`);
     }
-    if (key !== "scope" && seen.has(key)) {
+    if (!REPEATABLE_HEADER_KEYS.has(key) && seen.has(key)) {
       throw new ContractError(`契约结构键重复：${key}（单值键只允许出现一次）`);
     }
     seen.add(key);
@@ -65,6 +80,14 @@ export function parseContract(text, hostRoot) {
     else if (key === "recipe") header.recipe = value.toLowerCase();
     else if (key === "budget-ref") header.budgetRef = value;
     else if (key === "non-goals") header.nonGoals = value;
+    else if (key === "repo") header.repo = value;
+    else if (key === "base") header.base = value;
+    else if (key === "branch") header.branch = value;
+    else if (key === "pr-title") header.prTitle = value;
+    else if (key === "pr-body") header.prBody = value;
+    else if (key === "expect-marker") header.expectMarker = value;
+    else if (key === "content-url") header.contentUrl = value;
+    else if (key === "page") header.pages.push(value);
   }
   for (const k of ["task", "endpoint"]) {
     if (!header[k]) throw new ContractError(`契约缺必填结构键：${k}`);
@@ -85,6 +108,21 @@ export function parseContract(text, hostRoot) {
   if (header.recipe != null && header.recipe !== "none" && !HASH8_RE.test(header.recipe)) {
     throw new ContractError(`契约 recipe 非法：${header.recipe}（合法：none 或 lzy.project.json 内容 sha256 前 8 位）`);
   }
+  // 交付动作面键的解析级类型/形状校验（0.3.1 棒1）：值非空 + repo=owner/name + page 以 / 起
+  // （站点根绝对路径语义，URL 拼接无歧义）+ content-url 须 http(s)。端点级必填矩阵不在此层。
+  if (header.repo != null && !REPO_RE.test(header.repo)) {
+    throw new ContractError(`契约 repo 非法：${header.repo}（须 owner/name 形态）`);
+  }
+  for (const [k, v] of [["base", header.base], ["branch", header.branch], ["pr-title", header.prTitle], ["pr-body", header.prBody], ["expect-marker", header.expectMarker]]) {
+    if (v != null && v === "") throw new ContractError(`契约 ${k} 为空（须非空字符串）`);
+  }
+  if (header.contentUrl != null && !/^https?:\/\//.test(header.contentUrl)) {
+    throw new ContractError(`契约 content-url 非法：${header.contentUrl}（须 http(s):// 起）`);
+  }
+  for (const p of header.pages) {
+    if (!p.startsWith("/")) throw new ContractError(`契约 page 非法：${p}（须以 / 起——站点根绝对路径）`);
+  }
+  const pages = [...header.pages];
   const acceptances = [];
   const ids = new Set();
   for (; i < lines.length; i++) {
@@ -107,6 +145,15 @@ export function parseContract(text, hostRoot) {
     budgetRef: header.budgetRef,
     nonGoals: header.nonGoals,
     acceptances,
+    // 交付动作面（0.3.1 棒1；缺省 null/[]=旧契约逐字语义）
+    repo: header.repo,
+    base: header.base,
+    branch: header.branch,
+    prTitle: header.prTitle,
+    prBody: header.prBody,
+    expectMarker: header.expectMarker,
+    contentUrl: header.contentUrl,
+    pages,
   };
 }
 

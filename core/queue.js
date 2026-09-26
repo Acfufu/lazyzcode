@@ -226,11 +226,41 @@ function newId(prefix, now = new Date()) {
 function isAuthorized(cwd, it) {
   // effectiveAuthorization：approval 后无 withdrawal（末事件胜）→{authorized: bool}。
   // 账本缺席=false——未授权提案永不 ready、永不自动执行（契约 A1）。
+  // 0.3.1 棒1 折叠（ADR-0030 §一.D）：声明的每个交付端点亦须各自有效授权——「已授权待办」
+  // 口径=全部授权面齐备（主契约 ∧ delivery 面），未批准交付契约的条目不可 ready。
   try {
-    return effectiveAuthorization(cwd, it.goalSlug, it.contractHash).authorized === true;
+    if (effectiveAuthorization(cwd, it.goalSlug, it.contractHash).authorized !== true) return false;
+    for (const ep of deliveryEpsOf(it)) {
+      if (effectiveAuthorization(cwd, it.goalSlug, it.delivery[ep].hash).authorized !== true) return false;
+    }
+    return true;
   } catch {
     return false;
   }
+}
+
+// 条目声明的交付端点集合（B|C；形状门已保证 A 无 delivery）。
+function deliveryEpsOf(it) {
+  return it.delivery ? Object.keys(it.delivery).filter((ep) => ep === "B" || ep === "C") : [];
+}
+
+// 授权缺席原因列（读面文案；交付面含短码指路——「批准 <短8>」）。
+function authorizationReasons(cwd, it) {
+  const reasons = [];
+  try {
+    if (effectiveAuthorization(cwd, it.goalSlug, it.contractHash).authorized !== true) {
+      reasons.push("契约授权无效（approval 缺席或已撤回）");
+    }
+    for (const ep of deliveryEpsOf(it)) {
+      if (effectiveAuthorization(cwd, it.goalSlug, it.delivery[ep].hash).authorized !== true) {
+        const short = it.delivery[ep].hash.slice(0, 8);
+        reasons.push(`交付授权缺席：${ep}（${short}）——批准 ${short}`);
+      }
+    }
+  } catch {
+    reasons.push("授权账本不可读（fail-closed）");
+  }
+  return reasons;
 }
 
 function leaseAvailable(cwd) {
@@ -296,7 +326,7 @@ export function budgetView(cwd) {
 // 依赖完成、项目就绪、预算可用、工作区可取得租约、计划在位（主方案 §5.1 五条件+计划输入）。
 export function describeReadiness(cwd, it, view = null) {
   const reasons = [];
-  if (!isAuthorized(cwd, it)) reasons.push("契约授权无效（approval 缺席或已撤回）");
+  reasons.push(...authorizationReasons(cwd, it));
   if (!it.planPath) reasons.push("计划缺位（add 时未带 --plan）");
   const q = loadQueue(cwd);
   const byId = new Map((q?.items ?? []).map((x) => [x.id, x]));
@@ -332,7 +362,9 @@ function refreshStates(cwd, q) {
     if (!auth) {
       if (it.state === "authorized" || it.state === "ready") {
         it.state = "blocked";
-        it.blockedReason = "authorization（批准撤回——重新批准后自动回 authorized）";
+        // 文案泛化（0.3.1 棒1）：覆盖「缺席/撤回/交付面未批准」三态，前缀 authorization 保持
+        //（refreshStates 的自动恢复谓词按前缀判，:311 家法不改）。
+        it.blockedReason = `authorization（${authorizationReasons(cwd, it).join("；")}——批准后自动回 authorized）`;
         it.updatedAt = new Date().toISOString();
       }
       continue;

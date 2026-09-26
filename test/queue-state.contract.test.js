@@ -320,3 +320,39 @@ test("⑫形状矩阵写侧同判（手改防御两层）：文件级=校验和�
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+// ── 0.3.1 棒1（ADR-0030 §一.D）：交付授权折叠进就绪门（未批准交付=不可 ready） ──
+test("⑬交付授权折叠：主契约批准+交付未批准→不 ready（reasons 含短码指路）；交付批准→ready；撤回→blocked→再批准恢复", () => {
+  const d = qrepo("lzy-qstate-13-");
+  try {
+    writeFileSync(join(d, "c-main-b.md"), "task: main B\nendpoint: B\nscope: .\nrecipe: none\n\n- [A1] x\n");
+    writeFileSync(join(d, "cb.md"), "task: B 交付\nendpoint: B\nscope: .\nrepo: Acfufu/lazyzcode\nbase: main\nbranch: v031\npr-title: t\n\n- [A1] x\n");
+    const it = addQueueItem(d, { title: "b-item", contractFile: join(d, "c-main-b.md"), planFile: join(d, "p.md"), goalSlug: "q-b13", endpoint: "B", delivery: { B: join(d, "cb.md") } });
+    const dShort = it.delivery.B.hash.slice(0, 8);
+    // 主契约已批、交付未批：不 ready 且原因含短码指路
+    recordAuthorization(d, { kind: "approval", slug: "q-b13", contractHash: it.contractHash, sessionId: "t", at: new Date().toISOString() });
+    const r1 = describeReadiness(d, it);
+    assert.equal(r1.ready, false);
+    assert.ok(r1.reasons.some((x) => x.includes(`交付授权缺席：B（${dShort}）——批准 ${dShort}`)), r1.reasons.join("|"));
+    refreshQueue(d);
+    assert.notEqual(itemState(d, it.id), "ready");
+    // 交付批准 → authorized → ready
+    recordAuthorization(d, { kind: "approval", slug: "q-b13", contractHash: it.delivery.B.hash, sessionId: "t", at: new Date().toISOString() });
+    refreshQueue(d);
+    assert.equal(itemState(d, it.id), "ready");
+    // 撤回交付授权 → blocked（前缀 authorization + 文案含短码）
+    recordAuthorization(d, { kind: "withdrawal", slug: "q-b13", contractHash: it.delivery.B.hash, sessionId: "t", at: new Date().toISOString() });
+    refreshQueue(d);
+    const blocked = loadQueue(d).items.find((x) => x.id === it.id);
+    assert.equal(blocked.state, "blocked");
+    assert.match(blocked.blockedReason, /^authorization（/);
+    assert.ok(blocked.blockedReason.includes(dShort), blocked.blockedReason);
+    assert.ok(formatQueueList(d).includes(dShort), "list 文案须含交付短码");
+    // 再批准 → 恢复 authorized→ready（同一自动恢复路径）
+    recordAuthorization(d, { kind: "approval", slug: "q-b13", contractHash: it.delivery.B.hash, sessionId: "t", at: new Date().toISOString() });
+    refreshQueue(d);
+    assert.equal(itemState(d, it.id), "ready");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

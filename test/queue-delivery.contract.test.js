@@ -323,3 +323,36 @@ test("⑨HEAVY 计划改后拒绝：planHash 不符 → failed+「评审作废�
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+test("⑩HEAVY 入队透传：dispatch 注册后 goal.json tier=heavy/risk=med 读面（register+adopt 即采，无需 finish）", async () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-qbridge-10-"));
+  try {
+    const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+    g(["init", "-q"]);
+    g(["config", "user.email", "t@l"]);
+    g(["config", "user.name", "t"]);
+    g(["config", "commit.gpgsign", "false"]);
+    writeFileSync(join(d, "a.txt"), "a\n");
+    writeFileSync(join(d, "lzy.project.json"), JSON.stringify({ schemaVersion: 1, capabilities: { check: [{ id: "smoke", argv: ["node", "-e", "process.exit(0)"], timeoutMs: 30000 }] } }));
+    writeFileSync(join(d, "c-main.md"), "task: main A\nendpoint: A\nscope: .\nrecipe: none\n\n- [A1] x\n");
+    writeFileSync(join(d, "p.md"), "- [N1] x\n- [F1] marker\n");
+    g(["add", "-A"]);
+    g(["commit", "-qm", "fixture"]);
+    const planHash = createHash("sha256").update(readFileSync(join(d, "p.md"))).digest("hex");
+    const it = addQueueItem(d, { title: "h", contractFile: join(d, "c-main.md"), planFile: join(d, "p.md"), goalSlug: "qh10", tier: "heavy", risk: "med", planReview: "plan-reviewer: PASS — 零警告", planHash });
+    recordAuthorization(d, { kind: "approval", slug: "qh10", contractHash: it.contractHash, sessionId: "t", at: new Date().toISOString() });
+    refreshQueue(d);
+    // 假 drive 不完成步骤（HEAVY finish 需 comparator——本轮只验 register+adopt 读面）
+    const noopDrive = { ...fakeDrive, drive: async (cwd, opts) => { opts.segmentRecords.push({ sessionId: "s0", durationMs: 1, exitCode: 0 }); return { ok: true, cause: "noop" }; } };
+    const r = await runQueueDispatch(d, {}, { ...noopDrive, ...fakeExt() });
+    assert.equal(r.results[0].outcome, "ready", JSON.stringify(r));
+    const gj = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+    assert.equal(gj.slug, "qh10");
+    assert.equal(gj.tier, "heavy", "HEAVY 须透传到 goal");
+    assert.equal(gj.risk, "med", "risk 须透传到 goal");
+    const st = spawnSync(process.execPath, [CLI, "loop", "status"], { cwd: d, encoding: "utf8", env: { ...process.env, HOME, USERPROFILE: HOME, LZY_ZCODE_ENGINE: "/nonexistent-lzy-suppressed" } });
+    assert.match(`${st.stdout}`, /tier heavy|heavy/, "status 读面须可见 heavy");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

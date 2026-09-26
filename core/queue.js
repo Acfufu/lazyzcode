@@ -1126,11 +1126,17 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
           console.log(`[queue] 槽位已腾（前目标 ${slot.slug} 已归档确认）`);
         }
         const contractAbs = resolve(cwd, item.contractPath);
-        registerGoal(cwd, item.goalSlug, item.title, { tier: "light", risk: "low", contract: contractAbs });
+        const itemTier = item.tier ?? "light";
+        const itemRisk = item.risk ?? "low";
+        registerGoal(cwd, item.goalSlug, item.title, { tier: itemTier, risk: itemRisk, contract: contractAbs });
         const planAbs = resolve(cwd, item.planPath);
-        adoptPlan(cwd, planAbs, { review: `queue-dispatch: 契约内采纳（批准绑 contractHash=${item.contractHash.slice(0, 8)}）` });
+        // HEAVY 透传入队前评审 PASS（ADR-0030 §一.G；采纳门机器校 PASS 形态）；light 走现行合成串（逐字不变）
+        const review = itemTier === "heavy"
+          ? item.planReview
+          : `queue-dispatch: 契约内采纳（批准绑 contractHash=${item.contractHash.slice(0, 8)}）`;
+        adoptPlan(cwd, planAbs, { review });
         startLoop(cwd, createGit(cwd));
-        console.log(`[queue] goal ${item.goalSlug} 已注册采纳并开跑（LIGHT）`);
+        console.log(`[queue] goal ${item.goalSlug} 已注册采纳并开跑（${itemTier.toUpperCase()}）`);
       } else {
         console.log(`[queue] goal ${item.goalSlug} 仍 executing——同 goal 续跑（不重复注册）`);
       }

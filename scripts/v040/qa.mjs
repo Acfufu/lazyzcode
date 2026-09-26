@@ -27,7 +27,8 @@ import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 import { findEngine } from "../../core/paths.js";
 import { detectHeadlessAuth, spawnHeadless } from "../../core/headless.js";
-import { querySessionPoints } from "../../core/cost.js";
+import { querySessionPoints, computePoints } from "../../core/cost.js";
+import { queryHostDb } from "../../core/hostdb.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..", "..");
@@ -63,10 +64,11 @@ function die(msg, code = 2) {
 }
 
 if (f.help === true || CASE === "help") {
-  console.log(`用法: node scripts/v040/qa.mjs --case <id> --fixture <隔离根> --out <证据根> [--session-timeout-ms N]
+  console.log(`用法: node scripts/v040/qa.mjs --case <id> --fixture <隔离根> --out <证据根> [--session-timeout-ms N] [--prev-result <result.json>]
 
 案例:
-  capability   M0 能力探针（隔离/负对照/计量/击杀续跑，真实引擎会话 5 次）
+  capability         M0 能力探针（隔离/负对照/计量/击杀续跑，真实引擎会话 5 次）
+  capability-meter   计量零会话复跑（--prev-result 指向先前 capability result.json，复读账本不 spawn）
 退出契约: 0=全部断言过 1=有断言败 2=用法错 3=blocked（缺能力/轨迹不可核验，不算 SKIP 通过）`);
   process.exit(0);
 }
@@ -110,6 +112,35 @@ const REAL_HOME = process.env.HOME ?? process.env.USERPROFILE ?? "";
 const rolloutDirOf = (home) => join(home, ".zcode", "cli", "rollout");
 const transcriptPathOf = (home, sessionId) => join(rolloutDirOf(home), `model-io-${sessionId}.jsonl`);
 const countToken = (tok, s) => (s ? s.split(tok).length - 1 : 0);
+
+// 逐 sessionId 计量——双边读数（M0 发现：隔离 HOME 的计费行落 <home>/.zcode/cli/db/db.sqlite，
+// 宿主库结构性零行）。宿主读数=querySessionPoints（钉死宿主 billingDbPath）；子账本读数=
+// 同形 SQL（sessionId 白名单净化后内插，同 core/cost.js 家法）经 queryHostDb 指路子账本。
+function sessionSql(sessionId) {
+  if (typeof sessionId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) return null;
+  return (
+    "SELECT m.session_id AS sid, m.model_id AS model, m.started_at/3600000 AS h, " +
+    "SUM(m.input_tokens) AS it, SUM(m.cache_read_input_tokens) AS crt, SUM(m.output_tokens) AS ot " +
+    "FROM model_usage m WHERE m.session_id = '" + sessionId + "' AND m.status = 'completed' " +
+    "GROUP BY sid, model, h"
+  );
+}
+
+function childLedgerRead(home, sessionId) {
+  const sql = sessionSql(sessionId);
+  if (!sql) return { absent: true, unpriced: [], points: 0, db: null };
+  const db = join(home, ".zcode", "cli", "db", "db.sqlite");
+  if (!existsSync(db)) return { absent: true, unpriced: [], points: 0, db };
+  let rows = null;
+  try {
+    rows = queryHostDb(db, sql);
+  } catch {
+    rows = null;
+  }
+  if (rows == null || rows.length === 0) return { absent: true, unpriced: [], points: 0, db };
+  const agg = computePoints(rows);
+  return { absent: false, unpriced: [...agg.unpricedModels], points: agg.points, db };
+}
 
 function hostIdentity() {
   const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" });
@@ -293,23 +324,26 @@ async function capabilityCase() {
     detectorHits: negDetect.hits,
   });
 
-  // ── 腿 4：计量（对两个隔离会话逐 sessionId 读数＋重复读数恒等）───────────
+  // ── 腿 4：计量（对两个隔离会话逐 sessionId 双边读数＋重复读数恒等）────────
   const metering = [];
   for (const s of isoLegs) {
     if (!s.sessionId) {
       metering.push({ leg: s.leg, sessionId: null, category: "no-session-id", points: null, readback2: null });
       continue;
     }
-    const p1 = await querySessionPoints(s.sessionId);
-    const p2 = await querySessionPoints(s.sessionId);
-    s.pointsReadbacks = [p1, p2];
+    const host1 = await querySessionPoints(s.sessionId);
+    const c1 = childLedgerRead(s.home, s.sessionId);
+    const c2 = childLedgerRead(s.home, s.sessionId);
+    s.pointsReadbacks = [host1, c1, c2];
     metering.push({
       leg: s.leg,
       sessionId: s.sessionId,
-      category: p1.absent ? "metering-absent" : p1.unpriced.length > 0 ? `unpriced:${p1.unpriced.join(",")}` : "priced",
-      points: p1.points,
-      readback2: p2.points,
-      identical: p1.points === p2.points && JSON.stringify(p1.unpriced) === JSON.stringify(p2.unpriced),
+      hostReadback: { absent: host1.absent, points: host1.points, unpriced: host1.unpriced },
+      childReadback: { absent: c1.absent, points: c1.points, unpriced: c1.unpriced, db: c1.db },
+      category: c1.absent ? "metering-absent" : c1.unpriced.length > 0 ? `unpriced:${c1.unpriced.join(",")}` : "priced",
+      points: c1.points,
+      readback2: c2.points,
+      identical: c1.points === c2.points && JSON.stringify(c1.unpriced) === JSON.stringify(c2.unpriced),
     });
   }
 
@@ -360,7 +394,7 @@ async function capabilityCase() {
   killSignal = kExit.signal;
   await sleep(1500); // 引擎收尾落盘余量
   const killedSessionId = kTranscript ? basename(kTranscript).replace(/^model-io-/, "").replace(/\.jsonl$/, "") : null;
-  const killedReadback1 = killedSessionId ? await querySessionPoints(killedSessionId) : null;
+  const killedReadback1 = killedSessionId ? childLedgerRead(kLeg.home, killedSessionId) : null;
   kLog.push(
     `startObservedAt=${startObservedAt ?? "never"} killSignal=${killSignal} killCode=${killCode} killedSessionId=${killedSessionId ?? "none"}`,
   );
@@ -377,7 +411,7 @@ async function capabilityCase() {
       home: kLeg.home,
       timeoutMs: SESSION_TIMEOUT_MS,
     });
-    const killedReadback2 = await querySessionPoints(killedSessionId);
+    const killedReadback2 = childLedgerRead(kLeg.home, killedSessionId);
     resume = {
       ok: rr.ok ?? false,
       exitCode: rr.exitCode ?? null,
@@ -432,13 +466,16 @@ async function capabilityCase() {
     "负对照：canary 显式写入 prompt ⇒ 检测器必须命中（毒化输入不可逃逸检测）",
     JSON.stringify(sessions[2].detectorHits), "artifacts/.../negative-control.stdout.txt");
 
-  // 计量
+  // 计量：正判面=子账本读数（隔离会话的账本落点）；宿主盲区=如实发现项（M2 设计输入）
   const meteringOk = metering.every((m) => m.category === "priced" && m.points > 0);
   push("MET-1", meteringOk,
-    "计量归因：两个完成会话逐 sessionId 积分非零（absent/unpriced ⇒ 计量能力不成立转阻塞）",
-    metering.map((m) => `${m.leg}:${m.category}:${m.points}`).join(" "), "querySessionPoints 读数（result.json metering 节）");
+    "计量归因：两个完成会话逐 sessionId 在其账本落点（隔离 HOME 子账本）积分非零",
+    metering.map((m) => `${m.leg}:${m.category}:${m.points}`).join(" "), "childLedgerRead（result.json metering 节）");
   push("MET-2", metering.every((m) => m.identical !== false),
-    "不双计：同 sessionId 二次读数恒等", metering.map((m) => `${m.leg}:${m.identical}`).join(" "), "querySessionPoints 二次读数");
+    "不双计：同 sessionId 二次读数恒等", metering.map((m) => `${m.leg}:${m.identical}`).join(" "), "childLedgerRead 二次读数");
+  push("FIND-1", metering.length > 0 && metering.every((m) => m.hostReadback?.absent === true),
+    "发现项（非失败）：宿主账本对隔离 HOME 会话结构性零行——querySessionPoints 钉死宿主 billingDbPath，隔离与宿主侧归因互斥；M2 执行器须按子账本路径计量或产品面参数化",
+    metering.map((m) => `${m.leg}:hostAbsent=${m.hostReadback?.absent}`).join(" "), "双边读数对照（result.json metering 节）");
 
   // 击杀/重启
   push("KILL-1", startObservedAt != null,
@@ -453,11 +490,11 @@ async function capabilityCase() {
     "重启不产权状：夹具与证据根前后差集中零 PASS/attestation 形态新文件",
     newPassLike.length === 0 ? "diff 干净" : newPassLike.slice(0, 3).join("; "), "前后清单快照（result.json snapshots 节）");
 
-  // 计量缺席/未计价 ⇒ M0 出口「计量不成立则阻塞」；轨迹不可核验同法
+  // 计量缺席/未计价（以子账本落点判）⇒ M0 出口「计量不成立则阻塞」；轨迹不可核验同法
   let blocked = null;
   const trajUnverifiable = isoLegs.some((s) => !s.transcriptInIsolatedHome || !s.transcriptHasToolReads);
   const meteringDead = isoLegs.length === 2 && metering.some((m) => m.category !== "priced");
-  if (meteringDead) blocked = "计量腿：完成会话的账本读数 absent/unpriced——逐 sessionId 归因能力不成立（M0 出口报阻塞）";
+  if (meteringDead) blocked = "计量腿：完成会话在其账本落点（隔离 HOME 子账本）读数 absent/unpriced——逐 sessionId 归因能力不成立（M0 出口报阻塞）";
   else if (trajUnverifiable) blocked = "隔离腿：转录缺席或不含工具读取记录——读取轨迹不可核验，隔离能力未证（M0 出口报阻塞）";
 
   return {
@@ -477,13 +514,79 @@ async function capabilityCase() {
   };
 }
 
+// ── case: capability-meter（零会话复跑：按先前 result.json 复读账本，不 spawn 引擎）──
+// 用途：M0 计量腿发现「隔离 HOME 自账本」后的正判复读；prev-result 里带 home+sessionId。
+async function capabilityMeterCase() {
+  const prevPath = typeof f["prev-result"] === "string" ? resolve(f["prev-result"]) : null;
+  if (!prevPath || !existsSync(prevPath)) die("capability-meter 需 --prev-result <先前 capability result.json>");
+  const prev = readJsonMaybe(prevPath);
+  if (!prev) die(`prev-result 不可读：${prevPath}`);
+  const targets = [];
+  for (const s of prev.sessions ?? []) {
+    if (String(s.leg ?? "").startsWith("isolation") && s.sessionId && s.home) {
+      targets.push({ leg: s.leg, home: s.home, sessionId: s.sessionId, resumed: null });
+    }
+  }
+  const killed = prev.kill?.killedSessionId;
+  if (killed) {
+    targets.push({ leg: "kill-resume", home: join(fixtureRoot, "home-k"), sessionId: killed, resumed: prev.kill?.resume?.ok === true });
+  }
+  if (targets.length === 0) die("prev-result 中无可复读会话（缺 isolation 会话的 home+sessionId）");
+  const metering = [];
+  for (const t of targets) {
+    const host1 = await querySessionPoints(t.sessionId);
+    const c1 = childLedgerRead(t.home, t.sessionId);
+    const c2 = childLedgerRead(t.home, t.sessionId);
+    metering.push({
+      leg: t.leg,
+      sessionId: t.sessionId,
+      resumed: t.resumed,
+      hostReadback: { absent: host1.absent, points: host1.points, unpriced: host1.unpriced },
+      childReadback: { absent: c1.absent, points: c1.points, unpriced: c1.unpriced, db: c1.db },
+      category: c1.absent ? "metering-absent" : c1.unpriced.length > 0 ? `unpriced:${c1.unpriced.join(",")}` : "priced",
+      points: c1.points,
+      readback2: c2.points,
+      identical: c1.points === c2.points && JSON.stringify(c1.unpriced) === JSON.stringify(c2.unpriced),
+    });
+  }
+  const isoMetering = metering.filter((m) => m.leg !== "kill-resume");
+  const resumedRows = metering.filter((m) => m.leg === "kill-resume");
+  const assertions = [];
+  const push = (id, ok, expected, observed, evidence) => assertions.push({ id, ok: Boolean(ok), expected, observed, evidence });
+  push("MET-M1", isoMetering.length >= 2 && isoMetering.every((m) => m.category === "priced" && m.points > 0),
+    "计量归因：隔离腿完成会话在其账本落点（子账本）逐 sessionId 积分非零",
+    isoMetering.map((m) => `${m.leg}:${m.category}:${m.points}`).join(" "), "childLedgerRead（result.json metering 节）");
+  push("MET-M2", isoMetering.every((m) => m.identical !== false),
+    "不双计：同 sessionId 二次读数恒等", isoMetering.map((m) => `${m.leg}:${m.identical}`).join(" "), "childLedgerRead 二次读数");
+  push("MET-M3", resumedRows.length === 1 && resumedRows[0].resumed === true && resumedRows[0].points > 0,
+    "续跑计量：被杀会话 --resume 续跑的消耗并入同 sessionId（子账本非零）",
+    resumedRows.map((m) => `${m.leg}:resumed=${m.resumed}:${m.category}:${m.points}`).join(" ") || "kill-resume 行缺席",
+    "childLedgerRead（home-k 子账本）");
+  push("FIND-M1", metering.every((m) => m.hostReadback?.absent === true),
+    "发现项（非失败）：宿主账本对隔离 HOME 会话结构性零行——M2 执行器须按子账本路径计量或产品面参数化 querySessionPoints",
+    metering.map((m) => `${m.leg}:hostAbsent=${m.hostReadback?.absent}`).join(" "), "双边读数对照");
+  const blocked = isoMetering.some((m) => m.category !== "priced")
+    ? "计量腿：完成会话子账本读数 absent/unpriced——归因能力不成立（M0 出口报阻塞）"
+    : null;
+  return {
+    blocked,
+    cap: capabilityCheck(),
+    assertions,
+    sessions: [],
+    metering,
+    probeBudget: { preregisteredSessions: PREREGISTERED_SESSIONS, usedSessions: 0, note: "capability-meter 零会话复跑（复读先前 capability 案例的会话账本）" },
+  };
+}
+
 // ── 执行 ───────────────────────────────────────────────────────────────────
 const started = nowIso();
 let result;
 if (CASE === "capability") {
   result = await capabilityCase();
+} else if (CASE === "capability-meter") {
+  result = await capabilityMeterCase();
 } else {
-  die(`未知 --case：${CASE}（capability）`);
+  die(`未知 --case：${CASE}（capability|capability-meter）`);
 }
 
 const assertions = result.assertions ?? [];
@@ -506,10 +609,11 @@ const resultJson = {
   assertions,
   snapshots: result.snapshots ?? null,
 };
+writeFileSync(join(outDir, `result-${CASE}.json`), `${JSON.stringify(resultJson, null, 2)}\n`);
 writeFileSync(join(outDir, "result.json"), `${JSON.stringify(resultJson, null, 2)}\n`);
 
 console.log(`[v040-qa] case=${CASE} passed=${passed}${result.blocked ? ` BLOCKED: ${result.blocked}` : ""}`);
 for (const a of assertions) console.log(`  ${a.ok ? "✔" : "✖"} ${a.id} ${a.expected}｜observed: ${a.observed}`);
-console.log(`  result.json → ${join(outDir, "result.json")}`);
+console.log(`  result-${CASE}.json → ${join(outDir, `result-${CASE}.json`)}`);
 if (result.blocked != null) process.exit(3);
 process.exit(passed ? 0 : 1);

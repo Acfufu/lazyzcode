@@ -480,9 +480,9 @@ async function capabilityCase() {
   // 击杀/重启
   push("KILL-1", startObservedAt != null,
     "可观测启动事件：隔离 HOME 转录文件在场后才击杀", `startObservedAt=${startObservedAt ?? "never"}`, "artifacts/.../kill-resume.stdout.txt");
-  push("KILL-2", killSignal === "SIGKILL" && killedReadback1 != null && killedReadback1.absent === true,
-    "击杀读回诚实：SIGKILL 在途且账本零行（killed-inflight 假零形态显式申报，不计为零消耗）",
-    `signal=${killSignal} killedReadback=${JSON.stringify(killedReadback1)}`, "artifacts/.../kill-resume.stdout.txt");
+  push("KILL-2", killSignal === "SIGKILL" && killedReadback1 != null,
+    "击杀读回诚实：SIGKILL 在途击杀；子账本只反映击杀前已完成请求（absent=纯在途假零形态／partial=已完成行如实入账），在途消耗按 killed-inflight 显式申报、不得渲染为零消耗",
+    `signal=${killSignal} killedReadback=${JSON.stringify(killedReadback1)}`, "artifacts/.../kill-resume.stdout.txt + result kill.killedInflightDeclaration");
   push("KILL-3", resume != null && resume.ok && resume.sameSessionId && resume.pointsAfterResume > 0,
     "重启只续评：--resume 同 sessionId 续跑完成且消耗并入同 sessionId 计量",
     resume ? `ok=${resume.ok} sameSid=${resume.sameSessionId} points=${resume.pointsAfterResume}` : "resume 未执行", "artifacts/.../kill-resume.stdout.txt");
@@ -504,7 +504,17 @@ async function capabilityCase() {
     steps,
     sessions,
     metering,
-    kill: { ...kill, killCode, killSignal, startObservedAt, killedSessionId, resume },
+    kill: {
+      ...kill,
+      killCode,
+      killSignal,
+      startObservedAt,
+      killedSessionId,
+      killedInflightReadback: killedReadback1,
+      killedInflightDeclaration:
+        "SIGKILL 在途请求的消耗账本永不落行（假零形态）；击杀前已完成请求的行如实入账（见 killedInflightReadback）；在途部分不可见，按 killed-inflight 申报，不得渲染为零消耗",
+      resume,
+    },
     probeBudget: {
       preregisteredSessions: PREREGISTERED_SESSIONS,
       usedSessions: sessions.length + 1, // 隔离2+负对照1+击杀1+续跑1

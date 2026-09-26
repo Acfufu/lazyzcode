@@ -79,6 +79,9 @@ export function computePolicyIdentity(cwd, goal) {
     identity.manifestPresent = true;
     identity.manifestHash = manifest.hash;
     identity.checkIds = manifest.manifest.capabilities.check.map((r) => r.id).sort();
+    // ci 必需集合（0.4.0 M1 N3 接线：project.js validateManifest 承认并验形后在此供源）
+    const ci = manifest.manifest.capabilities.ci;
+    if (ci?.requiredChecks) identity.ciRequiredChecks = [...ci.requiredChecks].sort();
   }
   return identity;
 }

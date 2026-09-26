@@ -118,10 +118,31 @@ export function validateManifest(obj, cwd) {
   if (!obj.capabilities || typeof obj.capabilities !== "object" || Array.isArray(obj.capabilities)) {
     reject("capabilities 缺席或非对象");
   }
+  // ci 声明（0.4.0 M1，V10 面）：不是配方类，是必需 CI 检查集合声明——独立于六类配方，
+  // 缺席=无 ci 义务（本地候选口径，如实不报可合并）；声明则 fail-closed 验形。
+  // requiredChecks 须为非空唯一字符串数组：空声明比不声明更危险（制造「已声明但无事可验」
+  // 的放行假象），直接拒。
+  let ciDeclaration = null;
   for (const key of Object.keys(obj.capabilities)) {
+    if (key === "ci") continue; // 形状校验在下方 validateCiDeclaration
     if (!CAPABILITY_CLASSES.includes(key)) {
-      reject(`能力类不认识：「${key}」（合法：${CAPABILITY_CLASSES.join("/")}）`);
+      reject(`能力类不认识：「${key}」（合法：${CAPABILITY_CLASSES.join("/")}，另有可选声明 ci）`);
     }
+  }
+  if (obj.capabilities.ci !== undefined) {
+    const ci = obj.capabilities.ci;
+    if (!ci || typeof ci !== "object" || Array.isArray(ci)) reject("capabilities.ci 须为对象");
+    const unknown = Object.keys(ci).filter((k) => k !== "requiredChecks");
+    if (unknown.length > 0) reject(`capabilities.ci 有不认识的字段：「${unknown.join("、")}」（只收 requiredChecks）`);
+    const rc = ci.requiredChecks;
+    if (!Array.isArray(rc) || rc.length === 0) reject("capabilities.ci.requiredChecks 须为非空字符串数组——空声明制造放行假象，要免 CI 就删掉 ci 块");
+    const seen = new Set();
+    for (const id of rc) {
+      if (typeof id !== "string" || !id.trim()) reject("capabilities.ci.requiredChecks 含非字符串或空项");
+      if (seen.has(id)) reject(`capabilities.ci.requiredChecks 重复：「${id}」`);
+      seen.add(id);
+    }
+    ciDeclaration = { requiredChecks: rc.map((s) => s.trim()) };
   }
   const seenIds = new Set();
   const capabilities = {};
@@ -134,6 +155,7 @@ export function validateManifest(obj, cwd) {
     if (!Array.isArray(list)) reject(`capabilities.${cls} 须为数组`);
     capabilities[cls] = list.map((r, i) => validateRecipe(cls, r, cwd, seenIds, i));
   }
+  if (ciDeclaration) capabilities.ci = ciDeclaration;
   return { schemaVersion: PROJECT_MANIFEST_VERSION, capabilities };
 }
 

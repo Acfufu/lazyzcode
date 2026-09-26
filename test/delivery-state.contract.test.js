@@ -101,10 +101,16 @@ test("④delivery 契约校验：endpoint 匹配过/不匹配拒/坏文件拒/�
   }
 });
 
-test("⑤check-runs 裁决矩阵：零 run=未开始/全绿/有败/未完", () => {
+test("⑤check-runs 裁决矩阵：零 run=未开始/全绿/有败/未完（0.4.0 M1 V10 严判：仅 success 计绿）", () => {
   assert.deepEqual(checkRunsVerdict([]), { present: false, completed: false, ok: false, bad: [], pending: 0 });
-  const ok = checkRunsVerdict([{ name: "a", status: "COMPLETED", conclusion: "SUCCESS" }, { name: "b", status: "COMPLETED", conclusion: "NEUTRAL" }]);
+  const ok = checkRunsVerdict([{ name: "a", status: "COMPLETED", conclusion: "SUCCESS" }, { name: "b", status: "COMPLETED", conclusion: "SUCCESS" }]);
   assert.equal(ok.ok, true);
+  // V10 严判翻转（红=git archive 改前树本断言为 ok:true 的 neutral 计绿语义；绿=工作树仅 success）：
+  const neutral = checkRunsVerdict([{ name: "a", status: "COMPLETED", conclusion: "SUCCESS" }, { name: "b", status: "COMPLETED", conclusion: "NEUTRAL" }]);
+  assert.equal(neutral.ok, false);
+  assert.deepEqual(neutral.bad, ["b:NEUTRAL"]);
+  const skipped = checkRunsVerdict([{ name: "s", status: "COMPLETED", conclusion: "SKIPPED" }]);
+  assert.equal(skipped.ok, false);
   const bad = checkRunsVerdict([{ name: "a", status: "COMPLETED", conclusion: "FAILURE" }]);
   assert.equal(bad.ok, false);
   assert.deepEqual(bad.bad, ["a:FAILURE"]);

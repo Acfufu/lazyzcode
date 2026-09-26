@@ -17,6 +17,7 @@ import { join, dirname, basename, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { loadContract, effectiveAuthorization, ContractError } from "./contract.js";
+import { judgeCiRunsStrict } from "./verify.js"; // 0.4.0 M1 V10 收敛：判决本体唯一事实源
 import { readGoal, settleDeliveryPending, withLock, LoopError } from "./loop.js";
 
 export const DELIVERY_VERSION = 1;
@@ -270,15 +271,12 @@ export function prView(deps, repo, ref) {
   };
 }
 
-// check-runs 裁决：全 completed 且 conclusion ∈ {success,neutral,skipped}=绿；零 run=尚未开始。
-// 大小写归一比较——check-runs REST 面实为小写（活体实测），gh pr view 的 state 才是大写；
-// 归一让两族惯例都过（错判方向=fail-safe：假拒绝不假绿——首链试点即抓的缺陷，2026-09-25）。
+// check-runs 裁决（0.4.0 M1 收敛，V10 面）：判定本体收敛到 verify.js judgeCiRunsStrict
+//（唯一事实源）——首版必需项仅 conclusion==="success" 计绿，neutral/skipped 不再冒充绿；
+// pending 仍照常计数（pollCi 等待语义不变，终态非 success 即败）。零 run=尚未开始（非绿）。
+// 大小写归一在严判核心（REST 面小写实锤，两族惯例都吃；错判方向=fail-safe：假拒绝不假绿）。
 export function checkRunsVerdict(runs) {
-  if (!Array.isArray(runs) || runs.length === 0) return { present: false, completed: false, ok: false, bad: [], pending: 0 };
-  const norm = (s) => String(s ?? "").toUpperCase();
-  const bad = runs.filter((c) => norm(c.status) === "COMPLETED" && !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(norm(c.conclusion))).map((c) => `${c.name}:${c.conclusion}`);
-  const pending = runs.filter((c) => norm(c.status) !== "COMPLETED").length;
-  return { present: true, completed: pending === 0, ok: bad.length === 0 && pending === 0, bad, pending };
+  return judgeCiRunsStrict(runs);
 }
 
 export function listCheckRuns(deps, repo, sha) {

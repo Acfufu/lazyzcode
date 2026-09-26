@@ -619,6 +619,88 @@ export function qualifyCheck(cwd, checkId, { note = null } = {}) {
   return { receipt, receiptPath: relative(cwd, p), baselineRunId: baseline.receipt.runId };
 }
 
+// ── CI 严判（0.4.0 M1，V10 面唯一事实源）：首版必需项仅 conclusion==="success" 计绿 ──
+// neutral/skipped/cancelled/failure/timed_out/无 conclusion 的完成态一律非绿（fail-safe
+// 方向=假拒绝不假绿，沿 checkRunsVerdict 首链试点家法）。两形态输入都吃：listCheckRuns
+// 的 {name,status,conclusion}（status 在场→非 COMPLETED 计 pending）与 queryCiChecks
+// ci.checks 的 {name,conclusion}（无 status→按终态判）。大小写归一（REST 面小写实锤）。
+function ciNorm(s) {
+  return String(s ?? "").trim().toUpperCase();
+}
+
+export function judgeCiRunsStrict(runs) {
+  if (!Array.isArray(runs)) return { present: false, completed: false, ok: false, bad: [], pending: 0 };
+  if (runs.length === 0) return { present: false, completed: false, ok: false, bad: [], pending: 0 };
+  const bad = [];
+  let pending = 0;
+  for (const c of runs) {
+    if (!c || typeof c.name !== "string") {
+      bad.push(`${c?.name ?? String(c)}:畸形读数`);
+      continue;
+    }
+    if (c.status !== undefined && ciNorm(c.status) !== "COMPLETED") {
+      pending += 1;
+      continue;
+    }
+    if (ciNorm(c.conclusion) !== "SUCCESS") bad.push(`${c.name}:${c.conclusion ?? "(无结论)"}`);
+  }
+  return { present: true, completed: pending === 0, ok: bad.length === 0 && pending === 0, bad, pending };
+}
+
+// 必需集合逐项判（§6：不能拿「查到的几项全绿」顶替完整集合）。runs=null/缺席=查询失败
+// 形态（如实非绿，不冒充）；requiredChecks 空=义务不该生成（调用方守门，这里防御性非绿）。
+// 同名多 run（重跑残留）：任一非绿终态即非绿（假拒绝不假绿）；全绿终态才计绿。
+export function judgeRequiredCiChecks(runs, requiredChecks) {
+  const req = [...new Set((requiredChecks ?? []).map((s) => String(s)))];
+  if (req.length === 0) {
+    return { ok: false, green: [], unsatisfied: [{ id: "(集合)", state: "empty-required", detail: "必需集合为空——义务不应生成" }] };
+  }
+  if (!Array.isArray(runs)) {
+    return {
+      ok: false,
+      green: [],
+      unsatisfied: [{ id: "(读回)", state: "query-failed", detail: "CI 读数缺席（查询失败/blocked/无远端提交形态）——不冒充绿" }],
+    };
+  }
+  const byName = new Map();
+  for (const c of runs) {
+    if (c && typeof c.name === "string") {
+      if (!byName.has(c.name)) byName.set(c.name, []);
+      byName.get(c.name).push(c);
+    }
+  }
+  const green = [];
+  const unsatisfied = [];
+  for (const id of req) {
+    const matches = byName.get(id) ?? [];
+    if (matches.length === 0) {
+      unsatisfied.push({ id, state: "missing", detail: "必需检查无读数（缺项）——不能拿别的绿项顶替" });
+      continue;
+    }
+    const pend = matches.filter((c) => c.status !== undefined && ciNorm(c.status) !== "COMPLETED");
+    if (pend.length > 0) {
+      unsatisfied.push({ id, state: "pending", detail: `${pend.length} 个 run 未到终态——等待，不预支绿` });
+      continue;
+    }
+    const badRuns = matches.filter((c) => ciNorm(c.conclusion) !== "SUCCESS");
+    if (badRuns.length > 0) {
+      unsatisfied.push({
+        id,
+        state: "not-success",
+        detail: badRuns.map((c) => `conclusion=${c.conclusion ?? "(无结论)"}`).join("; "),
+      });
+      continue;
+    }
+    green.push(id);
+  }
+  return {
+    ok: unsatisfied.length === 0,
+    green,
+    unsatisfied,
+    reasons: unsatisfied.map((u) => `必需检查「${u.id}」${u.state}：${u.detail}`),
+  };
+}
+
 // ── CI 身份绑定（0.3.0 M2，拍板 5）：只读查询 GitHub check-runs 并绑候选提交身份 ──────
 // gh api（argv 数组、零 shell、30s 超时、零 push 零写零仓库设置改动）。一切读面恒对照
 // 「记录 sha vs 现行 HEAD」，不一致=如实「非现行」；gh 缺席/离线/无凭据/远端无此提交=

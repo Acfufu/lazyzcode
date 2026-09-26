@@ -76,6 +76,7 @@ const passDeps = (run, extra = {}) => ({
   enginePath: "/fake/engine.cjs",
   detectAuth: () => ({ oauth: true, envAuth: false, ok: true }),
   run: run ?? (() => ({ exitCode: 0, stdout: "{}", stderr: "" })),
+  querySessionPoints: () => ({ absent: false, unpriced: [], points: 0 }),
   ...extra,
 });
 
@@ -106,7 +107,7 @@ test("N1/ADJ-02①：h3r-hit.json 变目录 → runDrive 正常收束（不抛 E
     mkdirSync(join(loopDirOf(d), "h3r-hit.json"));
     await withEnv({ LZY_ABLATE_H3R_PRETOOL: "1" }, async () => {
       const { result, lines } = await captureStdout(() =>
-        runDrive(d, { maxSegments: 2 }, passDeps(null, { rollingPoints: 0 })),
+        runDrive(d, { maxSegments: 2 }, passDeps(null)),
       );
       assert.equal(result.ok, true, `目录形态标记不得让 drive 裸逃逸：${lines}`);
       assert.match(lines, /无推进（stuck/, "正常走到收束而非内部错误逃逸");
@@ -125,7 +126,7 @@ test("N1/ADJ-02②：唤醒态词表不可判 → h3rStopVerdict 抛错被收口
   try {
     await withEnv({ LZY_ABLATE_H3R_GATE: "1", LZY_H3R_WORDS_FILE: bad }, async () => {
       const { result, lines } = await captureStdout(() =>
-        runDrive(d, { maxSegments: 2 }, passDeps(null, { rollingPoints: 0 })),
+        runDrive(d, { maxSegments: 2 }, passDeps(null)),
       );
       assert.equal(result.ok, true, `门不可判=干净停摆（未执行任何步骤）：${lines}`);
       assert.match(lines, /门不可判/, "收束因点名词表不可判");
@@ -146,7 +147,7 @@ test("N1/ADJ-02③：段间 goal.json 损坏 → runDrive 返回收束结果（�
   };
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d, { maxSegments: 3 }, passDeps(run, { rollingPoints: 0 })),
+      runDrive(d, { maxSegments: 3 }, passDeps(run)),
     );
     assert.ok(result, "runDrive 必须正常返回 outcome（异常穿出=红）");
     assert.equal(result.ok, false);
@@ -163,7 +164,7 @@ test("N1/特性钉：drive 入口遇损坏 goal.json 仍 fail-closed 拒（windD
   const d = executingRepo("lzy-n1-entrypin-");
   try {
     writeFileSync(goalJson(d), "{corrupted");
-    await assert.rejects(() => runDrive(d, {}, passDeps(null, { rollingPoints: 0 })));
+    await assert.rejects(() => runDrive(d, {}, passDeps(null)));
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
@@ -175,7 +176,7 @@ test("N1/ADJ-19：心跳 I/O 族（RUNTIME_IO）→ 带快照收束+租约回收
   const ioErr = Object.assign(new Error("EACCES: permission denied, open runtime.json"), { code: "RUNTIME_IO" });
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d, { maxSegments: 3 }, passDeps(null, { rollingPoints: 0, heartbeatLease: () => { throw ioErr; } })),
+      runDrive(d, { maxSegments: 3 }, passDeps(null, { heartbeatLease: () => { throw ioErr; } })),
     );
     assert.equal(result.ok, false, lines);
     assert.match(result.cause, /段间心跳失败/, "I/O 族走独立收束因");
@@ -199,7 +200,7 @@ test("N1/ADJ-32：RESTRICTED 段界拒的恢复指引给「收窄+reset 重注�
   };
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d, { maxSegments: 3 }, passDeps(run, { rollingPoints: 0 })),
+      runDrive(d, { maxSegments: 3 }, passDeps(run)),
     );
     assert.equal(result.ok, false, lines);
     assert.match(lines, /段间门拒（RESTRICTED 硬禁/);
@@ -250,7 +251,7 @@ test("N1/ADJ-34：h3r-hit 命令带换行 → 收束因单行化（空白折叠�
     );
     await withEnv({ LZY_ABLATE_H3R_PRETOOL: "1", LZY_ABLATE_H3R_GATE: undefined }, async () => {
       const { result, lines } = await captureStdout(() =>
-        runDrive(d, { maxSegments: 1 }, passDeps(null, { rollingPoints: 0 })),
+        runDrive(d, { maxSegments: 1 }, passDeps(null)),
       );
       assert.equal(result.ok, true, lines);
       assert.match(result.cause, /工具调用被拒/);
@@ -337,7 +338,7 @@ test("N1/ADJ-03：标记消费走 rename 原子序（先 rename 后读清），�
     );
     await withEnv({ LZY_ABLATE_H3R_PRETOOL: "1" }, async () => {
       const { result } = await captureStdout(() =>
-        runDrive(d, { maxSegments: 1 }, passDeps(null, { rollingPoints: 0 })),
+        runDrive(d, { maxSegments: 1 }, passDeps(null)),
       );
       assert.match(result.cause, /工具调用被拒/, "相符标记照常消费");
       assert.ok(!existsSync(join(loopDirOf(d), "h3r-hit.json")), "消费后本名消失");
@@ -358,7 +359,7 @@ test("N1/回归钉：stuck 收束自写快照过 7 字段 lint（本批 windDown
     let marker = null;
     await withEnv({}, async () => {
       const { result, lines } = await captureStdout(() =>
-        runDrive(d, { maxSegments: 2 }, passDeps(null, { rollingPoints: 0 })),
+        runDrive(d, { maxSegments: 2 }, passDeps(null)),
       );
       assert.equal(result.ok, true, lines);
       marker = JSON.parse(readFileSync(join(loopDirOf(d), "handoff.json"), "utf8"));
@@ -414,7 +415,7 @@ test("N2/ADJ-29：休眠半区不消费残留标记（唤醒面下一段照常�
     );
     await withEnv({}, async () => {
       const { result } = await captureStdout(() =>
-        runDrive(d, { maxSegments: 1 }, passDeps(null, { rollingPoints: 0 })),
+        runDrive(d, { maxSegments: 1 }, passDeps(null)),
       );
       assert.match(result.cause, /段数尽/, "休眠面不因残留标记收束");
       assert.ok(existsSync(join(loopDirOf(d), "h3r-hit.json")), "休眠半区不得读/清残留标记");
@@ -422,7 +423,7 @@ test("N2/ADJ-29：休眠半区不消费残留标记（唤醒面下一段照常�
     // 对照半：唤醒面照常消费（标记被清+收束因改写）
     await withEnv({ LZY_ABLATE_H3R_PRETOOL: "1" }, async () => {
       const { result } = await captureStdout(() =>
-        runDrive(d, { maxSegments: 1 }, passDeps(null, { rollingPoints: 0 })),
+        runDrive(d, { maxSegments: 1 }, passDeps(null)),
       );
       assert.match(result.cause, /工具调用被拒/, "唤醒面消费残留标记（段标 1:seg-1 与本 run fence 相符时）");
     });

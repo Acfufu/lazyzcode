@@ -10,7 +10,11 @@ Since 0.2.0 a wake-up has an **in-wake execution channel**: `lzy loop drive`
 (ADR-0020) spawns headless engine segments inside one wake and pushes the executing
 goal segment by segment — risk/lease/budget gates are checked between segments (HIGH+
 risk never enters; a lease keeps a single runtime holder; each drive gets a fresh
-wall-clock cap; the points axis is an account-level 5h rolling-waterline threshold,
+wall-clock cap; the points axis is the run's own per-segment `sessionId` usage — the
+sum over the sessions this run spawned, queried from the host billing DB (0.3.1
+retired the account-level 5h rolling waterline to a `lzy doctor` advisory line; a
+contract `budget-ref: none` skips the points axis and keeps wall clock only; segments
+whose usage cannot be metered are reported, never counted as zero),
 and every segment's lzy writes carry the run's fence token so a taken-over run fails
 closed on write instead of corrupting state). Wind-down is always clean and
 enumerated: `done`, wall clock exhausted, points budget exhausted, segments

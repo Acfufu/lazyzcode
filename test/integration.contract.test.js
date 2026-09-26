@@ -67,7 +67,7 @@ const passDeps = (run) => ({
   enginePath: "/fake/engine.cjs",
   detectAuth: () => ({ oauth: false, envAuth: true, ok: true }),
   run: run ?? (() => ({ exitCode: 0, stdout: "{}", stderr: "" })),
-  rollingPoints: 0,
+  querySessionPoints: () => ({ absent: false, unpriced: [], points: 0 }),
   cliPath: CLI,
 });
 

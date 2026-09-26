@@ -7,13 +7,16 @@
 // 段内 fence 注入（ADR-0020「drive 派生工人一律注入 fence」接线点）：段会话 env 带
 // LZY_RUNTIME_FENCE，段内一切 lzy 写经 guardFence fail-closed；本进程同 env 申报自身
 // handoff 写。
-// 双硬顶口径（ADJ-21，0.2.1 五轮双审·成立——口径歧义此前无处写明）：**墙钟=每-run 记账**
-//（spentMs 逐段累计，超顶拒=收束信号）；**积分=账号 5h 滚动水位阈值**（判据
-// rollingWaterlinePoints ≥ pointsBudget，读数缺席即不执法）——不是本 run 的消费累计：
-// 积分侧活体归因不可行（cost.js 按小时桶读 billing DB），故每段入账 points 恒 0。
-// 缺省 400 相对水位 1600 取四分之一（相对账号水位、非相对本 run 消耗）。
+// 双硬顶口径（ADJ-21，0.2.1 五轮双审；**0.3.1 棒2 按 ADR-0027 修正节改归因口径**）：
+// **墙钟=每-run 记账**（spentMs 逐段累计，超顶拒=收束信号）；**积分=本 run 逐段 sessionId
+// usage 归因**（段记录 sessionId 去重集，逐会话查宿主 model_usage 折积分——与队列积分执法
+// 同一查询面，core/cost.js querySessionPoints）——不再读账号级 5h 滚动水位（该读数退役为
+// doctor 建议行，不再是执法面；债 O：他会话消耗曾把水位顶过硬顶、误伤本任务）。
+// 计量缺席/未计价模型/无 sessionId 的段**不算零**：如实注记、该轮不执法（旧语义照旧）。
+// 每段增量（同会话跨段复用不重复计）入 runtime 账本；契约 `budget-ref: none` ⇒ 跳积分
+// 执法、只留墙钟（D3）。缺省积分硬顶 400 现为「本 run 归因累计」的阈值（ADR-0027 修正节）。
 // 退出码契约：0=done 或干净收束（run 契约正常完成）；1=门拒/段 infra 失败（尽力收束带
-// 快照后非零）。deps 可注入（run/rollingPoints/now/git）供离线契约测试（headless.js 先例）。
+// 快照后非零）。deps 可注入（run/querySessionPoints/now/git）供离线契约测试（headless.js 先例）。
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -48,7 +51,8 @@ import {
   spawnHeadless,
 } from "./headless.js";
 import { findEngine } from "./paths.js";
-import { rollingWaterlinePoints } from "./cost.js";
+import { querySessionPoints } from "./cost.js";
+import { loadContract } from "./contract.js";
 import { createGit } from "./git.js";
 import { h3rStopVerdict } from "./h3r.js";
 
@@ -115,6 +119,68 @@ function describeFinishFailure(fin) {
       ? "——某根有未提交改动：提交或清理该根（工人 worktree 的未提交物见收束快照的风险节）后重试"
       : "";
   return `${detail}${guidance}`.slice(0, 400);
+}
+
+// ── 积分归因与契约 budget-ref（0.3.1 棒2，ADR-0027 修正节）──────────────────
+// 段界积分 gauge=本 run 逐段 sessionId usage（与队列积分执法同一查询面，core/cost.js）。
+// 「会话→已计入累计」表保证同会话跨段复用不重复计；增量入 runtime 账本（超顶走既有
+// BUDGET_OVER 路由）。计量缺席（零完成行/查询失败）/未计价模型/无 sessionId ⇒ unmetered
+// 如实申报、**不算零**；该轮不执法（沿旧「读数缺席即不执法」语义——ADR-0027 修正节第 3
+// 条：只换归因口径，不改执法语义）。
+function makeMeter(deps) {
+  const query = deps.querySessionPoints ?? querySessionPoints;
+  const seen = new Map(); // sessionId -> 已计入累计
+  const unmetered = [];
+  return {
+    unmetered,
+    observe(seg, sessionId) {
+      if (!sessionId) {
+        unmetered.push({ seg, sessionId: null, reason: "no-session-id" });
+        return { delta: 0 };
+      }
+      const m = query(sessionId);
+      if (m.absent) {
+        unmetered.push({ seg, sessionId, reason: "metering-absent" });
+        return { delta: 0 };
+      }
+      if (Array.isArray(m.unpriced) && m.unpriced.length > 0) {
+        unmetered.push({ seg, sessionId, reason: `unpriced:${m.unpriced.join(",")}` });
+      }
+      const prev = seen.get(sessionId) ?? 0;
+      const cur = Number.isFinite(m.points) ? m.points : 0;
+      seen.set(sessionId, Math.max(prev, cur));
+      return { delta: Math.max(0, cur - prev) };
+    },
+    taskPoints() {
+      let sum = 0;
+      for (const v of seen.values()) sum += v;
+      return sum;
+    },
+    reportLine(label) {
+      if (unmetered.length === 0) return null;
+      const kinds = [...new Set(unmetered.map((u) => u.reason))].join("、").slice(0, 150);
+      return `[drive] ${label}积分计量：缺席/未计价 ${unmetered.length} 段（${kinds}）——不算零、如实申报；该轮不执法（ADR-0027 修正节）`;
+    },
+  };
+}
+
+// 契约 budget-ref 读面（ADR-0027 修正节第 2 条）：仅当 goal 绑定的契约文件「盘上哈希 ==
+// 绑定哈希」时其声明才可信；漂移/不可读 ⇒ 忽略声明、照常执法（更严方向）并注记。
+// 返回 {declared, ref, drifted, path}；goal 无契约 = 未声明。
+function contractBudgetRef(cwd, goal) {
+  if (!goal?.contract?.path || !goal?.contract?.contractHash) {
+    return { declared: false, ref: null, drifted: false, path: null };
+  }
+  let contract = null;
+  try {
+    contract = loadContract(goal.contract.path, cwd);
+  } catch {
+    return { declared: false, ref: null, drifted: true, path: goal.contract.path };
+  }
+  if (contract.hash !== goal.contract.contractHash) {
+    return { declared: false, ref: null, drifted: true, path: goal.contract.path };
+  }
+  return { declared: true, ref: contract.budgetRef ?? null, drifted: false, path: goal.contract.path };
 }
 
 function composeSegmentPrompt(cwd, cliPath) {
@@ -286,6 +352,16 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
   let noProgressStreak = 0;
   let spentMsLocal = 0;
   let outcome = null; // {ok, cause, handoff}
+  // 积分归因（0.3.1 棒2）：契约 budget-ref=none ⇒ 跳积分执法只留墙钟；漂移声明不可信=
+  // 照常执法并注记（更严方向）。
+  const refInfo = contractBudgetRef(cwd, goal);
+  const pointsEnforced = refInfo.ref !== "none";
+  const meter = pointsEnforced ? makeMeter(deps) : null;
+  if (!pointsEnforced) {
+    console.log(`[drive] 积分执法：契约 budget-ref=none（${refInfo.path}）——只执法墙钟，跳积分归因`);
+  } else if (refInfo.drifted) {
+    console.log("[drive] 契约 budget-ref 声明不可信（盘上哈希漂移/不可读）——照常执法积分（更严方向）");
+  }
 
   const windDown = (ok, cause, riskNote, { skipHandoff = false } = {}) => {
     if (skipHandoff) {
@@ -466,9 +542,12 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         break;
       }
       // 段账：超顶拒（墙钟/积分整笔拒）是常态路径（末段毫秒级越顶），路由到干净收束。
+      // 积分增量=本段会话累计增量（同会话跨段复用不重复计，makeMeter 注释）；budget-ref=none
+      // 时 meter 缺席 ⇒ 只记墙钟（「只留墙钟」语义）。
+      const obs = meter ? meter.observe(seg, result.sessionId ?? null) : { delta: 0 };
       spentMsLocal += result.durationMs ?? 0;
       try {
-        withLock(cwd, () => recordSpend(cwd, { ms: result.durationMs ?? 0, points: 0 }));
+        withLock(cwd, () => recordSpend(cwd, { ms: result.durationMs ?? 0, points: obs.delta }));
       } catch (err) {
         if (err?.code === "BUDGET_OVER") { // ADJ-26：错误码路由，不靠文案匹配
           windDown(true, `预算尽（${String(err.message).split("：")[0]}）`);
@@ -541,14 +620,18 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         windDown(true, `无推进（stuck，连续 ${STUCK_STREAK_LIMIT} 段零推进）`);
         break;
       }
-      // 水位联动执法（积分侧；billing DB 滞后=已知边界，null=跳过并注记）。
-      // 哨兵判据=!== undefined（显式注入 null=「读数缺席」测试形态，与未注入区分）。
-      const rp = deps.rollingPoints !== undefined ? deps.rollingPoints : rollingWaterlinePoints();
-      if (rp != null && rp >= budget.pointsBudget) {
-        windDown(true, `积分预算尽（近 5h 滚动水位 ${rp} ≥ 积分硬顶 ${budget.pointsBudget}）`);
-        break;
-      } else if (rp == null) {
-        console.log("[drive] 水位读数不可读（fail-soft）——本段跳过积分联动执法");
+      // 积分归因执法（0.3.1 棒2，ADR-0027 修正节）：判据=本 run 逐段 sessionId 归因累计
+      // ≥ 硬顶（不再是账号级 5h 滚动水位——他会话消耗与本任务解耦）。两路由同源：>cap 由
+      // 上方 recordSpend 超顶路由先触（先如实入账再抛），本检查兜「恰等 cap」的 ≥ 语义与
+      // 未来记账面变体。计量缺席/未计价段如实注记、该轮不执法（不算零，见 makeMeter）。
+      if (meter) {
+        const tp = meter.taskPoints();
+        if (tp >= budget.pointsBudget) {
+          windDown(true, `积分预算尽（本任务逐段计量 ${tp} ≥ 积分硬顶 ${budget.pointsBudget}）`);
+          break;
+        }
+        const meterLine = meter.reportLine("本段");
+        if (meterLine) console.log(meterLine);
       }
       if (seg === maxSegments) {
         windDown(true, `段数尽（${maxSegments} 段）`);
@@ -763,6 +846,15 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
   let outcome = null;
   let currentWave = 0; // 收束信息面的波号（ADJ-30：收束因缺上下文时接管者无从定位）
   const workers_ = []; // {i, worktree, branch, home, subjectAdded, resume}
+  // 积分归因（0.3.1 棒2）：与单工人径同源——契约 budget-ref=none ⇒ 只留墙钟。
+  const refInfoW = contractBudgetRef(cwd, goal);
+  const pointsEnforcedW = refInfoW.ref !== "none";
+  const meterW = pointsEnforcedW ? makeMeter(deps) : null;
+  if (!pointsEnforcedW) {
+    console.log(`[drive] 积分执法：契约 budget-ref=none（${refInfoW.path}）——只执法墙钟，跳积分归因`);
+  } else if (refInfoW.drifted) {
+    console.log("[drive] 契约 budget-ref 声明不可信（盘上哈希漂移/不可读）——照常执法积分（更严方向）");
+  }
 
   // 工人 worktree 脏态盘点（单一源：收束快照的风险节与清理相的保留判据同读一份）。
   // 三态：干净 / 有未提交改动 / 不可判（git 不可用或非 git 目录——**fail-closed 保留**，
@@ -1131,9 +1223,14 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
       // 之后**——原实现把记账放在 merge 相之前，于是「预算尽」这一干净收束会脱账本波已提交
       // 未合并的产出（分支留着、checkout 被清理相销毁，快照零提及）。墙钟仍逐波累计、超顶
       // 仍以「预算尽」收束，只是收束时本波产出已落宿主。
+      // 积分归因（0.3.1 棒2）：本波各成功工人会话逐段观察（每工人独立 sessionId/home，
+      // ADR-0026），增量求和入账；meterW 缺席（budget-ref=none）⇒ 只记墙钟。
+      const waveDelta = meterW
+        ? results.reduce((acc, r) => acc + (r.ok ? meterW.observe(seg, r.sessionId ?? null).delta : 0), 0)
+        : 0;
       spentMsLocal += maxMs;
       try {
-        withLock(cwd, () => recordSpend(cwd, { ms: maxMs, points: 0 }));
+        withLock(cwd, () => recordSpend(cwd, { ms: maxMs, points: waveDelta }));
       } catch (err) {
         if (err?.code === "BUDGET_OVER") {
           windDownW(true, `预算尽（${String(err.message).split("：")[0]}）`);
@@ -1237,14 +1334,17 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
         windDownW(true, `无推进（stuck，连续 ${STUCK_STREAK_LIMIT} 波零推进）`);
         break;
       }
-      const rp = deps.rollingPoints !== undefined ? deps.rollingPoints : rollingWaterlinePoints();
-      if (rp != null && rp >= budget.pointsBudget) {
-        windDownW(true, `积分预算尽（近 5h 滚动水位 ${rp} ≥ 积分硬顶 ${budget.pointsBudget}）`);
-        break;
-      } else if (rp == null) {
-        // ADJ-30：单工人径有此 fail-soft 行，workers 径缺席 ⇒ 两条路径读面漂移（操作者会以为
-        // 「水位没触发」而非「读数不可用」）。
-        console.log("[drive] 水位读数不可读（fail-soft）——本波跳过积分联动执法");
+      // 积分归因执法（0.3.1 棒2，与单工人径同源）：判据=本 run 逐段 sessionId 归因累计
+      // ≥ 硬顶；不再读账号级滚动水位。>cap 由上方 recordSpend 超顶路由先触，本检查兜
+      // 「恰等 cap」；计量缺席/未计价如实注记、该波不执法（不算零）。
+      if (meterW) {
+        const tpW = meterW.taskPoints();
+        if (tpW >= budget.pointsBudget) {
+          windDownW(true, `积分预算尽（本任务逐段计量 ${tpW} ≥ 积分硬顶 ${budget.pointsBudget}）`);
+          break;
+        }
+        const meterLineW = meterW.reportLine("本波");
+        if (meterLineW) console.log(meterLineW);
       }
       if (seg === maxSegments) {
         windDownW(true, `波数尽（${maxSegments} 波）`);

@@ -996,7 +996,7 @@ function printHelp() {
                  [--workers N] [--fast]
                                             无人值守执行通道（0.2.0，ADR-0020）：单唤起内
                                             headless 段循环推进 executing 目标；段间三门
-                                            （risk/lease/预算）+水位联动；收束自写 handoff
+                                            （risk/lease/预算）+逐段 sessionId 计量；收束自写 handoff
                                             快照交回（退出码 0=done 或干净收束，1=门拒/段失败）；
                                             --workers N=多工人波编排（ADR-0026：LIGHT only，
                                             HEAVY 入口拒；--fast≡--workers 2，--fast=false=单工人）

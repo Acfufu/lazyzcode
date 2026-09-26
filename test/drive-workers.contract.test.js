@@ -99,7 +99,7 @@ const passDeps = (run) => ({
   enginePath: "/fake/engine.cjs",
   detectAuth: () => ({ oauth: false, envAuth: true, ok: true }),
   run: run ?? (() => ({ exitCode: 0, stdout: "{}", stderr: "" })),
-  rollingPoints: 0,
+  querySessionPoints: () => ({ absent: false, unpriced: [], points: 0 }), // 逐段归因假读数：0 分（不触积分收束；必填缝见 drive.contract 注释）
   cliPath: CLI, // deps.cliPath seam：node --test 下 argv[1] 是测试文件自身，不可当 CLI
 });
 

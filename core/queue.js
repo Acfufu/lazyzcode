@@ -24,9 +24,7 @@ import { runDrive } from "./drive.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
 import { actDeliveryB, actDeliveryC, readbackDeliveryB, readbackDeliveryC, loadIntents, validateDeliveryContract, DELIVERY_CHAIN_MAX_MS } from "./delivery.js";
 import { loadProjectManifest } from "./project.js";
-import { computePoints } from "./cost.js";
-import { queryHostDb } from "./hostdb.js";
-import { billingDbPath } from "./paths.js";
+import { computePoints, querySessionPoints } from "./cost.js";
 import { loadRuntime, holderPidAlive, reclaimLease } from "./runtime.js";
 import { createGit } from "./git.js";
 
@@ -619,30 +617,11 @@ export function appendLedgerEntry(cwd, entry) {
   return { duplicate: false, entry: full };
 }
 
-// 逐会话计量（#32 逐请求完成检测）：宿主 model_usage WHERE session_id，行→computePoints
-// 折积分（ADR-0023 计价表）。零完成行=metering-absent（不算零）；未计价模型=同停类。
-// queryHostDb 无参数绑定——sessionId 白名单净化后内插（引擎会话 id 空间 [A-Za-z0-9_-]）。
-// 导出面=测试缝（真实缺席路径活体：HOME 隔离→db 缺席→absent:true）。
-export function querySessionPoints(sessionId) {
-  if (typeof sessionId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) return { absent: true, unpriced: [], points: 0 };
-  const db = billingDbPath();
-  if (!existsSync(db)) return { absent: true, unpriced: [], points: 0 };
-  const sql =
-    "SELECT m.session_id AS sid, m.model_id AS model, m.started_at/3600000 AS h, " +
-    "SUM(m.input_tokens) AS it, SUM(m.cache_read_input_tokens) AS crt, SUM(m.output_tokens) AS ot " +
-    "FROM model_usage m WHERE m.session_id = '" + sessionId + "' AND m.status = 'completed' " +
-    "GROUP BY sid, model, h";
-  let rows = null;
-  try {
-    rows = queryHostDb(db, sql); // null=sqlite3 缺席/查询失败（降级面）——同 metering-absent 停类
-  } catch {
-    rows = null;
-  }
-  if (rows == null) return { absent: true, unpriced: [], points: 0 };
-  if (rows.length === 0) return { absent: true, unpriced: [], points: 0 };
-  const agg = computePoints(rows);
-  return { absent: false, unpriced: [...agg.unpricedModels], points: agg.points };
-}
+// 逐会话计量（#32 逐请求完成检测）：**0.3.1 棒2 起实体迁 core/cost.js**（计量原语单源，
+// queue 结算面与 drive 段界归因共用同一查询面——ADR-0027 修正节）；本处保留 re-export，
+// 既有导入面（test/queue-metering.contract.test.js 等）逐字不变。语义（缺席/未计价/净化）
+// 与注释随迁至 cost.js。
+export { querySessionPoints };
 
 // 结算：tx 的 segments 逐段入账（wall 恒入；points 按 session 查询或缺席申报）。
 // dedupKey 保证重复 settle 幂等（第二遍全 duplicate=no-op）。queryPoints 可注入

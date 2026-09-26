@@ -19,9 +19,11 @@ export const RUNTIME_FILE = "runtime.json";
 // lease TTL 缺省 15min（分钟级；heartbeat 续期；--ttl-ms 可覆盖）。
 export const DEFAULT_LEASE_TTL_MS = 15 * 60_000;
 // drive 预算缺省（定标+env 覆盖沿 waterline 先例）：**墙钟=每-run 记账** 30min（低于闲时
-// 车道外生上限 180min）；**积分=账号 5h 滚动水位阈值**（ADJ-21，0.2.1 五轮双审·成立：
-// 该轴判据是 rollingWaterlinePoints ≥ 本值、读数缺席即不执法，不是本 run 消费累计）缺省
-// 400 = 水位 1600 的四分之一（相对账号水位而非相对本 run 消耗）保守缺省，实测后调。
+// 车道外生上限 180min）；**积分=本 run 逐段 sessionId 归因累计阈值**（0.3.1 棒2 按 ADR-0027
+// 修正节改归因口径：判据=本 run 逐段 sessionId usage 求和 ≥ 本值，与队列积分执法同一查询面
+// core/cost.js querySessionPoints；账号级 5h 滚动水位退役为 doctor 建议行、不再执法；计量
+// 缺席/未计价/无 sessionId 的段不算零、如实注记且该轮不执法）。缺省 400 沿用原量纲
+// （水位 1600 的四分之一）作保守起手值，实测后调；契约 budget-ref=none ⇒ 整轴跳过、只留墙钟。
 export const DEFAULT_DRIVE_WALLCLOCK_MS = 30 * 60_000;
 export const DEFAULT_DRIVE_POINTS = 400;
 
@@ -417,7 +419,7 @@ export function formatBudget(cwd, { rollingPoints } = {}) {
     head,
     `  墙钟：${b.spentMs}/${b.wallClockBudgetMs}ms（余 ${Math.max(0, b.wallClockBudgetMs - b.spentMs)}ms）`,
     `  积分：${Math.round(b.spentPoints * 100) / 100}/${b.pointsBudget}（余 ${Math.round(Math.max(0, b.pointsBudget - b.spentPoints) * 100) / 100}）`,
-    `  账号近 5h 滚动水位：${rollingPoints == null ? "不可读（fail-soft 降级）" : `${rollingPoints} / 警戒线 ${envWl}`}（drive 执法用积分硬顶 ${b.pointsBudget}）`,
+    `  账号近 5h 滚动水位：${rollingPoints == null ? "不可读（fail-soft 降级）" : `${rollingPoints} / 警戒线 ${envWl}`}（建议面：stop 钩子/doctor 读它；**积分执法自 0.3.1 棒2 起=本 run 逐段 sessionId 计量**，硬顶 ${b.pointsBudget}）`,
   ];
   if (state.activeLease && leaseActive(state.activeLease)) {
     lines.push(

@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { runDrive } from "../core/drive.js";
 import { initBudget, loadRuntime, acquireLease, releaseLease } from "../core/runtime.js";
 import { lintHandoffSnapshot, withLock } from "../core/loop.js";
+import { loadContract } from "../core/contract.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
@@ -81,10 +82,14 @@ function captureStdout(fn) {
 }
 
 // 通过全部早期门的 deps（引擎/凭据注入；真 spawn 走 deps.run 假引擎，零触网）。
+// querySessionPoints 注入缝（0.3.1 棒2）：**必填**——不注入会走真 core/cost.js 查询（读宿主
+// 计费库，10s 超时）；缺省假值=本 run 逐段归因 0 分（不触发积分收束）。
+const zeroPoints = () => ({ absent: false, unpriced: [], points: 0 });
 const passDeps = (run, extra = {}) => ({
   enginePath: "/fake/engine.cjs",
   detectAuth: () => ({ oauth: true, envAuth: false, ok: true }),
-  run: run ?? (() => ({ exitCode: 0, stdout: "{}", stderr: "" })),
+  run: run ?? (() => ({ exitCode: 0, stdout: JSON.stringify({ sessionId: "sess-stub" }), stderr: "" })),
+  querySessionPoints: zeroPoints,
   ...extra,
 });
 
@@ -140,7 +145,7 @@ test("门序⑤：他租在场=drive 拒「另一运行时持租」（lease 单�
   try {
     withLock(d, () => acquireLease(d, { ttlMs: 60_000 }));
     await assert.rejects(
-      () => runDrive(d, {}, passDeps(null, { rollingPoints: 0 })),
+      () => runDrive(d, {}, passDeps(null)),
       /另一运行时持租/,
     );
   } finally {
@@ -162,7 +167,7 @@ test("假引擎两段达 done：EXIT=0+段日志两行+段 env 带 LZY_RUNTIME_F
     return { exitCode: 0, stdout: "{}", stderr: "" };
   };
   try {
-    const { result, lines } = await captureStdout(() => runDrive(d, { maxSegments: 4 }, passDeps(run, { rollingPoints: 0 })));
+    const { result, lines } = await captureStdout(() => runDrive(d, { maxSegments: 4 }, passDeps(run)));
     assert.equal(result.ok, true, lines);
     assert.equal(result.cause, "done");
     assert.match(lines, /段 1\/4/);
@@ -172,7 +177,7 @@ test("假引擎两段达 done：EXIT=0+段日志两行+段 env 带 LZY_RUNTIME_F
     const rt = loadRuntime(d);
     assert.equal(rt.activeLease, null, "lease 已释放");
     assert.equal(rt.budget.spentMs > 0, true, "段账入账（durationMs>0）");
-    assert.equal(rt.budget.spentPoints, 0, "积分恒 0（活体归因不可行，ADR-0020 边界如实记账）");
+    assert.equal(rt.budget.spentPoints, 0, "本 run 逐段归因：假读数缺省 0 分 ⇒ 增量 0（正例见 test ④ 500 分入账）");
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
@@ -189,7 +194,7 @@ test("墙钟小预算（1ms env）+5ms 假段：超顶拒被 catch 路由=收束
   process.env.LZY_DRIVE_WALLCLOCK_BUDGET_MS = "1";
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d, {}, passDeps(run, { rollingPoints: 0 })),
+      runDrive(d, {}, passDeps(run)),
     );
     assert.equal(result.ok, true, `超顶拒是收束信号非异常逃逸：${lines}`);
     assert.match(lines, /预算尽（墙钟预算超顶）/);
@@ -207,37 +212,124 @@ test("墙钟小预算（1ms env）+5ms 假段：超顶拒被 catch 路由=收束
   }
 });
 
-// ── ④ 水位联动执法 ───────────────────────────────────────────────────────────
-test("水位联动：rollingPoints ≥ pointsBudget→收束「积分预算尽」；null→跳过注记+段数尽收束", async () => {
-  const d1 = executingRepo("lzy-drive-wl1-");
+// ── ④ 积分逐段归因执法（0.3.1 棒2，ADR-0027 修正节）─────────────────────────
+// 三条路径：(a) 本段增量超顶 ⇒ recordSpend 超顶路由（先如实入账再抛）；
+// (b) 跨 run 任务 Σ 超顶而本 run 增量未超 ⇒ 段界归因收束「本任务逐段计量」；
+// (c) 计量缺席（absent）⇒ 如实注记、不算零、该轮不执法 ⇒ 段数尽收束。
+test("积分归因：段增量超顶→「预算尽（积分预算超顶）」；跨run任务Σ→「本任务逐段计量」；缺席→注记+段数尽", async () => {
+  // (a) 单段增量 500 > 硬顶 400：超顶路由先触（账本先入账、标 lastOverrun）
+  const d1 = executingRepo("lzy-drive-meter1-");
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d1, {}, passDeps(null, { rollingPoints: 500 })),
+      runDrive(d1, {}, passDeps(null, { querySessionPoints: () => ({ absent: false, unpriced: [], points: 500 }) })),
     );
     assert.equal(result.ok, true, lines);
-    assert.match(lines, /积分预算尽（近 5h 滚动水位 500 ≥ 积分硬顶 400）/);
+    assert.match(lines, /预算尽（积分预算超顶）/);
     assert.match(lines, /handoff 快照：/);
+    assert.ok(loadRuntime(d1).budget.spentPoints >= 500, "超顶仍如实入账（ADJ-28 语义）");
   } finally {
     rmSync(d1, { recursive: true, force: true });
   }
-  const d2 = executingRepo("lzy-drive-wl2-");
-  let call2 = 0;
+  // (b) 任务 Σ 恰等硬顶：增量 == cap（不触 >cap 的超顶路由）⇒ 段界归因按 ≥ 语义兜住。
+  // 两路由同源（本 run 已计 == 任务 Σ），故 Σ 路由可达面=「恰等」；> cap 由超顶路由覆盖；
+  // 两条都属本目标合法收束因（ADR-0027 修正节 D2）。
+  const d2 = executingRepo("lzy-drive-meter2-");
+  const sessRun = () => ({ exitCode: 0, stdout: JSON.stringify({ sessionId: "sess-meter-1" }), stderr: "" });
+  const meterFn = () => ({ absent: false, unpriced: [], points: 400 });
+  try {
+    const two = await captureStdout(() => runDrive(d2, { maxSegments: 1 }, passDeps(sessRun, { querySessionPoints: meterFn })));
+    assert.equal(two.result.ok, true, two.lines);
+    assert.match(two.lines, /积分预算尽（本任务逐段计量 400 ≥ 积分硬顶 400）/);
+    assert.match(two.lines, /handoff 快照：/);
+  } finally {
+    rmSync(d2, { recursive: true, force: true });
+  }
+  // (c) 计量缺席：注记在场、不因积分收束（该轮不执法）⇒ 走到段数尽
+  const d3 = executingRepo("lzy-drive-meter3-");
+  let call3 = 0;
   const progressRun = () => {
-    call2 += 1;
-    // 首段有推进→避开 stuck（本用例钉段数尽路径）。判据=进度信号状态集（0.2.2 棒1#N3）：
-    // 假引擎既不提交也不取证，唯一能推得动状态集的动作就是翻步，故此处仍须翻步。
-    if (call2 === 1) markFirstStepDone(d2);
-    return { exitCode: 0, stdout: "{}", stderr: "" };
+    call3 += 1;
+    if (call3 === 1) markFirstStepDone(d3);
+    return { exitCode: 0, stdout: JSON.stringify({ sessionId: "sess-meter-3" }), stderr: "" };
   };
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d2, { maxSegments: 2 }, passDeps(progressRun, { rollingPoints: null })),
+      runDrive(d3, { maxSegments: 2 }, passDeps(progressRun, { querySessionPoints: () => ({ absent: true, unpriced: [], points: 0 }) })),
     );
     assert.equal(result.ok, true, lines);
-    assert.match(lines, /水位读数不可读（fail-soft）/, "null=跳过并注记");
-    assert.match(lines, /收束：段数尽（2 段）/);
+    assert.match(lines, /积分计量：缺席\/未计价 1 段（metering-absent）/, "缺席如实注记（不算零）");
+    assert.match(lines, /收束：段数尽（2 段）/, "缺席不执法⇒不因积分收束");
   } finally {
-    rmSync(d2, { recursive: true, force: true });
+    rmSync(d3, { recursive: true, force: true });
+  }
+});
+
+test("积分归因：未计价模型→注记 unpriced（不算零）；账号水位不再是 drive 执法面（旧文案不复现）", async () => {
+  const d = executingRepo("lzy-drive-meter4-");
+  try {
+    const { result, lines } = await captureStdout(() =>
+      runDrive(d, { maxSegments: 1 }, passDeps(() => ({ exitCode: 0, stdout: JSON.stringify({ sessionId: "sess-meter-4" }), stderr: "" }), { querySessionPoints: () => ({ absent: false, unpriced: ["ghost-model"], points: 0 }) })),
+    );
+    assert.equal(result.ok, true, lines);
+    assert.match(lines, /unpriced:ghost-model/);
+    assert.doesNotMatch(lines, /滚动水位/, "账号级水位退役为建议面：drive 不再读它执法");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("budget-ref=none（契约声明）：只执法墙钟——跳积分归因（连查询都不发）、按段数尽收束", async () => {
+  const d = executingRepo("lzy-drive-bref-");
+  try {
+    const contract = join(d, "c-none.md");
+    writeFileSync(contract, "task: t\nendpoint: A\nscope: .\nrecipe: none\nbudget-ref: none\n\n- [A1] x\n");
+    const { hash } = loadContract(contract, d);
+    const g = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    g.contract = { path: contract, contractHash: hash };
+    writeFileSync(goalJson(d), `${JSON.stringify(g, null, 2)}\n`);
+    let queried = 0;
+    const { result, lines } = await captureStdout(() =>
+      runDrive(d, { maxSegments: 1 }, passDeps(() => ({ exitCode: 0, stdout: JSON.stringify({ sessionId: "sess-meter-5" }), stderr: "" }), {
+        querySessionPoints: () => {
+          queried += 1;
+          return { absent: false, unpriced: [], points: 9999 };
+        },
+      })),
+    );
+    assert.equal(result.ok, true, lines);
+    assert.match(lines, /积分执法：契约 budget-ref=none/);
+    assert.match(lines, /收束：段数尽（1 段）/);
+    assert.equal(queried, 0, "只留墙钟=连查询都不发");
+    assert.equal(loadRuntime(d).budget.spentPoints, 0);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("budget-ref 漂移：盘上契约哈希与绑定不符 ⇒ 声明不可信、照常执法（更严方向）", async () => {
+  const d = executingRepo("lzy-drive-brefd-");
+  try {
+    const contract = join(d, "c-drift.md");
+    writeFileSync(contract, "task: t\nendpoint: A\nscope: .\nrecipe: none\nbudget-ref: none\n\n- [A1] x\n");
+    const { hash } = loadContract(contract, d);
+    const g = JSON.parse(readFileSync(goalJson(d), "utf8"));
+    g.contract = { path: contract, contractHash: hash };
+    writeFileSync(goalJson(d), `${JSON.stringify(g, null, 2)}\n`);
+    writeFileSync(contract, "task: t\nendpoint: A\nscope: .\nrecipe: none\n\n- [A1] x\n"); // 漂移
+    let queried = 0;
+    const { result, lines } = await captureStdout(() =>
+      runDrive(d, { maxSegments: 1 }, passDeps(null, {
+        querySessionPoints: () => {
+          queried += 1;
+          return { absent: false, unpriced: [], points: 0 };
+        },
+      })),
+    );
+    assert.equal(result.ok, true, lines);
+    assert.match(lines, /契约 budget-ref 声明不可信（盘上哈希漂移/);
+    assert.equal(queried, 1, "漂移⇒照常执法（查询照发）");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
   }
 });
 
@@ -247,7 +339,7 @@ test("ADJ-22：段失败收束时 headless 失败族文案连带打印 stdout（
   const run = () => ({ exitCode: 1, stdout: "", stderr: "boom: AUTH_EXPIRED at provider" });
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d, { maxSegments: 3 }, passDeps(run, { rollingPoints: 0 })),
+      runDrive(d, { maxSegments: 3 }, passDeps(run)),
     );
     assert.equal(result.ok, false, lines);
     assert.match(lines, /收束：段失败（exit=1）/);
@@ -273,7 +365,7 @@ test("段界 risk 门拒：走正常收束通道（快照落盘过 lint + 文案
   };
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d, { maxSegments: 3 }, passDeps(run, { rollingPoints: 0 })),
+      runDrive(d, { maxSegments: 3 }, passDeps(run)),
     );
     assert.equal(result.ok, false, `门拒=非零退出语义（干净收束≠放行）：${lines}`);
     assert.match(lines, /段间门拒（HIGH 风险目标禁入无人值守车道/, "拒因原文在场（分类轴不被改写）");
@@ -299,7 +391,7 @@ test("段界租约失效：仍走 skipHandoff 通道（不写快照，接管文�
   };
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d, { maxSegments: 3 }, passDeps(run, { rollingPoints: 0 })),
+      runDrive(d, { maxSegments: 3 }, passDeps(run)),
     );
     assert.equal(result.ok, false, lines);
     assert.match(lines, /段间门拒（/);
@@ -316,7 +408,7 @@ test("真惰性两段零推进→stuck 收束（镜像 Stop 振数纪律）+快�
   const d = executingRepo("lzy-drive-stuck-");
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d, { maxSegments: 5 }, passDeps(null, { rollingPoints: 0 })),
+      runDrive(d, { maxSegments: 5 }, passDeps(null)),
     );
     assert.equal(result.ok, true, lines);
     assert.match(lines, /无推进（stuck，连续 2 段零推进）/);
@@ -341,7 +433,7 @@ test("重活/长步：段段有提交但步未翻 done→不得误判 stuck（AD
   };
   try {
     const { result, lines } = await captureStdout(() =>
-      runDrive(d, { maxSegments: 4 }, passDeps(committingRun, { rollingPoints: 0 })),
+      runDrive(d, { maxSegments: 4 }, passDeps(committingRun)),
     );
     assert.equal(result.ok, true, lines);
     assert.ok(!/stuck/.test(lines), `有提交即非零推进，不得收 stuck。实得：${lines}`);

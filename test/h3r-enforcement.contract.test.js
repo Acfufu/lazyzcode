@@ -284,7 +284,7 @@ test("标记消费：本段 segmentId ⇒ 干净收束（因含 PreToolUse + exi
         enginePath: "/fake/engine.cjs",
         detectAuth: () => ({ oauth: true, envAuth: false, ok: true }),
         run,
-        rollingPoints: 0,
+        querySessionPoints: () => ({ absent: false, unpriced: [], points: 0 }),
       },
     ).finally(() => {
       console.log = orig;
@@ -346,7 +346,7 @@ test("标记消费：他段 segmentId ⇒ 收束因不变且标记被清（不�
     const result = await runDrive(
       d,
       { maxSegments: 2 },
-      { enginePath: "/fake/engine.cjs", detectAuth: () => ({ oauth: true, envAuth: false, ok: true }), run, rollingPoints: 0 },
+      { enginePath: "/fake/engine.cjs", detectAuth: () => ({ oauth: true, envAuth: false, ok: true }), run, querySessionPoints: () => ({ absent: false, unpriced: [], points: 0 }) },
     ).finally(() => {
       console.log = orig;
     });

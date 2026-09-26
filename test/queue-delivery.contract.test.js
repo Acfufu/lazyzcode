@@ -151,7 +151,7 @@ test("①桥全链（endpoint C）：drive→finish→B act/readback→C act/rea
 });
 
 test("②交付未竟（endpoint B，PR 不合并）：item failed+指路、不动 goal、tx settled、零假完成", async () => {
-  const { d, it } = bridgeRepo("lzy-qbridge-2-", { endpoint: "B", delivery: { B: "./cb.md" } });
+  const { d, it } = bridgeRepo("lzy-qbridge-2-", { endpoint: "B", delivery: { B: "./cb.md", C: "./cc.md" } });
   try {
     // 修正夹具：endpoint B 只声明 B 契约
     const d2 = d;
@@ -229,7 +229,7 @@ test("⑤死亡不死锁：超上界或持有进程已死 → reconcile 落账�
 });
 
 test("⑥交付追认：failed 条目经人工 act/readback 修复后 reconcile 翻 completed；deps 链解锁", async () => {
-  const { d, it } = bridgeRepo("lzy-qbridge-6-", { endpoint: "B", delivery: { B: "./cb.md" } });
+  const { d, it } = bridgeRepo("lzy-qbridge-6-", { endpoint: "B", delivery: { B: "./cb.md", C: "./cc.md" } });
   try {
     // 先自然跑出「交付未竟」failed（PR 不合并）
     await runQueueDispatch(d, {}, { ...fakeDrive, ...fakeExt({ mergeWorks: false }) });

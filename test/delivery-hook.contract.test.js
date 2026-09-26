@@ -147,10 +147,11 @@ function queueDeliveryRepo(prefix, { twoItems = false } = {}) {
   );
   writeFileSync(join(d, "c-main-b.md"), "task: main B\nendpoint: B\nscope: .\nrecipe: none\n\n- [A1] x\n");
   writeFileSync(join(d, "cb.md"), "task: B 交付\nendpoint: B\nscope: .\nrepo: Acfufu/lazyzcode\nbase: main\nbranch: v031\npr-title: t\n\n- [A1] x\n");
+  writeFileSync(join(d, "cc.md"), "task: C 交付\nendpoint: C\nscope: .\nrepo: Acfufu/lazyzcode\nexpect-marker: v0.3.1\n\n- [A1] x\n");
   writeFileSync(join(d, "p.md"), "- [N1] x\n- [F1] marker\n");
   g(["add", "-A"]);
   g(["commit", "-qm", "fixture"]);
-  const args = ["queue", "add", "b-item", "--contract", "c-main-b.md", "--plan", "p.md", "--endpoint", "B", "--delivery-b", "cb.md", "--goal-slug", "qb1"];
+  const args = ["queue", "add", "b-item", "--contract", "c-main-b.md", "--plan", "p.md", "--endpoint", "B", "--delivery-b", "cb.md", "--delivery-c", "cc.md", "--goal-slug", "qb1"];
   const r1 = lzyIn(d, args);
   if (r1.status !== 0) throw new Error(`queue add 失败：${r1.out}`);
   if (twoItems) {

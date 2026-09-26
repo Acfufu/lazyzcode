@@ -244,6 +244,14 @@ function deliveryEpsOf(it) {
   return it.delivery ? Object.keys(it.delivery).filter((ep) => ep === "B" || ep === "C") : [];
 }
 
+// 目标终点要求的交付动作序列：B 止于合并（act B）；C 续 Pages 核验（act B→C）。
+// 与「声明集合」不同：B 终点同样声明两契约（双授权门要求），但不执行 act C。
+function requiredActsFor(it) {
+  if (it.endpoint === "C") return ["B", "C"];
+  if (it.endpoint === "B") return ["B"];
+  return [];
+}
+
 // 授权缺席原因列（读面文案；交付面含短码指路——「批准 <短8>」）。
 function authorizationReasons(cwd, it) {
   const reasons = [];
@@ -461,11 +469,13 @@ export function addQueueItem(cwd, { title, contractFile, planFile, endpoint = "A
   if (endpoint === "A" && Object.keys(deliveryNorm).length > 0) {
     throw new QueueError("endpoint A 不得声明交付契约（A 无外部动作——交付链只在 B/C 终点存在）");
   }
-  if (endpoint === "B" && !deliveryNorm.B) {
-    throw new QueueError("endpoint B 须声明 --delivery-b <B 契约文件>（端点矩阵：B⇒B 契约；无交付契约的 B 终点无意义）");
-  }
-  if (endpoint === "C" && !(deliveryNorm.B && deliveryNorm.C)) {
-    throw new QueueError(`endpoint C 须同时声明 --delivery-b ∧ --delivery-c（缺 ${deliveryNorm.B ? "C" : "B"}；C 核验对象=最新 done B 意图的 mergeSha——ADR-0028/0030）`);
+  if ((endpoint === "B" || endpoint === "C") && !(deliveryNorm.B && deliveryNorm.C)) {
+    // act B 门恒要求 B∧C 双授权（main 为 Pages 发布源，合并即触发部署——ADR-0028）：
+    // B 与 C 终点都须声明两契约；差别只在交付链走到哪一步（B 止于合并、C 续 Pages 核验）。
+    throw new QueueError(
+      `endpoint ${endpoint} 须同时声明 --delivery-b ∧ --delivery-c（缺 ${deliveryNorm.B ? "C" : "B"}；` +
+        `act B 门恒要求 B∧C 双授权——合并即触发 Pages 部署，ADR-0028）`,
+    );
   }
   if (!planFile) throw new QueueError("计划缺位：add 须带 --plan <文件>（该项 goal 的执行计划；缺位不得 ready）");
   const planAbs = resolve(cwd, planFile);
@@ -701,7 +711,7 @@ function deliveryAllDone(cwd, item) {
   } catch {
     return { allDone: false, unreadable: true, missing: deliveryEpsOf(item) };
   }
-  const missing = deliveryEpsOf(item).filter(
+  const missing = requiredActsFor(item).filter(
     (ep) => !intents.some((x) => x.origin?.itemId === item.id && x.endpoint === ep && x.status === "done"),
   );
   return { allDone: missing.length === 0, unreadable: false, missing };
@@ -968,7 +978,7 @@ function runDeliveryChain(cwd, { item, txId, queryPoints, deps = {} }) {
       return null;
     }
   };
-  for (const ep of deliveryEpsOf(item)) {
+  for (const ep of requiredActsFor(item)) {
     let list = readIntents();
     if (list === null) return abortDelivery(cwd, txId, item, "意图账本不可读（fail-closed）", queryPoints);
     const mine = () => (readIntents() ?? []).filter((x) => x.origin?.itemId === item.id && x.endpoint === ep);
@@ -1006,10 +1016,17 @@ function runDeliveryChain(cwd, { item, txId, queryPoints, deps = {} }) {
         }
       }
     } catch (err) {
+      const msg = String(err?.message ?? err);
       const after = readIntents();
       if (after !== null && after.filter((x) => x.origin?.itemId === item.id && x.endpoint === ep).length === 0) {
-        // 无本轮意图=基建类（withLock 5s 死线/账本损坏等）——绝不误报「交付失败」
-        return abortDelivery(cwd, txId, item, String(err?.message ?? err).slice(0, 160), queryPoints);
+        // 无本轮意图的两类分流（0.3.1 棒1 细化，试点实证）：
+        // ①确定性前置拒绝（授权门/未绑定/非 executing 族——beginAct 门序先于意图落账）⇒ 交付前置
+        //   拒绝，走正常完成写入（failed+「交付未竟：交付前置拒绝」），绝不标「基建中止」；
+        // ②其余（withLock 5s 死线/意图账本损坏等基建类）⇒ abortDelivery（不回 ready，死环有实证）。
+        if (/授权门拒绝|未绑定|非 executing|交付授权/.test(msg)) {
+          return { ok: false, note: `交付前置拒绝：${msg.slice(0, 160)}` };
+        }
+        return abortDelivery(cwd, txId, item, msg.slice(0, 160), queryPoints);
       }
       try {
         if (ep === "B") readbackDeliveryB(cwd, {}, deps);

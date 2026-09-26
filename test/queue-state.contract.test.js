@@ -131,12 +131,14 @@ test("④endpoint 矩阵四态（0.3.1 棒1 改写；旧拒语「endpoint 仅支
     const cB = w("c-main-b.md", "task: main B\nendpoint: B\nscope: .\nrecipe: none\n\n- [A1] x\n");
     const cC = w("c-main-c.md", "task: main C\nendpoint: C\nscope: .\nrecipe: none\n\n- [A1] x\n");
     const plan = join(d, "p.md");
-    // ①B 有契约过（主契约 endpoint=B 交叉一致）
-    const itB = addQueueItem(d, { title: "x", contractFile: cB, planFile: plan, goalSlug: "qi-b", endpoint: "B", delivery: { B: bDeliv } });
+    // ①B 有契约过（主契约 endpoint=B 交叉一致；act B 门恒要求 B∧C 双授权 ⇒ 须两契约）
+    const itB = addQueueItem(d, { title: "x", contractFile: cB, planFile: plan, goalSlug: "qi-b", endpoint: "B", delivery: { B: bDeliv, C: cDeliv } });
     assert.equal(itB.endpoint, "B");
     assert.equal(itB.delivery.B.hash.length, 64);
-    // ②B 无契约拒
-    assert.throws(() => addQueueItem(d, { title: "x", contractFile: cB, planFile: plan, goalSlug: "qi-b2", endpoint: "B" }), /endpoint B 须声明 --delivery-b/);
+    assert.ok(itB.delivery.C, "B 终点同样声明 C 契约（双授权门）");
+    // ②B 缺契约拒（只给 B ⇒ 缺 C；全不给 ⇒ 缺 B）
+    assert.throws(() => addQueueItem(d, { title: "x", contractFile: cB, planFile: plan, goalSlug: "qi-b2", endpoint: "B" }), /endpoint B 须同时声明 --delivery-b ∧ --delivery-c（缺 B/);
+    assert.throws(() => addQueueItem(d, { title: "x", contractFile: cB, planFile: plan, goalSlug: "qi-b3", endpoint: "B", delivery: { B: bDeliv } }), /endpoint B 须同时声明 --delivery-b ∧ --delivery-c（缺 C/);
     // ③C 缺 B 拒；C 有 B∧C 过
     assert.throws(() => addQueueItem(d, { title: "x", contractFile: cC, planFile: plan, goalSlug: "qi-c0", endpoint: "C", delivery: { C: cDeliv } }), /endpoint C 须同时声明/);
     const itC = addQueueItem(d, { title: "x", contractFile: cC, planFile: plan, goalSlug: "qi-c1", endpoint: "C", delivery: { B: bDeliv, C: cDeliv } });
@@ -327,17 +329,20 @@ test("⑬交付授权折叠：主契约批准+交付未批准→不 ready（reas
   try {
     writeFileSync(join(d, "c-main-b.md"), "task: main B\nendpoint: B\nscope: .\nrecipe: none\n\n- [A1] x\n");
     writeFileSync(join(d, "cb.md"), "task: B 交付\nendpoint: B\nscope: .\nrepo: Acfufu/lazyzcode\nbase: main\nbranch: v031\npr-title: t\n\n- [A1] x\n");
-    const it = addQueueItem(d, { title: "b-item", contractFile: join(d, "c-main-b.md"), planFile: join(d, "p.md"), goalSlug: "q-b13", endpoint: "B", delivery: { B: join(d, "cb.md") } });
+    writeFileSync(join(d, "cc.md"), "task: C 交付\nendpoint: C\nscope: .\nrepo: Acfufu/lazyzcode\nexpect-marker: v0.3.1\n\n- [A1] x\n");
+    const it = addQueueItem(d, { title: "b-item", contractFile: join(d, "c-main-b.md"), planFile: join(d, "p.md"), goalSlug: "q-b13", endpoint: "B", delivery: { B: join(d, "cb.md"), C: join(d, "cc.md") } });
     const dShort = it.delivery.B.hash.slice(0, 8);
     // 主契约已批、交付未批：不 ready 且原因含短码指路
     recordAuthorization(d, { kind: "approval", slug: "q-b13", contractHash: it.contractHash, sessionId: "t", at: new Date().toISOString() });
     const r1 = describeReadiness(d, it);
     assert.equal(r1.ready, false);
     assert.ok(r1.reasons.some((x) => x.includes(`交付授权缺席：B（${dShort}）——批准 ${dShort}`)), r1.reasons.join("|"));
+    assert.ok(r1.reasons.some((x) => x.includes("交付授权缺席：C")), `B 终点同须 C 批准：${r1.reasons.join("|")}`);
     refreshQueue(d);
     assert.notEqual(itemState(d, it.id), "ready");
-    // 交付批准 → authorized → ready
+    // 交付两批准齐备 → authorized → ready（双授权门：act B 恒要求 B∧C）
     recordAuthorization(d, { kind: "approval", slug: "q-b13", contractHash: it.delivery.B.hash, sessionId: "t", at: new Date().toISOString() });
+    recordAuthorization(d, { kind: "approval", slug: "q-b13", contractHash: it.delivery.C.hash, sessionId: "t", at: new Date().toISOString() });
     refreshQueue(d);
     assert.equal(itemState(d, it.id), "ready");
     // 撤回交付授权 → blocked（前缀 authorization + 文案含短码）

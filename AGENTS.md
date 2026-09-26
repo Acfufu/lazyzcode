@@ -11,8 +11,9 @@
 ## 2. 当前状态（2026-09-26 短表；完整历史档案 → docs/history.md）
 
 - **已发布**：npm `lazyzcode` **0.3.0**（registry latest；升级见 README）。
-- **0.3.0 agent-first 弧发布收官（09-26）**：M0 能力基线（#32 近似限制）；M1 项目与授权（09-24，#33）；M2 验证机器面+lazyzcode 试点 A（09-24）；M3 有界队列+累计预算（09-25，#34/ADR-0027）；M2 三仓腿 oc+zp 试点（09-25，三仓 A 出口 3/3）；**M4 有限交付 B/C（09-25，delivery 授权动作面+首条 B/C 真实闭环；#35/ADR-0028）**；**M5 迁移与发布收口（09-26，迁移机器 apply+state 版本入口+三仓回归补账+V12；#36/ADR-0029）**；规划入口与各步报告 → docs/spikes/。
-- 全部历史里程碑（P0→双审→0.0.5 首发→0.1.x/0.2.x→0.3.0 弧线）、消融账本锚点、双审报告索引 → docs/history.md。
+- **0.3.0 agent-first 弧发布收官（09-26）**：M0 能力基线、M1 项目与授权、M2 三仓 A 试点、M3 队列与累计预算、M4 有限 B/C 交付、M5 迁移与发布收口；决策 #32–#36，各步证据 → docs/spikes/。
+- 历史里程碑、消融账本与双审报告索引 → docs/history.md。
+- **下一迭代规划（09-26，已确认待实施；本轮不执行）**：0.3.1 收口 → docs/plan-v031-closeout.md；0.4.0 机器闭环与同期评估 → docs/plan-v040-engineering-policy.md；逐问共识 → docs/design-v040-engineering-policy.md。
 - 发布机械件（定版/tag/publish/pages）按 docs/release-checklist.md 执行；docs/reviews/ 为评审报告库。
 
 ## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19；引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔3.12.x 代 0.16.5→3.14.0 代 0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕，设计前必读）；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组（插件记录字段逐字相同），lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**——0.1.2 期 engine-3140-sync 即因只锚版本而漏检，代价是 0.16.9 宿主上 status/doctor 的 `enabled` 行 fail 级误报翻退出码
@@ -45,6 +46,9 @@
 | #36 | M5 迁移机器 | state.json 最后写=提交点；apply=备份/暂存/校验/原子切换+journal 幂等续跑；在途→drafts 授权 NONE；执法=goal 损坏写前停/preserve 保字节；update/sync 永不自动迁移（ADR-0029） |
 | #37 | 交付编排桥 | 队列项挂 delivery 契约+endpoint B/C+HEAVY 入队解封+多页爬核；批准复用 UPS 通道（ADR-0030） |
 | #38 | 积分 gauge 归因 | 执法面=逐段 sessionId usage；账号级水位降 doctor 建议行；budget-ref=none=只留墙钟（ADR-0027 修正节） |
+| #39 | 受控独立评审 | lzy 发起独立会话、绑定候选与预算；阻塞发现须独立复核关闭；能力探针前置，待实施（ADR-0031，2026-09-26） |
+| #40 | 评审复用 | 按职责授范围资格并对抗验证；未知重评（ADR-0032，2026-09-26；待实施） |
+| #41 | 义务复判 | 额外要求可独立复判取消，契约与分级底线不变（ADR-0033，2026-09-26；待实施） |
 
 其余 #1-#24 全表 → docs/decisions.md。
 
@@ -75,7 +79,7 @@ docs/
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
-  adr/0001..0029-*.md         ← 0022=H3R 车道边界（休眠原型、开关语义反转）；enable 走引擎 CLI+config 零写入 / init-deep 角色 / 无人值守宿主自动化 / 拉回走认领制 / 透明账本尾注 / 宿主工作区就地语义 / 已知未知+消融账本 / 传输死亡诊断面 / 交接放行 / unbound wake 调度 / 三平台 0.0.6 支持 / lzy update 子进程 sync / 完整性内核（0013）/ 失效 DAG+红绿 manifest（0014）/ 真消融特赦窗口+kill-switch 落主线（0015）/ 世系+传播双轴（0016）/ headless 原语（0017）/ UPS exact-hash 人权门（0018）/ 拉回资格制+standdown（0004 修正案四·0009 修订节）/ 非 git 宿主政策+降级形态立项（0019）/ runtime 运行时账本 lease·fencing·budget+risk 机器面（0020）/ 引擎面契约唯一边界归一+逐面契约测试（0021）/ 多 provider 计价口径：单位明文（元/百万 token）·有源才入表的枚举式覆盖·水位 SQL 由表生成（0023）/ 0.3.0 弧五案=契约授权 0024·验证回执 0025·队列预算 0027·交付 B/C 0028·迁移机器 0029
+  adr/0001..0033-*.md         ← 架构决策原文（现行摘要见 §4、全表见 decisions.md）；0031=受控独立评审、0032=评审范围复用、0033=策略义务复判，均待实施
   reviews/ release-checklist.md  ← 评审报告/处置记录（2026-09-06/07/08）+ 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist（2026-09-13）
   diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
 plugin/ core/ cli/ test/ .github/  ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）+ 契约测试（node:test 零依赖）+ CI 骨架

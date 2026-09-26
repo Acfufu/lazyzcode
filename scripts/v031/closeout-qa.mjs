@@ -19,6 +19,8 @@
 //   2. 夹具内批准记录由真实钩子（plugin/hooks/trigger.js）消费合成 stdin 的批准句写入——
 //      非真人会话触发，属测试先例（test/contract-gate.contract.test.js:65-70），证据里如实记录。
 //   3. 夹具段的真实会话由真引擎 headless 驱动，模型消耗计入宿主计费库（这正是本案例的被测面）。
+//   4. win32 未核：假 gh 为 unix shebang 脚本直 spawn（LZY_GH_BIN 注入缝），win32 直跑会 EFTYPE——
+//      与 test/ci-binding.contract.test.js 的跳过口径同源；本工具按 unix/macOS QA 面使用。
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";

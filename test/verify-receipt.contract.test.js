@@ -200,10 +200,16 @@ test("契约绑定：四类回执 contractHash 严格等于 goal.contract.contra
       "#!/usr/bin/env node\nconst a = process.argv.slice(2).join(' ');\nif (a.includes('check-runs')) { process.stdout.write(JSON.stringify([{ name: 'ci', conclusion: 'success', details_url: 'u' }])); process.exit(0); }\nprocess.exit(1);\n",
     );
     chmodSync(fakeGh, 0o755);
-    const ci = lzyIn(d, ["verify", "ci", "--repo", "Acfufu/lazyzcode"], { LZY_GH_BIN: fakeGh });
-    assert.equal(ci.status, 0, ci.out);
+    // ci 腿：win32 假件执行语义未核（unix shebang 脚本直 spawn 即 EFTYPE，CI 实锤）——ci-binding 同款跳过并如实注记
+    if (process.platform !== "win32") {
+      const ci = lzyIn(d, ["verify", "ci", "--repo", "Acfufu/lazyzcode"], { LZY_GH_BIN: fakeGh });
+      assert.equal(ci.status, 0, ci.out);
+    }
     const recs = listReceipts(d);
-    for (const k of ["run", "qualification", "reuse", "ci"]) {
+    if (process.platform !== "win32") {
+      assert.equal(recs.filter((x) => x.kind === "ci").findLast(() => true)?.contractHash, goalHash, "ci 回执契约绑定=登记值");
+    }
+    for (const k of ["run", "qualification", "reuse"]) {
       const r = recs.filter((x) => x.kind === k).findLast(() => true);
       assert.ok(r, `缺 ${k} 回执`);
       assert.equal(r.contractHash, goalHash, `${k} 回执契约绑定=登记值`);

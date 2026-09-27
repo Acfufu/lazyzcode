@@ -99,3 +99,19 @@ AGENTS §2 M3 行与 docs/history.md 里程碑行在 finish 收口 chore 提交�
    面在 M2 收口后不可复达）——本阶段随修并复验；同类转义面（模板字面量嵌套）值得一次专项清扫。
 6. **评审预算视图的 drive 侧读数行**：本阶段 budgetView/queue budget 行已落；drive 段报文行未并入（执法面
    已在评审前置生效，drive 视图行为展示性补齐）。
+
+## 附录 A：本目标自审发现转录与处置（v040-m3-findings.a2.r2 · blocked · 候选 333b6f7）
+
+自审会话（metered 10.273 分，超时废跑 1 次如实入档）对本仓 M3 候选树评审判 blocked（1×P1 阻塞）+4×P2+2×P3。
+处置：P1 与两处廉价项（P3-F-5 口径、P2-F-2 drive 行）随收口提交修正后经 resolve-request→recheck 独立复核
+关闭；其余如实转录 M4 输入（非阻塞不拦截 finish）：
+
+| # | 级 | 一句话 | 处置 |
+| --- | --- | --- | --- |
+| F-1 | P1·blocking | 新契约测试预算腿调真 preflightReview 未注入 detectAuth/sqliteProbe——CI/无凭据机器必失败 | **随收口修正**（deps 注入两替身），resolve→recheck 后关闭 |
+| F-2 | P2 | 契约 A7「drive 预算视图评审行」未落地与报告 §7-6 表述冲突 | **随收口修正**（doctor drive 行增评审分项读数），报告 §7-6 相应改写 |
+| F-3 | P2 | close 的 recheck 引用不绑目标代次/时序——任意在案 valid 运行可作依据 | M4 输入（收口期不扩面） |
+| F-4 | P2 | relink 方向无校验且改名未 relink 静默失效（fail-open 形态） | M4 输入（查环已有；方向/未 relink 检测补面） |
+| F-5 | P3 | 发现入账只认 blocking===true 与门判 P0/P1 即阻塞口径不一 | **随收口修正**（入账口径与门同源） |
+| F-6 | P3 | cmdFinding 退出码文档漂移（歧义/不在账变更子命令 1、show 2） | M4 输入（文档行措辞统一） |
+| F-7 | P3 | finish 相位账本 upsert 与 review 入账在 withLock 外——并发可丢更新 | M4 输入（#11 锁覆盖面扩到落账相位） |

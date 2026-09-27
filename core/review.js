@@ -1127,7 +1127,8 @@ function wireFindingsLedger(cwd, record) {
   }
   const fpOf = (f) => findingFingerprint({ severity: f.severity, title: f.title, location: f.location });
   const openBefore = isRecheck ? openBlockingFindings(cwd, record.slug).map((x) => x.fingerprint) : null;
-  const blocking = record.result.findings.filter((f) => f && f.blocking === true);
+  // 入账口径与统一门判 blocking 同源（自审 F-5 收口）：blocking===true 或 P0/P1（分级即阻塞）。
+  const blocking = record.result.findings.filter((f) => f && (f.blocking === true || f.severity === "P0" || f.severity === "P1"));
   let disposition = [];
   if (record.result.verdict === "blocked" && blocking.length > 0) {
     disposition = recordFindingSightings(cwd, record.slug, {

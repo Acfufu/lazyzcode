@@ -250,9 +250,11 @@ describe("⑦评审预算执法（N9）：入账/分项/超限拒/无契约不�
       assert.ok(Math.abs(budgetView(d1).reviewPoints - 0.4) < 1e-9);
       assert.ok(Math.abs(reviewLedgerPoints(d1, "fx") - 0.4) < 1e-9);
       await runReview(d1, { deps: deps(PASS, 0.4) });
-      await runReview(d1, { deps: { ...deps(PASS, 0.4), preflight: preflightReview } });
+      await runReview(d1, { deps: { ...deps(PASS, 0.4), preflight: preflightReview, detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) } });
       assert.ok(Math.abs(budgetView(d1).reviewPoints - 1.2) < 1e-9);
-      await assert.rejects(() => runReview(d1, { deps: { ...deps(PASS, 0.1), preflight: preflightReview } }), (e) => e.reason === "budget-exhausted");
+      // 自审 F-1 修正：CI/无凭据机器可跑——真前置的凭据依赖（detectAuth/sqliteProbe）注入替身，
+      // budget-exhausted 判因因此不被 no-auth 抢先。
+      await assert.rejects(() => runReview(d1, { deps: { ...deps(PASS, 0.1), preflight: preflightReview, detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) } }), (e) => e.reason === "budget-exhausted");
       // dedup：同 runId 重复入账不双计
       const dup = appendLedgerEntry(d1, { kind: "review", dedupKey: `review:${r1.record.runId}`, authorization: { slug: "fx", contractHash: "c".repeat(64) }, points: 999 });
       assert.equal(dup.duplicate, true);

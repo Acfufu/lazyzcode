@@ -11,6 +11,7 @@ import { detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
 import { projectCheck } from "./project.js";
 import { loadMigrationState } from "./migrate.js";
+import { budgetView } from "./queue.js"; // M3 N9：drive 预算视图评审分项读数
 import { loadPolicyFile, DUTY_TABLE_VERSION } from "./policy.js"; // 0.4.0 M1：policy 家族巡逻（形状闸 fail-closed）+ M2 N5 版本漂移读数
 import { loadReviewFile } from "./review.js"; // 0.4.0 M2：review 运行族巡逻（形状闸 fail-closed，损坏=fail 级）
 import { loadFindingsFile, CLOSED_FINDING_STATUSES } from "./findings.js"; // 0.4.0 M3：发现账本巡逻（同 fail 级口径）
@@ -1246,6 +1247,12 @@ function checkDrive(push, cwd) {
     }
     if (rt?.budget) {
       budgetText = `预算 ${rt.budget.spentMs}/${rt.budget.wallClockBudgetMs}ms · ${Math.round(rt.budget.spentPoints * 100) / 100}/${rt.budget.pointsBudget}pt`;
+      // M3 N9（自审 F-2 收口）：评审会话消耗独立轴并入 drive 预算视图读数行——
+      // 评审消耗走 budgetView.reviewPoints（LEDGER review 类），不占 drive 段积分。
+      try {
+        const rv = budgetView(cwd);
+        budgetText += ` · 评审分项 ${Math.round((rv.reviewPoints ?? 0) * 100) / 100}pt`;
+      } catch {}
     }
   } catch (err) {
     push("drive", "warn", `runtime 账本不可读：${err?.message ?? err}`);

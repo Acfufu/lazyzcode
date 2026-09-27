@@ -10,6 +10,7 @@ import { join, resolve, sep, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawnSync } from "node:child_process";
 import { loadFamilyFile, saveFamilyFile, budgetView } from "./queue.js";
+import { recordFindingSightings, openBlockingFindings, findingFingerprint } from "./findings.js"; // 0.4.0 M3：运行落账接线（findings.js 不反向依赖本模块，无环）
 import { candidateIdentity, listReceipts } from "./verify.js";
 import { loadPolicyRecord, DUTY_TABLE_VERSION } from "./policy.js";
 import { createGit } from "./git.js";
@@ -208,6 +209,24 @@ export function assertRunShape(rec, p) {
     if (r.normalization !== null && typeof r.normalization !== "string") bad("result.normalization 须为字符串或 null");
     if (r.verdict === "pass" && r.findings.some((f) => f.blocking === true || f.severity === "P0" || f.severity === "P1")) {
       bad("verdict=pass 与 blocking/P0/P1 发现并存（结构自相矛盾——归一化按 blocked 判并记理由，拍板 3）");
+    }
+  }
+  // M3 面两字段（N2）：recheck 标记位与落账读数——旧档（M2）缺字段可读（undefined 放行，
+  // 旧档可读走漂移判家法）；新档恒写。findingsLedger 由 finishRun 落账接线产出。
+  if (rec.recheck !== undefined && rec.recheck !== null) {
+    if (typeof rec.recheck !== "object" || Array.isArray(rec.recheck)) bad("recheck 须为对象或 null");
+    if (rec.recheck.requested !== true) bad("recheck.requested 须为 true");
+    if (rec.recheck.targets !== null && !Array.isArray(rec.recheck.targets)) bad("recheck.targets 须为数组或 null");
+    if (Array.isArray(rec.recheck.targets)) {
+      for (const t of rec.recheck.targets) if (!HEX64.test(t)) bad("recheck.targets 须为 64 hex 指纹");
+    }
+  }
+  if (rec.findingsLedger !== undefined && rec.findingsLedger !== null) {
+    if (typeof rec.findingsLedger !== "object" || Array.isArray(rec.findingsLedger)) bad("findingsLedger 须为对象或 null");
+    if (!Number.isInteger(rec.findingsLedger.upserted) || rec.findingsLedger.upserted < 0) bad("findingsLedger.upserted 须为 ≥0 整数");
+    if (!Array.isArray(rec.findingsLedger.disposition)) bad("findingsLedger.disposition 须为数组");
+    if (rec.findingsLedger.closureCandidates !== null && !Array.isArray(rec.findingsLedger.closureCandidates)) {
+      bad("findingsLedger.closureCandidates 须为数组或 null");
     }
   }
 }
@@ -679,7 +698,12 @@ const RETRY_SUFFIX_REASON = (reason) =>
 // 评审运行主入口（拍板 11：deps 注入面=spawnHeadless/detectAuth/querySessionPoints/preflight——
 // CI 无凭据零真引擎可跑）。返回 { record, exitHint }；前置不具备抛 ReviewPreflightError
 //（不 spawn 不落档）；运行后任何失败分类照常落档（失败运行不可改判，F2 判据）。
-export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps = {} } = {}) {
+export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, recheckOf = null, deps = {} } = {}) {
+  // recheck 标记（N2/V06）：recheckOf=null=常规运行；true=复核在案全部未关闭发现；
+  // 指纹数组=定向复核。仅作运行档标记与闭候选对账开关，不改变运行本身（同职责新独立会话）。
+  if (recheckOf !== null && recheckOf !== true && !(Array.isArray(recheckOf) && recheckOf.every((x) => typeof x === "string" && /^[0-9a-f]{64}$/.test(x)))) {
+    throw new ReviewPreflightError("recheckOf 非法：须为 null | true | 64hex 指纹数组", { reason: "duty-unknown" });
+  }
   if (!DUTY_TABLE.some((d) => d.id === duty)) {
     throw new ReviewPreflightError(`职责不在表：${duty}（现行职责表：${DUTY_TABLE.map((d) => d.id).join("、")}）`, { reason: "duty-unknown" });
   }
@@ -899,6 +923,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps 
       metering,
       validity,
       result,
+      recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null } : null,
     };
     return finishRun(cwd, reserve, record);
   } catch (err) {
@@ -927,6 +952,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps 
       metering: { status: "absent", points: null, note: "运行器异常——无计量可读（不算零）" },
       validity: { status: "invalid", reason: "interrupted", detail: `运行器异常：${String(err?.message ?? err).slice(0, 200)}` },
       result: null,
+      recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null } : null,
     };
     try {
       return { ...finishRun(cwd, reserve, record), thrown: err };
@@ -937,7 +963,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps 
 }
 
 // 记录组装收尾：dutyTableVersion 从现行策略记录取（记录缺/不可读=回退现行职责表版本——
-// runner 恒在现行规则下运行，不冒充他版）。
+// runner 恒在现行规则下运行，不冒充他版）；随后落账接线（N2/V06）。
 function finishRun(cwd, reserve, record) {
   let v = null;
   try {
@@ -945,6 +971,38 @@ function finishRun(cwd, reserve, record) {
     if (rec && Number.isInteger(rec.dutyTableVersion)) v = rec.dutyTableVersion;
   } catch {}
   record.dutyTableVersion = v ?? DUTY_TABLE_VERSION;
+  record.findingsLedger = wireFindingsLedger(cwd, record);
   const saved = saveReviewRun(cwd, record);
   return { record: saved, exitHint: saved.validity.status === "valid" && saved.result?.verdict === "pass" ? 0 : 1 };
+}
+
+// 落账接线（N2，V06/V12）：valid 运行的 blocking 发现 upsert 进发现账本（invalid 运行的发现
+// 不入账——不可信面，不充当阻塞依据）；recheck 运行另产闭候选读数=upsert 前未关闭开集快照中
+// 本 run 不再报的指纹（对账面，close 的 recheck 引用校验由 cli 层做）。disposition 里 invalid-fix
+// 翻面（含 diagnosis-required）由账本状态机自判——这里只透传读数入运行档。
+function wireFindingsLedger(cwd, record) {
+  const isRecheck = record.recheck?.requested === true;
+  if (record.validity?.status !== "valid" || !record.result || !Array.isArray(record.result.findings)) {
+    return {
+      upserted: 0,
+      disposition: [],
+      closureCandidates: isRecheck ? [] : null,
+      ...(record.validity?.status !== "valid" ? { note: "invalid 运行发现不入账（不可信面）" } : {}),
+    };
+  }
+  const fpOf = (f) => findingFingerprint({ severity: f.severity, title: f.title, location: f.location });
+  const openBefore = isRecheck ? openBlockingFindings(cwd, record.slug).map((x) => x.fingerprint) : null;
+  const blocking = record.result.findings.filter((f) => f && f.blocking === true);
+  let disposition = [];
+  if (record.result.verdict === "blocked" && blocking.length > 0) {
+    disposition = recordFindingSightings(cwd, record.slug, {
+      runId: record.runId,
+      attempt: record.attempt,
+      at: record.endedAt,
+      findings: blocking.map((f) => ({ severity: f.severity, title: f.title, location: f.location })),
+    });
+  }
+  const blockingNow = new Set(blocking.map(fpOf));
+  const closureCandidates = isRecheck ? (openBefore ?? []).filter((fp) => !blockingNow.has(fp)) : null;
+  return { upserted: disposition.length, disposition, closureCandidates };
 }

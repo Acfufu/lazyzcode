@@ -12,6 +12,7 @@ import { effectiveAuthorization, loadContract } from "./contract.js";
 import { projectCheck } from "./project.js";
 import { loadMigrationState } from "./migrate.js";
 import { loadPolicyFile } from "./policy.js"; // 0.4.0 M1：policy 家族巡逻（形状闸 fail-closed）
+import { loadReviewFile } from "./review.js"; // 0.4.0 M2：review 运行族巡逻（形状闸 fail-closed，损坏=fail 级）
 // workers 残留三桶的形态/哨兵谓词单一源（core/drive.js；ADJ-39 同族纪律）。
 import { DRIVE_WORKERS_ROOT_DIRNAME, WORKERS_LOG_DIR_RE, WORKERS_RUN_DIR_RE, readWorkersSentinel } from "./drive.js";
 import { readRepoManifest, readRegistry, sha256File } from "./installer.js";
@@ -599,6 +600,49 @@ function checkPolicy(push, cwd) {
     return;
   }
   push("policy", "ok", `策略家族 ${names.length} 件（策略记录 ${records} · 兼容锚 ${compat}）· 形状闸全过`);
+}
+
+// 评审运行族诊断（0.4.0 M2）：.lazyzcode/review/ 家族健康巡逻——运行档逐个 loadReviewFile
+// 家法读（fail-closed），损坏逐个点名；家族缺席/全空=skip。**损坏=fail 级（有意严于
+// checkPolicy 的 warn）**：评审档是统一门放行依据，读不出即不可放行——家族带着坏档时
+// doctor 不得报「ok」。与孤儿 tmp 计数互补：这里管「在场文件的形状」。只读零写。
+function checkReview(push, cwd) {
+  const dir = join(cwd, ".lazyzcode", "review");
+  let names;
+  try {
+    names = readdirSync(dir).filter((f) => f.endsWith(".json") && !f.startsWith("."));
+  } catch {
+    push("review", "skip", "无评审运行族（尚无 lzy review run——0.4.0 M2 面未启用）");
+    return;
+  }
+  if (names.length === 0) {
+    push("review", "skip", "评审运行族空");
+    return;
+  }
+  const bad = [];
+  const runs = [];
+  for (const f of names) {
+    try {
+      runs.push(loadReviewFile(join(dir, f)));
+    } catch (e) {
+      bad.push(`${f}：${String(e?.message ?? e).slice(0, 80)}`);
+    }
+  }
+  if (bad.length > 0) {
+    push(
+      "review",
+      "fail",
+      `评审运行族 ${names.length} 件 · ⚠ 不可读 ${bad.length} 件：${bad.slice(0, 3).join("；")}${bad.length > 3 ? "…" : ""}` +
+        `——评审档是放行依据，读不出即不可放行（fail 级，严于 policy 的 warn）；备份后删除可重建读面`,
+    );
+    return;
+  }
+  const last = runs.slice().sort((a, b) => (a.endedAt < b.endedAt ? -1 : a.endedAt > b.endedAt ? 1 : 0)).at(-1);
+  push(
+    "review",
+    "ok",
+    `评审运行族 ${names.length} 件 · 最近 ${last.runId}（${last.duty.id} · ${last.validity.status} · ${last.metering.status}）· 形状闸全过`,
+  );
 }
 
 // 契约授权诊断（0.3.0 M1，ADR-0024）：活跃 goal 绑契约时的授权态与漂移复核——ok=授权
@@ -1198,6 +1242,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkApprovals(p, cwd),
     (p) => checkContract(p, cwd),
     (p) => checkPolicy(p, cwd),
+    (p) => checkReview(p, cwd),
     (p) => checkProjectManifest(p, cwd),
     (p) => checkMigratePreview(p, cwd),
     (p) => checkHostGit(p, cwd),

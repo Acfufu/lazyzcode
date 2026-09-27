@@ -13,6 +13,7 @@ import { projectCheck } from "./project.js";
 import { loadMigrationState } from "./migrate.js";
 import { loadPolicyFile, DUTY_TABLE_VERSION } from "./policy.js"; // 0.4.0 M1：policy 家族巡逻（形状闸 fail-closed）+ M2 N5 版本漂移读数
 import { loadReviewFile } from "./review.js"; // 0.4.0 M2：review 运行族巡逻（形状闸 fail-closed，损坏=fail 级）
+import { loadFindingsFile, CLOSED_FINDING_STATUSES } from "./findings.js"; // 0.4.0 M3：发现账本巡逻（同 fail 级口径）
 // workers 残留三桶的形态/哨兵谓词单一源（core/drive.js；ADJ-39 同族纪律）。
 import { DRIVE_WORKERS_ROOT_DIRNAME, WORKERS_LOG_DIR_RE, WORKERS_RUN_DIR_RE, readWorkersSentinel } from "./drive.js";
 import { readRepoManifest, readRegistry, sha256File } from "./installer.js";
@@ -660,6 +661,56 @@ function checkReview(push, cwd) {
   );
 }
 
+// 发现账本诊断（0.4.0 M3）：.lazyzcode/findings/ 家族健康巡逻——逐档 loadFindingsFile 家法读
+//（fail-closed），损坏逐个点名；家族缺席/全空=skip。损坏=fail 级（与 checkReview 同口径）：
+// 未关闭阻塞发现是统一门 findings 子句的放行依据，读不出即不可判——账本带坏档时 doctor 不得报 ok。
+// ok 行透出未关闭计数（跨别名闭包口径与 gate 一致——逐档损坏检查在场文件，闭包读数取活跃 goal）。
+function checkFindings(push, cwd) {
+  const dir = join(cwd, ".lazyzcode", "findings");
+  let names;
+  try {
+    names = readdirSync(dir).filter((f) => f.endsWith(".json") && !f.startsWith("."));
+  } catch {
+    push("findings", "skip", "无发现账本（尚无评审运行落账——0.4.0 M3 面未启用）");
+    return;
+  }
+  if (names.length === 0) {
+    push("findings", "skip", "发现账本空");
+    return;
+  }
+  const bad = [];
+  const records = [];
+  for (const f of names) {
+    try {
+      records.push({ file: f, rec: loadFindingsFile(cwd, f.slice(0, -".json".length)) });
+    } catch (e) {
+      bad.push(`${f}：${String(e?.message ?? e).slice(0, 80)}`);
+    }
+  }
+  if (bad.length > 0) {
+    push(
+      "findings",
+      "fail",
+      `发现账本 ${names.length} 件 · ⚠ 不可读 ${bad.length} 件：${bad.slice(0, 3).join("；")}${bad.length > 3 ? "…" : ""}` +
+        `——未关闭阻塞发现是放行依据（V06），读不出即不可判（fail 级）；备份后删除可重建读面`,
+    );
+    return;
+  }
+  let openCount = 0;
+  let aliasLinks = 0;
+  for (const { rec } of records) {
+    aliasLinks += rec.aliases.length;
+    for (const e of Object.values(rec.findings)) {
+      if (!CLOSED_FINDING_STATUSES.includes(e.status)) openCount += 1;
+    }
+  }
+  push(
+    "findings",
+    "ok",
+    `发现账本 ${names.length} 件（发现 ${records.reduce((n, r) => n + Object.keys(r.rec.findings).length, 0)} 条 · 未关闭 ${openCount} · 别名链 ${aliasLinks}）· 形状闸全过`,
+  );
+}
+
 // 契约授权诊断（0.3.0 M1，ADR-0024）：活跃 goal 绑契约时的授权态与漂移复核——ok=授权
 // 有效；warn=待批准/已撤回/磁盘契约漂移（gate 会拦，这里让原因提前可见）；skip=无 goal
 // 或未绑契约（legacy 人权门不受影响）。只读零写，warn/skip only 不翻退出码。
@@ -1258,6 +1309,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkContract(p, cwd),
     (p) => checkPolicy(p, cwd),
     (p) => checkReview(p, cwd),
+    (p) => checkFindings(p, cwd),
     (p) => checkProjectManifest(p, cwd),
     (p) => checkMigratePreview(p, cwd),
     (p) => checkHostGit(p, cwd),

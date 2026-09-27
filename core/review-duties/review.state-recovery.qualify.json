@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "dutyId": "review.state-recovery",
+  "procedureVersion": 1,
+  "challenges": [
+    { "id": "C1", "axis": "in-scope", "expect": "invalidate" },
+    { "id": "C2", "axis": "canary-keep", "expect": "keep" },
+    { "id": "C3", "axis": "missed-dependency", "expect": "invalidate", "hints": ["**/*.yml", "**/*.yaml", "**/Dockerfile", "**/*.toml", "**/*.json"] },
+    { "id": "C4", "axis": "unknown-new", "expect": "invalidate" },
+    { "id": "C5", "axis": "rename-delete", "expect": "invalidate" },
+    { "id": "C6", "axis": "lockfile", "expect": "invalidate", "hints": ["**/*lock*", "**/Package.resolved", "**/Podfile.lock", "**/requirements*.txt"] },
+    { "id": "C7", "axis": "check-script", "expect": "invalidate", "hints": ["**/*.sh", "**/Makefile", "**/package.json"] },
+    { "id": "C8", "axis": "env", "expect": "invalidate" },
+    { "id": "C9", "axis": "contract", "expect": "invalidate" },
+    { "id": "C10", "axis": "duty", "expect": "invalidate" }
+  ]
+}

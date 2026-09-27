@@ -24,9 +24,14 @@ import { querySessionPoints } from "./cost.js";
 export const REVIEW_VERSION = 1;
 export const REVIEW_FAMILY = "review";
 export const BASELINE_DUTY_ID = "review.general-correctness";
-// M2 职责集=底线一条（§3.1 必选）；三条专项职责列 M4 输入（须与范围资格面同批）。
+// M2 职责集=底线一条（§3.1 必选）；M4（ADR-0032 同批）扩三条专项职责并带 scopeMode：
+// whole-candidate=不可局部化恒重评（不参与 qualify/reuse）；declarable=可声明依赖范围经
+// 资格挑战后复用（拍板 5）。
 export const DUTY_TABLE = [
-  { id: BASELINE_DUTY_ID, baseline: true, template: "core/review-duties/general-correctness.md" },
+  { id: BASELINE_DUTY_ID, baseline: true, scopeMode: "whole-candidate", template: "core/review-duties/general-correctness.md" },
+  { id: "review.external-side-effects", scopeMode: "declarable", template: "core/review-duties/external-side-effects.md" },
+  { id: "review.state-recovery", scopeMode: "declarable", template: "core/review-duties/state-recovery.md" },
+  { id: "review.verification-deps", scopeMode: "declarable", template: "core/review-duties/verification-deps.md" },
 ];
 export const SEVERITIES = ["P0", "P1", "P2", "P3"];
 export const VERDICTS = ["pass", "blocked"];
@@ -1625,6 +1630,7 @@ export function validateChallengeSuite(suite) {
     if (!CHALLENGE_AXES.includes(c.axis)) bad(`axis 不识别：${JSON.stringify(c.axis ?? null)}`);
     if (!CHALLENGE_EXPECTS.includes(c.expect)) bad(`expect 不识别：${JSON.stringify(c.expect ?? null)}`);
     if (c.hint !== undefined && (typeof c.hint !== "string" || !c.hint)) bad("hint 须为非空字符串或缺席");
+    if (c.hints !== undefined && (!Array.isArray(c.hints) || c.hints.some((h) => typeof h !== "string" || !h))) bad("hints 须为非空字符串数组或缺席");
     if (c.path !== undefined && (typeof c.path !== "string" || !c.path)) bad("path 须为非空字符串或缺席");
     axes.add(c.axis);
   }
@@ -1636,6 +1642,42 @@ export function validateChallengeSuite(suite) {
 
 export function challengeSuiteHash(suite) {
   return createHash("sha256").update(stableStringify(suite)).digest("hex");
+}
+
+// 随包套件加载（declarable 职责恒有套件；读后缓存——policyRulesHash 高频调用面）。
+// 返回 {suite, hash}；whole-candidate 职责返回 null（无套件语义）。
+const suiteCache = new Map();
+export function loadChallengeSuite(dutyId) {
+  const entry = DUTY_TABLE.find((d) => d.id === dutyId);
+  if (!entry) throw new ReviewError(`职责不在表：${dutyId}`);
+  if (entry.scopeMode !== "declarable") return null;
+  if (suiteCache.has(dutyId)) return suiteCache.get(dutyId);
+  let suite;
+  try {
+    suite = JSON.parse(readFileSync(packageRelative(`core/review-duties/${dutyId}.qualify.json`), "utf8"));
+  } catch (e) {
+    throw new ReviewError(`挑战套件不可读：${dutyId}（${String(e?.message ?? e).slice(0, 120)}）`);
+  }
+  validateChallengeSuite(suite);
+  const out = { suite, hash: challengeSuiteHash(suite) };
+  suiteCache.set(dutyId, out);
+  return out;
+}
+
+export function dutySuiteHash(dutyId) {
+  const loaded = loadChallengeSuite(dutyId);
+  return loaded ? loaded.hash : null;
+}
+
+// 清单哈希取值（资格/复用的结构身份轴）：goal 缺席时以最小合成目标跑身份函数
+//（computePolicyIdentity 只读 manifest/contract 面）——不吞错，清单解析失败如实上抛由调用方定。
+function manifestHashOf(cwd, goal) {
+  try {
+    const id = computePolicyIdentity(cwd, goal ?? { slug: "", attempt: 0, version: 2 });
+    return id.manifestPresent ? id.manifestHash : null;
+  } catch {
+    return null;
+  }
 }
 
 // select：声明类规则序优先、路径字典序次之（拍板 3 select 钉死）。
@@ -1650,12 +1692,15 @@ function pickExistingByRules(baseMap, rules, cls) {
   return null;
 }
 
-// select：套件 hint 模式对仓现存文件（声明作者不可控的 ground truth 位）。
-function pickExistingByHint(baseMap, hint) {
-  if (!hint) return null;
-  const re = globToRegExp(hint);
-  for (const p of Object.keys(baseMap).sort()) {
-    if (re.test(p)) return p;
+// select：套件 hint（单 glob 或 hints 数组，首匹配优先）对仓现存文件（声明作者不可控的
+// ground truth 位）。
+function pickExistingByHint(baseMap, hints) {
+  const list = typeof hints === "string" ? [hints] : Array.isArray(hints) ? hints : [];
+  for (const h of list) {
+    const re = globToRegExp(h);
+    for (const p of Object.keys(baseMap).sort()) {
+      if (re.test(p)) return p;
+    }
   }
   return null;
 }
@@ -1701,7 +1746,7 @@ function runChallengeSuite({ candDir, baseMap, declaration, suite }) {
           return mk(observed, observed === c.expect, path);
         }
         if (c.axis === "missed-dependency" || c.axis === "check-script" || c.axis === "lockfile") {
-          let path = c.path ?? (c.axis === "lockfile" ? declaration.sharedInputs.find((s) => baseMap[s] !== undefined) : null) ?? pickExistingByHint(baseMap, c.hint);
+          let path = c.path ?? (c.axis === "lockfile" ? declaration.sharedInputs.find((s) => baseMap[s] !== undefined) : null) ?? pickExistingByHint(baseMap, c.hints ?? c.hint);
           if (!path) {
             return mk(c.axis === "lockfile" ? "no-shared-input-file（声明的 sharedInputs 均不在仓内）" : "hint-no-match（套件 hint 对仓无现存文件——套件与仓不匹配）", false);
           }
@@ -1794,23 +1839,17 @@ export async function qualifyReviewScope(cwd, { runId, scopeDecl }, deps = {}) {
   }
   const decl = validateScopeDeclaration(scopeDecl);
   if (decl.dutyId !== run.duty.id) pre(`声明 dutyId=${decl.dutyId} ≠ base 运行职责 ${run.duty.id}——声明只对被复核职责立`);
-  // 套件：deps 注入优先（测试/合成），否则随包 <dutyId>.qualify.json
+  // 套件：deps 注入优先（测试/合成），否则随包 <dutyId>.qualify.json（loadChallengeSuite
+  // 校验+缓存；declarable 职责随包套件由本批职责入表落地）
   const suiteFileRel = `core/review-duties/${decl.dutyId}.qualify.json`;
   let suite = deps.suite;
   if (!suite) {
-    let text;
-    try {
-      text = readFileSync(packageRelative(suiteFileRel), "utf8");
-    } catch {
-      pre(`挑战套件不在案：${suiteFileRel}（随包套件随职责入表批次落地）`);
-    }
-    try {
-      suite = JSON.parse(text);
-    } catch (e) {
-      throw new ReviewError(`套件解析失败：${suiteFileRel}：${String(e?.message ?? e).slice(0, 140)}`);
-    }
+    const loaded = loadChallengeSuite(decl.dutyId);
+    if (!loaded) pre(`职责 ${decl.dutyId} 无随包套件（whole-candidate 不参与资格）`);
+    suite = loaded.suite;
+  } else {
+    validateChallengeSuite(suite);
   }
-  validateChallengeSuite(suite);
   if (suite.dutyId !== decl.dutyId) throw new ReviewError(`套件职责不符：套件 ${suite.dutyId} ≠ 声明 ${decl.dutyId}`);
   // base 快照
   const candDir = join(reviewDir(cwd), runId, "candidate");
@@ -1824,14 +1863,8 @@ export async function qualifyReviewScope(cwd, { runId, scopeDecl }, deps = {}) {
   const challenges = runChallengeSuite({ candDir, baseMap, declaration: decl, suite });
   const granted = challenges.every((c) => c.ok);
   // 结构身份快照（资格时点五轴——reuse 时与现行对表，漂移即身份失效）
-  let manifestHash = null;
-  try {
-    const id = computePolicyIdentity(cwd);
-    manifestHash = id.manifestPresent ? id.manifestHash : null;
-  } catch {
-    manifestHash = null;
-  }
   const goal = readGoal(cwd);
+  const manifestHash = manifestHashOf(cwd, goal);
   const seqQ = nextScopeSeq(cwd, slug, attempt, "qualification");
   const rec = {
     schemaVersion: SCOPE_VERSION,
@@ -1896,13 +1929,7 @@ export async function reuseReviewScope(cwd, { runId }, deps = {}) {
   if (qual.granted !== true) pre(`base 运行最新资格档为拒绝态（${qual.id}）——修正声明重走资格挑战，不得以拒资复用`);
   // 结构身份对表（资格时点五轴 vs 现行）：任一漂移⇒fallback 逐因（仍落档——回退重评是判断结果）
   const goal = readGoal(cwd);
-  let manifestHash = null;
-  try {
-    const id = computePolicyIdentity(cwd);
-    manifestHash = id.manifestPresent ? id.manifestHash : null;
-  } catch {
-    manifestHash = null;
-  }
+  const manifestHash = manifestHashOf(cwd, goal);
   const current = {
     rulesHash: policyRulesHash(),
     dutyTableVersion: DUTY_TABLE_VERSION,

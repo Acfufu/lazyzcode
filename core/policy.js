@@ -17,15 +17,15 @@ import { loadContract, manifestHashIfPresent } from "./contract.js";
 import { readGoal } from "./loop.js";
 import { openBlockingFindings } from "./findings.js"; // M3 N8：review 义务取消的未关闭发现拒面（findings.js 无反向依赖，无环）
 import { loadFamilyFile, saveFamilyFile, QueueError } from "./queue.js";
-import { DUTY_TABLE as REVIEW_DUTY_TABLE, dutyTemplateHash } from "./review.js"; // 0.4.0 M2 N5：职责模板内容哈希入 rulesHash（call-time 用，ESM 环安全）
+import { DUTY_TABLE as REVIEW_DUTY_TABLE, dutyTemplateHash, dutySuiteHash } from "./review.js"; // 0.4.0 M2 N5：职责模板内容哈希入 rulesHash（call-time 用，ESM 环安全）；M4：declarable 职责套件哈希同入
 
 // M3 N8 升版：v2=reassess 取消通道起（obligationsLog removed 条目合法形）——读侧放宽
 //（v1=M1/M2 代记录保持可读，写恒 v2；沿 dutyTableVersion 读侧放宽先例）。
 export const POLICY_VERSION = 2;
-// 0.4.0 M3 N5 翻面：findings 子句入统一门（gate.js clauses.findings 实装），职责表 v2→v3 同批
+// 0.4.0 M4 N4 翻面：三条专项职责入表（ADR-0032 同批），职责表 v3→v4
 //（dutyTableVersion 参与 rulesHash，翻面=策略身份变化——在途旧记录不自动替换，§3.1；
-// 本 goal 自身 a1 记录随之漂移，由计划 N14 supersede 再采纳收口）。
-export const DUTY_TABLE_VERSION = 3;
+// 本 goal 自身在途记录随之漂移，由计划 N11 收口相位 supersede 再采纳收口）。
+export const DUTY_TABLE_VERSION = 4;
 export const REVIEW_RUNNER_FACE = Object.freeze({ available: true });
 export const OBLIGATION_TYPES = ["check", "review", "ci", "delivery-audit"];
 export const BASELINE_REVIEW_ID = "review.general-correctness";
@@ -37,9 +37,15 @@ export class PolicyError extends Error {}
 // 不覆盖导出产物本身（那是 obligations 内容，随输入走）。
 export function policyRulesHash() {
   const dutyTemplates = {};
-  for (const d of REVIEW_DUTY_TABLE) dutyTemplates[d.id] = dutyTemplateHash(d.id);
+  const dutySuites = {};
+  for (const d of REVIEW_DUTY_TABLE) {
+    dutyTemplates[d.id] = dutyTemplateHash(d.id);
+    // M4 N4：declarable 职责的挑战套件内容哈希同入规则面——套件编辑=新规则版本（与模板同纪律）；
+    // whole-candidate 职责无套件（null 占位，键仍在=表内容面完整覆盖）。
+    dutySuites[d.id] = dutySuiteHash(d.id);
+  }
   return createHash("sha256")
-    .update(JSON.stringify({ dutyTableVersion: DUTY_TABLE_VERSION, types: OBLIGATION_TYPES, runnerFace: REVIEW_RUNNER_FACE, dutyTemplates }))
+    .update(JSON.stringify({ dutyTableVersion: DUTY_TABLE_VERSION, types: OBLIGATION_TYPES, runnerFace: REVIEW_RUNNER_FACE, dutyTemplates, dutySuites }))
     .digest("hex");
 }
 
@@ -67,6 +73,7 @@ export function computePolicyIdentity(cwd, goal) {
     risk: goal.risk ?? null,
     contractHash: goal.contract?.contractHash ?? null,
     endpoint: null,
+    subjectsCount: Array.isArray(goal.subjects) ? goal.subjects.length : 0, // M4 N4 拍板 6：state-recovery 推导轴
     contractDrift: false,
     manifestPresent: false,
     manifestHash: null,
@@ -106,13 +113,15 @@ export function computePolicyIdentity(cwd, goal) {
   return identity;
 }
 
-// 确定性义务导出（V01）：顺序恒定（review→checkIds 字典序→ci→delivery-audit），无时戳、
-// 无环境读数。纯函数——测试同输入两调逐字节断言。
+// 确定性义务导出（V01）：顺序恒定（review 底线→review 专项→checkIds 字典序→ci→delivery-audit），
+// 无时戳、无环境读数。纯函数——测试同输入两调逐字节断言。
 export function deriveObligations(identity) {
   const obligations = [];
   const manifestRef = identity.manifestPresent ? `manifest:${identity.manifestHash.slice(0, 8)}` : "manifest:absent";
+  // 评审义务满足条件串（M4 N4 与 gate 复用合取同源措辞）：base 七合取或复用腿二选一满足。
+  const REVIEW_SATISFACTION =
+    "同 (slug,attempt) 代次的受控评审运行在案：duty/dutyTableVersion/模板哈希与现行规则一致 ∧ validity=valid ∧ metering=metered ∧ verdict=pass ∧ 候选三字段=现行 ∧ 原始输出在场哈希相符（lzy review run）∨ 复用腿（M4，ADR-0032）：在案 applicable 适用档（base 运行过资格挑战 ∧ 资格身份（rulesHash/模板/契约/清单/引擎）全现行 ∧ 目标候选=现行 ∧ diff 分类完备）替代候选现行合取项；∧ 无未关闭阻塞发现 ∧ 关闭依据仍适用（发现账本 findings 子句，V06——关闭唯 resolve-request → review recheck → close 通道，stale 发现经 finding reopen 重走复核）";
   // ① 通用正确性评审（底线，§3.1 必选）：全部 v2 目标恒生成，无契约亦生成（拍板 7）。
-  // 0.4.0 M2 N5 翻面：runner available ⇒ 满足条件改 M2 七合取语义（gate.js 评审子句同源）。
   obligations.push({
     id: BASELINE_REVIEW_ID,
     type: "review",
@@ -120,11 +129,48 @@ export function deriveObligations(identity) {
     source: `policy.dutyTable.v${DUTY_TABLE_VERSION}`,
     appliesBecause: "通用正确性评审职责必选（§3.1）——全部 v2 目标",
     acceptanceIds: [],
-    satisfaction:
-      "同 (slug,attempt) 代次的受控评审运行在案：duty/dutyTableVersion/模板哈希与现行规则一致 ∧ validity=valid ∧ metering=metered ∧ verdict=pass ∧ 候选三字段=现行 ∧ 原始输出在场哈希相符（lzy review run）∧ 无未关闭阻塞发现（发现账本 findings 子句，V06——关闭唯 resolve-request → review recheck → close 通道）",
+    satisfaction: REVIEW_SATISFACTION,
     dependsOn: ["runner:controlled-review"],
     version: POLICY_VERSION,
   });
+  // ①′ 三条专项职责（M4 N4，拍板 6——确定性推导，只吃身份既有事实面，不吃模型分类）：
+  //   verification-deps：清单声明 check 配方或必需 CI（有验证依据才有验证依赖面）；
+  //   external-side-effects：riskClass med+ 或契约 endpoint B/C（权限/外发/交付面在场）；
+  //   state-recovery：subjects>1 或 endpoint B/C（跨仓状态与交付状态面在场）。
+  const derivedDuties = [];
+  if ((identity.checkIds?.length ?? 0) > 0 || (identity.ciRequiredChecks?.length ?? 0) > 0) {
+    derivedDuties.push({
+      id: "review.verification-deps",
+      because: `项目清单声明验证依据（check ${(identity.checkIds ?? []).length} 项 · CI ${(identity.ciRequiredChecks ?? []).length} 项）——验证依赖面在场`,
+    });
+  }
+  const externalSurface = ["med", "high", "restricted"].includes(identity.risk) || identity.endpoint === "B" || identity.endpoint === "C";
+  if (externalSurface) {
+    derivedDuties.push({
+      id: "review.external-side-effects",
+      because: `权限/外发面在场（risk=${identity.risk ?? "null"} · endpoint=${identity.endpoint ?? "null"}）——外部副作用评审`,
+    });
+  }
+  const stateSurface = (identity.subjectsCount ?? 0) > 1 || identity.endpoint === "B" || identity.endpoint === "C";
+  if (stateSurface) {
+    derivedDuties.push({
+      id: "review.state-recovery",
+      because: `跨仓/交付状态面在场（subjects=${identity.subjectsCount ?? 0} · endpoint=${identity.endpoint ?? "null"}）——状态与恢复评审`,
+    });
+  }
+  for (const d of derivedDuties) {
+    obligations.push({
+      id: d.id,
+      type: "review",
+      baseline: false,
+      source: `policy.dutyTable.v${DUTY_TABLE_VERSION}.derived`,
+      appliesBecause: d.because,
+      acceptanceIds: [],
+      satisfaction: REVIEW_SATISFACTION,
+      dependsOn: ["runner:controlled-review"],
+      version: POLICY_VERSION,
+    });
+  }
   // ② check 义务：项目清单 check 类配方逐条（清单为源；映射经回执 acceptanceIds 承载）。
   for (const id of identity.checkIds) {
     obligations.push({

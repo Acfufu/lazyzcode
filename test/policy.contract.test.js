@@ -100,7 +100,7 @@ test("V01 确定性：同冻结输入两生成逐字节恒等（两同构工作�
     const idA = rA.record.obligations.map((o) => o.id);
     const idB = rB.record.obligations.map((o) => o.id);
     assert.deepEqual(idA, idB);
-    assert.deepEqual(idA, [BASELINE_REVIEW_ID, "check.lint", "check.unit", "ci.required-checks", "delivery.audit"]);
+    assert.deepEqual(idA, [BASELINE_REVIEW_ID, "review.verification-deps", "review.external-side-effects", "review.state-recovery", "check.lint", "check.unit", "ci.required-checks", "delivery.audit"]);
     assert.deepEqual(new Set(rA.record.obligations.map((o) => o.type)), new Set(["review", "check", "ci", "delivery-audit"]));
     // 逐条形状面（id/type/source/适用理由/验收映射/满足条件/依赖边界/版本）
     for (const o of rA.record.obligations) {
@@ -154,14 +154,14 @@ test("§3.2 影响扩大：expand 追加义务并记前后差异；底线保留�
     });
     const first = ensurePolicyRecord(d, goal);
     const before = first.record.obligations.map((o) => o.id);
-    assert.deepEqual(before, [BASELINE_REVIEW_ID, "check.lint", "ci.required-checks", "delivery.audit"]);
+    assert.deepEqual(before, [BASELINE_REVIEW_ID, "review.verification-deps", "review.external-side-effects", "review.state-recovery", "check.lint", "ci.required-checks", "delivery.audit"]);
     // 影响扩大：清单增 unit 配方（只增不删）
     const goal2 = frozenInputs(d);
     const grown = ensurePolicyRecord(d, goal2, { expand: true, reason: "N8 测试：影响扩大" });
     assert.equal(grown.expanded, true);
     assert.equal(grown.drifted, false);
     const after = grown.record.obligations.map((o) => o.id);
-    assert.deepEqual(after, [BASELINE_REVIEW_ID, "check.lint", "check.unit", "ci.required-checks", "delivery.audit"]);
+    assert.deepEqual(after, [BASELINE_REVIEW_ID, "review.verification-deps", "review.external-side-effects", "review.state-recovery", "check.lint", "check.unit", "ci.required-checks", "delivery.audit"]);
     assert.deepEqual(grown.record.obligationsLog.map((e) => e.event), ["expand"]);
     const log = grown.record.obligationsLog[0];
     assert.equal(log.from, first.record.inputsHash);
@@ -291,7 +291,7 @@ test("真 CLI 面：采纳即落策略档（V01/V13 M1 面）+ 解释面两次�
     assert.equal(`${s1.stdout ?? ""}${s1.stderr ?? ""}`, `${s2.stdout ?? ""}${s2.stderr ?? ""}`);
     assert.match(s1.stdout ?? "", /记录在案/);
     assert.match(s1.stdout ?? "", /评审运行器：在案/); // 0.4.0 M2 N5 翻面：runner available ⇒「在案」
-    assert.match(s1.stdout ?? "", /dutyTable v3/);
+    assert.match(s1.stdout ?? "", /dutyTable v4/);
     // 二次采纳（无变更）= 零写
     const before = recordBytes(d, "polcli");
     assert.equal(lzy(["loop", "plan", "p.md"]).status, 0);

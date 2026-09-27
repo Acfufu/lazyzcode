@@ -106,11 +106,12 @@ function approvedGoal(prefix, opts) {
 
 const REVIEW_REASON = /评审无在案运行——lzy review run/;
 
-// 基态：唯一的 unsatisfied 义务=评审底线（M1 诚实阻塞）；其余义务与子句全 satisfied。
+// 基态：unsatisfied 义务=评审底线+推导专项（M4 翻面 v4——夹具有清单 check/ci ⇒ verification-deps
+// 推导在场）；其余义务与子句全 satisfied。
 function assertReviewOnlyBlocker(gate) {
   assert.equal(gate.applicable, true);
   const bad = gate.obligations.filter((o) => o.state !== "satisfied");
-  assert.deepEqual(bad.map((o) => o.id), ["review.general-correctness"], gate.blockedReasons.join("\n"));
+  assert.deepEqual(bad.map((o) => o.id), ["review.general-correctness", "review.verification-deps"], gate.blockedReasons.join("\n"));
   assert.match(bad[0].reasons.join("\n"), REVIEW_REASON);
   assert.deepEqual(Object.entries(gate.clauses).filter(([, c]) => !c.ok).map(([n]) => n), []);
   assert.equal(gate.blocked, true);
@@ -129,6 +130,7 @@ test("基态+反例族 ②③④⑤⑥⑦：同一已批准契约夹具注入-�
     assertReviewOnlyBlocker(gate0);
     assert.deepEqual(gate0.obligations.map((o) => `${o.id}:${o.state}`), [
       "review.general-correctness:unsatisfied",
+      "review.verification-deps:unsatisfied",
       "check.smoke:satisfied",
       "ci.required-checks:satisfied",
     ]);

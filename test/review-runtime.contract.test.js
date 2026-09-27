@@ -197,7 +197,7 @@ test("④runReview 绿例：valid+pass+metered；候选竞态（注入运行中�
     assert.equal(res.record.validity.status, "valid");
     assert.equal(res.record.result.verdict, "pass");
     assert.equal(res.record.metering.status, "metered");
-    assert.equal(res.record.dutyTableVersion, 3, "dutyTableVersion 取现行策略记录/职责表版本（M3 N5 翻面 v2→v3）");
+    assert.equal(res.record.dutyTableVersion, 4, "dutyTableVersion 取现行策略记录/职责表版本（M4 N4 翻面 v3→v4）");
     // 候选竞态：spawn 期间 HEAD 前进 → candidate-moved（运行照常落档，不可改判）
     const d2 = fixture();
     const res2 = await runReview(d2, { deps: deps({ spawnHeadless: stubSpawn({ during: () => spawnSync("git", ["commit", "-qm", "move", "--allow-empty"], { cwd: d2 }) }) }) });

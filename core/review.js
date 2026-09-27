@@ -11,7 +11,10 @@ import { fileURLToPath } from "node:url";
 import { execFile, spawnSync } from "node:child_process";
 import { loadFamilyFile, saveFamilyFile } from "./queue.js";
 import { candidateIdentity, listReceipts } from "./verify.js";
-import { loadPolicyRecord } from "./policy.js";
+import { loadPolicyRecord, DUTY_TABLE_VERSION } from "./policy.js";
+import { createGit } from "./git.js";
+import { findEngine } from "./paths.js";
+import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless } from "./headless.js";
 
 export const REVIEW_VERSION = 1;
 export const REVIEW_FAMILY = "review";
@@ -113,15 +116,19 @@ export function assertRunShape(rec, p) {
   }
   if (!Number.isInteger(rec.dutyTableVersion) || rec.dutyTableVersion < 1) bad("dutyTableVersion 须为 ≥1 整数");
   if (!HEX64.test(rec.templateHash)) bad("templateHash 须为 64 hex");
-  if (!HEX64.test(rec.inputPackageHash)) bad("inputPackageHash 须为 64 hex");
+  if (rec.inputPackageHash !== null && !HEX64.test(rec.inputPackageHash)) bad("inputPackageHash 须为 64 hex 或 null");
   // 候选面：candidateIdentity 三字段（verify.js 同源）+ 运行前净树断言结果 + 快照树哈希
   if (!rec.candidate || typeof rec.candidate !== "object" || Array.isArray(rec.candidate)) bad("candidate 须为对象");
-  for (const k of ["headSha", "compositeFingerprint", "cliVersion"]) {
+  for (const k of ["headSha", "compositeFingerprint"]) {
     if (typeof rec.candidate[k] !== "string" || !rec.candidate[k]) bad(`candidate.${k} 缺席或空`);
+  }
+  // cliVersion=候选仓 package.json 版本（verify.js 同源）：非 node 仓合法 null
+  if (rec.candidate.cliVersion !== null && (typeof rec.candidate.cliVersion !== "string" || !rec.candidate.cliVersion)) {
+    bad("candidate.cliVersion 须为非空字符串或 null");
   }
   if (typeof rec.candidate.clean !== "boolean") bad("candidate.clean 须为布尔（运行前净树断言；脏树不 spawn）");
   if (!rec.snapshot || typeof rec.snapshot !== "object" || Array.isArray(rec.snapshot)) bad("snapshot 须为对象");
-  if (!HEX64.test(rec.snapshot.treeHash)) bad("snapshot.treeHash 须为 64 hex");
+  if (rec.snapshot.treeHash !== null && !HEX64.test(rec.snapshot.treeHash)) bad("snapshot.treeHash 须为 64 hex 或 null");
   // 执行面
   for (const k of ["startedAt", "endedAt"]) {
     if (typeof rec[k] !== "string" || Number.isNaN(Date.parse(rec[k]))) bad(`${k} 须为 ISO 时间串`);
@@ -131,11 +138,14 @@ export function assertRunShape(rec, p) {
   if (rec.exit.signal !== null && typeof rec.exit.signal !== "string") bad("exit.signal 须为字符串或 null");
   if (rec.sessionId !== null && (typeof rec.sessionId !== "string" || !rec.sessionId)) bad("sessionId 须为非空字符串或 null");
   if (rec.engine !== null && (typeof rec.engine !== "string" || !rec.engine)) bad("engine 须为非空字符串或 null");
-  // 封存面：stdout+stderr 恒落 raw.txt（超时/非零退出也封存——失败运行照常落档，拍板 7）
-  if (!rec.raw || typeof rec.raw !== "object" || Array.isArray(rec.raw)) bad("raw 须为对象");
-  if (typeof rec.raw.path !== "string" || !rec.raw.path) bad("raw.path 缺席或空");
-  if (!HEX64.test(rec.raw.sha256)) bad("raw.sha256 须为 64 hex");
-  if (!Number.isInteger(rec.raw.bytes) || rec.raw.bytes < 0) bad("raw.bytes 须为 ≥0 整数");
+  // 封存面：spawn 过的运行 stdout+stderr 恒落 raw.txt（超时/非零退出也封存——失败运行照常
+  // 落档，拍板 7）；未 spawn 的 invalid 运行（leak 等）无输出可封存，raw=null。
+  if (rec.raw !== null) {
+    if (!rec.raw || typeof rec.raw !== "object" || Array.isArray(rec.raw)) bad("raw 须为对象或 null");
+    if (typeof rec.raw.path !== "string" || !rec.raw.path) bad("raw.path 缺席或空");
+    if (!HEX64.test(rec.raw.sha256)) bad("raw.sha256 须为 64 hex");
+    if (!Number.isInteger(rec.raw.bytes) || rec.raw.bytes < 0) bad("raw.bytes 须为 ≥0 整数");
+  }
   if (rec.transcript !== null) {
     if (typeof rec.transcript !== "object" || Array.isArray(rec.transcript)) bad("transcript 须为对象或 null");
     if (typeof rec.transcript.path !== "string" || !rec.transcript.path) bad("transcript.path 缺席或空");
@@ -161,6 +171,9 @@ export function assertRunShape(rec, p) {
   if (v.status === "valid") {
     if (v.reason !== null) bad("valid 记录须 reason:null");
     if (rec.result === null) bad("valid 记录须有结构化 result（解析失败属 invalid——拍板 3）");
+    if (rec.sessionId === null) bad("valid 记录须有 sessionId（无会话身份=中断，拍板 3）");
+    if (rec.raw === null) bad("valid 记录须封存 raw（gate 放行子句核在场+哈希）");
+    if (rec.transcript === null) bad("valid 记录须有转录（缺席=隔离未证，M0 口径）");
   } else if (!INVALID_REASONS.includes(v.reason)) {
     bad(`invalid 记录 reason 不识别：${JSON.stringify(v.reason ?? null)}（须具名失败分类）`);
   }
@@ -465,4 +478,319 @@ export function assertReadsContained(transcriptText, allowedPrefixes) {
     visit(obj, null, i + 1);
   });
   return { ok: breaches.length === 0, breaches };
+}
+
+// ── N3：运行执行与结构化结果（拍板 3/5/11）──
+
+// 前置不具备型拒绝（拍板 8 退出码 3 的核内形态）：不 spawn、不消耗、不落档，报文带恢复指路。
+export class ReviewPreflightError extends Error {
+  constructor(message, { reason = "preflight" } = {}) {
+    super(message);
+    this.name = "ReviewPreflightError";
+    this.reason = reason;
+  }
+}
+
+function readGoalJson(cwd) {
+  try {
+    return JSON.parse(readFileSync(join(cwd, ".lazyzcode", "loop", "goal.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+// 失败面 sessionId 自解（spawnHeadless 契约：失败不 surface sessionId，调用方自解 stdout）。
+// 引擎 --json 摘要=stdout 尾部单对象：先整段 parse，退化为逐行倒扫。
+function extractSessionId(stdout) {
+  const text = String(stdout ?? "").trim();
+  if (!text) return null;
+  const candidates = [text, ...text.split("\n").reverse()];
+  for (const c of candidates) {
+    try {
+      const obj = JSON.parse(c);
+      if (obj && typeof obj === "object" && typeof obj.sessionId === "string" && obj.sessionId) return obj.sessionId;
+    } catch {}
+  }
+  return null;
+}
+
+function findTranscript(home, sessionId) {
+  const dir = join(home, ".zcode", "cli", "rollout");
+  let names;
+  try {
+    names = readdirSync(dir).filter((f) => f.startsWith("model-io-") && f.endsWith(".jsonl"));
+  } catch {
+    return null;
+  }
+  if (sessionId) {
+    const hit = names.find((f) => f === `model-io-${sessionId}.jsonl`);
+    if (hit) return join(dir, hit);
+  }
+  return names.length === 1 ? join(dir, names[0]) : null;
+}
+
+// 结果围栏解析（拍板 3 唯一定义）：恰一个 ```json 围栏；JSON.parse；duty 回显一致；逐字段
+// 类型/枚举闸。返回 { ok, result?, reason? }——reason 供 parse-fail invalid 的 detail。
+export function parseReviewResult(responseText, { dutyId } = {}) {
+  const text = String(responseText ?? "");
+  const fences = [...text.matchAll(/```json\s*([\s\S]*?)```/g)].map((m) => m[1]);
+  if (fences.length === 0) return { ok: false, reason: "无 ```json 围栏块（输出契约要求恰一个）" };
+  if (fences.length > 1) return { ok: false, reason: `json 围栏块 ${fences.length} 个（要求恰一个）` };
+  let obj;
+  try {
+    obj = JSON.parse(fences[0]);
+  } catch (e) {
+    return { ok: false, reason: `围栏内非合法 JSON：${String(e?.message ?? e).slice(0, 120)}` };
+  }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return { ok: false, reason: "围栏内非对象" };
+  if (dutyId && obj.duty !== dutyId) return { ok: false, reason: `duty 回显不符（期望 ${dutyId}，得到 ${JSON.stringify(obj.duty ?? null)}）` };
+  if (!VERDICTS.includes(obj.verdict)) return { ok: false, reason: `verdict 不识别：${JSON.stringify(obj.verdict ?? null)}` };
+  if (!Array.isArray(obj.findings)) return { ok: false, reason: "findings 须为数组" };
+  for (const f of obj.findings) {
+    if (!f || typeof f !== "object" || Array.isArray(f)) return { ok: false, reason: "finding 须为对象" };
+    for (const k of ["id", "title", "severity", "blocking", "location", "evidence", "summary"]) {
+      if (!(k in f)) return { ok: false, reason: `finding 缺字段：${k}` };
+    }
+    if (typeof f.id !== "string" || !f.id) return { ok: false, reason: "finding.id 须非空字符串" };
+    if (typeof f.title !== "string" || !f.title) return { ok: false, reason: "finding.title 须非空字符串" };
+    if (!SEVERITIES.includes(f.severity)) return { ok: false, reason: `finding.severity 不识别：${JSON.stringify(f.severity ?? null)}` };
+    if (typeof f.blocking !== "boolean") return { ok: false, reason: "finding.blocking 须为布尔" };
+    if (typeof f.location !== "string") return { ok: false, reason: "finding.location 须为字符串" };
+    if (typeof f.evidence !== "string" || !f.evidence) return { ok: false, reason: "finding.evidence 须非空字符串" };
+    if (typeof f.summary !== "string" || !f.summary) return { ok: false, reason: "finding.summary 须非空字符串" };
+  }
+  if (typeof obj.summary !== "string") return { ok: false, reason: "summary 须为字符串" };
+  const ids = new Set();
+  for (const f of obj.findings) {
+    if (ids.has(f.id)) return { ok: false, reason: `finding.id 重复：${f.id}` };
+    ids.add(f.id);
+  }
+  return { ok: true, result: { verdict: obj.verdict, findings: obj.findings, summary: obj.summary, normalization: null } };
+}
+
+// 归一化（拍板 3 fail-closed）：pass 与 blocking/P0/P1 并存 ⇒ 按 blocked 判并记理由。
+export function normalizeVerdict(result) {
+  if (result.verdict === "pass" && result.findings.some((f) => f.blocking === true || f.severity === "P0" || f.severity === "P1")) {
+    return {
+      ...result,
+      verdict: "blocked",
+      normalization: `pass 与 blocking/P0/P1 发现并存——结构自相矛盾按 blocked 判（拍板 3 归一化；原 verdict=pass，${result.findings.filter((f) => f.blocking || f.severity === "P0" || f.severity === "P1").length} 条触发）`,
+    };
+  }
+  return result;
+}
+
+function composePrompt(dutyText, inputPath) {
+  return [
+    dutyText.trim(),
+    "",
+    "── 本次评审输入（机器注）──",
+    `1. 先读输入包（facts-only）：${inputPath}`,
+    "2. 评审对象=你的当前工作目录（候选树快照）。",
+    "3. 全程只读，不得修改任何文件。",
+    "4. 最终输出按职责文件「输出契约」节：恰一个 ```json 围栏块。",
+  ].join("\n");
+}
+
+// 评审运行主入口（拍板 11：deps 注入面=spawnHeadless/detectAuth/querySessionPoints/preflight——
+// CI 无凭据零真引擎可跑）。返回 { record, exitHint }；前置不具备抛 ReviewPreflightError
+//（不 spawn 不落档）；运行后任何失败分类照常落档（失败运行不可改判，F2 判据）。
+export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps = {} } = {}) {
+  if (!DUTY_TABLE.some((d) => d.id === duty)) {
+    throw new ReviewPreflightError(`职责不在表：${duty}（现行职责表：${DUTY_TABLE.map((d) => d.id).join("、")}）`, { reason: "duty-unknown" });
+  }
+  const goal = readGoalJson(cwd);
+  if (!goal || goal.version !== 2) {
+    throw new ReviewPreflightError("无 v2 活跃目标（.lazyzcode/loop/goal.json 缺席或 v1）——评审运行针对当前目标", { reason: "no-goal" });
+  }
+  if (typeof deps.preflight === "function") {
+    await deps.preflight(cwd, goal); // N4 落真实四前置（auth/授权/预算/计量能力）；拒绝=抛 ReviewPreflightError
+  }
+  const startedAt = new Date();
+  // 候选固定（拍板 5）：三字段 + 净树断言——脏树=前置拒（评审候选须提交态，先提交再评审）
+  const identity = candidateIdentity(cwd);
+  const integ = createGit(cwd).integrity();
+  if (integ.state !== "clean") {
+    throw new ReviewPreflightError(
+      `评审候选须提交态（git ${integ.state}${integ.paths?.length ? `：${integ.paths.slice(0, 3).join("、")}${integ.paths.length > 3 ? "…" : ""}` : integ.detail ? `——${integ.detail}` : ""}）——先提交后重跑`,
+      { reason: "candidate-dirty" },
+    );
+  }
+  const reserve = reserveRun(cwd, goal.slug, goal.attempt);
+  const failures = []; // [reason, detail] 按优先序；validity.reason=首因、detail=全列
+  let pkgHash = null;
+  let snapHash = null;
+  try {
+    const pkg = buildInputPackage(cwd, goal, reserve.runDir, { dutyId: duty, now: startedAt });
+    pkgHash = pkg.inputPackageHash;
+    const snap = materializeCandidate(cwd, reserve.runDir);
+    snapHash = snap.treeHash;
+    const iso = prepareIsolation(reserve.runDir);
+    // 泄漏断言（拍板 4）：input 字节 vs 同 (slug,attempt) 在先运行标记——命中不 spawn
+    const priors = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).filter((r) => r.seq < reserve.seq);
+    const leak = assertNoLeak(readFileSync(pkg.inputPath, "utf8"), priors);
+    if (!leak.ok) {
+      failures.push(["leak", `输入包含在先运行标记：${leak.hits.map((h) => `${h.runId}/${h.kind}`).join("、")}（facts-only 违反，拍板 4）`]);
+    }
+    let spawned = false;
+    let run = null;
+    let sessionId = null;
+    let rawInfo = null;
+    let transcriptInfo = null;
+    if (failures.length === 0) {
+      spawned = true;
+      run = await (deps.spawnHeadless ?? spawnHeadless)({
+        prompt: composePrompt(loadDutyTemplate(duty), pkg.inputPath),
+        mode: "plan",
+        cwd: snap.candidateDir,
+        home: iso.home,
+        timeoutMs: timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS,
+        deps: typeof deps.run === "function" ? { run: deps.run } : null,
+      });
+      // 封存（拍板 3）：stdout+stderr 逐字落 raw.txt（分节标注；sha256/字节数入记录）
+      const rawText = `── stdout ──\n${run.stdout}\n── stderr ──\n${run.stderr}`;
+      const rawPath = join(reserve.runDir, "raw.txt");
+      writeFileSync(rawPath, rawText, { mode: 0o600 });
+      rawInfo = { path: "raw.txt", sha256: createHash("sha256").update(rawText).digest("hex"), bytes: Buffer.byteLength(rawText) };
+      sessionId = run.sessionId ?? extractSessionId(run.stdout);
+      const tp = findTranscript(iso.home, sessionId);
+      if (tp) {
+        const t = readFileSync(tp);
+        transcriptInfo = { path: tp.slice(reserve.runDir.length + 1), sha256: createHash("sha256").update(t).digest("hex") };
+      }
+      if (run.timedOut) failures.push(["timeout", `墙钟预算耗尽（SIGKILL，${Math.round((timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS) / 1000)}s）`]);
+      else if (run.spawnError) failures.push(["interrupted", `引擎进程启动失败：${run.spawnError}`]);
+      else if (run.exitCode !== 0) failures.push(["exit-nonzero", `引擎非零退出（exit ${run.exitCode}${run.signal ? ` · signal ${run.signal}` : ""}）`]);
+      else if (!sessionId) failures.push(["interrupted", "引擎退出 0 但无 sessionId（会话身份缺席）"]);
+    }
+    // 结构化结果解析（spawn 过才可能 parse；leak 档无 result）
+    let result = null;
+    if (spawned && run && !run.spawnError && run.exitCode === 0 && !run.timedOut) {
+      const parsed = parseReviewResult(run.response, { dutyId: duty });
+      if (!parsed.ok) failures.push(["parse-fail", parsed.reason]);
+      else result = normalizeVerdict(parsed.result);
+    }
+    // 隔离证词（拍板 4）：转录缺席=invalid（隔离未证）；读取越界=invalid
+    if (spawned) {
+      if (!transcriptInfo) {
+        failures.push(["isolation-breach", "转录缺席（隔离 HOME 内未找到 model-io 转录——隔离未证，M0 口径）"]);
+      } else {
+        const contained = assertReadsContained(readFileSync(join(reserve.runDir, transcriptInfo.path), "utf8"), [
+          snap.candidateDir,
+          reserve.runDir,
+          iso.home,
+        ]);
+        if (!contained.ok) {
+          failures.push(["isolation-breach", `读取轨迹越界：${contained.breaches.slice(0, 3).map((b) => b.path).join("、")}`]);
+        }
+      }
+    }
+    // 运行后候选复查（拍板 5：四者=三字段+净树）与快照污染（拍板 4：快照树哈希变化）
+    if (spawned) {
+      const after = candidateIdentity(cwd);
+      const afterInteg = createGit(cwd).integrity();
+      if (after.headSha !== identity.headSha || after.compositeFingerprint !== identity.compositeFingerprint || after.cliVersion !== identity.cliVersion || afterInteg.state !== "clean") {
+        failures.push(["candidate-moved", `运行后候选身份变化（head ${String(identity.headSha).slice(0, 8)}→${String(after.headSha).slice(0, 8)} · 净树 ${integ.state}→${afterInteg.state}）`]);
+      }
+      const nowTree = hashTree(snap.candidateDir);
+      if (nowTree !== snap.treeHash) {
+        failures.push(["contamination", "快照树哈希变化（运行期间候选快照被改动）"]);
+      }
+    }
+    // 计量（拍板 7）：读数唯一走 querySessionPoints（N4 起默认=参数化子账本路径；deps 注入供 CI）
+    let metering;
+    if (!spawned) {
+      metering = { status: "absent", points: null, note: "未 spawn——无计量可读（未消耗；不算零口径不适用）" };
+    } else if (typeof deps.querySessionPoints === "function") {
+      let points = null;
+      let mErr = null;
+      try {
+        points = await deps.querySessionPoints(sessionId, { dbPath: join(iso.home, ".zcode", "cli", "db", "db.sqlite") });
+      } catch (e) {
+        mErr = e;
+      }
+      if (mErr) metering = { status: "absent", points: null, note: `计量读数失败（${String(mErr?.message ?? mErr).slice(0, 80)}）——缺用量不算零（ADR-0027 修正节）` };
+      else if (points == null) metering = { status: "absent", points: null, note: `sessionId ${sessionId ?? "?"} 在子账本无用量行——缺用量不算零（ADR-0027 修正节）` };
+      else if (!Number.isFinite(points)) metering = { status: "unpriced", points: null, note: "模型未计价（退出价表）——unpriced 不算零（ADR-0027 修正节）" };
+      else metering = { status: "metered", points, note: null };
+    } else {
+      metering = { status: "absent", points: null, note: "计量面未接入（N4 落参数化读）——缺用量不算零" };
+    }
+    // 计量三分类耦合（拍板 7）：absent/unpriced ⇒ invalid（义务不可满足），运行照常落档
+    if (spawned && metering.status === "absent") {
+      failures.push(["metering-absent", "子账本无用量行——义务不可满足（§8.1），但运行照常落档"]);
+    } else if (spawned && metering.status === "unpriced") {
+      failures.push(["unpriced-model", "模型未计价——义务不可满足（§8.1），但运行照常落档"]);
+    }
+    // 无 spawn 但 flag 面已按 leak 落 failures；spawn 面各分类已落——validity 取首因
+    const validity = failures.length === 0 ? { status: "valid", reason: null, detail: null } : { status: "invalid", reason: failures[0][0], detail: failures.map(([r, d]) => `${r}: ${d}`).join("；") };
+    const record = {
+      slug: goal.slug,
+      attempt: goal.attempt,
+      seq: reserve.seq,
+      runId: reserve.runId,
+      schemaVersion: REVIEW_VERSION,
+      duty: { id: duty },
+      dutyTableVersion: null, // finishRun 回填（现行策略记录优先，回退现行职责表版本）
+      templateHash: dutyTemplateHash(duty),
+      inputPackageHash: pkg.inputPackageHash,
+      candidate: { ...identity, clean: true },
+      snapshot: { treeHash: snap.treeHash },
+      startedAt: startedAt.toISOString(),
+      endedAt: new Date().toISOString(),
+      exit: { code: spawned ? run.exitCode : null, signal: spawned ? run.signal ?? null : null },
+      sessionId: spawned ? sessionId : null,
+      engine: spawned ? (findEngine() ?? "unknown") : null,
+      raw: rawInfo,
+      transcript: transcriptInfo,
+      metering,
+      validity,
+      result,
+    };
+    return finishRun(cwd, reserve, record);
+  } catch (err) {
+    // 意外异常（fs/编程错）：运行已预留——落 interrupted 档（不静默丢运行），再上抛供 CLI 报错。
+    // input/snapshot 两字段可 null=如实「未达该阶段」（形状闸允许 null；零串占位是谎报）。
+    const record = {
+      slug: goal.slug,
+      attempt: goal.attempt,
+      seq: reserve.seq,
+      runId: reserve.runId,
+      schemaVersion: REVIEW_VERSION,
+      duty: { id: duty },
+      dutyTableVersion: null,
+      templateHash: dutyTemplateHash(duty),
+      inputPackageHash: typeof pkgHash === "string" ? pkgHash : null,
+      candidate: { ...identity, clean: true },
+      snapshot: { treeHash: typeof snapHash === "string" ? snapHash : null },
+      startedAt: startedAt.toISOString(),
+      endedAt: new Date().toISOString(),
+      exit: { code: null, signal: null },
+      sessionId: null,
+      engine: null,
+      raw: null,
+      transcript: null,
+      metering: { status: "absent", points: null, note: "运行器异常——无计量可读（不算零）" },
+      validity: { status: "invalid", reason: "interrupted", detail: `运行器异常：${String(err?.message ?? err).slice(0, 200)}` },
+      result: null,
+    };
+    try {
+      return { record: finishRun(cwd, reserve, record), exitHint: 1, thrown: err };
+    } catch {
+      throw err; // 落档也失败（如磁盘满）——原异常上抛
+    }
+  }
+}
+
+// 记录组装收尾：dutyTableVersion 从现行策略记录取（记录缺/不可读=回退现行职责表版本——
+// runner 恒在现行规则下运行，不冒充他版）。
+function finishRun(cwd, reserve, record) {
+  let v = null;
+  try {
+    const rec = loadPolicyRecord(cwd, record.slug, record.attempt);
+    if (rec && Number.isInteger(rec.dutyTableVersion)) v = rec.dutyTableVersion;
+  } catch {}
+  record.dutyTableVersion = v ?? DUTY_TABLE_VERSION;
+  const saved = saveReviewRun(cwd, record);
+  return { record: saved, exitHint: saved.validity.status === "valid" && saved.result?.verdict === "pass" ? 0 : 1 };
 }

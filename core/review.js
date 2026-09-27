@@ -13,6 +13,7 @@ import { loadFamilyFile, saveFamilyFile, budgetView } from "./queue.js";
 import { recordFindingSightings, openBlockingFindings, findingFingerprint } from "./findings.js"; // 0.4.0 M3：运行落账接线（findings.js 不反向依赖本模块，无环）
 import { candidateIdentity, listReceipts } from "./verify.js";
 import { loadPolicyRecord, DUTY_TABLE_VERSION } from "./policy.js";
+import { withLock, LoopError } from "./loop.js"; // N3 #11：写前缀单写者锁（call-time 用，ESM 环安全——loop→gate→review 已有环先例）
 import { createGit } from "./git.js";
 import { findEngine } from "./paths.js";
 import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless, detectHeadlessAuth } from "./headless.js";
@@ -229,6 +230,11 @@ export function assertRunShape(rec, p) {
       bad("findingsLedger.closureCandidates 须为数组或 null");
     }
   }
+  if (rec.containment !== undefined && rec.containment !== null) {
+    if (typeof rec.containment !== "object" || Array.isArray(rec.containment)) bad("containment 须为对象或 null");
+    if (!Number.isInteger(rec.containment.phantomCount) || rec.containment.phantomCount < 0) bad("containment.phantomCount 须为 ≥0 整数");
+    if (!Array.isArray(rec.containment.phantoms)) bad("containment.phantoms 须为数组");
+  }
 }
 
 // ── 家族 IO（queue.js 家法：校验和+版本+形状三层 fail-closed；写前形状校验）──
@@ -306,19 +312,20 @@ const RECEIPTS_CAP = 200;
 
 function readCappedText(p, cap) {
   const buf = readFileSync(p);
-  const text = buf.toString("utf8");
-  if (buf.length <= cap) return { text, bytes: buf.length, truncated: false };
-  return { text: `${text.slice(0, cap)}\n…[输入包截断：原文 ${buf.length} 字节，只注入前 ${cap}]`, bytes: buf.length, truncated: true };
+  if (buf.length <= cap) return { text: buf.toString("utf8"), bytes: buf.length, truncated: false };
+  // N3 #13（M2 自审 F-7）：字节精确截断——按 UTF-8 码点边界回退（不落续字节），注记报真实
+  // 注入字节数。此前按 UTF-16 码元切片而注记称字节，中文内容实际注入可达标称约 3 倍。
+  let end = cap;
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end -= 1;
+  const text = `${buf.subarray(0, end).toString("utf8")}\n…[输入包截断：原文 ${buf.length} 字节，只注入前 ${end} 字节（UTF-8 码点边界安全）]`;
+  return { text, bytes: buf.length, truncated: true, injectedBytes: end };
 }
 
 // facts-only 输入包（拍板 4 唯一定义）：契约文本、项目清单、AGENTS.md 项目规则、目标步骤与
 // F 证据文本、回执摘要、策略义务集、候选身份。写 <runDir>/input.json（0600）并算
-// inputPackageHash。多 subject 目标 fail-closed 拒（跨仓候选输入打包属 M5）。
+// inputPackageHash。多 subject 拒已前移至 runReview 前置（N3 #7——在预留前以 preflight 型拒）。
 export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID, now = new Date() } = {}) {
   if (!goal || goal.version !== 2) throw new ReviewError(`评审输入包须 v2 目标（得到 version=${goal?.version ?? null}）`);
-  if (Array.isArray(goal.subjects) && goal.subjects.length > 0) {
-    throw new ReviewError(`多 subject 目标的评审候选跨仓，M2 不支持（跨仓输入打包列 M5）：${goal.subjects.join("、")}`);
-  }
   const readOptional = (p, cap) => {
     try {
       return readCappedText(p, cap);
@@ -711,6 +718,14 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
   if (!goal || goal.version !== 2) {
     throw new ReviewPreflightError("无 v2 活跃目标（.lazyzcode/loop/goal.json 缺席或 v1）——评审运行针对当前目标", { reason: "no-goal" });
   }
+  // N3 #7（M2 自审 F-1）：多 subject 检查前移至前置——此前在 buildInputPackage（序号已预留后）
+  // 抛 ReviewError 落 interrupted 档 exit 1，与 CLI 自述「多 subject=exit 3 不落档」不符。
+  if (Array.isArray(goal.subjects) && goal.subjects.length > 0) {
+    throw new ReviewPreflightError(
+      `多 subject 目标的评审候选跨仓，M3 不支持（跨仓输入打包列 M5）：${goal.subjects.join("、")}`,
+      { reason: "multi-subject" },
+    );
+  }
   // 前置四查（拍板 7）：默认真前置；deps.preflight 可注入（CI 无凭据面替换）
   const pre = await (deps.preflight ?? preflightReview)(cwd, goal, { deps });
   const startedAt = new Date();
@@ -723,19 +738,27 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       { reason: "candidate-dirty" },
     );
   }
-  const reserve = reserveRun(cwd, goal.slug, goal.attempt);
   const failures = []; // [reason, detail] 按优先序；validity.reason=首因、detail=全列
   let pkgHash = null;
   let snapHash = null;
+  let reserve = null; // N3 #11：锁内分配——预留成功前失败（锁忙/孤儿目录拒）无运行可落档
   try {
-    const pkg = buildInputPackage(cwd, goal, reserve.runDir, { dutyId: duty, now: startedAt });
+    // N3 #11（M2 自审 F-5）写前缀单写者锁：reserve→输入包→候选快照→隔离→泄漏断言整段进
+    // withLock——并发 review run 此前可交错序号/输入包（注释称单写者=loop 锁但代码未取）。
+    // spawn 本体不进锁（引擎时长超 LOCK_WAIT 预算）；锁忙=LoopError→preflight 型拒（exit 3 不落档）。
+    const prepared = await withLock(cwd, () => {
+      const rs = reserveRun(cwd, goal.slug, goal.attempt);
+      const pkg = buildInputPackage(cwd, goal, rs.runDir, { dutyId: duty, now: startedAt });
+      const snap = materializeCandidate(cwd, rs.runDir);
+      const iso = prepareIsolation(rs.runDir);
+      const priors = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).filter((r) => r.seq < rs.seq);
+      const leak = assertNoLeak(readFileSync(pkg.inputPath, "utf8"), priors);
+      return { reserve: rs, pkg, snap, iso, priors, leak };
+    });
+    reserve = prepared.reserve;
+    const { pkg, snap, iso, priors, leak } = prepared;
     pkgHash = pkg.inputPackageHash;
-    const snap = materializeCandidate(cwd, reserve.runDir);
     snapHash = snap.treeHash;
-    const iso = prepareIsolation(reserve.runDir);
-    // 泄漏断言（拍板 4）：input 字节 vs 同 (slug,attempt) 在先运行标记——命中不 spawn
-    const priors = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).filter((r) => r.seq < reserve.seq);
-    const leak = assertNoLeak(readFileSync(pkg.inputPath, "utf8"), priors);
     if (!leak.ok) {
       failures.push(["leak", `输入包含在先运行标记：${leak.hits.map((h) => `${h.runId}/${h.kind}`).join("、")}（facts-only 违反，拍板 4）`]);
     }
@@ -812,7 +835,10 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       writeFileSync(rawPath, rawText, { mode: 0o600 });
       rawInfo = { path: "raw.txt", sha256: createHash("sha256").update(rawText).digest("hex"), bytes: Buffer.byteLength(rawText) };
     }
-    // 隔离证词（拍板 4）：每会话转录缺席=invalid（隔离未证）；读取越界=invalid
+    // 隔离证词（拍板 4）：每会话转录缺席=invalid（隔离未证）；读取越界=invalid；
+    // 幻影尝试单独计数落运行档 containment（N3 #12——此前 assertReadsContained 返回后被丢弃，
+    // 报文措辞「如实透出」强于实现）。
+    const containmentPhantoms = [];
     if (spawned) {
       if (sessionMeta.length === 0 || sessionMeta.some((m) => !m.transcript)) {
         failures.push(["isolation-breach", "转录缺席（隔离 HOME 内未找到 model-io 转录——隔离未证，M0 口径）"]);
@@ -830,6 +856,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
             iso.home,
             ...enginePrefixes,
           ]);
+          containmentPhantoms.push(...contained.phantoms);
           if (!contained.ok) {
             failures.push(["isolation-breach", `读取轨迹越界（attempt ${m.attempt}）：${contained.breaches.slice(0, 3).map((b) => b.path).join("、")}`]);
           }
@@ -924,9 +951,16 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       validity,
       result,
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null } : null,
+      containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
     };
     return finishRun(cwd, reserve, record);
   } catch (err) {
+    if (err instanceof ReviewPreflightError) throw err; // 前置型拒绝不落档（N3 #11 锁忙走此通道）
+    if (err instanceof LoopError) {
+      // N3 #11：锁忙（等待超时）→ preflight 型拒——不 spawn 不消耗不落档，exit 3 面。
+      throw new ReviewPreflightError(`评审运行写前缀锁忙（并发评审或循环操作持锁）：${String(err?.message ?? err).slice(0, 140)}`, { reason: "review-busy" });
+    }
+    if (!reserve) throw err; // 预留前失败（获锁失败/孤儿目录拒）——无运行可落档，原样上抛
     // 意外异常（fs/编程错）：运行已预留——落 interrupted 档（不静默丢运行），再上抛供 CLI 报错。
     // input/snapshot 两字段可 null=如实「未达该阶段」（形状闸允许 null；零串占位是谎报）。
     const record = {
@@ -953,6 +987,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       validity: { status: "invalid", reason: "interrupted", detail: `运行器异常：${String(err?.message ?? err).slice(0, 200)}` },
       result: null,
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null } : null,
+      containment: null,
     };
     try {
       return { ...finishRun(cwd, reserve, record), thrown: err };

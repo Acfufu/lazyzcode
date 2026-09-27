@@ -18,9 +18,10 @@ import { loadFamilyFile, saveFamilyFile, QueueError } from "./queue.js";
 import { DUTY_TABLE as REVIEW_DUTY_TABLE, dutyTemplateHash } from "./review.js"; // 0.4.0 M2 N5：职责模板内容哈希入 rulesHash（call-time 用，ESM 环安全）
 
 export const POLICY_VERSION = 1; // 记录家族 schema 版本
-// 0.4.0 M2 N5 翻面：受控评审运行器在案（core/review.js runReview），职责表 v1→v2 同批
-//（旗标参与 rulesHash，翻面=策略身份变化=新策略版本——在途旧记录不自动替换，§3.1）。
-export const DUTY_TABLE_VERSION = 2;
+// 0.4.0 M3 N5 翻面：findings 子句入统一门（gate.js clauses.findings 实装），职责表 v2→v3 同批
+//（dutyTableVersion 参与 rulesHash，翻面=策略身份变化——在途旧记录不自动替换，§3.1；
+// 本 goal 自身 a1 记录随之漂移，由计划 N14 supersede 再采纳收口）。
+export const DUTY_TABLE_VERSION = 3;
 export const REVIEW_RUNNER_FACE = Object.freeze({ available: true });
 export const OBLIGATION_TYPES = ["check", "review", "ci", "delivery-audit"];
 export const BASELINE_REVIEW_ID = "review.general-correctness";
@@ -116,7 +117,7 @@ export function deriveObligations(identity) {
     appliesBecause: "通用正确性评审职责必选（§3.1）——全部 v2 目标",
     acceptanceIds: [],
     satisfaction:
-      "同 (slug,attempt) 代次的受控评审运行在案：duty/dutyTableVersion/模板哈希与现行规则一致 ∧ validity=valid ∧ metering=metered ∧ verdict=pass ∧ 候选三字段=现行 ∧ 原始输出在场哈希相符（lzy review run；发现生命周期处理属 M3）",
+      "同 (slug,attempt) 代次的受控评审运行在案：duty/dutyTableVersion/模板哈希与现行规则一致 ∧ validity=valid ∧ metering=metered ∧ verdict=pass ∧ 候选三字段=现行 ∧ 原始输出在场哈希相符（lzy review run）∧ 无未关闭阻塞发现（发现账本 findings 子句，V06——关闭唯 resolve-request → review recheck → close 通道）",
     dependsOn: ["runner:controlled-review"],
     version: POLICY_VERSION,
   });

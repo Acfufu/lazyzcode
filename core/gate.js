@@ -33,6 +33,7 @@ import {
   judgeRequiredCiChecks,
 } from "./verify.js";
 import { listReviewRuns, dutyTemplateHash } from "./review.js"; // 0.4.0 M2 N5：评审运行族读面（call-time 用，ESM 环安全）
+import { openBlockingFindings } from "./findings.js"; // 0.4.0 M3 N5：发现面子句数据面（findings.js 无反向依赖，无环）
 import { loadIntents } from "./delivery.js";
 import { stableStringify } from "./policy.js";
 
@@ -249,7 +250,7 @@ export function evaluateGate(cwd, { goal: goalOverride } = {}) {
                 const blocking = (last.result?.findings ?? []).filter((f) => f.blocking === true || f.severity === "P0" || f.severity === "P1");
                 blockers.push(
                   `评审判 blocked（阻塞发现 ${blocking.length} 条：${blocking.slice(0, 3).map((f) => f.id).join("、") || "结构自相矛盾归一"}）` +
-                    `——发现关闭通道属 M3，本阶段唯一出路=修复后重跑`,
+                    `——修复后 lzy review recheck 独立复核关闭（V06；lzy finding list 看发现链）`,
                 );
               }
               const nowId = candidateIdentity(cwd);
@@ -269,7 +270,7 @@ export function evaluateGate(cwd, { goal: goalOverride } = {}) {
             } else {
               entry.reasons = [
                 `评审运行 ${last.runId} 满足七合取（metered ${last.metering.points} 分 · verdict=pass · 候选现行 · 原始输出哈希符）` +
-                  `；发现生命周期（独立复核关闭/证伪）属 M3——本阶段无 CLI 出口`,
+                  `；发现生命周期由 findings 子句执法（未关闭阻塞发现独立子句判）`,
               ];
             }
           }
@@ -335,8 +336,24 @@ export function evaluateGate(cwd, { goal: goalOverride } = {}) {
     });
   }
 
-  // ⑤ 发现面（M3 建账）——如实声明，不冒充已核
-  clauses.findings = { ok: true, reasons: ["发现面未建立（M3 建账）——本子句无可判事实，不冒充已核"] };
+  // ⑤ 发现面（N5，V06/V07）：未关闭阻塞发现（本 slug+别名链闭包）⇒ blocked——只有独立修复
+  // 复核或证伪可关闭；账本损坏 fail-closed（读不出即不可判=blocked，与 doctor checkFindings
+  // 同口径）。发现跨 reset/supersede/别名存续（账本在 loop/ 外、查询走别名闭包）。
+  try {
+    const openFindings = openBlockingFindings(cwd, goal.slug);
+    clauses.findings =
+      openFindings.length === 0
+        ? { ok: true, reasons: ["发现面：无未关闭阻塞发现"] }
+        : {
+            ok: false,
+            reasons: openFindings.slice(0, 5).map(
+              (f) =>
+                `未关闭阻塞发现 ${f.fingerprint.slice(0, 8)}（${f.severity} · ${f.title} · 状态 ${f.status} · 首见 ${f.firstSeen.runId} · 累计 ${f.occurrences} 次${f.originSlug !== goal.slug ? ` · 源 ${f.originSlug}` : ""}）——修复后 lzy review recheck 独立复核，lzy finding show ${f.fingerprint.slice(0, 8)} 看详情`,
+            ),
+          };
+  } catch (e) {
+    clauses.findings = { ok: false, reasons: [`发现账本不可读（fail-closed）：${String(e?.message ?? e).slice(0, 140)}`] };
+  }
   // ⑥ 既有门引用（单一事实源：步骤/证据/comparator/净树/竞态仍由 finish 执法）
   clauses.existingGates = {
     ok: true,

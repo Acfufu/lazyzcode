@@ -197,7 +197,7 @@ test("④runReview 绿例：valid+pass+metered；候选竞态（注入运行中�
     assert.equal(res.record.validity.status, "valid");
     assert.equal(res.record.result.verdict, "pass");
     assert.equal(res.record.metering.status, "metered");
-    assert.equal(res.record.dutyTableVersion, 2, "dutyTableVersion 取现行策略记录/职责表版本");
+    assert.equal(res.record.dutyTableVersion, 3, "dutyTableVersion 取现行策略记录/职责表版本（M3 N5 翻面 v2→v3）");
     // 候选竞态：spawn 期间 HEAD 前进 → candidate-moved（运行照常落档，不可改判）
     const d2 = fixture();
     const res2 = await runReview(d2, { deps: deps({ spawnHeadless: stubSpawn({ during: () => spawnSync("git", ["commit", "-qm", "move", "--allow-empty"], { cwd: d2 }) }) }) });
@@ -339,7 +339,7 @@ test("⑧gate 成对：无运行=阻塞；metered+pass+候选现行=满足；blo
     assert.equal(rev2.basis.runId, res.record.runId);
     assert.equal(rev2.basis.attempt, 1);
     assert.match(rev2.reasons.join("\n"), /七合取/);
-    assert.match(rev2.reasons.join("\n"), /M3/); // 发现生命周期如实指路，不冒充
+    assert.match(rev2.reasons.join("\n"), /findings 子句/); // M3 N5：发现生命周期由独立子句执法
     // (c) 追加 blocked 运行（最新档）→ 阻塞点名阻塞发现
     const blocked = { ...PASS, verdict: "blocked", findings: [{ id: "F-1", title: "t", severity: "P1", blocking: true, location: "a.txt:1", evidence: "e", summary: "s" }] };
     const res3 = await runReview(d2, { deps: deps({ spawnHeadless: stubSpawn({ response: FENCE(blocked) }) }) });

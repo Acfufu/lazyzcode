@@ -291,7 +291,7 @@ test("真 CLI 面：采纳即落策略档（V01/V13 M1 面）+ 解释面两次�
     assert.equal(`${s1.stdout ?? ""}${s1.stderr ?? ""}`, `${s2.stdout ?? ""}${s2.stderr ?? ""}`);
     assert.match(s1.stdout ?? "", /记录在案/);
     assert.match(s1.stdout ?? "", /评审运行器：在案/); // 0.4.0 M2 N5 翻面：runner available ⇒「在案」
-    assert.match(s1.stdout ?? "", /dutyTable v2/);
+    assert.match(s1.stdout ?? "", /dutyTable v3/);
     // 二次采纳（无变更）= 零写
     const before = recordBytes(d, "polcli");
     assert.equal(lzy(["loop", "plan", "p.md"]).status, 0);

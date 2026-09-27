@@ -21,9 +21,10 @@
 //   2. 真实会话消耗计入宿主计费库——这正是计量腿的被测面；预算预注册 ≤8 会话（本案例 5）。
 //   3. win32 未核（spawn 信号语义差异）；本工具按 unix/macOS QA 面使用。
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 import { findEngine } from "../../core/paths.js";
 import { detectHeadlessAuth, spawnHeadless } from "../../core/headless.js";
@@ -69,6 +70,7 @@ if (f.help === true || CASE === "help") {
 案例:
   capability         M0 能力探针（隔离/负对照/计量/击杀续跑，真实引擎会话 5 次）
   capability-meter   计量零会话复跑（--prev-result 指向先前 capability result.json，复读账本不 spawn）
+  gate-matrix        统一门反例矩阵（零会话：八体 gate explain 活体 + finish/dispatch/reconcile/act 四入口）
 退出契约: 0=全部断言过 1=有断言败 2=用法错 3=blocked（缺能力/轨迹不可核验，不算 SKIP 通过）`);
   process.exit(0);
 }
@@ -589,14 +591,410 @@ async function capabilityMeterCase() {
 }
 
 // ── 执行 ───────────────────────────────────────────────────────────────────
+// ── case: gate-matrix（零会话统一门反例矩阵；goal v040-m1-gate#N9，§8.1 M1 出口）────
+// 判据面：同一「已批准契约 + 真实成功回执」的 v2 基态上逐个注入八体缺陷，逐体调 `lzy gate explain`
+// 读活体 stdout 与退出码（原因逐体对应）；再于「已批准契约 v2 目标」上驱动四个入口——
+//   loop finish（真 CLI）、queue dispatch/reconcile、delivery act（deps 注入假件=外发替身，计数即外发数）。
+// 断言语义分腿钉死（§8.1「CLI 非 0 或条目非 completed」析取，如实不冒充）：
+//   loop finish / delivery act / gate explain → 退出码或抛错面非 0/被拒；queue dispatch → 条目非
+//   completed 且回 ready；queue reconcile → verdict 字面含阻塞原因且条目保持未决。
+// 零会话：本案例不 spawn 引擎（dispatch 段注入假 drive——引擎真跑属 M2 评审运行器面）；done 旧记录
+// 不免核单列一腿。绿例（有效完整结果放行）留 M2 接通，本阶段不伪造评审完成声明。
+const QAM_REQ_CI = ["ci / test (24, ubuntu-latest)", "ci / test (24, windows-latest)"];
+const QAM_CONTRACT = "task: gmatrix\nendpoint: A\nscope: .\nrecipe: none\n\n- [A1] alpha works\n- [A2] beta works\n";
+const QAM_PLAN = "- [N1] work\n- [F1] alpha\naccepts: A1\n- [F2] beta\naccepts: A2\n";
+
+function qamGhScript(checks) {
+  return `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(JSON.stringify(checks))});\n`;
+}
+
+async function gateMatrixCase() {
+  const assertions = [];
+  const push = (id, ok, expected, observed, evidence) => assertions.push({ id, ok: Boolean(ok), expected, observed: String(observed).slice(0, 600), evidence });
+  const CLI = join(REPO, "cli", "lzy.js");
+  const TRIGGER = join(REPO, "plugin", "hooks", "trigger.js");
+  const gateDir = join(fixtureRoot, "gate-matrix");
+  rmSync(gateDir, { recursive: true, force: true }); // 幂等：本案例独占 <fixture>/gate-matrix 子目录（可重复跑）
+  mkdirSync(gateDir, { recursive: true });
+  const baseEnv = { ...process.env, LZY_ZCODE_ENGINE: "/nonexistent-lzy-suppressed" };
+
+  // 夹具：git 仓 + 清单（check/ci 声明）+ 契约 + 计划；register --contract → plan（拒：落
+  // contractPending）→ 真实 UPS 批准（钩子，不手写批准记录）→ plan → start。
+  function fixture(name, { checkArgv = ["node", "-e", "process.exit(0)"], expectRunFail = false } = {}) {
+    const home = mkdtempSync(join(tmpdir(), `lzy-qam-${name}-home-`));
+    const d = join(gateDir, name);
+    mkdirSync(d, { recursive: true });
+    const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+    g(["init", "-q"]);
+    g(["config", "user.email", "t@l"]);
+    g(["config", "user.name", "t"]);
+    writeFileSync(join(d, "a.txt"), "a\n");
+    writeFileSync(
+      join(d, "lzy.project.json"),
+      `${JSON.stringify({ schemaVersion: 1, capabilities: { check: [{ id: "smoke", argv: checkArgv }], ci: { requiredChecks: QAM_REQ_CI } } }, null, 2)}\n`,
+    );
+    writeFileSync(join(d, "contract.md"), QAM_CONTRACT);
+    writeFileSync(join(d, "plan.md"), QAM_PLAN);
+    g(["add", "-A"]);
+    g(["commit", "-qm", "fixture"]);
+    g(["remote", "add", "origin", "https://github.com/Acfufu/lazyzcode.git"]);
+    const lzy = (args, extra = {}) => {
+      const r = spawnSync(process.execPath, [CLI, ...args], { cwd: d, encoding: "utf8", timeout: 120_000, env: { ...baseEnv, HOME: home, USERPROFILE: home, ...extra } });
+      return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+    };
+    const hook = (prompt) => {
+      const r = spawnSync(process.execPath, [TRIGGER], {
+        cwd: d, encoding: "utf8", timeout: 30_000,
+        input: JSON.stringify({ prompt, cwd: d, sessionId: "sess_qam" }),
+        env: { ...baseEnv, HOME: home, USERPROFILE: home },
+      });
+      return { exit: r.status, out: r.stdout ?? "" };
+    };
+    const readGoal = () => JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+    const reg = lzy(["loop", "register", "gmatrix", "--title", "t", "--contract", "contract.md"]);
+    if (reg.exit !== 0) throw new Error(`register 失败：${reg.out}`);
+    const p1 = lzy(["loop", "plan", "plan.md"]);
+    if (p1.exit !== 1) throw new Error(`首采应拒（contractPending）：${p1.out}`);
+    const short = readGoal().contractPending.contractHash.slice(0, 8);
+    const ap = hook(`批准 ${short}`);
+    if (!ap.out.includes("Human approval recorded for contract")) throw new Error(`批准未记录：${ap.out}`);
+    const p2 = lzy(["loop", "plan", "plan.md"]);
+    if (p2.exit !== 0) throw new Error(`采纳失败：${p2.out}`);
+    const st = lzy(["loop", "start"]);
+    if (st.exit !== 0) throw new Error(`start 失败：${st.out}`);
+    // 真实成功回执（check 真跑 + CI 真读回，读回走假 gh 可执行=外部面替身）。
+    // b1 的配方本就 exit 3：回执照落（历史事实），CLI 按 recipe 非零置退出码 1——如实容忍。
+    const gh = join(gateDir, `${name}.bin`, "gh"); // 仓外（仓内未跟踪文件=脏树，finish 完整性闸门会先于统一门拒绝）
+    mkdirSync(dirname(gh), { recursive: true });
+    writeFileSync(gh, qamGhScript(QAM_REQ_CI.map((n) => ({ name: n, conclusion: "success" }))), { mode: 0o755 });
+    const vr = lzy(["verify", "run", "smoke"]);
+    if (vr.exit !== 0 && !expectRunFail) throw new Error(`verify run 失败：${vr.out}`);
+    if (expectRunFail && vr.exit === 0) throw new Error(`b1 夹具须产出失败回执（配方非零）——实得 exit 0`);
+    const vc = lzy(["verify", "ci"], { LZY_GH_BIN: gh });
+    if (vc.exit !== 0) throw new Error(`verify ci 失败：${vc.out}`);
+    return { d, home, lzy, hook, readGoal, goalPath: join(d, ".lazyzcode", "loop", "goal.json"), gh, short };
+  }
+
+  const REVIEW_RE = /受控评审运行器未接入（M2）/;
+  // 解释面结构化解析：子句行「✔/✘ <name>：reason」+ 义务行「✔/✘ 义务 <id>（type）＝ state」，
+  // 其后 6 空格缩进行为该条理由（人工可读输出与机器断言共用同一份活体 stdout）。
+  const parseGate = (out) => {
+    const lines = out.split("\n");
+    const obligations = [];
+    const clauses = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      const mo = lines[i].match(/^\s+([✔✘]) 义务 (\S+)（([^）]*)）＝ (\S+)/);
+      if (mo) {
+        const reasons = [];
+        for (let j = i + 1; j < lines.length && /^\s{6}\S/.test(lines[j]); j += 1) reasons.push(lines[j].trim());
+        obligations.push({ id: mo[2], type: mo[3], state: mo[4], mark: mo[1], reasons });
+        continue;
+      }
+      const mc = lines[i].match(/^\s+([✔✘]) (\w+)(：|$)/);
+      if (mc) clauses.push({ name: mc[2], ok: mc[1] === "✔", reason: (lines[i].split("：").slice(1).join("：") ?? "").trim() });
+    }
+    return { obligations, clauses, blocked: /裁决 BLOCKED/.test(out), snapshot: (out.match(/快照 ([0-9a-f]{8})/) ?? [])[1] ?? null };
+  };
+
+  // ── 反例族八体（逐体新夹具：基态全满足 → 注入单缺陷 → gate explain 活体）──────────
+  const BODIES = [
+    {
+      id: "b1-failed-but-reusable",
+      note: "失败但可复用的回执（适用≠成功，V03）",
+      checkArgv: ["node", "-e", "process.exit(3)"],
+      expectRunFail: true,
+      expect: /失败回执可复用仅构成适用性事实，不满足成功义务（V03）/,
+    },
+    {
+      id: "b2-contract-mutated",
+      note: "错契约（契约盘上漂移=新哈希=新授权请求）",
+      expect: /\[a\.contract-unmutated\] 契约已变/,
+      inject: (fx) => {
+        const p = join(fx.d, "contract.md");
+        writeFileSync(p, `${readFileSync(p, "utf8")}<!-- mutated -->\n`);
+      },
+    },
+    {
+      id: "b3-candidate-moved",
+      note: "错候选（回执后候选前移）",
+      expect: /候选已前移/,
+      inject: (fx) => {
+        const g = (args) => spawnSync("git", args, { cwd: fx.d, encoding: "utf8" });
+        writeFileSync(join(fx.d, "b.txt"), "b\n");
+        g(["add", "b.txt"]);
+        g(["commit", "-qm", "move"]);
+      },
+    },
+    {
+      id: "b4-ci-missing-item",
+      note: "CI 漏项（必需集合不全，V10）",
+      expect: /必需检查「ci \/ test \(24, windows-latest\)」missing/,
+      inject: (fx) => {
+        writeFileSync(fx.gh, qamGhScript([{ name: QAM_REQ_CI[0], conclusion: "success" }]), { mode: 0o755 });
+        const r = fx.lzy(["verify", "ci"], { LZY_GH_BIN: fx.gh });
+        if (r.exit !== 0) throw new Error(`b4 注入失败：${r.out}`);
+      },
+    },
+    {
+      id: "b5-authorization-withdrawn",
+      note: "授权撤回（撤回在案即无效，V02）",
+      expect: /\[b\.authorized\] 契约授权已被用户撤回/,
+      inject: (fx) => {
+        const w = fx.hook(`撤回 ${fx.short}`);
+        if (!w.out.includes("Withdrawal recorded")) throw new Error(`b5 撤回未记录：${w.out}`);
+      },
+    },
+    {
+      id: "b6-review-absent",
+      note: "评审缺席（M1 恒在场：诚实阻塞，不伪造完成）",
+      expect: REVIEW_RE,
+    },
+    {
+      id: "b7-contract-file-absent",
+      note: "v2 目标契约缺席（绑定在案而文件读不到=拒，不猜补）",
+      expect: /\[a\.contract-readable\] 契约文件不可读或结构非法/,
+      inject: (fx) => rmSync(join(fx.d, "contract.md"), { force: true }),
+    },
+    {
+      id: "b8-acceptance-mapping-missing",
+      note: "契约在案但验收映射缺项（F 项未覆盖 A2）",
+      expect: /验收覆盖缺口：契约验收项 A2 无任何 F 项 accepts 引用/,
+      inject: (fx) => {
+        const goal = fx.readGoal();
+        goal.steps = goal.steps.map((s) => (s.id === "F2" ? { ...s, acceptsRefs: [] } : s));
+        writeFileSync(fx.goalPath, `${JSON.stringify(goal, null, 2)}\n`);
+      },
+    },
+  ];
+
+  const bodies = [];
+  for (const b of BODIES) {
+    const fx = fixture(b.id, b.checkArgv ? { checkArgv: b.checkArgv, expectRunFail: b.expectRunFail === true } : undefined);
+    if (b.inject) b.inject(fx);
+    const ge = fx.lzy(["gate", "explain"]);
+    const parsed = parseGate(ge.out);
+    const matched = b.expect.test(ge.out);
+    const ownUnsatisfied = parsed.obligations.filter((o) => o.state !== "satisfied");
+    const row = {
+      id: b.id,
+      note: b.note,
+      inject: b.inject ? "夹具注入（见 qa.mjs 案例源码）" : "基态即达（无注入）",
+      gateExplain: { exit: ge.exit, blocked: parsed.blocked, matched, snapshot: parsed.snapshot },
+      unsatisfiedObligations: ownUnsatisfied.map((o) => ({ id: o.id, state: o.state, reasons: o.reasons.map((r) => r.slice(0, 240)) })),
+      failedClauses: parsed.clauses.filter((c) => !c.ok).map((c) => ({ name: c.name, reason: c.reason.slice(0, 240) })),
+    };
+    bodies.push(row);
+    const bodyEvidence = [...row.unsatisfiedObligations.flatMap((o) => o.reasons), ...row.failedClauses.map((c) => c.reason)].find((r) => b.expect.test(r));
+    push(
+      `GATE-${b.id}`,
+      ge.exit !== 0 && matched,
+      `${b.note} ⇒ gate explain 退出码非 0 且原因逐体对应`,
+      `exit=${ge.exit} matched=${matched}｜${bodyEvidence ?? row.unsatisfiedObligations[0]?.reasons?.[0] ?? row.failedClauses[0]?.reason ?? "(无逐条原因)"}`,
+      "lzy gate explain 活体 stdout（本案例 result JSON bodies[].unsatisfiedObligations/failedClauses 全文）",
+    );
+  }
+
+  // 基态正判腿：唯一 unsatisfied 义务=评审底线（逐义务判定可达；其余义务/子句全 satisfied）
+  const fxBase = fixture("base");
+  const geBase = fxBase.lzy(["gate", "explain"]);
+  const baseParsed = parseGate(geBase.out);
+  const baseUnsat = baseParsed.obligations.filter((o) => o.state !== "satisfied");
+  const checkOb = baseParsed.obligations.find((o) => o.id === "check.smoke") ?? null;
+  const ciOb = baseParsed.obligations.find((o) => o.id === "ci.required-checks") ?? null;
+  push(
+    "GATE-base-review-only",
+    geBase.exit !== 0 &&
+      baseUnsat.length === 1 &&
+      baseUnsat[0].id === "review.general-correctness" &&
+      checkOb?.state === "satisfied" &&
+      ciOb?.state === "satisfied" &&
+      /三轴满足/.test(checkOb.reasons.join(" ")) &&
+      baseParsed.clauses.filter((c) => !c.ok).length === 0,
+    "基态（真实成功回执全满足）：唯一 unsatisfied=评审底线；check/ci 义务 satisfied（三轴满足）且无失败子句",
+    `unsatisfied=[${baseUnsat.map((o) => o.id).join(",")}] check=${checkOb?.state} ci=${ciOb?.state} failedClauses=[${baseParsed.clauses.filter((c) => !c.ok).map((c) => c.name).join(",")}]`,
+    "lzy gate explain 活体 stdout（base 行；逐义务判定可达的证明）",
+  );
+
+  // ── 入口腿① loop finish（真 CLI；步骤齐全+干净树才到门）───────────────────────
+  let finishObs = { exit: null, gateBlocked: false };
+  {
+    const fx = fixture("entry-finish");
+    for (const [id, ev] of [["N1", null], ["F1", "alpha-live"], ["F2", "beta-live"]]) {
+      const r = ev ? fx.lzy(["step", "done", id, "--evidence", ev]) : fx.lzy(["step", "done", id]);
+      if (r.exit !== 0) throw new Error(`entry-finish step ${id} 失败：${r.out}`);
+    }
+    const fin = fx.lzy(["loop", "finish"]);
+    const goalAfter = fx.readGoal();
+    finishObs = {
+      exit: fin.exit,
+      gateBlocked: /统一门阻塞（政策层/.test(fin.out) && REVIEW_RE.test(fin.out),
+      statusAfter: goalAfter.status,
+      firstReason: (fin.out.match(/-\s+(\[.*)$/m) ?? [])[1]?.slice(0, 200) ?? null,
+    };
+    push(
+      "ENTRY-finish",
+      fin.exit !== 0 && finishObs.gateBlocked && goalAfter.status === "executing",
+      "缺必需评审的已批准契约 v2 目标：loop finish 退出码非 0、报文含统一门阻塞+评审义务、状态不置 done",
+      `exit=${fin.exit} status=${goalAfter.status}｜${finishObs.firstReason ?? ""}`,
+      "lzy loop finish 活体 stdout",
+    );
+  }
+
+  // ── 入口腿②③④ done 记录：queue dispatch/reconcile + delivery act（假 drive/假 gh=外发替身）──
+  let dispatchObs = {};
+  let reconcileObs = {};
+  let actObs = {};
+  {
+    const q = await import(pathToFileURL(join(REPO, "core", "queue.js")).href);
+    const deliv = await import(pathToFileURL(join(REPO, "core", "delivery.js")).href);
+    const contractMod = await import(pathToFileURL(join(REPO, "core", "contract.js")).href);
+    const loopMod = await import(pathToFileURL(join(REPO, "core", "loop.js")).href);
+    const fx = fixture("entry-done");
+    // 队列条目（endpoint A：无交付链，dispatch 收口腿不掺外发面）
+    const it = q.addQueueItem(fx.d, {
+      title: "qam-item",
+      contractFile: join(fx.d, "contract.md"),
+      planFile: join(fx.d, "plan.md"),
+      goalSlug: "gmatrix",
+      endpoint: "A",
+    });
+    contractMod.recordAuthorization(fx.d, { kind: "approval", slug: "gmatrix", contractHash: it.contractHash, sessionId: "t", at: nowIso() });
+    q.refreshQueue(fx.d);
+    // done 旧记录形态（测试态：手置 status；本判决面=「done 记录过不过门」）
+    const goal = fx.readGoal();
+    goal.status = "done";
+    writeFileSync(fx.goalPath, `${JSON.stringify(goal, null, 2)}\n`);
+    const res = await q.runQueueDispatch(fx.d, {}, { drive: async () => ({ ok: true, cause: "qam-fake-drive（零会话）" }) });
+    const item = q.loadQueue(fx.d).items.find((x) => x.id === it.id);
+    const tx = q.loadDispatch(fx.d).txs.find((t) => t.itemId === it.id) ?? null;
+    dispatchObs = {
+      dispatchExitCode: null, // 现行 CLI 对 ready 态退出码 0（QAM：dispatch 收口腿以条目结局为判据，不冒充退出码）
+      itemState: item?.state ?? null,
+      txPhase: tx?.phase ?? null,
+      txNote: (tx?.note ?? "").slice(0, 300),
+      cause: String(res?.results?.[0]?.cause ?? "").slice(0, 300),
+    };
+    push(
+      "ENTRY-dispatch-done",
+      item?.state === "ready" && tx?.phase === "killed" && /统一门阻塞（done 记录不免核/.test(`${tx?.note}${dispatchObs.cause}`),
+      "done 旧记录不免核：queue dispatch 条目非 completed、回 ready、tx killed 且成因含统一门",
+      `item=${dispatchObs.itemState} tx=${dispatchObs.txPhase}｜${dispatchObs.cause}`,
+      "runQueueDispatch（deps.drive 假件=零会话）+ loadQueue/loadDispatch 活体读数",
+    );
+    // reconcile 追认腿（手工 open tx）
+    const dj = q.loadDispatch(fx.d) ?? { txs: [] };
+    dj.txs.push({ txId: "t-qam-1", itemId: it.id, goalSlug: "gmatrix", phase: "open", openedAt: nowIso(), settledAt: null, limits: { wallMs: null, points: null }, segments: [], note: null });
+    q.saveDispatch(fx.d, dj);
+    const rec = q.reconcileDispatch(fx.d, {});
+    const item2 = q.loadQueue(fx.d).items.find((x) => x.id === it.id);
+    const v = rec?.verdicts?.find((x) => x.txId === "t-qam-1") ?? null;
+    reconcileObs = {
+      reconcileExitCode: null, // 现行 reconcile 只打印 verdicts 不设退出码（QAM：判据=verdict 字面+条目未决）
+      itemState: item2?.state ?? null,
+      verdict: (v?.verdict ?? "").slice(0, 300),
+      txPhase: q.loadDispatch(fx.d).txs.find((t) => t.txId === "t-qam-1")?.phase ?? null,
+    };
+    push(
+      "ENTRY-reconcile-done",
+      item2?.state !== "completed" && /blocked（统一门/.test(reconcileObs.verdict) && reconcileObs.txPhase === "open",
+      "done 追认前过门：reconcile verdict 字面含阻塞原因、条目保持未决（不追认）、tx 留可 reconcile 集",
+      `item=${reconcileObs.itemState} tx=${reconcileObs.txPhase}｜${reconcileObs.verdict}`,
+      "reconcileDispatch 活体读数（verdicts/items/dispatch）",
+    );
+    // delivery act 腿（B∧C 双授权；外发替身计数）
+    const calls = [];
+    const fxD = fixture("entry-act");
+    writeFileSync(join(fxD.d, "cb.md"), "task: 交付B\nendpoint: B\nscope: .\nrecipe: none\n\n- [A1] x\n");
+    writeFileSync(join(fxD.d, "cc.md"), "task: 交付C\nendpoint: C\nscope: .\nrecipe: none\n\n- [A1] x\n");
+    const b = deliv.validateDeliveryContract(fxD.d, "B", join(fxD.d, "cb.md"));
+    const c = deliv.validateDeliveryContract(fxD.d, "C", join(fxD.d, "cc.md"));
+    loopMod.bindDeliveryContract(fxD.d, "B", join(fxD.d, "cb.md"), b.hash);
+    loopMod.bindDeliveryContract(fxD.d, "C", join(fxD.d, "cc.md"), c.hash);
+    contractMod.recordAuthorization(fxD.d, { kind: "approval", slug: "gmatrix", contractHash: b.hash, sessionId: "t", at: nowIso() });
+    contractMod.recordAuthorization(fxD.d, { kind: "approval", slug: "gmatrix", contractHash: c.hash, sessionId: "t", at: nowIso() });
+    writeFileSync(join(fxD.d, "body.md"), "pr body\n");
+    const deps = {
+      sleep: () => {},
+      gitPush: () => { calls.push("git-push"); return { code: 0, stdout: "", stderr: "" }; },
+      ghApi: (args) => { calls.push(args.join(" ")); return { code: 0, stdout: "{}", stderr: "" }; },
+    };
+    let actErr = null;
+    try {
+      deliv.actDeliveryB(fxD.d, { repo: "Acfufu/lazyzcode", branch: "v040", base: "main", head: "a".repeat(40), prTitle: "t", prBodyFile: "body.md" }, deps);
+    } catch (e) {
+      actErr = String(e?.message ?? e);
+    }
+    actObs = {
+      actError: actErr ? actErr.slice(0, 300) : null,
+      externalCalls: calls.length,
+      intents: (deliv.loadIntents(fxD.d)?.intents ?? []).length,
+    };
+    push(
+      "ENTRY-act-v2",
+      actErr != null && /外发前置统一门（ep B）阻塞/.test(actErr) && calls.length === 0 && actObs.intents === 0,
+      "缺必需评审的 v2 目标：delivery act 被统一门拒（错误面），外发替身计数 0、意图零落账",
+      `err=${(actErr ?? "(未拒)").slice(0, 160)} calls=${calls.length} intents=${actObs.intents}`,
+      "actDeliveryB 活体（deps 假 gh/gitPush=外发替身；计数即外发数）",
+    );
+    // done 记录下的 gate explain：done 不免核的读面确证
+    const geDone = fx.lzy(["gate", "explain"]);
+    push(
+      "ENTRY-done-gate-explain",
+      geDone.exit !== 0 && /政策层不放行/.test(geDone.out),
+      "done 记录的 gate explain 仍 BLOCKED（done 不免核读面；v1 旧记录则逐字「政策裁决不适用」）",
+      `exit=${geDone.exit} first=${geDone.out.split("\n").find((l) => l.trim())?.slice(0, 160) ?? ""}`,
+      "lzy gate explain 活体 stdout（done 目标）",
+    );
+  }
+
+  // ── 无契约 v2：评审义务不豁免（拍板 7——不存在「无契约→免评审」旁路）──────────
+  {
+    const d = join(gateDir, "no-contract");
+    mkdirSync(d, { recursive: true });
+    const home = mkdtempSync(join(tmpdir(), "lzy-qam-nc-home-"));
+    const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+    g(["init", "-q"]);
+    g(["config", "user.email", "t@l"]);
+    g(["config", "user.name", "t"]);
+    writeFileSync(join(d, "a.txt"), "a\n");
+    writeFileSync(join(d, "p.md"), "- [N1] x\n");
+    g(["add", "-A"]);
+    g(["commit", "-qm", "init"]);
+    const lzy = (args, extra = {}) =>
+      spawnSync(process.execPath, [CLI, ...args], { cwd: d, encoding: "utf8", timeout: 120_000, env: { ...baseEnv, HOME: home, USERPROFILE: home, LZY_ABLATE_HUMAN_GATE: "1", ...extra } });
+    if (lzy(["loop", "register", "qamnc", "--title", "t"]).status !== 0) throw new Error("no-contract register 失败");
+    if (lzy(["loop", "plan", "p.md"]).status !== 0) throw new Error("no-contract plan 失败");
+    const ge = lzy(["gate", "explain"]);
+    const out = `${ge.stdout ?? ""}${ge.stderr ?? ""}`;
+    push(
+      "ENTRY-no-contract-review",
+      ge.status !== 0 && REVIEW_RE.test(out),
+      "无契约 v2 目标不豁免评审义务（诚实阻塞；不存在「无契约→免评审」旁路）",
+      `exit=${ge.status} reviewReason=${REVIEW_RE.test(out)}`,
+      "lzy gate explain 活体 stdout（无契约 v2 夹具）",
+    );
+  }
+
+  return {
+    blocked: null,
+    assertions,
+    bodies,
+    entries: { finish: finishObs, dispatch: dispatchObs, reconcile: reconcileObs, act: actObs },
+    probeBudget: { preregisteredSessions: 0, usedSessions: 0, note: "零会话矩阵：不 spawn 引擎；dispatch/act 腿 deps 注入假件（外发替身计数）" },
+  };
+}
+
+// ── 执行 ───────────────────────────────────────────────────────────────────
 const started = nowIso();
 let result;
 if (CASE === "capability") {
   result = await capabilityCase();
 } else if (CASE === "capability-meter") {
   result = await capabilityMeterCase();
+} else if (CASE === "gate-matrix") {
+  result = await gateMatrixCase();
 } else {
-  die(`未知 --case：${CASE}（capability|capability-meter）`);
+  die(`未知 --case：${CASE}（capability|capability-meter|gate-matrix）`);
 }
 
 const assertions = result.assertions ?? [];
@@ -616,6 +1014,8 @@ const resultJson = {
   metering: result.metering ?? [],
   kill: result.kill ?? null,
   steps: result.steps ?? [],
+  bodies: result.bodies ?? null,
+  entries: result.entries ?? null,
   assertions,
   snapshots: result.snapshots ?? null,
 };

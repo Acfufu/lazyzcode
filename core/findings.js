@@ -294,7 +294,10 @@ export function closeFinding(cwd, slug, fingerprint, { outcome, basis, recheck, 
   if (e.status !== "resolve-requested") {
     throw new FindingsError(`状态机拒绝：${e.status} 态不受理 close（关闭通道=resolve-request → review recheck → close）`);
   }
-  if (Array.isArray(recheck.reportedFingerprints) && recheck.reportedFingerprints.includes(fingerprint)) {
+  if (!Array.isArray(recheck.reportedFingerprints)) {
+    throw new FindingsError("recheck 引用缺 reportedFingerprints 数组（fail-closed——无法核对「仍报」面）");
+  }
+  if (recheck.reportedFingerprints.includes(fingerprint)) {
     throw new FindingsError(`recheck 运行仍报该发现（${recheck.runId}）——不能关闭；修复未生效则该轮记无效修复`);
   }
   const stamp = at ?? new Date().toISOString();

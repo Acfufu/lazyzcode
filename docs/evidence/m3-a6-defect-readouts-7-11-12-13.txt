@@ -1,0 +1,14 @@
+ok - #7 多 subject 抛 preflight 型（multi-subject）
+ok - #7 零落档（不预留不落档）
+ok - #7 CLI exit 3（实得 3）
+ok - #7 CLI 零落档
+ok - #11 锁忙=ReviewPreflightError（exit 3 面）
+ok - #11 锁忙零落档
+ok - #11 释放后正常运行
+ok - #12 幻影尝试落运行档 containment
+ok - #13 截断注记在场
+ok - #13 注入字节 ≤AGENTS_CAP 且码点边界安全（102399/120010）
+ok - #13 UTF-8 边界回退不破码
+
+PROBE-PASS 全部断言过
+N3-EXIT=0

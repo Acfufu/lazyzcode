@@ -1,0 +1,16 @@
+
+──── #8 认证腿=隔离 HOME 会话创建门：无 provider env → 前置拒（exit 3 不落档） ────
+$ review run（provider env 置空+隔离 HOME）→ exit 3
+前置不具备（不 spawn、不消耗、不落档）：无 provider env 认证（隔离 HOME 会话创建门：ZCODE_*_PROVIDER_CONFIG_FILE 须在场且非空文件）——评审会话跑在隔离 HOME，宿主 OAuth 凭据不进入隔离面；恢复：注入 provider env 后重跑（lzy doctor 看 headless 行）
+
+落档检查：0 件（期望 0=不落档）
+
+──── #9 输入包证据面：steps.evidence + disclosure 披露 + 非文本附件引用 ────
+steps[0].evidence = "docs/evidence/x.txt"（期望非 null——s.evidence 已入包）
+evidence[0]（文本件）included=true
+evidence[1]（二进制）included=false · sha256=true · note=非文本附件——以引用入包（sha256/字节数），内容不注入（隔离面不读宿主路径）
+disclosure = ["非文本附件未注入内容：fx.e2.bin（引用面在场）","AGENTS.md 缺席——项目规则面未注入"]
+
+──── #10 计量注记：逐会话分解 + 缺席不算零 + 有界重试 ────
+metered 注记："逐会话（distinct sessionId 去重）：s1=7 分"
+absent 注记（读 3 次=有界重试）：{"status":"absent","points":null,"note":"逐会话读数：s1=缺席（不算零）（读 3 次）——缺用量不算零（ADR-0027 修正节）"}

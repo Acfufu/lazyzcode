@@ -24,7 +24,7 @@
 - **评审预算执法**（决策 #32 近似限制）：LEDGER_KINDS 增 `review`（绑 (slug, contractHash)；无契约 goal 保持
   运行档 durable 面；metered 才写；dedup=runId 幂等）；budgetView 增 reviewPoints 独立分项；契约
   `budget-ref: points:N` 绑定 → 累计超限 preflight 拒（budget-exhausted），在途超额如实记账。
-- **M2 转入缺陷批 #5/#7–#13 全修**（逐条真表面读数见 §3）：#7 多 subject 前移 exit3 不落档；#8 认证腿按隔离
+- **M2 转入缺陷批 #5/#7–#13 全修**（逐条真表面读数落地 docs/evidence/m3-a6-defect-readouts-*.txt、m3-f1-finding-cli.txt、m3-f7-review-runtime-live.txt）：#7 多 subject 前移 exit3 不落档；#8 认证腿按隔离
   HOME 会话创建门判；#9 输入包证据面（非文本附件引用+steps 含 s.evidence+disclosure 披露块）；#10 计量
   distinct sessionId 去重/缺席不算零/落库延迟有界重试/逐会话分解；#11 写前缀 withLock 单写者；#12 phantoms
   落档；#13 字节精确截断；#5 unpriced 指路 `lzy loop cost` 与 MODEL_ALIASES。

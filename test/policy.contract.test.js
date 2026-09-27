@@ -370,3 +370,71 @@ test("⑪0.4.0 M2 N5 读侧放宽：旧版本档可读；版本漂移由 rulesHa
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+// ── 0.4.0 M3 N8：义务复判 reassess（ADR-0033/V07）──
+import { reassessObligation } from "../core/policy.js";
+import { recordFindingSightings, loadFindingsFile } from "../core/findings.js";
+import { saveFamilyFile } from "../core/queue.js";
+
+test("M3 N8 reassess：三件套/baseline/推导仍含/未知 id 四拒 + 取消活体三件套入账 + expand 重同步", () => {
+  const d = scratch();
+  try {
+    // 初档清单收窄到单 check 配方——expand 重同步不受他义务干扰（专测 check.lint 一条）
+    const goal = frozenInputs(d, { manifest: { ...MANIFEST, capabilities: { ...MANIFEST.capabilities, check: [MANIFEST.capabilities.check[0]] } } });
+    ensurePolicyRecord(d, goal);
+    const trio = { impactChange: "清单移除 check.lint 配方", cancelReason: "检查适用条件消失", basis: "re-derive 不再生成 check.lint（ADR-0033 §5）" };
+    // 拒：三件套缺项
+    assert.throws(() => reassessObligation(d, goal, "check.lint", { impactChange: "x", cancelReason: "y" }), /basis/);
+    // 拒：baseline（底线评审）
+    assert.throws(() => reassessObligation(d, goal, BASELINE_REVIEW_ID, trio), /baseline/);
+    // 拒：未知义务 id
+    assert.throws(() => reassessObligation(d, goal, "check.notexist", trio), /不在案/);
+    // 拒：现行推导仍含该义务（清单未变）
+    assert.throws(() => reassessObligation(d, goal, "check.lint", trio), /取消无独立依据/);
+    // 活体：清单移除 check 配方（影响变化落地）→ 推导不再含 → 取消成功
+    const goal2 = frozenInputs(d, { manifest: { ...MANIFEST, capabilities: { ...MANIFEST.capabilities, check: [] } } });
+    const r = reassessObligation(d, goal2, "check.lint", trio);
+    assert.equal(r.removed, "check.lint");
+    assert.ok(!r.obligationsAfter.includes("check.lint"));
+    const rec = loadPolicyRecord(d, "pol", 1);
+    const last = rec.obligationsLog.at(-1);
+    assert.equal(last.event, "reassess");
+    assert.deepEqual(last.removed, ["check.lint"]);
+    assert.ok(last.impactChange && last.cancelReason && last.basis);
+    assert.ok(!last.obligationsAfter.includes("check.lint"));
+    assert.ok(!rec.obligations.some((o) => o.id === "check.lint"));
+    // 取消后 expand 重同步：无删除抛错
+    const reEns = ensurePolicyRecord(d, goal2, { expand: true, reason: "取消后重同步" });
+    assert.equal(reEns.expanded, true);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("M3 N8 reassess 拒面：review 型义务存在未关闭阻塞发现拒（V07 借取消删发现被拒；关闭后解除）", () => {
+  const d = scratch();
+  try {
+    const goal = frozenInputs(d);
+    ensurePolicyRecord(d, goal);
+    // 注入非 baseline review 义务（写侧合法路径——saveFamilyFile 复刻家族格式）
+    const rec = loadPolicyRecord(d, "pol", 1);
+    rec.obligations.push({ id: "review.custom", type: "review", baseline: false, source: "test", appliesBecause: "测试额外评审", satisfaction: "测试", acceptanceIds: [], dependsOn: [], version: rec.policyVersion });
+    rec.obligationsLog.push({ at: new Date().toISOString(), event: "expand", from: rec.inputsHash, to: rec.inputsHash, added: ["review.custom"], removed: [], obligationsAfter: rec.obligations.map((o) => o.id), reason: "测试注入" });
+    saveFamilyFile(recordPath(d), rec, { versionKey: "schemaVersion", version: POLICY_VERSION, label: "策略记录", shapeFn: () => {} });
+    const trio = { impactChange: "专项评审条件消失", cancelReason: "适用条件不在", basis: "re-derive 不再生成 review.custom" };
+    // 未关闭阻塞发现在场 → 拒
+    recordFindingSightings(d, "pol", { runId: "pol.a1.r1", attempt: 1, at: "2026-09-28T00:00:00.000Z", findings: [{ severity: "P1", title: "开放阻塞", location: "a:1" }] });
+    assert.throws(() => reassessObligation(d, goal, "review.custom", trio), /未关闭阻塞发现/);
+    // 关闭发现（fixed 经 recheck）→ 拒面解除
+    const fp = Object.keys(loadFindingsFile(d, "pol").findings)[0];
+    _rr(d, "pol", fp, { note: "已修" });
+    _cf(d, "pol", fp, { outcome: "fixed", basis: "已修", recheck: { runId: "pol.a1.r2", valid: true, reportedFingerprints: [] } });
+    const r = reassessObligation(d, goal, "review.custom", trio);
+    assert.equal(r.removed, "review.custom");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// findings.js 状态机复用（取消拒面的前置：关闭发现后拒面解除）
+import { requestResolve as _rr, closeFinding as _cf } from "../core/findings.js";

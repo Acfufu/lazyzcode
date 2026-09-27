@@ -73,7 +73,7 @@ import {
 import { recordComparatorAttestation } from "../core/attest.js";
 import { computePolicyIdentity, loadPolicyRecord, identityStableHash, deriveObligations, REVIEW_RUNNER_FACE } from "../core/policy.js"; // 0.4.0 M1 N7 解释面
 import { ReviewPreflightError, listReviewRuns, runReview, BASELINE_DUTY_ID } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面
-import { listFindings, requestResolve, closeFinding, diagnoseFinding, relinkFindings, findingFingerprint, CLOSED_FINDING_STATUSES, DIAGNOSIS_REQUIRED_THRESHOLD } from "../core/findings.js"; // 0.4.0 M3 N6 发现账本 CLI 面
+import { listFindings, requestResolve, closeFinding, diagnoseFinding, relinkFindings, findingFingerprint, CLOSED_FINDING_STATUSES, DIAGNOSIS_REQUIRED_THRESHOLD, openBlockingFindings } from "../core/findings.js"; // 0.4.0 M3 N6/N7 发现账本 CLI 面
 import { evaluateGate } from "../core/gate.js";
 import { findEngine, pluginsRoot, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
@@ -107,7 +107,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms", "outcome", "basis", "recheck", "root-cause", "from", "to", "impact", "cancel-reason", "obligation"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms", "outcome", "basis", "recheck", "root-cause", "from", "to", "impact", "cancel-reason", "obligation", "fingerprint"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1023,6 +1023,10 @@ function printHelp() {
                                             真实评审会话产出结构化判决并落档 .lazyzcode/review/；
                                             退出码：0=pass 且有效，1=blocked/invalid（已落档，
                                             失败不可改判），2=用法错，3=前置不具备（不 spawn 不消耗）
+  lzy review recheck [--fingerprint <前8>] [--duty <id>]
+                                            独立复核运行（0.4.0 M3）：同职责新会话 facts-only
+                                            重跑，对账产出闭候选读数（关闭仍须 finding close
+                                            显式落账）；退出码同 run
   lzy review list [--goal <slug>]           在案评审运行枚举（只读；家族损坏 fail-closed 非 0）
   lzy review show <runId>                   逐字段+发现表+原始输出指针（只读）
 
@@ -1748,6 +1752,70 @@ async function cmdReview(args) {
     process.exitCode = res.exitHint; // 0=pass 且有效；1=blocked/invalid（运行已落档，失败不可改判）
     return;
   }
+  if (sub === "recheck") {
+    // N7（V06）：独立复核运行——同职责新会话、facts-only 不注入旧结论；结果对账产出闭候选
+    // 读数（本 run 不再报的旧指纹），关闭仍须 lzy finding close 显式落账（fixed|falsified+basis）。
+    const goal = readGoal(cwd);
+    if (!goal || goal.version !== 2) {
+      console.error("前置不具备（不 spawn、不消耗、不落档）：无 v2 活跃目标——recheck 针对当前目标的发现链");
+      process.exitCode = 3;
+      return;
+    }
+    let recheckOf = true; // 缺省=复核在案全部未关闭发现
+    if (typeof f.fingerprint === "string") {
+      let open = [];
+      try {
+        open = openBlockingFindings(cwd, goal.slug);
+      } catch (err) {
+        console.error(`[lzy] ${err?.message ?? err}`);
+        process.exitCode = 1;
+        return;
+      }
+      const hits = open.filter((x) => x.fingerprint.startsWith(f.fingerprint.toLowerCase()));
+      if (hits.length === 0) {
+        console.error(`用法错：--fingerprint ${f.fingerprint} 不在未关闭发现集（lzy finding list 看在案集）`);
+        process.exitCode = 2;
+        return;
+      }
+      if (hits.length > 1) {
+        console.error(`用法错：--fingerprint 前缀歧义：${hits.length} 条命中（补长前缀）`);
+        process.exitCode = 2;
+        return;
+      }
+      recheckOf = [hits[0].fingerprint];
+    }
+    let res;
+    try {
+      res = await runReview(cwd, { duty: f.duty, timeoutMs: f["timeout-ms"] != null ? Number(f["timeout-ms"]) : undefined, recheckOf });
+    } catch (err) {
+      if (err instanceof ReviewPreflightError) {
+        console.error(`前置不具备（不 spawn、不消耗、不落档）：${err.message}`);
+        process.exitCode = 3;
+        return;
+      }
+      throw err;
+    }
+    const r = res.record;
+    console.log(
+      `复核运行 ${r.runId} · ${r.validity.status}${r.validity.reason ? `（${r.validity.reason}）` : ""}` +
+        ` · ${r.result ? r.result.verdict : "—"} · 计量 ${r.metering.status}${r.metering.status === "metered" ? ` ${r.metering.points} 分` : ""}`,
+    );
+    const cands = r.findingsLedger?.closureCandidates;
+    if (Array.isArray(cands)) {
+      if (cands.length === 0) {
+        console.log("  闭候选 0 条——无效修复翻面已由账本状态机记账（invalid-fix/diagnosis-required）");
+      } else {
+        console.log(`  闭候选 ${cands.length} 条（本 run 不再报）：`);
+        for (const fp of cands) {
+          console.log(`    ${fp.slice(0, 8)} —— lzy finding close ${fp.slice(0, 8)} --outcome fixed|falsified --basis … --recheck ${r.runId}`);
+        }
+      }
+    } else {
+      console.log("  闭候选 —（invalid 运行不作对账面）");
+    }
+    process.exitCode = res.exitHint;
+    return;
+  }
   if (sub === "list") {
     const runs = listReviewRuns(cwd, { slug: f.goal });
     if (runs.length === 0) {
@@ -1806,7 +1874,7 @@ async function cmdReview(args) {
     }
     return;
   }
-  console.error("用法错：lzy review run|list|show（run=真实评审运行；list/show 只读）");
+  console.error("用法错：lzy review run|recheck|list|show（run=真实评审运行；recheck=独立复核+闭候选对账；list/show 只读）");
   process.exitCode = 2;
 }
 

@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { loadContract, effectiveAuthorization, ContractError } from "./contract.js";
 import { judgeCiRunsStrict } from "./verify.js"; // 0.4.0 M1 V10 收敛：判决本体唯一事实源
+import { assertGateOpen } from "./gate.js"; // 0.4.0 M1 N5④：外发前置统一门（拍板 2 时点）
 import { readGoal, settleDeliveryPending, withLock, LoopError } from "./loop.js";
 
 export const DELIVERY_VERSION = 1;
@@ -449,6 +450,10 @@ export function beginAct(cwd, ep, { kind, target, plannedArgv, origin }) {
   return withLock(cwd, () => {
     const { goal, bound } = requireDeliveryContext(cwd, ep);
     const gate = authorizationGate(cwd, goal, ep, { needB: ep === "B", needC: true });
+    // 0.4.0 M1 N5④（拍板 2 时点）：授权门后、settle/意图落账前——政策层 blocked 则本次
+    // 外发意图不落账、contractPending 原样保留（授权待决状态不被门扰乱）。v1 目标门
+    // 不适用恒放行（拍板 5）；v2 目标评审义务 M1 恒阻塞=诚实拒绝外发（F2 面）。
+    assertGateOpen(cwd, { label: `外发前置统一门（ep ${ep}）` });
     // 拍板 2：授权观察到有效即清本契约的 contractPending（settleDeliveryPending 无锁，
     // 本处在 withLock 内；只清匹配哈希，request 同族替换由 bindDeliveryContract 覆写完成）。
     const pendingCleared = settleDeliveryPending(cwd, bound.hash);

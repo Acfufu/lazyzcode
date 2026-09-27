@@ -263,3 +263,18 @@ export function evaluateGate(cwd, { goal: goalOverride } = {}) {
   };
   return { ...body, snapshotHash: snapshotHashOf(body) };
 }
+
+// 接线帮手（N5 四入口消费）：v2 blocked → GateError（逐条原因，fail-closed）；v1/分域外
+// → 返回 null，调用方原样走既有门序（拍板 5：政策裁决不适用恒不阻塞）。只读，不落账、
+// 不清 pending——beginAct 接线把本调用放在 settleDeliveryPending 之前正是为此。
+export function assertGateOpen(cwd, { label = "统一门", goal } = {}) {
+  const gate = evaluateGate(cwd, goal !== undefined ? { goal } : {});
+  if (gate.applicable && gate.blocked) {
+    throw new GateError(
+      `${label}阻塞（gate ${gate.snapshotHash.slice(0, 8)}）：\n` +
+        gate.blockedReasons.map((r) => `  - ${r}`).join("\n") +
+        `\n——逐义务详情：lzy gate explain`,
+    );
+  }
+  return gate.applicable ? gate : null;
+}

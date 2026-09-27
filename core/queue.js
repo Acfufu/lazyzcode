@@ -26,6 +26,7 @@ import { actDeliveryB, actDeliveryC, readbackDeliveryB, readbackDeliveryC, loadI
 import { loadProjectManifest } from "./project.js";
 import { computePoints, querySessionPoints } from "./cost.js";
 import { loadRuntime, holderPidAlive, reclaimLease } from "./runtime.js";
+import { evaluateGate } from "./gate.js"; // 0.4.0 M1 N5②③：done 分支/reconcile 追认统一门
 import { createGit } from "./git.js";
 
 export const QUEUE_VERSION = 1;
@@ -852,6 +853,17 @@ export function reconcileDispatch(cwd, deps = {}) {
         }
         let settled = null;
         if (item) {
+          // 0.4.0 M1 N5③：追认前过统一门（done 旧记录不免核）——blocked 不追认：条目保持
+          // 未决（不置 completed）、tx 留在可 reconcile 集、verdict 记阻塞原因；v1 目标门
+          // 不适用原样追认（拍板 5）。
+          const gateVerdict = evaluateGate(cwd);
+          if (gateVerdict.applicable && gateVerdict.blocked) {
+            item.blockedReason = `reconcile 追认被统一门拒绝（gate ${gateVerdict.snapshotHash.slice(0, 8)}）：${gateVerdict.blockedReasons[0] ?? "见 lzy gate explain"}`;
+            item.updatedAt = new Date().toISOString();
+            patchTx(cwd, tx.txId, { note: "统一门阻塞——不追认（lzy gate explain 看逐条原因）；根因处置后重跑 reconcile" });
+            verdicts.push({ txId: tx.txId, verdict: `blocked（统一门：${gateVerdict.blockedReasons[0]?.slice(0, 120) ?? "见 explain"}）`, goalSlug: tx.goalSlug });
+            continue;
+          }
           settled = settleTxLedger(cwd, { tx, item, provenance: `reconcile:${tx.txId}`, queryPoints });
           item.state = "completed";
           item.completedEndpoint = item.completedEndpoint ?? item.endpoint;
@@ -1179,7 +1191,15 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
       try {
         const g = readGoal(cwd);
         if (g && g.status === "executing") finishLoop(cwd, git, {});
-        else if (g && g.status === "done") finishOk = true;
+        else if (g && g.status === "done") {
+          // 0.4.0 M1 N5②：done 旧记录不免核（V09 面）——收口后授权撤回/契约漂移/义务失效
+          // 照阻塞：finishOk=false 走下方回 ready 缝，finishCause 如实记门原因（不冒充完成）。
+          const gateVerdict = evaluateGate(cwd);
+          if (gateVerdict.applicable && gateVerdict.blocked) {
+            finishOk = false;
+            finishCause = `统一门阻塞（done 记录不免核，gate ${gateVerdict.snapshotHash.slice(0, 8)}）：${gateVerdict.blockedReasons[0] ?? "见 lzy gate explain"}`;
+          }
+        }
       } catch (err) {
         finishOk = false;
         finishCause = String(err?.message ?? err).slice(0, 200);

@@ -30,6 +30,7 @@ import {
   pairReds,
   saveDag,
 } from "./dag.js";
+import { evaluateGate } from "./gate.js"; // 0.4.0 M1 N5①：finishLoop 统一政策门（call-time 用，ESM 环安全）
 
 export const GOAL_VERSION = 1;
 const ACTIVE_STATES = new Set(["planning", "executing"]);
@@ -2027,6 +2028,27 @@ function doFinishLoop(cwd, git, { writeReport = null } = {}) {
     incMetrics(cwd, "finish_reject_race");
     throw new LoopError(
       `finish 窗口内工作树变更（闸门时点复采复合指纹与取证时点不一致——另有会话提交）：` +
+        `重新核验（lzy loop verify）后重跑 finish`,
+    );
+  }
+  // ── 统一政策门（0.4.0 M1 N5①，§6；拍板 5 分域）：竞态复采后、置 done 前——政策层
+  // 放行是收尾先决。评审义务 M1 恒阻塞 v2（诚实形态，非缺陷）；v1 目标 applicable=false
+  // 恒放行（本 goal 自身=v1，收口不受扰）。门后复采复合指纹（判定与写入间候选改变则拒，
+  // gate 快照哈希绑定窗口——单源 fingerprintSubjects，不另造第二份指纹面）。
+  const gateVerdict = evaluateGate(cwd);
+  if (gateVerdict.applicable && gateVerdict.blocked) {
+    incMetrics(cwd, "finish_reject_gate");
+    throw new LoopError(
+      `统一门阻塞（政策层，gate ${gateVerdict.snapshotHash.slice(0, 8)}）：\n` +
+        gateVerdict.blockedReasons.map((r) => `  - ${r}`).join("\n") +
+        `\n——逐义务详情：lzy gate explain。评审义务满足面=M2 受控评审；政策层阻塞不是完成。`,
+    );
+  }
+  const fingerprintAfterGate = fingerprintSubjects(cwd, goal.subjects);
+  if (fingerprintAfterGate !== fingerprint) {
+    incMetrics(cwd, "finish_reject_race");
+    throw new LoopError(
+      `finish 窗口内工作树变更（统一门后复采复合指纹与取证时点不一致——另有会话提交）：` +
         `重新核验（lzy loop verify）后重跑 finish`,
     );
   }

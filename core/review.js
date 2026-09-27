@@ -5,14 +5,15 @@
 // 记录携带 attempt/dutyTableVersion/templateHash 三字段=统一门代次锚与规则一致性谓词的数据面
 //（拍板 6）；dutyTableVersion 不在此钉现行值——旧规则版本的记录须保持可读，一致性由 gate 判。
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync, openSync, closeSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync, openSync, closeSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve, sep, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawnSync } from "node:child_process";
 import { loadFamilyFile, saveFamilyFile, budgetView, appendLedgerEntry, reviewLedgerPoints } from "./queue.js";
-import { recordFindingSightings, openBlockingFindings, findingFingerprint } from "./findings.js"; // 0.4.0 M3：运行落账接线（findings.js 不反向依赖本模块，无环）
+import { recordFindingSightings, openBlockingFindings, listFindings, CLOSED_FINDING_STATUSES, findingFingerprint } from "./findings.js"; // 0.4.0 M3：运行落账接线（findings.js 不反向依赖本模块，无环）
 import { candidateIdentity, listReceipts } from "./verify.js";
-import { loadPolicyRecord, DUTY_TABLE_VERSION } from "./policy.js";
+import { loadPolicyRecord, DUTY_TABLE_VERSION, policyRulesHash, stableStringify } from "./policy.js";
 import { withLock, LoopError } from "./loop.js"; // N3 #11：写前缀单写者锁（call-time 用，ESM 环安全——loop→gate→review 已有环先例）
 import { createGit } from "./git.js";
 import { findEngine } from "./paths.js";
@@ -1141,4 +1142,457 @@ function wireFindingsLedger(cwd, record) {
   const blockingNow = new Set(blocking.map(fpOf));
   const closureCandidates = isRecheck ? (openBefore ?? []).filter((fp) => !blockingNow.has(fp)) : null;
   return { upserted: disposition.length, disposition, closureCandidates };
+}
+
+// ── 0.4.0 M4 N1：评审范围资格与适用性（ADR-0032；plan-v040 §5；本 goal 拍板 1-4/8）──
+// 家族位阶=loop/ 外 reset 不清（loadFamilyFile/saveFamilyFile 家法）；登记 core/loop.js
+// ANY_TMP_SCAN_DIRS（tmp 孤儿观测+清扫同表，ADJ-13 单源）。复用/资格记录不是运行档
+//（无 sessionId/raw、不 spawn）——独立家族，不混 review 运行族（形状闸冻结全字段）也不
+// 混 verify 回执族（职责级适用性判断 ≠ check 级配方回执，ADR-0032 只沿用「追加判断不改写」
+// 的机制，不共用证据权威）。
+
+export const SCOPE_FAMILY = "review-scope";
+export const SCOPE_VERSION = 1;
+export const SCOPE_KINDS = ["qualification", "applicability"];
+// 范围声明类别（拍板 2）：in-scope=职责依赖（变化⇒重评）；unrelated=已证无关（变化⇒可保持）；
+// dynamic=动态输入（不可界定⇒任何触碰回退）。未匹配任何规则=unknown⇒回退（保守缺省）。
+export const SCOPE_CLASSES = ["in-scope", "unrelated", "dynamic"];
+// 挑战轴（拍板 3）：五核心轴（§5.2 点名：in-scope/canary-keep/missed-dependency/unknown-new/
+// rename-delete）+ 五共享轴（lockfile/check-script/env/contract/duty）。
+export const CHALLENGE_AXES = [
+  "in-scope",
+  "canary-keep",
+  "missed-dependency",
+  "unknown-new",
+  "rename-delete",
+  "lockfile",
+  "check-script",
+  "env",
+  "contract",
+  "duty",
+];
+export const CHALLENGE_EXPECTS = ["invalidate", "keep"];
+const KIND_TAG = { qualification: "q", applicability: "p" };
+const DIFF_ENTRY_TYPES = ["modified", "added", "deleted", "renamed"];
+
+export function reviewScopeDir(cwd) {
+  return join(cwd, ".lazyzcode", SCOPE_FAMILY);
+}
+function scopeRecordPath(cwd, id) {
+  return join(reviewScopeDir(cwd), `${id}.json`);
+}
+export function scopeRecordStem(slug, attempt, kind, seq) {
+  return `${slug}.a${attempt}.${KIND_TAG[kind]}${seq}`;
+}
+// 序号分配（确定序）：与 nextRunSeq 同法——max+1，对人工删除免疫碰撞；只数本 kind 茎。
+export function nextScopeSeq(cwd, slug, attempt, kind) {
+  const tag = KIND_TAG[kind];
+  if (!tag) throw new ReviewError(`scope kind 不识别：${JSON.stringify(kind)}`);
+  let names;
+  try {
+    names = readdirSync(reviewScopeDir(cwd));
+  } catch {
+    return 1;
+  }
+  const prefix = `${slug}.a${attempt}.${tag}`;
+  let max = 0;
+  for (const n of names) {
+    if (!n.startsWith(prefix)) continue;
+    const tail = n.slice(prefix.length);
+    const m = tail.endsWith(".json") ? tail.slice(0, -".json".length) : tail;
+    const k = Number(m);
+    if (Number.isInteger(k) && k > max) max = k;
+  }
+  return max + 1;
+}
+
+// ── 形状闸：双 kind 单闸分派（机械自洽；策略性判定——资格身份现行、diff 分类完备——归
+// gate 复用腿与 reuse 判定面，形状闸不复制政策，同 assertRunShape 纪律）──
+
+function assertScopeCandidate(c, bad, what) {
+  if (!c || typeof c !== "object" || Array.isArray(c)) return bad(`${what} 须为对象`);
+  for (const k of ["headSha", "compositeFingerprint"]) {
+    if (typeof c[k] !== "string" || !c[k]) bad(`${what}.${k} 缺席或空`);
+  }
+  if (c.cliVersion !== null && (typeof c.cliVersion !== "string" || !c.cliVersion)) {
+    bad(`${what}.cliVersion 须为非空字符串或 null（verify.js candidateIdentity 同源）`);
+  }
+}
+
+function assertScopeRules(rules, bad) {
+  if (!Array.isArray(rules) || rules.length === 0) bad("scope.rules 须为非空数组");
+  const seen = new Set();
+  for (const r of rules) {
+    if (!r || typeof r !== "object" || Array.isArray(r)) bad("scope.rules 项须为对象");
+    if (typeof r.pattern !== "string" || !r.pattern) bad("scope.rules[].pattern 缺席或空");
+    if (r.pattern.startsWith("/") || r.pattern.split("/").includes("..")) bad(`scope.rules[].pattern 须为仓内相对路径且不得穿越：${r.pattern}`);
+    if (!SCOPE_CLASSES.includes(r.class)) bad(`scope.rules[].class 不识别：${JSON.stringify(r.class ?? null)}`);
+    if (seen.has(r.pattern)) bad(`scope.rules pattern 重复（首匹配语义下歧义）：${r.pattern}`);
+    seen.add(r.pattern);
+  }
+}
+
+function assertScopeShape(rec, p) {
+  const bad = (m) => {
+    throw new ReviewError(`评审范围记录形状非法：${m}：${p}`);
+  };
+  if (!rec || typeof rec !== "object" || Array.isArray(rec)) bad("记录须为对象");
+  if (!SCOPE_KINDS.includes(rec.kind)) bad(`kind 不识别：${JSON.stringify(rec.kind ?? null)}`);
+  if (typeof rec.slug !== "string" || !rec.slug) bad("slug 缺席或空");
+  if (!Number.isInteger(rec.attempt) || rec.attempt < 1) bad("attempt 须为 ≥1 整数");
+  if (!Number.isInteger(rec.seq) || rec.seq < 1) bad("seq 须为 ≥1 整数");
+  if (rec.id !== scopeRecordStem(rec.slug, rec.attempt, rec.kind, rec.seq)) bad("id 与 slug/attempt/kind/seq 不自洽");
+  if (!rec.dutyId || !DUTY_TABLE.some((d) => d.id === rec.dutyId)) bad(`dutyId 不在职责表：${JSON.stringify(rec.dutyId ?? null)}`);
+  // baseRunId 须同代次（同 slug+attempt 的运行茎）——跨代次复用无意义（候选锚不同）。
+  const runStem = `${rec.slug}.a${rec.attempt}.r`;
+  if (typeof rec.baseRunId !== "string" || !rec.baseRunId.startsWith(runStem)) bad(`baseRunId 须为同代次运行茎（${runStem}<n>）：${JSON.stringify(rec.baseRunId ?? null)}`);
+  const baseSeq = Number(rec.baseRunId.slice(runStem.length));
+  if (!Number.isInteger(baseSeq) || baseSeq < 1) bad(`baseRunId 尾序非法：${rec.baseRunId}`);
+  if (typeof rec.at !== "string" || Number.isNaN(Date.parse(rec.at))) bad("at 须为 ISO 时间串");
+  if (rec.note !== null && rec.note !== undefined && typeof rec.note !== "string") bad("note 须为字符串或 null");
+  if (rec.schemaVersion !== SCOPE_VERSION) bad(`schemaVersion 须为 ${SCOPE_VERSION}`);
+
+  if (rec.kind === "qualification") {
+    if (!rec.scope || typeof rec.scope !== "object" || Array.isArray(rec.scope)) bad("scope 须为对象");
+    assertScopeRules(rec.scope.rules, bad);
+    if (!Array.isArray(rec.scope.sharedInputs)) bad("scope.sharedInputs 须为数组");
+    const seen = new Set();
+    for (const s of rec.scope.sharedInputs) {
+      if (typeof s !== "string" || !s || s.startsWith("/") || s.split("/").includes("..")) bad(`scope.sharedInputs 项须为仓内相对路径：${JSON.stringify(s ?? null)}`);
+      if (seen.has(s)) bad(`scope.sharedInputs 重复：${s}`);
+      seen.add(s);
+    }
+    // scopeHash 复算等式（写侧毒化防护——内容与哈希必须互证）
+    const expect = createHash("sha256").update(stableStringify({ dutyId: rec.dutyId, rules: rec.scope.rules, sharedInputs: rec.scope.sharedInputs })).digest("hex");
+    if (rec.scopeHash !== expect) bad("scopeHash 与 scope 内容不符（复算失败）");
+    // 结构身份快照（资格时点的规则/模板/契约/清单/引擎五轴）
+    if (!rec.identity || typeof rec.identity !== "object" || Array.isArray(rec.identity)) bad("identity 须为对象");
+    if (!HEX64.test(rec.identity.rulesHash ?? "")) bad("identity.rulesHash 须为 64 hex");
+    if (!Number.isInteger(rec.identity.dutyTableVersion) || rec.identity.dutyTableVersion < 1) bad("identity.dutyTableVersion 须为 ≥1 整数");
+    if (!HEX64.test(rec.identity.templateHash ?? "")) bad("identity.templateHash 须为 64 hex");
+    if (rec.identity.contractHash !== null && !HEX64.test(rec.identity.contractHash)) bad("identity.contractHash 须为 64 hex 或 null");
+    if (rec.identity.manifestHash !== null && !HEX64.test(rec.identity.manifestHash)) bad("identity.manifestHash 须为 64 hex 或 null");
+    if (rec.identity.engine !== null && (typeof rec.identity.engine !== "string" || !rec.identity.engine)) bad("identity.engine 须为非空字符串或 null");
+    if (!rec.suite || typeof rec.suite !== "object" || Array.isArray(rec.suite)) bad("suite 须为对象");
+    if (typeof rec.suite.file !== "string" || !rec.suite.file) bad("suite.file 缺席或空");
+    if (!HEX64.test(rec.suite.suiteHash ?? "")) bad("suite.suiteHash 须为 64 hex");
+    if (!Number.isInteger(rec.suite.procedureVersion) || rec.suite.procedureVersion < 1) bad("suite.procedureVersion 须为 ≥1 整数");
+    if (typeof rec.granted !== "boolean") bad("granted 须为布尔");
+    if (!Array.isArray(rec.challenges)) bad("challenges 须为数组");
+    if (rec.challenges.length === 0) bad("challenges 须为非空数组（无挑战不构成资格）");
+    for (const c of rec.challenges) {
+      if (!c || typeof c !== "object" || Array.isArray(c)) bad("challenges 项须为对象");
+      if (typeof c.id !== "string" || !c.id) bad("challenges[].id 缺席或空");
+      if (!CHALLENGE_AXES.includes(c.axis)) bad(`challenges[].axis 不识别：${JSON.stringify(c.axis ?? null)}`);
+      if (!CHALLENGE_EXPECTS.includes(c.expect)) bad(`challenges[].expect 不识别：${JSON.stringify(c.expect ?? null)}`);
+      if (typeof c.ok !== "boolean") bad("challenges[].ok 须为布尔");
+      if (c.observed !== undefined && typeof c.observed !== "string") bad("challenges[].observed 须为字符串（判定说明）");
+    }
+    // granted 与逐挑战结果互证（机械自洽）
+    if (rec.granted && !rec.challenges.every((c) => c.ok)) bad("granted=true 但存在未通过的挑战");
+    if (!rec.granted && rec.challenges.every((c) => c.ok)) bad("granted=false 但全部挑战通过（拒绝须点名失败挑战）");
+  } else {
+    // applicability
+    const qStem = `${rec.slug}.a${rec.attempt}.q`;
+    if (typeof rec.qualificationId !== "string" || !rec.qualificationId.startsWith(qStem)) bad(`qualificationId 须为同代次资格茎（${qStem}<n>）：${JSON.stringify(rec.qualificationId ?? null)}`);
+    const qSeq = Number(rec.qualificationId.slice(qStem.length));
+    if (!Number.isInteger(qSeq) || qSeq < 1) bad(`qualificationId 尾序非法：${rec.qualificationId}`);
+    assertScopeCandidate(rec.target, bad, "target");
+    if (rec.verdict !== "applicable" && rec.verdict !== "fallback") bad(`verdict 不识别：${JSON.stringify(rec.verdict ?? null)}`);
+    if (!Array.isArray(rec.reasons)) bad("reasons 须为字符串数组");
+    for (const r of rec.reasons) if (typeof r !== "string" || !r) bad("reasons 项须为非空字符串");
+    if (rec.verdict === "fallback" && rec.reasons.length === 0) bad("fallback 须带逐因 reasons（不可解释的拒绝不是拒绝）");
+    if (!rec.diff || typeof rec.diff !== "object" || Array.isArray(rec.diff)) bad("diff 须为对象");
+    if (rec.diff.baseTreeHash !== null && !HEX64.test(rec.diff.baseTreeHash)) bad("diff.baseTreeHash 须为 64 hex 或 null");
+    if (rec.diff.targetTreeHash !== null && !HEX64.test(rec.diff.targetTreeHash)) bad("diff.targetTreeHash 须为 64 hex 或 null");
+    if (!Array.isArray(rec.diff.entries)) bad("diff.entries 须为数组");
+    for (const e of rec.diff.entries) {
+      if (!e || typeof e !== "object" || Array.isArray(e)) bad("diff.entries 项须为对象");
+      if (!DIFF_ENTRY_TYPES.includes(e.type)) bad(`diff.entries[].type 不识别：${JSON.stringify(e.type ?? null)}`);
+      if (typeof e.path !== "string" || !e.path) bad("diff.entries[].path 缺席或空");
+      if (e.type === "renamed" && (typeof e.from !== "string" || !e.from)) bad("renamed 项须带 from");
+    }
+  }
+}
+
+const SCOPE_GATE = {
+  versionKey: "schemaVersion",
+  version: SCOPE_VERSION,
+  label: "评审范围记录",
+  shapeFn: assertScopeShape,
+};
+
+// 落档唯一入口：目标档已存在=拒（追加判断不改写——资格与适用性都是一次性事实）。
+export function saveScopeRecord(cwd, rec) {
+  if (!rec || typeof rec !== "object") throw new ReviewError("saveScopeRecord 须传记录对象");
+  if (rec.schemaVersion !== SCOPE_VERSION) throw new ReviewError(`schemaVersion 须为 ${SCOPE_VERSION}`);
+  if (!SCOPE_KINDS.includes(rec.kind)) throw new ReviewError(`kind 不识别：${JSON.stringify(rec.kind ?? null)}`);
+  if (rec.id !== scopeRecordStem(rec.slug, rec.attempt, rec.kind, rec.seq)) {
+    throw new ReviewError("id 须与 slug/attempt/kind/seq 自洽（nextScopeSeq 分配）");
+  }
+  const p = scopeRecordPath(cwd, rec.id);
+  if (existsSync(p)) throw new ReviewError(`范围记录已存在，拒绝覆写：${p}`);
+  saveFamilyFile(p, rec, SCOPE_GATE);
+  return rec;
+}
+
+export function loadScopeFile(p) {
+  return loadFamilyFile(p, SCOPE_GATE);
+}
+
+export function loadScopeRecord(cwd, id) {
+  return loadScopeFile(scopeRecordPath(cwd, id));
+}
+
+// 在案枚举：fail-closed 整族读（任一档损坏即抛，listReviewRuns 同口径）；可按 slug/attempt/kind 过滤。
+export function listScopeRecords(cwd, { slug, attempt, kind } = {}) {
+  let names;
+  try {
+    names = readdirSync(reviewScopeDir(cwd)).filter((f) => f.endsWith(".json") && !f.startsWith("."));
+  } catch {
+    return [];
+  }
+  names.sort();
+  const recs = names.map((f) => loadScopeFile(join(reviewScopeDir(cwd), f)));
+  return recs
+    .filter((r) => (slug == null || r.slug === slug) && (attempt == null || r.attempt === attempt) && (kind == null || r.kind === kind))
+    .sort((a, b) => a.slug.localeCompare(b.slug) || a.attempt - b.attempt || a.id.localeCompare(b.id));
+}
+
+// ── 范围声明验形（拍板 2）：qualify 时输入工件，内容 sha256=scopeHash 入资格档 ──
+// 运行档形状零改动；声明不落独立档——内容由资格档全量携带（scopeHash 互证）。
+
+export function validateScopeDeclaration(decl) {
+  const bad = (m) => {
+    throw new ReviewError(`范围声明非法：${m}`);
+  };
+  if (!decl || typeof decl !== "object" || Array.isArray(decl)) bad("声明须为对象");
+  if (!decl.dutyId || !DUTY_TABLE.some((d) => d.id === decl.dutyId)) bad(`dutyId 不在职责表：${JSON.stringify(decl.dutyId ?? null)}`);
+  assertScopeRules(decl.rules, bad);
+  if (!Array.isArray(decl.sharedInputs)) bad("sharedInputs 须为数组");
+  const seen = new Set();
+  for (const s of decl.sharedInputs) {
+    if (typeof s !== "string" || !s || s.startsWith("/") || s.split("/").includes("..")) bad(`sharedInputs 项须为仓内相对路径：${JSON.stringify(s ?? null)}`);
+    if (seen.has(s)) bad(`sharedInputs 重复：${s}`);
+    seen.add(s);
+  }
+  const normalized = { dutyId: decl.dutyId, rules: decl.rules, sharedInputs: decl.sharedInputs };
+  return { ...normalized, scopeHash: createHash("sha256").update(stableStringify(normalized)).digest("hex") };
+}
+
+// ── 迷你 glob（拍板 4 逐路径首匹配的实现底座）：** 跨段、* 单段内、? 单字符，其余字面量。
+// 确定性零依赖；声明 pattern 先经验形（相对路径、无穿越），此处只做编译。──
+
+function globToRegExp(pattern) {
+  let re = "^";
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === "*") {
+      if (pattern[i + 1] === "*") {
+        re += ".*";
+        i++;
+      } else {
+        re += "[^/]*";
+      }
+    } else if (c === "?") {
+      re += "[^/]";
+    } else {
+      re += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+  return new RegExp(`${re}$`);
+}
+
+// 首条命中规则（拍板 4：声明规则的匹配语义=数组序首匹配——歧义由验形拒重复 pattern 消解）。
+export function matchScopeRule(path, rules) {
+  for (const r of rules) {
+    if (globToRegExp(r.pattern).test(path)) return r;
+  }
+  return null;
+}
+
+// ── 文件级快照与差异（分类器的数据面）：内容 sha256 复合 map——与 hashTree 同口径但产出
+// 逐文件 map（hashTree 只产聚合，不动既有值；快照树哈希的既有记录保持可读可比）。
+
+export function buildFileMap(root) {
+  const map = {};
+  const walk = (dir, rel) => {
+    const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1));
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        walk(p, r);
+      } else if (e.isFile()) {
+        map[r] = createHash("sha256").update(readFileSync(p)).digest("hex");
+      } else if (e.isSymbolicLink()) {
+        map[r] = `symlink:${readlinkSync(p)}`;
+      } else {
+        throw new ReviewError(`快照含非常规项（git archive 不产）：${r}`);
+      }
+    }
+  };
+  walk(root, "");
+  return map;
+}
+
+// 差异四类（确定性）：modified/added/deleted/renamed；重命名=删除项与新增项内容哈希相同的
+// 贪心配对（两侧各按路径字典序）。renamed 项规范形 {path: 新路径, type:"renamed", from: 旧路径}。
+export function diffFileMaps(baseMap, curMap) {
+  const modified = [];
+  const added = [];
+  const deleted = [];
+  const renamed = [];
+  for (const [p, h] of Object.entries(curMap)) {
+    if (!(p in baseMap)) added.push({ path: p, type: "added" });
+    else if (baseMap[p] !== h) modified.push({ path: p, type: "modified" });
+  }
+  for (const [p, h] of Object.entries(baseMap)) {
+    if (!(p in curMap)) deleted.push({ path: p, type: "deleted", hash: h });
+  }
+  const addedByHash = new Map();
+  for (const a of added) {
+    const h = curMap[a.path];
+    if (!addedByHash.has(h)) addedByHash.set(h, []);
+    addedByHash.get(h).push(a);
+  }
+  for (const d of deleted) {
+    const candidates = addedByHash.get(d.hash);
+    if (candidates && candidates.length > 0) {
+      const a = candidates.shift();
+      renamed.push({ path: a.path, type: "renamed", from: d.path });
+      added.splice(added.indexOf(a), 1);
+    }
+  }
+  const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  modified.sort(byPath);
+  added.sort(byPath);
+  deleted.sort(byPath);
+  renamed.sort(byPath);
+  return { modified, added, deleted, renamed };
+}
+
+// 逐路径分类（拍板 4）：sharedInputs 精确匹配⇒invalidate；声明规则首匹配——in-scope/dynamic⇒
+// invalidate、unrelated⇒keep；未匹配⇒unknown（复用时回退）。renamed 双端各判，任一端非 keep
+// 即整项降级（invalidate 优先于 unknown）。
+export function classifyDiffEntries(entries, declaration) {
+  const out = [];
+  for (const e of entries) {
+    const paths = e.type === "renamed" ? [e.from, e.path] : [e.path];
+    const classify = paths.map((p) => {
+      if (declaration.sharedInputs.includes(p)) return { path: p, matched: "shared-input", decision: "invalidate" };
+      const rule = matchScopeRule(p, declaration.rules);
+      if (!rule) return { path: p, matched: "unmatched", decision: "unknown" };
+      return { path: p, matched: rule.class, decision: rule.class === "unrelated" ? "keep" : "invalidate", pattern: rule.pattern };
+    });
+    const decision = classify.some((x) => x.decision === "invalidate")
+      ? "invalidate"
+      : classify.some((x) => x.decision === "unknown")
+        ? "unknown"
+        : "keep";
+    out.push({ ...e, classify, decision });
+  }
+  return out;
+}
+
+// 聚合裁决（拍板 4/7）：结构轴漂移（调用方传入逐因）∨ 任一 invalidate/unknown ⇒ fallback；
+// 全 keep 且零结构因 ⇒ applicable。
+export function scopeReuseVerdict(classified, structuralReasons = []) {
+  const reasons = [...structuralReasons];
+  for (const e of classified) {
+    const label = e.type === "renamed" ? `${e.from} → ${e.path}` : e.path;
+    if (e.decision === "invalidate") reasons.push(`声明内/共享输入变化：${label}（${e.type}）——职责影响不可排除，须重评`);
+    else if (e.decision === "unknown") reasons.push(`未知路径：${label}（${e.type}；不在声明规则内——保守回退，拍板 2）`);
+  }
+  return { verdict: reasons.length === 0 ? "applicable" : "fallback", reasons };
+}
+
+// ── 关闭依据适用性审计（拍板 8，plan §5.5）：closed（fixed|falsified）发现，其 closure
+// 引用的复核运行候选与当前候选漂移且变更命中发现定位文件 ⇒ stale（gate findings 子句逐因
+// 阻塞的数据面）。fail-closed：复核运行档/候选快照不可读=按 stale 上报（不可判≠放行）。
+// 定位匹配=v1 精确文件匹配（location 去掉 :line 尾注）；漂移未触定位文件=关闭依据仍适用。
+
+function locationPathOf(location) {
+  return location.replace(/:\d+(-\d+)?$/, "");
+}
+
+// git archive HEAD → destDir（materializeCandidate 同款解包面；供当前树文件 map 复用）。
+function gitArchiveHead(cwd, destDir) {
+  mkdirSync(destDir, { recursive: true });
+  let proc = spawnSync("git", ["archive", "--format=tar", "HEAD"], { cwd, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 512 * 1024 * 1024 });
+  if (proc.status !== 0) {
+    throw new ReviewError(`当前树快照失败（git archive 退出 ${proc.status}）：${String(proc.stderr ?? "").slice(0, 200)}`);
+  }
+  const tarPath = join(destDir, ".audit.tar");
+  writeFileSync(tarPath, proc.stdout, { mode: 0o600 });
+  proc = spawnSync("tar", ["-x", "-f", tarPath, "-C", destDir], { stdio: ["ignore", "ignore", "pipe"] });
+  rmSync(tarPath, { force: true });
+  if (proc.status !== 0) {
+    throw new ReviewError(`当前树快照失败（tar 解包退出 ${proc.status}）：${String(proc.stderr ?? "").slice(0, 200)}`);
+  }
+}
+
+function defaultCurrentFileMap(cwd) {
+  const tmp = mkdtempSync(join(tmpdir(), "lzy-scope-audit-"));
+  try {
+    const curDir = join(tmp, "tree");
+    gitArchiveHead(cwd, curDir);
+    return buildFileMap(curDir);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+export function auditClosedFindingsApplicability(cwd, slug, deps = {}) {
+  const getCurrentFileMap = deps.getCurrentFileMap ?? defaultCurrentFileMap;
+  const closed = listFindings(cwd, slug, { includeClosed: true }).filter((f) => CLOSED_FINDING_STATUSES.includes(f.status));
+  const current = candidateIdentity(cwd);
+  const stale = [];
+  let fresh = 0;
+  for (const f of closed) {
+    const rid = f.closure?.recheckRunId;
+    const base = { fingerprint: f.fingerprint, title: f.title, severity: f.severity, location: f.location, status: f.status, recheckRunId: rid ?? null, closureAt: f.closure?.at ?? null };
+    if (!rid) {
+      stale.push({ ...base, reason: "closure-basis-unavailable", detail: "closure 缺 recheckRunId（旧账形态）——关闭依据无法随候选核对，fail-closed" });
+      continue;
+    }
+    let run;
+    try {
+      run = loadReviewFile(join(reviewDir(cwd), `${rid}.json`));
+    } catch (e) {
+      stale.push({ ...base, reason: "closure-basis-unavailable", detail: `复核运行档不可读：${String(e?.message ?? e).slice(0, 140)}` });
+      continue;
+    }
+    const same = run.candidate?.headSha === current.headSha && run.candidate?.compositeFingerprint === current.compositeFingerprint;
+    if (same) {
+      fresh++;
+      continue;
+    }
+    const candDir = join(reviewDir(cwd), rid, "candidate");
+    let baseMap;
+    try {
+      baseMap = buildFileMap(candDir);
+    } catch (e) {
+      stale.push({ ...base, reason: "closure-basis-unavailable", detail: `复核运行候选快照缺席（${candDir}）：${String(e?.message ?? e).slice(0, 100)}` });
+      continue;
+    }
+    let curMap;
+    try {
+      curMap = getCurrentFileMap(cwd);
+    } catch (e) {
+      stale.push({ ...base, reason: "closure-basis-unavailable", detail: `当前树快照失败：${String(e?.message ?? e).slice(0, 140)}` });
+      continue;
+    }
+    const diff = diffFileMaps(baseMap, curMap);
+    const changed = new Set(
+      [...diff.modified, ...diff.added, ...diff.deleted, ...diff.renamed].flatMap((e) => (e.type === "renamed" ? [e.from, e.path] : [e.path])),
+    );
+    const hit = locationPathOf(f.location);
+    if (changed.has(hit)) {
+      stale.push({ ...base, reason: "closure-basis-stale", detail: `关闭依据候选已漂移且变更命中定位文件：${hit}` });
+    } else {
+      fresh++;
+    }
+  }
+  return { stale, fresh, checked: closed.length };
 }

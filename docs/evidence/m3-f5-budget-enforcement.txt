@@ -1,0 +1,16 @@
+
+──── 两轮替身绿运行（各 0.119 分，budget-ref points:0.2） ────
+run#1 → exit 0 · 评审运行 fx.a1.r1 · review.general-correctness · valid · 计量 metered 0.11899999999999998 分
+run#2 → exit 0 · 评审运行 fx.a1.r2 · review.general-correctness · valid · 计量 metered 0.11899999999999998 分
+
+──── 第三轮：累计超限 → preflight 拒（budget-exhausted，exit 3 不 spawn） ────
+$ review run → exit 3
+前置不具备（不 spawn、不消耗、不落档）：评审预算已耗尽（累计 0.24/0.2 分，budget-ref points:0.2）——拒绝启动新评审会话。恢复：调高契约 budget-ref 并重采纳，或按 ADR-0033 走义务复判
+
+
+──── queue budget 评审分项读数行 ────
+$ queue budget → exit 0
+队列预算：积分总额 未设 · 墙钟总额 未设
+  已耗：积分 0 · 墙钟 0ms ｜ 未决占用：积分 0 · 墙钟 0ms（崩溃未决按上限保守计入，绝不当零）
+  评审分项（N9 独立轴，不入队列派发积分）：评审会话 0.24 分（lzy review run|recheck 消耗；budget-ref points 绑定后由评审前置执法）
+

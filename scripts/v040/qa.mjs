@@ -33,6 +33,7 @@ import { querySessionPoints, computePoints } from "../../core/cost.js";
 import { queryHostDb } from "../../core/hostdb.js";
 import { recordAuthorization } from "../../core/contract.js";
 import { dutyTemplateHash } from "../../core/review.js";
+import { DUTY_TABLE_VERSION } from "../../core/policy.js"; // M3 N5 翻面随动（review.js 不 re-export 该常量）
 import { candidateIdentity } from "../../core/verify.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1190,7 +1191,7 @@ async function reviewRuntimeCase() {
         const realId = candidateIdentity(fx.d);
         const forged = {
           schemaVersion: 1, runId: `${fx.slug}.a1.r1`, slug: fx.slug, attempt: 1, seq: 1,
-          duty: { id: "review.general-correctness" }, dutyTableVersion: 2, templateHash: dutyTemplateHash(),
+          duty: { id: "review.general-correctness" }, dutyTableVersion: DUTY_TABLE_VERSION, templateHash: dutyTemplateHash(), // M3 N5 翻面随动（硬编码 2 会让 r6 的判因漂移为规则版本而非封存缺席）
           inputPackageHash: sha256text("forged-input"), candidate: { headSha: realId.headSha, compositeFingerprint: realId.compositeFingerprint, cliVersion: realId.cliVersion, clean: true },
           snapshot: { treeHash: sha256text("h") },
           startedAt: "2026-09-27T00:00:00.000Z", endedAt: "2026-09-27T00:01:00.000Z",

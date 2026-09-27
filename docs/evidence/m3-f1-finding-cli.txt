@@ -1,0 +1,40 @@
+
+──── F1-a 阻塞运行入账（真 CLI 子进程+替身） ────
+$ lzy review run → exit 1
+评审运行 fx.a1.r1 · review.general-correctness · valid · 计量 metered 0.11899999999999998 分
+  判决 blocked · 发现 1 条
+    [P1·blocking] F-1 授权撤回缺陷：已撤销令牌仍可放行（auth.js:12）
+  总评：f1 stub
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-f1-rhYNWC/.lazyzcode/review/fx.a1.r1.json · 同茎运行目录（input.json/candidate/home/raw.txt）
+
+
+──── F1-b finding list（活体） ────
+$ lzy finding list → exit 0
+发现账本 fx（含别名链）1 条 · 未关闭 1：
+  c7199fc1 [open] P1 授权撤回缺陷：已撤销令牌仍可放行（auth.js:12）· 累计 1 · 首见 fx.a1.r1
+
+
+──── F1-c finding show（活体） ────
+$ lzy finding show c7199fc1 → exit 0
+发现 c7199fc1（账 fx）：
+  P1 授权撤回缺陷：已撤销令牌仍可放行（auth.js:12）· 状态 open
+  首见 fx.a1.r1（attempt 1）· 末见 fx.a1.r1 · 累计 1 · 无效修复 0/2
+  历史（末 8 条）：
+    2026-09-27T20:14:07.453Z seen · fx.a1.r1
+
+
+──── F1-d resolve-request → diagnose → close 全链（退出码） ────
+$ resolve-request → exit 0
+修复已声称：c7199fc1 → resolve-requested——独立复核：lzy review recheck；recheck 不再报后 lzy finding close c7199fc1 --outcome fixed|falsified --basis …
+
+(替身绿运行 fx.a1.r2 exit 0 产出闭候选面)
+$ close --outcome fixed --recheck fx.a1.r2 → exit 0
+发现已关闭：c7199fc1 → closed-fixed（recheck fx.a1.r2 · 依据 撤回检查已接入（F1 终验活体））
+
+(closed 态 diagnose 应拒 → exit 1)
+
+──── F1-e 家族损坏 fail-closed（list 非 0 + doctor findings fail 行） ────
+$ finding list（损坏档）→ exit 1
+[lzy] 发现账本损坏（JSON 解析失败）：/private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-f1-rhYNWC/.lazyzcode/findings/fx.json。恢复：本家族在 loop/ 外、reset 不触及；先备份再人工核对该文件（丢失只损失队列/预算记账，不影响 goal/dag 权威面），删除后可用 lzy queue add/list 重建队
+$ doctor findings 行 → exit 1
+  ✖ findings     发现账本 1 件 · ⚠ 不可读 1 件：fx.json：发现账本损坏（JSON 解析失败）：/private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-f——未关闭阻塞发现是放行依据（V06），读不出即不可判（fail 级）；备份后删除可重建读面

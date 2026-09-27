@@ -1,0 +1,18 @@
+$ 夹具：endpoint B 契约 → 采纳落档（delivery.audit 在案）
+$ policy show（B）→ exit 0
+  义务集（2 条）：
+    [delivery-audit] delivery.audit
+
+$ policy reassess review.general-correctness（baseline 拒）
+→ exit 1
+[lzy] 义务 review.general-correctness 为 baseline（现行分级强制/底线）——不在取消通道（ADR-0033 §5：取消不侵入契约与分级底线）
+
+
+$ 契约改 A（影响变化落地）→ reassess delivery.audit
+→ exit 0
+义务已取消：delivery.audit（obligationsLog 追加 reassess 事件，历史不改写）
+  现行义务集 1 条——lzy policy show 复核；输入身份漂移仍须 expand 重采纳收口
+
+
+$ policy show（取消后）→ exit 0
+  义务集（1 条）：

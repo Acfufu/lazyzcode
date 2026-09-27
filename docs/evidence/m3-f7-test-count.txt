@@ -1,0 +1,4 @@
+npm test 全量（attempt2 收口时点）
+ℹ tests 697
+ℹ pass 697
+ℹ fail 0

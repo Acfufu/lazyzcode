@@ -5,10 +5,13 @@
 // 记录携带 attempt/dutyTableVersion/templateHash 三字段=统一门代次锚与规则一致性谓词的数据面
 //（拍板 6）；dutyTableVersion 不在此钉现行值——旧规则版本的记录须保持可读，一致性由 gate 判。
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync, openSync, closeSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile, spawnSync } from "node:child_process";
 import { loadFamilyFile, saveFamilyFile } from "./queue.js";
+import { candidateIdentity, listReceipts } from "./verify.js";
+import { loadPolicyRecord } from "./policy.js";
 
 export const REVIEW_VERSION = 1;
 export const REVIEW_FAMILY = "review";
@@ -67,9 +70,9 @@ export function reviewRunPath(cwd, slug, attempt, seq) {
 export function reviewRunStem(slug, attempt, seq) {
   return `${slug}.a${attempt}.r${seq}`;
 }
-// 序号分配（确定序）：计划写「在案档数+1」；以 max+1 实现同一确定序且对人工删除免疫碰撞
-//（族内 json 只由 saveReviewRun 分配序号，正常时序两者恒等；人工清档后 count+1 会复用旧号
-// 覆写幸存档，max+1 不会）。
+// 序号分配（确定序）：计划写「在案档数+1」；以 max+1 实现同一确定序且对人工删除免疫碰撞。
+// 计数面=档文件**与同茎运行目录**两者——runner 中途死（SIGKILL）会留无档孤儿目录，只数档会
+// 让下次 reserve 撞同序号被孤儿闸卡死，违背「恢复=重跑新 runId」（拍板 8）；孤儿目录跳过留观。
 export function nextRunSeq(cwd, slug, attempt) {
   let names;
   try {
@@ -80,8 +83,10 @@ export function nextRunSeq(cwd, slug, attempt) {
   const prefix = `${slug}.a${attempt}.r`;
   let max = 0;
   for (const n of names) {
-    if (!n.startsWith(prefix) || !n.endsWith(".json")) continue;
-    const k = Number(n.slice(prefix.length, -".json".length));
+    if (!n.startsWith(prefix)) continue;
+    const tail = n.slice(prefix.length);
+    const m = tail.endsWith(".json") ? tail.slice(0, -".json".length) : tail;
+    const k = Number(m);
     if (Number.isInteger(k) && k > max) max = k;
   }
   return max + 1;
@@ -193,25 +198,35 @@ const FAMILY_GATE = {
   shapeFn: assertRunShape,
 };
 
-// 落档唯一入口：seq/runId/schemaVersion 只由本函数分配（调用方自造序号=拒，防撞车覆写）。
-// 返回完整记录；写失败即抛（原子写家法，无中间态）。
+// 运行预留（N2 物化面入口）：分配确定序号并建同茎运行目录，返回三件套供 input.json/
+// candidate/home/raw 物化与最终落档同茎配对。单写者假设=loop 锁（同一 (slug,attempt) 的
+// 评审运行串行）；残留非空同名目录=孤儿（json 已失而目录在）→ fail-closed 拒，人工回收。
+export function reserveRun(cwd, slug, attempt) {
+  const seq = nextRunSeq(cwd, slug, attempt);
+  const runId = reviewRunStem(slug, attempt, seq);
+  const runDir = join(reviewDir(cwd), runId);
+  if (existsSync(runDir) && readdirSync(runDir).length > 0) {
+    throw new ReviewError(`运行目录已存在且非空（孤儿残留，先人工回收）：${runDir}`);
+  }
+  mkdirSync(runDir, { recursive: true });
+  return { seq, runId, runDir };
+}
+
+// 落档唯一入口：rec 须携带 reserveRun 分配的 seq/runId/schemaVersion（同茎配对由形状闸
+// 自洽等式钉死）；目标档已存在=拒（防覆写幸存档）。写失败即抛（原子写家法，无中间态）。
 export function saveReviewRun(cwd, rec) {
   if (!rec || typeof rec !== "object") throw new ReviewError("saveReviewRun 须传记录对象");
-  if (rec.seq != null || rec.runId != null || rec.schemaVersion != null) {
-    throw new ReviewError("seq/runId/schemaVersion 由 saveReviewRun 分配，调用方不得自带");
-  }
   if (typeof rec.slug !== "string" || !rec.slug) throw new ReviewError("saveReviewRun 须 rec.slug");
   if (!Number.isInteger(rec.attempt) || rec.attempt < 1) throw new ReviewError("saveReviewRun 须 rec.attempt ≥1");
-  const seq = nextRunSeq(cwd, rec.slug, rec.attempt);
-  const full = {
-    ...rec,
-    seq,
-    runId: reviewRunStem(rec.slug, rec.attempt, seq),
-    schemaVersion: REVIEW_VERSION,
-  };
-  const p = reviewRunPath(cwd, rec.slug, rec.attempt, seq);
-  saveFamilyFile(p, full, FAMILY_GATE);
-  return full;
+  if (!Number.isInteger(rec.seq) || rec.seq < 1) throw new ReviewError("seq 须由 reserveRun 分配（≥1 整数）");
+  if (typeof rec.runId !== "string" || rec.runId !== reviewRunStem(rec.slug, rec.attempt, rec.seq)) {
+    throw new ReviewError("runId 须与 slug/attempt/seq 自洽（reserveRun 分配）");
+  }
+  if (rec.schemaVersion !== REVIEW_VERSION) throw new ReviewError(`schemaVersion 须为 ${REVIEW_VERSION}`);
+  const p = reviewRunPath(cwd, rec.slug, rec.attempt, rec.seq);
+  if (existsSync(p)) throw new ReviewError(`运行档已存在，拒绝覆写：${p}`);
+  saveFamilyFile(p, rec, FAMILY_GATE);
+  return rec;
 }
 
 export function loadReviewRun(cwd, slug, attempt, seq) {
@@ -237,4 +252,217 @@ export function listReviewRuns(cwd, { slug, attempt } = {}) {
   return runs
     .filter((r) => (slug == null || r.slug === slug) && (attempt == null || r.attempt === attempt))
     .sort((a, b) => a.slug.localeCompare(b.slug) || a.attempt - b.attempt || a.seq - b.seq);
+}
+
+// ── N2：输入包与隔离（拍板 4：facts-only——不含任何他轮评审结论）──
+
+// 注入上限：AGENTS.md=100KB（引擎自身注入截断同口径，宪法 §3.4）；证据单件 64KB。
+// 截断须如实标注（评审依据的完整性边界是评审结论可信度的一部分）。
+const AGENTS_CAP = 100 * 1024;
+const EVIDENCE_CAP = 64 * 1024;
+const RECEIPTS_CAP = 200;
+
+function readCappedText(p, cap) {
+  const buf = readFileSync(p);
+  const text = buf.toString("utf8");
+  if (buf.length <= cap) return { text, bytes: buf.length, truncated: false };
+  return { text: `${text.slice(0, cap)}\n…[输入包截断：原文 ${buf.length} 字节，只注入前 ${cap}]`, bytes: buf.length, truncated: true };
+}
+
+// facts-only 输入包（拍板 4 唯一定义）：契约文本、项目清单、AGENTS.md 项目规则、目标步骤与
+// F 证据文本、回执摘要、策略义务集、候选身份。写 <runDir>/input.json（0600）并算
+// inputPackageHash。多 subject 目标 fail-closed 拒（跨仓候选输入打包属 M5）。
+export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID, now = new Date() } = {}) {
+  if (!goal || goal.version !== 2) throw new ReviewError(`评审输入包须 v2 目标（得到 version=${goal?.version ?? null}）`);
+  if (Array.isArray(goal.subjects) && goal.subjects.length > 0) {
+    throw new ReviewError(`多 subject 目标的评审候选跨仓，M2 不支持（跨仓输入打包列 M5）：${goal.subjects.join("、")}`);
+  }
+  const readOptional = (p, cap) => {
+    try {
+      return readCappedText(p, cap);
+    } catch (err) {
+      if (err && err.code === "ENOENT") return null;
+      throw err;
+    }
+  };
+  let evidence = [];
+  try {
+    evidence = readdirSync(join(cwd, ".lazyzcode", "evidence"))
+      .filter((f) => f.startsWith(`${goal.slug}.`) && f.endsWith(".txt"))
+      .sort()
+      .map((f) => {
+        const capped = readCappedText(join(cwd, ".lazyzcode", "evidence", f), EVIDENCE_CAP);
+        return { file: f, sha256: createHash("sha256").update(capped.text).digest("hex"), ...capped };
+      });
+  } catch {}
+  let receipts = [];
+  try {
+    receipts = listReceipts(cwd, goal.slug).slice(0, RECEIPTS_CAP).map((r) => ({
+      runId: r.runId ?? null,
+      kind: r.kind ?? null,
+      checkId: r.checkId ?? null,
+      startedAt: r.startedAt ?? null,
+      contractHash: r.contractHash ?? null,
+    }));
+  } catch (e) {
+    receipts = [{ summaryError: String(e?.message ?? e).slice(0, 120) }];
+  }
+  let policy = null;
+  const rec = loadPolicyRecord(cwd, goal.slug, goal.attempt);
+  if (rec) {
+    policy = {
+      dutyTableVersion: rec.dutyTableVersion,
+      rulesHash: rec.rulesHash,
+      obligations: rec.obligations.map((o) => ({ id: o.id, baseline: o.baseline === true, satisfaction: o.satisfaction ?? null, dependsOn: o.dependsOn ?? null })),
+    };
+  } // 记录未落档=null（如实缺项；损坏由 loadFamilyFile 家族闸抛）
+  const facts = {
+    duty: { id: dutyId, templateHash: dutyTemplateHash(dutyId) },
+    goal: {
+      slug: goal.slug,
+      title: goal.title ?? null,
+      attempt: goal.attempt ?? null,
+      tier: goal.tier ?? null,
+      risk: goal.risk ?? null,
+      status: goal.status ?? null,
+      contractHash: goal.contract?.contractHash ?? null,
+      baseTreeHash: goal.baseTreeHash ?? null,
+    },
+    contract: goal.contract?.path
+      ? { path: goal.contract.path, ...readCappedText(resolve(cwd, goal.contract.path), AGENTS_CAP) }
+      : null,
+    projectManifest: readOptional(join(cwd, "lzy.project.json"), AGENTS_CAP),
+    agentsRules: readOptional(join(cwd, "AGENTS.md"), AGENTS_CAP),
+    steps: (goal.steps ?? []).map((s) => ({
+      id: s.id,
+      kind: s.kind ?? null,
+      title: s.title,
+      status: s.status,
+      note: s.note ?? null,
+      doneAt: s.doneAt ?? null,
+      acceptsRefs: s.acceptsRefs ?? [],
+    })),
+    evidence,
+    receipts,
+    policy,
+    candidate: candidateIdentity(cwd),
+    generatedAt: now.toISOString(),
+  };
+  const json = `${JSON.stringify(facts, null, 2)}\n`;
+  const inputPath = join(runDir, "input.json");
+  writeFileSync(inputPath, json, { mode: 0o600 });
+  return {
+    inputPath,
+    inputPackageHash: createHash("sha256").update(json).digest("hex"),
+    bytes: Buffer.byteLength(json),
+  };
+}
+
+// 候选快照：git archive HEAD 解到 <runDir>/candidate/（.lazyzcode/artifacts gitignored 天然
+// 不在树内），并采快照树哈希（逐文件路径+内容 sha256 有序复合——污染判据的锚，N3 运行后复查）。
+// git archive 展开只产普通文件/目录/符号链接；其余类型出现=fail-closed。
+export function materializeCandidate(cwd, runDir) {
+  const candidateDir = join(runDir, "candidate");
+  mkdirSync(candidateDir, { recursive: true });
+  const tarPath = join(runDir, ".candidate.tar");
+  const fd = openSync(tarPath, "w");
+  let proc = spawnSync("git", ["archive", "--format=tar", "HEAD"], { cwd, stdio: ["ignore", fd, "pipe"] });
+  closeSync(fd);
+  if (proc.status !== 0) {
+    rmSync(tarPath, { force: true });
+    throw new ReviewError(`候选快照失败（git archive 退出 ${proc.status}）：${String(proc.stderr ?? "").slice(0, 200)}`);
+  }
+  proc = spawnSync("tar", ["-x", "-f", tarPath, "-C", candidateDir], { stdio: ["ignore", "ignore", "pipe"] });
+  rmSync(tarPath, { force: true });
+  if (proc.status !== 0) {
+    throw new ReviewError(`候选快照失败（tar 解包退出 ${proc.status}）：${String(proc.stderr ?? "").slice(0, 200)}`);
+  }
+  return { candidateDir, treeHash: hashTree(candidateDir) };
+}
+
+function hashTree(root) {
+  const h = createHash("sha256");
+  const walk = (dir, rel) => {
+    const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1));
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        walk(p, r);
+      } else if (e.isFile()) {
+        h.update(`${r}\0${createHash("sha256").update(readFileSync(p)).digest("hex")}\n`);
+      } else if (e.isSymbolicLink()) {
+        h.update(`${r}\0symlink:${readlinkSync(p)}\n`);
+      } else {
+        throw new ReviewError(`快照含非常规项（git archive 不产）：${r}`);
+      }
+    }
+  };
+  walk(root, "");
+  return h.digest("hex");
+}
+
+// 隔离 HOME：每运行独立 <runDir>/home（引擎 rollout 转录与子账本都落这里——计量缝收口面）。
+export function prepareIsolation(runDir) {
+  const home = join(runDir, "home");
+  mkdirSync(home, { recursive: true });
+  return { home };
+}
+
+// 泄漏断言（拍板 4 机械面）：input 字节不得含同 (slug,attempt) 任一在先运行的 runId／结论
+// 摘要哈希／raw 哈希串。命中即 invalid（理由 leak）——facts-only 是独立性的物证面。
+export function assertNoLeak(inputText, priorRuns) {
+  const hits = [];
+  for (const run of priorRuns) {
+    const needles = [run.runId];
+    if (run.result?.summary) needles.push(createHash("sha256").update(run.result.summary).digest("hex"));
+    if (run.raw?.sha256) needles.push(run.raw.sha256);
+    for (const needle of needles) {
+      if (needle && inputText.includes(needle)) {
+        hits.push({ runId: run.runId, kind: needle === run.runId ? "runId" : needle === run.raw?.sha256 ? "raw-hash" : "summary-hash", needle: `${needle.slice(0, 12)}…` });
+      }
+    }
+  }
+  return { ok: hits.length === 0, hits };
+}
+
+// 读取轨迹断言（拍板 4）：解析引擎转录（jsonl 逐行），键名含 path/file/dir/cwd 的以 / 开头
+// 字符串值=读取面候选；realpath 归一（/var→/private/var）后须落在任一允许前缀内（含边界 sep）。
+// 命中前缀外=breach；转录缺席由调用方按 isolation-breach 判（隔离未证——M0 口径）。
+export function assertReadsContained(transcriptText, allowedPrefixes) {
+  const norm = (p) => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return resolve(p);
+    }
+  };
+  const prefixes = allowedPrefixes.map(norm);
+  const contained = (p) => {
+    const q = norm(p);
+    return prefixes.some((pre) => q === pre || q.startsWith(pre.endsWith(sep) ? pre : `${pre}${sep}`));
+  };
+  const breaches = [];
+  const visit = (v, key, line) => {
+    if (typeof v === "string") {
+      if (key && /path|file|dir|cwd/i.test(key) && v.startsWith("/") && !contained(v)) {
+        breaches.push({ path: v.slice(0, 200), line });
+      }
+    } else if (Array.isArray(v)) {
+      for (const x of v) visit(x, key, line);
+    } else if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) visit(x, k, line);
+    }
+  };
+  transcriptText.split("\n").forEach((l, i) => {
+    if (!l.trim()) return;
+    let obj;
+    try {
+      obj = JSON.parse(l);
+    } catch {
+      return; // 非法行跳过（转录语义由 M0 观测锚定：引擎自写 model-io jsonl）
+    }
+    visit(obj, null, i + 1);
+  });
+  return { ok: breaches.length === 0, breaches };
 }

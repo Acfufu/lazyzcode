@@ -1356,7 +1356,7 @@ export function listScopeRecords(cwd, { slug, attempt, kind } = {}) {
   const recs = names.map((f) => loadScopeFile(join(reviewScopeDir(cwd), f)));
   return recs
     .filter((r) => (slug == null || r.slug === slug) && (attempt == null || r.attempt === attempt) && (kind == null || r.kind === kind))
-    .sort((a, b) => a.slug.localeCompare(b.slug) || a.attempt - b.attempt || a.id.localeCompare(b.id));
+    .sort((a, b) => a.slug.localeCompare(b.slug) || a.attempt - b.attempt || a.seq - b.seq || a.kind.localeCompare(b.kind)); // seq 数值序（字典序 q10<q2 陷阱）
 }
 
 // ── 范围声明验形（拍板 2）：qualify 时输入工件，内容 sha256=scopeHash 入资格档 ──
@@ -1783,6 +1783,7 @@ export async function qualifyReviewScope(cwd, { runId, scopeDecl }, deps = {}) {
   } catch (e) {
     pre(`base 运行档不可读：${runId}（${String(e?.message ?? e).slice(0, 120)}）`);
   }
+  if (!run) pre(`base 运行档不在案：${runId}`);
   if (run.slug !== slug || run.attempt !== attempt) pre(`runId 与档内身份不符：${run.slug}.a${run.attempt}.r${run.seq}`);
   if (run.validity?.status !== "valid") pre(`base 运行非 valid（${run.validity?.status ?? "null"}${run.validity?.reason ? `：${run.validity.reason}` : ""}）——资格只授有效评审`);
   if (run.result?.verdict !== "pass") pre(`base 运行判决非 pass（${run.result?.verdict ?? "null"}）——阻塞评审无从谈复用（ADR-0032）`);
@@ -1859,4 +1860,112 @@ export async function qualifyReviewScope(cwd, { runId, scopeDecl }, deps = {}) {
   };
   saveScopeRecord(cwd, rec);
   return { record: rec, granted, failed: challenges.filter((c) => !c.ok) };
+}
+
+// ── 0.4.0 M4 N3：复用适用性判定（拍板 4/7/9）：base 运行+在案 granted 资格 ⇒ 当前候选
+// diff 分类完备性判定 → applicable/fallback 适用档（只追加；base 运行档与资格档字节零触碰）。
+// 结构轴漂移（rulesHash/dutyTableVersion/templateHash/contractHash/manifestHash/engine 任一）
+// =资格身份失效⇒fallback 逐因（plan §5.4「资格版本变化回退重评」）；不 spawn 零积分。──
+
+export async function reuseReviewScope(cwd, { runId }, deps = {}) {
+  const pre = (m, reason = "preflight") => {
+    throw new ReviewPreflightError(m, { reason });
+  };
+  const m = /^(.+)\.a(\d+)\.r(\d+)$/.exec(runId ?? "");
+  if (!m) pre(`runId 形如 <slug>.a<n>.r<n>：${JSON.stringify(runId ?? null)}`, "usage");
+  const slug = m[1];
+  const attempt = Number(m[2]);
+  let run;
+  try {
+    run = loadReviewFile(join(reviewDir(cwd), `${runId}.json`));
+  } catch (e) {
+    pre(`base 运行档不可读：${runId}（${String(e?.message ?? e).slice(0, 120)}）`);
+  }
+  if (!run) pre(`base 运行档不在案：${runId}`);
+  if (run.slug !== slug || run.attempt !== attempt) pre(`runId 与档内身份不符：${run.slug}.a${run.attempt}.r${run.seq}`);
+  if (run.validity?.status !== "valid") pre(`base 运行非 valid（${run.validity?.status ?? "null"}）——复用只授有效评审`);
+  if (run.result?.verdict !== "pass") pre(`base 运行判决非 pass（${run.result?.verdict ?? "null"}）——阻塞评审无可复用`);
+  const dutyEntry = deps.dutyEntry ?? DUTY_TABLE.find((d) => d.id === run.duty.id);
+  if (!dutyEntry || dutyEntry.scopeMode !== "declarable") {
+    pre(`职责 ${run.duty.id} 非 declarable——整候选职责恒重评（拍板 5）`);
+  }
+  // 资格在案：同 baseRunId 最新档（seq 数值序取末）；拒绝态资格不可作复用依据。
+  const quals = listScopeRecords(cwd, { slug, attempt, kind: "qualification" }).filter((r) => r.baseRunId === runId);
+  const qual = quals.at(-1) ?? null;
+  if (!qual) pre(`base 运行无在案资格档——先 lzy review qualify ${runId} --scope <声明>（复用只授已过资格挑战的声明，ADR-0032）`);
+  if (qual.granted !== true) pre(`base 运行最新资格档为拒绝态（${qual.id}）——修正声明重走资格挑战，不得以拒资复用`);
+  // 结构身份对表（资格时点五轴 vs 现行）：任一漂移⇒fallback 逐因（仍落档——回退重评是判断结果）
+  const goal = readGoal(cwd);
+  let manifestHash = null;
+  try {
+    const id = computePolicyIdentity(cwd);
+    manifestHash = id.manifestPresent ? id.manifestHash : null;
+  } catch {
+    manifestHash = null;
+  }
+  const current = {
+    rulesHash: policyRulesHash(),
+    dutyTableVersion: DUTY_TABLE_VERSION,
+    templateHash: dutyTemplateHash(qual.dutyId),
+    contractHash: goal?.contract?.contractHash ?? null,
+    manifestHash,
+    engine: findEngine(),
+  };
+  const short = (v) => (typeof v === "string" && v.length > 12 ? `${v.slice(0, 12)}…` : JSON.stringify(v ?? null));
+  const drift = [];
+  for (const k of Object.keys(current)) {
+    if (String(current[k]) !== String(qual.identity[k])) {
+      drift.push(`资格身份漂移：${k}（资格 ${short(qual.identity[k])} → 现行 ${short(current[k])}）——回退重评（plan §5.4）`);
+    }
+  }
+  // base 快照与当前候选
+  const candDir = join(reviewDir(cwd), runId, "candidate");
+  let baseMap;
+  try {
+    baseMap = buildFileMap(candDir);
+  } catch (e) {
+    pre(`base 运行候选快照缺席（${candDir}）：${String(e?.message ?? e).slice(0, 120)}——复用无锚`);
+  }
+  const tmp = mkdtempSync(join(tmpdir(), "lzy-scope-reuse-"));
+  let targetTreeHash;
+  let curMap;
+  try {
+    const curDir = join(tmp, "tree");
+    gitArchiveHead(cwd, curDir);
+    curMap = buildFileMap(curDir);
+    targetTreeHash = hashTree(curDir);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  const target = candidateIdentity(cwd);
+  // diff 分类与聚合
+  const diff = diffFileMaps(baseMap, curMap);
+  const entries = [...diff.modified, ...diff.added, ...diff.deleted, ...diff.renamed];
+  const classified = classifyDiffEntries(entries, { rules: qual.scope.rules, sharedInputs: qual.scope.sharedInputs });
+  const { verdict, reasons } = scopeReuseVerdict(classified, drift);
+  // 适用档（追加写；base 运行档与资格档零触碰）
+  const seqP = nextScopeSeq(cwd, slug, attempt, "applicability");
+  const rec = {
+    schemaVersion: SCOPE_VERSION,
+    kind: "applicability",
+    id: scopeRecordStem(slug, attempt, "applicability", seqP),
+    slug,
+    attempt,
+    seq: seqP,
+    dutyId: qual.dutyId,
+    baseRunId: runId,
+    qualificationId: qual.id,
+    target: { headSha: target.headSha, compositeFingerprint: target.compositeFingerprint, cliVersion: target.cliVersion },
+    diff: {
+      baseTreeHash: run.snapshot?.treeHash ?? null,
+      targetTreeHash,
+      entries: entries.map((e) => (e.type === "renamed" ? { path: e.path, type: e.type, from: e.from } : { path: e.path, type: e.type })),
+    },
+    verdict,
+    reasons,
+    at: new Date().toISOString(),
+    note: "mechanical（零积分——适用性=追加判断，不改写旧记录，ADR-0032）",
+  };
+  saveScopeRecord(cwd, rec);
+  return { record: rec, verdict, reasons, diffEntries: entries.length };
 }

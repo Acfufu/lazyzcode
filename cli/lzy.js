@@ -72,8 +72,8 @@ import {
 } from "../core/dag.js";
 import { recordComparatorAttestation } from "../core/attest.js";
 import { computePolicyIdentity, loadPolicyRecord, identityStableHash, deriveObligations, REVIEW_RUNNER_FACE, reassessObligation } from "../core/policy.js"; // 0.4.0 M1 N7 解释面 + M3 N8 reassess 面
-import { ReviewPreflightError, ReviewError, listReviewRuns, runReview, qualifyReviewScope, BASELINE_DUTY_ID } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面 + M4 N2 资格执行器
-import { listFindings, requestResolve, closeFinding, diagnoseFinding, relinkFindings, findingFingerprint, CLOSED_FINDING_STATUSES, DIAGNOSIS_REQUIRED_THRESHOLD, openBlockingFindings } from "../core/findings.js"; // 0.4.0 M3 N6/N7 发现账本 CLI 面
+import { ReviewPreflightError, ReviewError, listReviewRuns, runReview, qualifyReviewScope, reuseReviewScope, BASELINE_DUTY_ID } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面 + M4 N2/N3 资格与复用
+import { listFindings, requestResolve, closeFinding, diagnoseFinding, relinkFindings, reopenFinding, findingFingerprint, CLOSED_FINDING_STATUSES, DIAGNOSIS_REQUIRED_THRESHOLD, openBlockingFindings } from "../core/findings.js"; // 0.4.0 M3 N6/N7 发现账本 CLI 面 + M4 N3 reopen
 import { evaluateGate } from "../core/gate.js";
 import { findEngine, pluginsRoot, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
@@ -1034,6 +1034,10 @@ function printHelp() {
                                             五轴机械对抗验证；granted/拒绝双面落档
                                             .lazyzcode/review-scope/；不 spawn 零积分；退出码：
                                             0=granted，1=拒绝（已落档），2=用法错，3=前置不具备
+  lzy review reuse <runId>                  复用适用性判定（0.4.0 M4）：当前候选对 base 快照
+                                            diff 分类完备判定；applicable/fallback 双面落档
+                                            （只追加，旧档字节零触碰）；退出码：0=applicable，
+                                            1=fallback（已落档），2=用法错，3=前置不具备
 
 发现账本（0.4.0 M3，V06/V07/V12——关闭通道唯一：resolve-request → review recheck → close）：
   lzy finding list [--goal <slug>]          发现链枚举（含别名闭包；损坏 fail-closed 非 0）
@@ -1047,6 +1051,9 @@ function printHelp() {
   lzy finding diagnose <指纹前8> --root-cause …
                                             重复根因诊断（diagnosis-required 唯一出口；
                                             根因入账+无效修复计数重置）
+  lzy finding reopen <指纹前8> [--note …]   关闭依据失效后重开（0.4.0 M4：closure-basis-stale
+                                            处置）：closed→resolve-requested，closure 历史
+                                            保留；重开后走 recheck→close 重新取证关闭
   lzy finding relink --from <旧slug> --to <新slug>
                                             别名链登记（目标改名后同链可读；查环拒绝）
   lzy loop list [--root <目录>]             跨仓清单（只读）：扫锚目录一级子目录各仓的循环
@@ -1903,6 +1910,48 @@ async function cmdReview(args) {
     process.exitCode = res.granted ? 0 : 1;
     return;
   }
+  if (sub === "reuse") {
+    // M4 N3（ADR-0032）：复用适用性判定——base 运行+granted 资格 ⇒ 当前候选 diff 分类
+    // 完备性判定；applicable/fallback 双面落档（只追加，base 与资格档字节零触碰）。
+    // 退出码：0=applicable，1=fallback（已落档），2=用法错，3=前置不具备。
+    const runId = _[1];
+    if (!runId) {
+      console.error("用法错：lzy review reuse <runId>");
+      process.exitCode = 2;
+      return;
+    }
+    let res;
+    try {
+      res = await reuseReviewScope(cwd, { runId });
+    } catch (err) {
+      if (err instanceof ReviewPreflightError) {
+        console.error(`前置不具备（不消耗、不落档）：${err.message}`);
+        process.exitCode = 3;
+        return;
+      }
+      if (err instanceof ReviewError) {
+        console.error(`复用拒绝（未落档）：${err.message}`);
+        process.exitCode = 1;
+        return;
+      }
+      throw err;
+    }
+    const r = res.record;
+    console.log(
+      `适用性判定 ${r.id} · ${r.dutyId} · base ${r.baseRunId} · 资格 ${r.qualificationId} · ${r.verdict === "applicable" ? "APPLICABLE（旧结果仍适用）" : "FALLBACK（回退重评）"}`,
+    );
+    console.log(`  目标候选 head ${r.target.headSha.slice(0, 12)}… · 指纹 ${r.target.compositeFingerprint.slice(0, 12)}…`);
+    console.log(`  diff ${res.diffEntries} 项（base 树 ${String(r.diff.baseTreeHash ?? "null").slice(0, 12)}… → 目标树 ${String(r.diff.targetTreeHash ?? "null").slice(0, 12)}…）`);
+    if (r.reasons.length === 0) {
+      console.log("  逐因：变化全部落在声明 unrelated 区且结构身份无漂移——义务可由复用满足（gate 复用腿）");
+    } else {
+      console.log("  逐因：");
+      for (const s of r.reasons) console.log(`    ✖ ${s}`);
+    }
+    console.log(`  档 ${join(cwd, ".lazyzcode", "review-scope", `${r.id}.json`)} · 零积分（mechanical·只追加）`);
+    process.exitCode = r.verdict === "applicable" ? 0 : 1;
+    return;
+  }
   if (sub === "list") {
     const runs = listReviewRuns(cwd, { slug: f.goal });
     if (runs.length === 0) {
@@ -1965,17 +2014,19 @@ async function cmdReview(args) {
   process.exitCode = 2;
 }
 
-// 发现账本 CLI（0.4.0 M3 N6，V06/V07/V12）：list/show/resolve-request/close/diagnose/relink。
-// 退出码契约：0=成功；1=语义拒绝（状态机/校验拒——发现不在账、态不受理、recheck 引用不合法、
-// basis 缺失）；2=用法错（参数缺/指纹歧义）。close 的 recheck 引用校验在此层做（读运行档），
-// 账本状态机在 core/findings.js——CLI 不复制状态转移。
+// 发现账本 CLI（0.4.0 M3 N6，V06/V07/V12；M4 N3 增 reopen）：list/show/resolve-request/
+// close/diagnose/reopen/relink。退出码契约（M4 N3 F-6 统一口径，与实行为准）：0=成功；
+// 1=语义拒（账本损坏；状态变更族 resolve-request/close/diagnose/reopen 的不在账与前缀歧义、
+// 态不受理、recheck 引用不合法）；2=用法错（参数缺、show 面指纹不合法/不在账/歧义、无 slug）。
+// close 的 recheck 引用校验在此层做（读运行档），账本状态机在 core/findings.js——CLI 不复制
+// 状态转移。
 async function cmdFinding(args) {
   const { _, f } = parseArgs(args);
   const sub = _[0] ?? "";
   const cwd = process.cwd();
   const usage = (msg) => {
     console.error(`用法错：${msg}`);
-    console.error("用法：lzy finding list|show <指纹前8>|resolve-request <指纹前8> [--note …]|close <指纹前8> --outcome fixed|falsified --basis … --recheck <runId>|diagnose <指纹前8> --root-cause …|relink --from <旧slug> --to <新slug>");
+    console.error("用法：lzy finding list|show <指纹前8>|resolve-request <指纹前8> [--note …]|close <指纹前8> --outcome fixed|falsified --basis … --recheck <runId>|diagnose <指纹前8> --root-cause …|reopen <指纹前8> [--note …]|relink --from <旧slug> --to <新slug>");
     process.exitCode = 2;
   };
   const scopeSlug = typeof f.goal === "string" ? f.goal : readGoal(cwd)?.slug ?? null;
@@ -2043,7 +2094,7 @@ async function cmdFinding(args) {
     }
     return;
   }
-  if (sub === "resolve-request" || sub === "diagnose" || sub === "close") {
+  if (sub === "resolve-request" || sub === "diagnose" || sub === "close" || sub === "reopen") {
     if (!scopeSlug) return usage("状态变更须有活跃目标（slug 取自 goal）或显式 --goal");
     let rows;
     try {
@@ -2070,6 +2121,13 @@ async function cmdFinding(args) {
         if (typeof f["root-cause"] !== "string" || !f["root-cause"].trim()) return usage("diagnose 须带 --root-cause（重复根因诊断必填）");
         const r = diagnoseFinding(cwd, originSlug, hit.fingerprint, { rootCause: f["root-cause"] });
         console.log(`根因已入账：${r.fingerprint.slice(0, 8)} → ${r.status}（无效修复计数重置）——可再入关闭通道`);
+        return;
+      }
+      if (sub === "reopen") {
+        // M4 N3（拍板 8）：关闭依据失效后的重开——closed→resolve-requested，closure 历史
+        // 保留（曾关闭事实不灭）；重开后走既有 recheck→close 通道重新取证关闭。
+        const r = reopenFinding(cwd, originSlug, hit.fingerprint, { reason: f.note });
+        console.log(`发现已重开：${r.fingerprint.slice(0, 8)} ${r.reopenedFrom} → ${r.status}（closure 历史保留）——独立复核后重新关闭：lzy review recheck --fingerprint ${r.fingerprint.slice(0, 8)} → lzy finding close ${r.fingerprint.slice(0, 8)} --outcome … --basis … --recheck <新复核runId>`);
         return;
       }
       // close：recheck 引用校验在此层（读运行档）——valid、review 职责、不报该指纹

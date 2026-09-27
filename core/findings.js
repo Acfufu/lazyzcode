@@ -318,6 +318,29 @@ export function closeFinding(cwd, slug, fingerprint, { outcome, basis, recheck, 
   return { fingerprint, status: e.status, closure: e.closure };
 }
 
+// reopen（0.4.0 M4 N3，拍板 8）：closed-fixed|closed-falsified → resolve-requested 的受控
+// 转换——关闭依据随候选失效（closure-basis-stale，gate findings 子句数据面）后重入复核通道
+// 的唯一出口。closure 字段保留（「曾关闭」历史事实不灭，plan §5.5）；resolveRequest 以重开
+// 时点重建（close 的 recheck 时序校验由此重新起算）；事件只追加。余态拒（未关闭发现走既有
+// 通道：open→resolve-request；diagnosis-required→diagnose）。
+export function reopenFinding(cwd, slug, fingerprint, { reason, at } = {}) {
+  assertSlug(slug);
+  const rec = loadFindingsFile(cwd, slug);
+  if (!rec?.findings[fingerprint]) throw new FindingsError(`发现不在账：${slug} ${fingerprint.slice(0, 8)}`);
+  const e = rec.findings[fingerprint];
+  if (!CLOSED_FINDING_STATUSES.includes(e.status)) {
+    throw new FindingsError(`状态机拒绝：${e.status} 态不受理 reopen（仅 closed-fixed|closed-falsified——未关闭发现走既有通道）`);
+  }
+  const stamp = at ?? new Date().toISOString();
+  const why = typeof reason === "string" && reason.trim() ? reason.trim() : "closure-basis-stale（关闭依据随候选失效——重走独立复核）";
+  const reopenedFrom = e.status;
+  e.status = "resolve-requested";
+  e.resolveRequest = { at: stamp, note: why };
+  appendHistory(e, { at: stamp, kind: "reopen", note: why });
+  saveFindingsFile(cwd, rec);
+  return { fingerprint, status: e.status, reopenedFrom };
+}
+
 // diagnose（V12 唯一出口）：diagnosis-required → open，根因入账、invalidFixCount 重置。
 export function diagnoseFinding(cwd, slug, fingerprint, { rootCause, at } = {}) {
   assertSlug(slug);

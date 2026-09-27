@@ -305,6 +305,10 @@ lzy dag stale                           # 失效预览：对照现行复合指�
 lzy attest comparator --file <json>     # 对照判决落 attestation（HEAVY finish 强制 MATCH）
 lzy policy show|explain                 # 策略身份与义务集解释（0.4.0 M1；v1 目标显示「政策裁决不适用」）
 lzy gate explain                        # 统一只读门逐义务解释+快照哈希（blocked 退出码非 0）
+lzy review run [--duty <id>] [--timeout-ms N]   # 受控独立评审运行器（0.4.0 M2）：隔离 HOME+候选快照，
+                                        # 结构化判决落档；0=pass 且有效 / 1=blocked·invalid / 2=用法 / 3=前置不具备（不 spawn）
+lzy review list                         # 在案评审运行枚举（只读；家族损坏 fail-closed 非 0）
+lzy review show <runId>                 # 逐字段+发现表+原始输出指针（只读）
 lzy loop finish                         # 终验门：全部 done+证据新鲜+全树 clean（HEAVY 另需 MATCH 对照）；落终验 attestation 并自动归档
 lzy loop export                         # 重导出证据包
 lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次
@@ -571,6 +575,9 @@ lzy loop budget init|spend|remaining  运行预算（墙钟+积分双硬顶；AD
 lzy loop status                 进度、下一步、证据新鲜度、tier/subjects/快照
 lzy policy show|explain         策略身份与义务集解释（0.4.0 M1；v1 目标显示「政策裁决不适用」）
 lzy gate explain                统一只读门逐义务解释+快照哈希（blocked 退出码非 0）
+lzy review run|list|show        受控独立评审运行器（0.4.0 M2）：run=隔离 HOME+候选快照真实评审落档
+                                （0=pass 且有效/1=blocked·invalid/2=用法/3=前置不具备不 spawn）；
+                                list/show=只读枚举与逐字段面
 lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑定/无目标）；逐树头哈希/脏态行
 lzy step done <ID> [--note <注记>] [--evidence <证据>] [--evidence-file <文件>]…
 lzy loop finish                 终验门：全部 done + 证据新鲜 + {host}∪subjects 全树 clean（HEAVY 另需 MATCH 对照）；落终验 attestation+原子归档

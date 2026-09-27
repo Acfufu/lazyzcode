@@ -379,6 +379,10 @@ lzy dag stale                           # invalidation preview vs current finger
 lzy attest comparator --file <json>     # comparator verdicts as attestation (HEAVY finish enforces MATCH)
 lzy policy show|explain                 # policy identity & obligation set explainer (0.4.0 M1; v1 goals print "not applicable")
 lzy gate explain                        # unified read-only gate: per-obligation verdicts + snapshot hash (blocked exits non-zero)
+lzy review run [--duty <id>] [--timeout-ms N]   # controlled independent review runner (0.4.0 M2): isolated HOME +
+                                        # candidate snapshot, structured verdict on record; 0=pass&valid / 1=blocked·invalid / 2=usage / 3=precondition (no spawn)
+lzy review list                         # enumerate review runs on record (read-only; corrupt family fails closed non-zero)
+lzy review show <runId>                 # field-by-field + findings table + raw output pointer (read-only)
 lzy loop finish                         # the final gate: all done + fresh evidence + all trees clean (+ HEAVY: MATCH attestation); writes the final attestation and auto-archives
 lzy loop export                         # re-export the evidence bundle
 lzy loop handoff --snapshot <file>      # register a clean handoff; next Stop releases once
@@ -731,6 +735,11 @@ lzy loop lease acquire|heartbeat|release|reclaim  run-level lease (minutes-scale
                                   reclaim = zombie-lease exit; ADR-0020)
 lzy loop budget init|spend|remaining  drive budget (wall-clock + points double cap; ADR-0020)
 lzy loop status                 progress, next step, evidence freshness, tier/subjects/snapshot
+lzy policy show|explain         policy identity & obligation set explainer (0.4.0 M1; v1 goals print "not applicable")
+lzy gate explain                unified read-only gate: per-obligation verdicts + snapshot hash (blocked exits non-zero)
+lzy review run|list|show        controlled independent review runner (0.4.0 M2): run = real review session on
+                                isolated HOME + candidate snapshot, verdict on record (0=pass&valid/1=blocked·invalid/
+                                2=usage/3=precondition, no spawn); list/show = read-only enumeration & field view
 lzy loop verify                 evidence freshness audit (exit 1 = stale/unbound/no goal); per-tree head/dirty lines
 lzy step done <ID> [--note <t>] [--evidence <t>] [--evidence-file <f>]…
 lzy loop finish                 final gate: all done + fresh composite fingerprint + all {host}∪subjects trees clean; atomic archive

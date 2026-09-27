@@ -2,7 +2,7 @@
 // 0.4.0 M0 能力探针驱动器（goal v040-m0-capability）
 //
 // 用法：
-//   node scripts/v040/qa.mjs --case capability --fixture <隔离根> --out <证据根> [--keep] [--session-timeout-ms N]
+//   node scripts/v040/qa.mjs --case capability --fixture <隔离根> --out <证据根> [--session-timeout-ms N]
 //
 // 契约（docs/plan-v040-engineering-policy.md §8.1 M0 capability 案例）：
 //   - 双候选快照（cap-a/cap-b）各含必要事实与「仅另一路可见」的越界 canary；
@@ -18,7 +18,8 @@
 // 已知边界（如实申报）：
 //   1. 凭据与计费库在真实 HOME（auth 非 HOME 绑定，docs/spikes/headless.md:30）——隔离面=
 //      夹具根 + 隔离 HOME（转录面），不是全盘 chroot；不宣称抵御同权限恶意进程。
-//   2. 真实会话消耗计入宿主计费库——这正是计量腿的被测面；预算预注册 ≤8 会话（本案例 5）。
+//   2. 真实会话的消耗落隔离 HOME 子账本（宿主账本零行——计量缝=M0 发现一，0.4.0 M2 N4
+//      参数化收口）；计量腿读子账本逐 sessionId 归因。预算预注册 ≤8 会话（本案例 5）。
 //   3. win32 未核（spawn 信号语义差异）；本工具按 unix/macOS QA 面使用。
 import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";

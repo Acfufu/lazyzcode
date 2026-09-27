@@ -72,6 +72,7 @@ import {
 } from "../core/dag.js";
 import { recordComparatorAttestation } from "../core/attest.js";
 import { computePolicyIdentity, loadPolicyRecord, identityStableHash, deriveObligations, REVIEW_RUNNER_FACE } from "../core/policy.js"; // 0.4.0 M1 N7 解释面
+import { ReviewPreflightError, listReviewRuns, runReview } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面
 import { evaluateGate } from "../core/gate.js";
 import { findEngine, pluginsRoot, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
@@ -105,7 +106,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1016,6 +1017,13 @@ function printHelp() {
                                             情况+快照哈希；退出码=blocked/身份无效/家族损坏非 0，
                                             v2 全满足 0，v1/无身份 0（接线面 finish/queue/delivery
                                             自动执法，本命令只解释）
+  lzy review run [--duty <id>] [--timeout-ms N]
+                                            受控独立评审运行器（0.4.0 M2）：隔离 HOME+候选快照的
+                                            真实评审会话产出结构化判决并落档 .lazyzcode/review/；
+                                            退出码：0=pass 且有效，1=blocked/invalid（已落档，
+                                            失败不可改判），2=用法错，3=前置不具备（不 spawn 不消耗）
+  lzy review list [--goal <slug>]           在案评审运行枚举（只读；家族损坏 fail-closed 非 0）
+  lzy review show <runId>                   逐字段+发现表+原始输出指针（只读）
   lzy loop list [--root <目录>]             跨仓清单（只读）：扫锚目录一级子目录各仓的循环
                                             状态（默认锚=当前目录的同级，含自身）
   lzy loop history                         目标谱系（只读）：证据包 ∪ salvage 存根 ∪ git
@@ -1676,6 +1684,116 @@ function cmdGate(args) {
   console.log("政策层放行（既有 finish 门族照常独立执法——本裁决不含步骤/证据/comparator/净树判定）");
 }
 
+// lzy review run/list/show（0.4.0 M2 N6）：受控独立评审运行器 CLI 面。
+// 退出码契约（拍板 8 唯一定义处）：run——verdict=pass 且有效=0；运行落档但 blocked/invalid=1；
+// 用法错=2；前置不具备（无 auth／授权撤回或无效／契约不可读／多 subject／脏树／计量能力缺席）
+// =3 且不 spawn 不消耗、报文带恢复指路。list/show 只读=0（家族损坏 fail-closed 非 0）。
+async function cmdReview(args) {
+  const { _, f } = parseArgs(args);
+  const sub = _[0] ?? "";
+  const cwd = process.cwd();
+  if (sub === "run") {
+    const duty = f.duty;
+    let timeoutMs;
+    if (f["timeout-ms"] != null) {
+      timeoutMs = Number(f["timeout-ms"]);
+      if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+        console.error("用法错：--timeout-ms 须正整数毫秒");
+        process.exitCode = 2;
+        return;
+      }
+    }
+    let res;
+    try {
+      res = await runReview(cwd, { duty, timeoutMs });
+    } catch (err) {
+      if (err instanceof ReviewPreflightError) {
+        console.error(`前置不具备（不 spawn、不消耗、不落档）：${err.message}`);
+        process.exitCode = 3;
+        return;
+      }
+      throw err; // main().catch → exit 1
+    }
+    const r = res.record;
+    console.log(
+      `评审运行 ${r.runId} · ${r.duty.id} · ${r.validity.status}${r.validity.reason ? `（${r.validity.reason}）` : ""}` +
+        ` · 计量 ${r.metering.status}${r.metering.status === "metered" ? ` ${r.metering.points} 分` : ""}`,
+    );
+    if (r.result) {
+      console.log(`  判决 ${r.result.verdict} · 发现 ${r.result.findings.length} 条${r.result.normalization ? `（归一化：${String(r.result.normalization).slice(0, 80)}…）` : ""}`);
+      for (const fd of r.result.findings) {
+        console.log(`    [${fd.severity}${fd.blocking ? "·blocking" : ""}] ${fd.id} ${fd.title}（${fd.location}）`);
+      }
+      console.log(`  总评：${r.result.summary}`);
+    } else if (r.validity.detail) {
+      console.log(`  ${r.validity.detail}`);
+    }
+    console.log(`  档 ${join(cwd, ".lazyzcode", "review", `${r.runId}.json`)} · 同茎运行目录（input.json/candidate/home/raw.txt）`);
+    process.exitCode = res.exitHint; // 0=pass 且有效；1=blocked/invalid（运行已落档，失败不可改判）
+    return;
+  }
+  if (sub === "list") {
+    const runs = listReviewRuns(cwd, { slug: f.goal });
+    if (runs.length === 0) {
+      console.log("无在案评审运行——lzy review run 取真实评审（0.4.0 M2 面）");
+      return;
+    }
+    console.log(`评审运行族 ${runs.length} 档（.lazyzcode/review/）：`);
+    for (const r of runs) {
+      console.log(
+        `  ${r.runId} · ${r.duty.id} · ${r.validity.status}${r.validity.reason ? `(${r.validity.reason})` : ""}` +
+          ` · ${r.result ? r.result.verdict : "—"} · ${r.metering.status}${r.metering.status === "metered" ? ` ${r.metering.points} 分` : ""} · ${r.endedAt}`,
+      );
+    }
+    return;
+  }
+  if (sub === "show") {
+    const runId = _[1];
+    if (!runId) {
+      console.error("用法错：lzy review show <runId>（runId 形如 <slug>.a<attempt>.r<seq>）");
+      process.exitCode = 2;
+      return;
+    }
+    const runs = listReviewRuns(cwd, {});
+    const r = runs.find((x) => x.runId === runId);
+    if (!r) {
+      console.error(`用法错：无此运行档：${runId}（lzy review list 看在案集）`);
+      process.exitCode = 2;
+      return;
+    }
+    console.log(`评审运行 ${r.runId}（schemaVersion ${r.schemaVersion}）：`);
+    console.log(`  目标 ${r.slug} · attempt ${r.attempt} · seq ${r.seq} · duty ${r.duty.id}`);
+    console.log(`  规则：dutyTableVersion ${r.dutyTableVersion} · 模板 ${String(r.templateHash).slice(0, 12)}…`);
+    console.log(`  输入包 ${String(r.inputPackageHash ?? "null").slice(0, 12)}… · 快照树 ${String(r.snapshot?.treeHash ?? "null").slice(0, 12)}…`);
+    console.log(`  候选 head ${String(r.candidate?.headSha ?? "?").slice(0, 12)}… · 指纹 ${String(r.candidate?.compositeFingerprint ?? "?").slice(0, 12)}… · cli ${r.candidate?.cliVersion ?? "null"} · 净树 ${r.candidate?.clean}`);
+    console.log(`  会话 ${r.sessionId ?? "null"} · 引擎 ${r.engine ?? "null"} · exit ${r.exit?.code ?? "null"}/${r.exit?.signal ?? "null"}`);
+    console.log(`  起止 ${r.startedAt} → ${r.endedAt}`);
+    console.log(`  原始输出 ${r.raw ? `${join(cwd, ".lazyzcode", "review", r.runId, r.raw.path)}（sha256 ${String(r.raw.sha256).slice(0, 12)}… · ${r.raw.bytes}B）` : "null（未 spawn）"}`);
+    console.log(`  转录 ${r.transcript ? `${join(cwd, ".lazyzcode", "review", r.runId, r.transcript.path)}（sha256 ${String(r.transcript.sha256).slice(0, 12)}…）` : "null"}`);
+    console.log(`  预算 ${r.budget ? `${r.budget.ref}（${r.budget.note}）` : "null"}`);
+    console.log(`  计量 ${r.metering.status}${r.metering.status === "metered" ? ` ${r.metering.points} 分` : ""}${r.metering.note ? ` · ${r.metering.note}` : ""}`);
+    console.log(`  有效性 ${r.validity.status}${r.validity.reason ? `（${r.validity.reason}）` : ""}${r.validity.detail ? ` · ${r.validity.detail}` : ""}`);
+    if (r.result) {
+      console.log(`  判决 ${r.result.verdict} · 发现 ${r.result.findings.length} 条${r.result.normalization ? ` · 归一化：${r.result.normalization}` : ""}`);
+      if (r.result.findings.length > 0) {
+        console.log("  发现表：");
+        for (const fd of r.result.findings) {
+          console.log(`    [${fd.severity}${fd.blocking ? "·blocking" : ""}] ${fd.id} ${fd.title}`);
+          console.log(`      位置 ${fd.location}`);
+          console.log(`      证据 ${fd.evidence}`);
+          console.log(`      摘要 ${fd.summary}`);
+        }
+      }
+      console.log(`  总评 ${r.result.summary}`);
+    } else {
+      console.log("  判决 —（无结构化结果：解析失败或未到解析阶段）");
+    }
+    return;
+  }
+  console.error("用法错：lzy review run|list|show（run=真实评审运行；list/show 只读）");
+  process.exitCode = 2;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const cmd = args[0];
@@ -1726,6 +1844,8 @@ async function main() {
       return cmdPolicy(args.slice(1));
     case "gate":
       return cmdGate(args.slice(1));
+    case "review":
+      return cmdReview(args.slice(1));
     case "agents-md":
       return cmdAgentsMd();
     case "version":

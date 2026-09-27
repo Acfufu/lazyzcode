@@ -2,9 +2,10 @@
 // 记录底座）。职责边界：本模块从冻结输入**确定性导出**义务集——同输入二次生成逐字节恒等
 //（V01）；不做模型执行、不取证、不外发、不产生授权。义务=带稳定 id 的判定对象
 //（id/type/source/适用理由/验收映射/满足条件/依赖边界/版本），type∈check/review/ci/
-// delivery-audit。底线义务（通用正确性评审）只增不删（§3.2）：M1 无删除路径，取消须独立
-// 复判（M3 交付 reassess 面）。影响扩大=显式 expand 追加并记前后差异；任务运行期间固定
-// 策略版本——输入身份漂移按阻塞判（V02），不自动重导（静默换策略=未授权放行面）。
+// delivery-audit。底线义务（通用正确性评审）只增不删（§3.2）；额外义务取消唯 reassess
+// 独立复判通道（M3 N8，ADR-0033：影响变化/取消理由/复判依据三件套入 obligationsLog，
+// 未解决的阻塞发现不在取消通道内）。影响扩大=显式 expand 追加并记前后差异；任务运行期间
+// 固定策略版本——输入身份漂移按阻塞判（V02），不自动重导（静默换策略=未授权放行面）。
 // 记录家族 `.lazyzcode/policy/<slug>.a<attempt>.json`：loadFamilyFile/saveFamilyFile
 // 家法（校验和+版本+形状 fail-closed，原子写 0600）；tmp 登记面=core/loop.js
 // ANY_TMP_SCAN_DIRS（观测面与清扫面同一判据）。
@@ -14,10 +15,13 @@ import { join } from "node:path";
 import { loadProjectManifest } from "./project.js";
 import { loadContract, manifestHashIfPresent } from "./contract.js";
 import { readGoal } from "./loop.js";
+import { openBlockingFindings } from "./findings.js"; // M3 N8：review 义务取消的未关闭发现拒面（findings.js 无反向依赖，无环）
 import { loadFamilyFile, saveFamilyFile, QueueError } from "./queue.js";
 import { DUTY_TABLE as REVIEW_DUTY_TABLE, dutyTemplateHash } from "./review.js"; // 0.4.0 M2 N5：职责模板内容哈希入 rulesHash（call-time 用，ESM 环安全）
 
-export const POLICY_VERSION = 1; // 记录家族 schema 版本
+// M3 N8 升版：v2=reassess 取消通道起（obligationsLog removed 条目合法形）——读侧放宽
+//（v1=M1/M2 代记录保持可读，写恒 v2；沿 dutyTableVersion 读侧放宽先例）。
+export const POLICY_VERSION = 2;
 // 0.4.0 M3 N5 翻面：findings 子句入统一门（gate.js clauses.findings 实装），职责表 v2→v3 同批
 //（dutyTableVersion 参与 rulesHash，翻面=策略身份变化——在途旧记录不自动替换，§3.1；
 // 本 goal 自身 a1 记录随之漂移，由计划 N14 supersede 再采纳收口）。
@@ -181,7 +185,7 @@ function assertObligationShape(o, where) {
   if (!OBLIGATION_TYPES.includes(o.type)) throw bad(`type 不识别：${o.type}（合法：${OBLIGATION_TYPES.join("|")}）`);
   if (!Array.isArray(o.acceptanceIds)) throw bad("acceptanceIds 须为数组");
   if (!Array.isArray(o.dependsOn)) throw bad("dependsOn 须为数组");
-  if (o.version !== POLICY_VERSION) throw bad(`version 不符（${o.version} ≠ ${POLICY_VERSION}）`);
+  if (o.version !== POLICY_VERSION && o.version !== 1) throw bad(`version 不符（${o.version} ∉ {${POLICY_VERSION},1}）`);
   if (o.baseline !== undefined && typeof o.baseline !== "boolean") throw bad("baseline 须为布尔或缺席");
 }
 
@@ -191,7 +195,9 @@ function assertPolicyShape(rec, p) {
     if (typeof rec[k] !== "string" || !rec[k]) throw bad(`${k} 缺席或为空`);
   }
   if (typeof rec.attempt !== "number") throw bad("attempt 须为数字");
-  if (rec.policyVersion !== POLICY_VERSION) throw bad(`policyVersion 不符（${rec.policyVersion}）`);
+  if (rec.policyVersion !== POLICY_VERSION && rec.policyVersion !== 1) {
+    throw bad(`policyVersion 不符（${rec.policyVersion} ∉ {${POLICY_VERSION},1}）`);
+  }
   // 读侧放宽（0.4.0 M2 N5 拍板 2）：dutyTableVersion 只要求正整数——旧规则版本档保持可读，
   // 版本漂移一律由 rulesHash 子句判（gate ③「规则版本漂移…采纳提案」），不在此 fail-closed。
   if (!Number.isInteger(rec.dutyTableVersion) || rec.dutyTableVersion < 1) {
@@ -213,7 +219,18 @@ function assertPolicyShape(rec, p) {
   for (const e of rec.obligationsLog) {
     if (!e || typeof e.at !== "string" || typeof e.event !== "string") throw bad("obligationsLog 项须有 at/event");
     if (!Array.isArray(e.added) || !Array.isArray(e.removed)) throw bad("obligationsLog 项 added/removed 须为数组");
-    if (e.removed.length > 0) throw bad("obligationsLog 项 removed 非空——M1 无删除路径，取消须独立复判（M3）");
+    if (e.removed.length > 0) {
+      // M3 N8（ADR-0033）：removed 条目唯 reassess 事件合法——三件套（影响变化/取消理由/
+      // 复判依据）逐字段非空，取消后义务集不得仍含被取消 id（历史不改写：取消只追加）。
+      if (e.event !== "reassess") throw bad("obligationsLog 项 removed 非空但 event 非 reassess——取消唯独立复判通道（lzy policy reassess）");
+      for (const k of ["impactChange", "cancelReason", "basis"]) {
+        if (typeof e[k] !== "string" || !e[k].trim()) throw bad(`obligationsLog reassess 项 ${k} 缺席或为空（ADR-0033 三件套必填）`);
+      }
+      const after = new Set(e.obligationsAfter ?? []);
+      for (const id of e.removed) {
+        if (after.has(id)) throw bad(`obligationsLog reassess 项 obligationsAfter 仍含被取消义务 ${id}`);
+      }
+    }
     if (!Array.isArray(e.obligationsAfter)) throw bad("obligationsLog 项 obligationsAfter 须为数组");
   }
 }
@@ -270,7 +287,7 @@ export function ensurePolicyRecord(cwd, goal, { expand = false, reason = null } 
     const removed = prev.obligations.filter((o) => !obligations.some((o2) => o2.id === o.id)).map((o) => o.id);
     if (removed.length > 0) {
       throw new PolicyError(
-        `expand 不得删义务（${removed.join("、")}）——额外义务因影响消失而取消须独立复判（M3，§3.2）`,
+        `expand 不得删义务（${removed.join("、")}）——额外义务因影响消失而取消走独立复判通道：lzy policy reassess <义务id> --impact … --cancel-reason … --basis …（ADR-0033，§3.2）`,
       );
     }
     for (const o of prev.obligations) {
@@ -312,4 +329,60 @@ export function ensurePolicyRecord(cwd, goal, { expand = false, reason = null } 
     shapeFn: assertPolicyShape,
   });
   return { applicable: true, record, created: !prev, expanded: Boolean(prev && expand), drifted: false };
+}
+
+// 义务复判（0.4.0 M3 N8，ADR-0033）：额外义务因影响消失而取消的唯一通道。三件套必填入
+// obligationsLog（event=reassess：impactChange/cancelReason/basis）；历史只追加不改写。
+// 拒绝面（V07）：baseline（现行分级强制/底线）拒；现行推导仍含该义务拒（取消无独立依据——
+// 影响变化须先落到输入面：契约/清单/目标字段，使推导自然不再生成它）；review 型义务存在
+// 未关闭阻塞发现拒（未解决的阻塞发现不在取消通道内——借取消删发现被拒）。
+export function reassessObligation(cwd, goal, obligationId, { impactChange, cancelReason, basis } = {}) {
+  if (!goal || goal.version !== 2) throw new PolicyError("义务复判须 v2 活跃目标");
+  for (const [k, v] of Object.entries({ impactChange, cancelReason, basis })) {
+    if (typeof v !== "string" || !v.trim()) {
+      throw new PolicyError(`reassess 三件套缺 ${k}（ADR-0033：影响变化/取消理由/复判依据必填）`);
+    }
+  }
+  const rec = loadPolicyRecord(cwd, goal.slug, goal.attempt);
+  if (!rec) throw new PolicyError("策略记录缺席——无可复判义务（先采纳落档）");
+  const ob = rec.obligations.find((o) => o.id === obligationId);
+  if (!ob) throw new PolicyError(`义务不在案：${obligationId}（lzy policy show 看现行义务集）`);
+  if (ob.baseline === true) {
+    throw new PolicyError(`义务 ${obligationId} 为 baseline（现行分级强制/底线）——不在取消通道（ADR-0033 §5：取消不侵入契约与分级底线）`);
+  }
+  const derived = deriveObligations(computePolicyIdentity(cwd, goal));
+  if (derived.some((o) => o.id === obligationId)) {
+    throw new PolicyError(
+      `取消无独立依据：义务 ${obligationId} 仍由现行输入身份推导（影响变化须先落到输入面——契约/清单/目标字段变更使推导不再生成它）`,
+    );
+  }
+  if (ob.type === "review") {
+    const open = openBlockingFindings(cwd, goal.slug);
+    if (open.length > 0) {
+      throw new PolicyError(
+        `review 义务存在未关闭阻塞发现 ${open.length} 条（${open.slice(0, 3).map((f) => f.fingerprint.slice(0, 8)).join("、")}）——未解决的阻塞发现不在取消通道内（V07）；先走发现生命周期：lzy review recheck → lzy finding close`,
+      );
+    }
+  }
+  const after = rec.obligations.filter((o) => o.id !== obligationId).map((o) => o.id);
+  rec.obligations = rec.obligations.filter((o) => o.id !== obligationId);
+  rec.obligationsLog.push({
+    at: new Date().toISOString(),
+    event: "reassess",
+    from: rec.inputsHash,
+    to: rec.inputsHash,
+    added: [],
+    removed: [obligationId],
+    impactChange: impactChange.trim(),
+    cancelReason: cancelReason.trim(),
+    basis: basis.trim(),
+    obligationsAfter: after,
+  });
+  saveFamilyFile(policyRecordPath(cwd, goal.slug, goal.attempt), rec, {
+    versionKey: "schemaVersion",
+    version: POLICY_VERSION,
+    label: "策略记录",
+    shapeFn: assertPolicyShape,
+  });
+  return { removed: obligationId, obligationsAfter: after };
 }

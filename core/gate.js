@@ -7,7 +7,7 @@
 //   义务满足     = core/verify.js 三判定（适用/成功/身份）+ judgeRequiredCiChecks 严判
 //   交付事实     = core/delivery.js loadIntents（done 意图的 mergeCiState 核对）
 //   步骤/证据/comparator/净树/竞态 = finish 既有门执法——本门只引用不重复取证（单一事实源）
-//   阻塞发现面   = M3 建账——本门如实声明「未建立」，不冒充已核
+//   阻塞发现面   = core/findings.js 发现账本（N5 实装——未关闭阻塞发现逐因 blocked，V06/V07）
 // 评审义务（0.4.0 M2 N5 拍板 6 七合取）：同代次 ∧ duty/规则版本/模板哈希一致 ∧ valid ∧
 // metered ∧ pass ∧ 候选三字段现行 ∧ 原始输出在场哈希相符；取同代次最新一档裁决（最新评
 // 审状态=义务现状），逐因阻塞点名。旧规则版本记录（runnerFace.available=false）按旧语义

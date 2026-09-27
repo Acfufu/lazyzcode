@@ -71,7 +71,7 @@ import {
   stalePreview,
 } from "../core/dag.js";
 import { recordComparatorAttestation } from "../core/attest.js";
-import { computePolicyIdentity, loadPolicyRecord, identityStableHash, deriveObligations, REVIEW_RUNNER_FACE } from "../core/policy.js"; // 0.4.0 M1 N7 解释面
+import { computePolicyIdentity, loadPolicyRecord, identityStableHash, deriveObligations, REVIEW_RUNNER_FACE, reassessObligation } from "../core/policy.js"; // 0.4.0 M1 N7 解释面 + M3 N8 reassess 面
 import { ReviewPreflightError, listReviewRuns, runReview, BASELINE_DUTY_ID } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面
 import { listFindings, requestResolve, closeFinding, diagnoseFinding, relinkFindings, findingFingerprint, CLOSED_FINDING_STATUSES, DIAGNOSIS_REQUIRED_THRESHOLD, openBlockingFindings } from "../core/findings.js"; // 0.4.0 M3 N6/N7 发现账本 CLI 面
 import { evaluateGate } from "../core/gate.js";
@@ -1642,11 +1642,44 @@ function cmdDelivery(args) {
 // v2 全义务满足→0；v1/无身份目标→0 且裁决行逐字「政策裁决不适用（v1 旧规则延续）」。
 // policy show/explain 为纯读面（无记录且 goal v2 时现算显示并标注「未落档」，零写）。
 function cmdPolicy(args) {
-  const { _ } = parseArgs(args);
+  const { _, f } = parseArgs(args);
   const sub = _[0] ?? "show";
   const cwd = process.cwd();
+  if (sub === "reassess") {
+    // N8（ADR-0033/V07）：额外义务取消唯一通道——三件套必填，拒绝面在 core/policy.js。
+    const obligationId = _[1];
+    const usage = "用法：lzy policy reassess <义务id> --impact … --cancel-reason … --basis …（三件套必填；baseline/现行推导仍含/绑未关闭阻塞发现均拒）";
+    if (!obligationId) {
+      console.error(`用法错：${usage}`);
+      process.exitCode = 2;
+      return;
+    }
+    for (const [flag, v] of [["impact", f.impact], ["cancel-reason", f["cancel-reason"]], ["basis", f.basis]]) {
+      if (typeof v !== "string" || !v.trim()) {
+        console.error(`用法错：${usage}——缺 --${flag}`);
+        process.exitCode = 2;
+        return;
+      }
+    }
+    const goal = readGoal(cwd);
+    if (!goal || goal.version !== 2) {
+      console.error("[lzy] 义务复判须 v2 活跃目标");
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const r = reassessObligation(cwd, goal, obligationId, { impactChange: f.impact, cancelReason: f["cancel-reason"], basis: f.basis });
+      console.log(`义务已取消：${r.removed}（obligationsLog 追加 reassess 事件，历史不改写）`);
+      console.log(`  现行义务集 ${r.obligationsAfter.length} 条——lzy policy show 复核；输入身份漂移仍须 expand 重采纳收口`);
+      return;
+    } catch (err) {
+      console.error(`[lzy] ${err?.message ?? err}`);
+      process.exitCode = 1;
+      return;
+    }
+  }
   if (sub !== "show" && sub !== "explain") {
-    throw new LoopError("用法：lzy policy show|explain（v2 目标的策略身份与义务集解释面；M1 无 reassess——取消通道属 M3）");
+    throw new LoopError("用法：lzy policy show|explain|reassess（show/explain=解释面；reassess=额外义务独立复判取消，ADR-0033）");
   }
   const goal = readGoal(cwd);
   if (!goal) throw new LoopError("本目录没有进行中的目标——policy 解释面需要目标（先 lzy loop register）");

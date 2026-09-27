@@ -13,13 +13,15 @@
 //   D2 reconcile 直放  reconcile 追认 done 目标：条目结局（旧树 completed 直放 / 现行 不追认）
 //   D3 CI 计绿口径     checkRunsVerdict([SUCCESS,NEUTRAL]).ok（旧树 true 计绿 / 现行 false 严判）
 //   D4 gate explain 面 CLI 是否有统一门解释面（旧树「未知命令」/ 现行 解释面在案）
+//   D5 policy 解释面   CLI 是否有策略解释面（旧树「未知命令」/ 现行 策略身份+义务集可读）
+//   D6 注册格式与落档  注册产物版本字段/策略身份字段/策略记录在案（旧树 v1 无身份无记录 / 现行 v2+记录）
 //
 // 纪律：夹具 HOME 隔离 + LZY_ZCODE_ENGINE 抑制 + LZY_ABLATE_HUMAN_GATE=1（人权门/引擎面非本
 // 判据面；两半同 env——被测面差异只在被测树代码本身）。被测树模块一律经 pathToFileURL 动态
 // import（win32 安全），CLI 一律 spawn 被测树自己的 cli/lzy.js；本进程不 import 自己在跑的那棵树
 // 的核心模块，故两半读数互不污染。
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -94,9 +96,11 @@ function fixture(label) {
   if (start.exit !== 0) throw new Error(`start 失败：${start.out}`);
   const gp = join(d, ".lazyzcode", "loop", "goal.json");
   const goal = JSON.parse(readFileSync(gp, "utf8"));
+  const policyDir = join(d, ".lazyzcode", "policy");
+  const policyFiles = existsSync(policyDir) ? readdirSync(policyDir).filter((n) => n.endsWith(".json")) : [];
   goal.status = "done";
   writeFileSync(gp, `${JSON.stringify(goal, null, 2)}\n`);
-  return { d, home, env, goalVersion: goal.version };
+  return { d, home, env, goalVersion: goal.version, hasPolicyField: Boolean(goal.policy), policyFiles };
 }
 
 async function main() {
@@ -141,6 +145,21 @@ async function main() {
       hasGateFace: /统一门/.test(ge.out),
       unknownCommand: /未知命令/.test(ge.out),
       firstLine: ge.out.split("\n").find((l) => l.trim())?.slice(0, 200) ?? null,
+    };
+    // ── D5：policy 解释面存在性（同一夹具）───────────────────────────────
+    const pe = lzy(fa.d, ["policy", "explain"], fa.env);
+    obs.D5_policyFace = {
+      exit: pe.exit,
+      hasPolicyFace: /策略 ·/.test(pe.out),
+      unknownCommand: /未知命令/.test(pe.out),
+      firstLine: pe.out.split("\n").find((l) => l.trim())?.slice(0, 200) ?? null,
+    };
+    // ── D6：注册格式与落档（版本字段/策略身份字段/策略记录）───────────────
+    obs.D6_goalFormat = {
+      goalVersion: fa.goalVersion,
+      hasPolicyField: fa.hasPolicyField,
+      policyFiles: fa.policyFiles,
+      recordPresent: fa.policyFiles.some((n) => !n.startsWith("compat-")),
     };
   } finally {
     rmSync(fa.d, { recursive: true, force: true });

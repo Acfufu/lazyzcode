@@ -46,9 +46,9 @@
 | #36 | M5 迁移机器 | state.json 最后写=提交点；apply=备份/暂存/校验/原子切换+journal 幂等续跑；在途→drafts 授权 NONE；执法=goal 损坏写前停/preserve 保字节；update/sync 永不自动迁移（ADR-0029） |
 | #37 | 交付编排桥 | 队列项挂 delivery 契约+endpoint B/C+HEAVY 入队解封+多页爬核；批准复用 UPS 通道（ADR-0030） |
 | #38 | 积分 gauge 归因 | 执法面=逐段 sessionId usage（**已落地**，goal v031-closeout R0.1）；账号级水位降 doctor 建议行；budget-ref=none=只留墙钟（ADR-0027 修正节） |
-| #39 | 受控独立评审 | lzy 发起独立会话、绑定候选与预算；阻塞发现须独立复核关闭；能力探针前置，待实施（ADR-0031，2026-09-26） |
+| #39 | 受控独立评审 | lzy 发起独立会话、绑定候选与预算；阻塞发现须独立复核关闭；能力探针前置（ADR-0031，2026-09-26；M0-M3 已实施，M4 范围资格余） |
 | #40 | 评审复用 | 按职责授范围资格并对抗验证；未知重评（ADR-0032，2026-09-26；待实施） |
-| #41 | 义务复判 | 额外要求可独立复判取消，契约与分级底线不变（ADR-0033，2026-09-26；待实施） |
+| #41 | 义务复判 | 额外要求可独立复判取消，契约与分级底线不变（ADR-0033，2026-09-26；M3 已实施，复用结果属 M4） |
 
 其余 #1-#24 全表 → docs/decisions.md。
 
@@ -79,7 +79,7 @@ docs/
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
-  adr/0001..0033-*.md         ← 架构决策原文（现行摘要见 §4、全表见 decisions.md）；0031=受控独立评审、0032=评审范围复用、0033=策略义务复判，均待实施
+  adr/0001..0033-*.md         ← 架构决策原文（现行摘要见 §4、全表见 decisions.md）；0031=受控独立评审（M0-M3 已实施）、0032=评审范围复用（M4）、0033=策略义务复判（M3 已实施）
   reviews/ release-checklist.md  ← 评审报告/处置记录（2026-09-06/07/08）+ 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist（2026-09-13）
   diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
 plugin/ core/ cli/ test/ .github/  ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）+ 契约测试（node:test 零依赖）+ CI 骨架

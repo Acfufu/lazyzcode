@@ -2032,13 +2032,26 @@ async function cmdFinding(args) {
         process.exitCode = 1;
         return;
       }
+      // 自审 r3-F1/F2 收口：close 的 recheck 引用须为 recheck 运行（recheck.requested）且
+      // 晚于修复声称（endedAt > resolveRequest.at）；「仍报」判据与账本/门口径同源（blocking∨P0/P1）。
+      const isRecheck = run.recheck?.requested === true;
+      if (!isRecheck) {
+        console.error(`[lzy] recheck 引用非复核运行：${runId}（须 lzy review recheck 产出——常规运行不构成独立复核）`);
+        process.exitCode = 1;
+        return;
+      }
+      if (hit.resolveRequest?.at && run.endedAt && run.endedAt <= hit.resolveRequest.at) {
+        console.error(`[lzy] recheck 运行时序不符：${runId}（${run.endedAt}）不晚于修复声称（${hit.resolveRequest.at}）——须先声称修复再独立复核`);
+        process.exitCode = 1;
+        return;
+      }
       const blockingFps = (run.result?.findings ?? [])
-        .filter((x) => x.blocking === true)
+        .filter((x) => x.blocking === true || x.severity === "P0" || x.severity === "P1")
         .map((x) => findingFingerprint({ severity: x.severity, title: x.title, location: x.location }));
       const r = closeFinding(cwd, originSlug, hit.fingerprint, {
         outcome,
         basis,
-        recheck: { runId, valid: run.validity?.status === "valid" && run.duty?.id === BASELINE_DUTY_ID, reportedFingerprints: blockingFps },
+        recheck: { runId, valid: run.validity?.status === "valid" && run.duty?.id === BASELINE_DUTY_ID, reportedFingerprints: blockingFps, isRecheck, at: run.endedAt },
       });
       console.log(`发现已关闭：${r.fingerprint.slice(0, 8)} → ${r.status}（recheck ${r.closure.recheckRunId} · 依据 ${r.closure.basis}）`);
       return;

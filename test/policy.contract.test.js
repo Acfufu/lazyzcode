@@ -428,7 +428,7 @@ test("M3 N8 reassess 拒面：review 型义务存在未关闭阻塞发现拒（V
     // 关闭发现（fixed 经 recheck）→ 拒面解除
     const fp = Object.keys(loadFindingsFile(d, "pol").findings)[0];
     _rr(d, "pol", fp, { note: "已修" });
-    _cf(d, "pol", fp, { outcome: "fixed", basis: "已修", recheck: { runId: "pol.a1.r2", valid: true, reportedFingerprints: [] } });
+    _cf(d, "pol", fp, { outcome: "fixed", basis: "已修", recheck: { runId: "pol.a1.r2", valid: true, reportedFingerprints: [], isRecheck: true, at: "2026-09-28T23:00:00.000Z" } });
     const r = reassessObligation(d, goal, "review.custom", trio);
     assert.equal(r.removed, "review.custom");
   } finally {

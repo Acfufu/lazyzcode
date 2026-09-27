@@ -282,9 +282,15 @@ export function closeFinding(cwd, slug, fingerprint, { outcome, basis, recheck, 
   if (recheck.valid !== true) {
     throw new FindingsError(`recheck 运行非 valid，不能作关闭依据：${recheck.runId}`);
   }
+  if (recheck.isRecheck !== true) {
+    throw new FindingsError(`recheck 引用非复核运行：${recheck.runId}（须 lzy review recheck 产出——常规运行不构成独立复核，V06）`);
+  }
   const rec = loadFindingsFile(cwd, slug);
   if (!rec?.findings[fingerprint]) throw new FindingsError(`发现不在账：${slug} ${fingerprint.slice(0, 8)}`);
   const e = rec.findings[fingerprint];
+  if (e.resolveRequest?.at && typeof recheck.at === "string" && recheck.at <= e.resolveRequest.at) {
+    throw new FindingsError(`recheck 运行时序不符：不晚于修复声称（${e.resolveRequest.at}）——独立复核须发生在声称之后`);
+  }
   if (e.status !== "resolve-requested") {
     throw new FindingsError(`状态机拒绝：${e.status} 态不受理 close（关闭通道=resolve-request → review recheck → close）`);
   }

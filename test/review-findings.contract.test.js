@@ -120,7 +120,7 @@ describe("②指纹与状态机：建账/重见/无效修复×2→diagnosis-requ
       assert.equal(e.invalidFixCount, 0);
       // 关闭（fixed）
       requestResolve(d, "fx", fp, { at: at(0, 8) });
-      closeFinding(d, "fx", fp, { outcome: "fixed", basis: "撤回检查入放行函数", recheck: { runId: "fx.a1.r5", valid: true, reportedFingerprints: [] }, at: at(0, 9) });
+      closeFinding(d, "fx", fp, { outcome: "fixed", basis: "撤回检查入放行函数", recheck: { runId: "fx.a1.r5", valid: true, reportedFingerprints: [], isRecheck: true, at: "2026-09-28T23:00:00.000Z" }, at: at(0, 9) });
       assert.equal(loadFindingsFile(d, "fx").findings[fp].status, "closed-fixed");
       assert.equal(openBlockingFindings(d, "fx").length, 0);
       // 回归重开
@@ -177,7 +177,7 @@ describe("④门 findings 子句成对：open 拦/close 过/损坏 fail-closed",
       assert.equal(gate.clauses.findings.ok, false);
       // 关闭→过
       requestResolve(d, "fx", fp, { at: at(0, 2) });
-      closeFinding(d, "fx", fp, { outcome: "falsified", basis: "原报证据与代码不符（误报）", recheck: { runId: "fx.a1.r2", valid: true, reportedFingerprints: [] } });
+      closeFinding(d, "fx", fp, { outcome: "falsified", basis: "原报证据与代码不符（误报）", recheck: { runId: "fx.a1.r2", valid: true, reportedFingerprints: [], isRecheck: true, at: "2026-09-28T23:00:00.000Z" } });
       gate = evaluateGate(d);
       assert.equal(gate.clauses.findings.ok, true);
       // 账本损坏→fail-closed
@@ -199,12 +199,12 @@ describe("⑤close 拒矩阵（core 状态机）", () => {
       const disp = recordFindingSightings(d, "fx", { runId: "fx.a1.r1", attempt: 1, at: at(0, 0), findings: [SIGHT()] });
       const fp = disp[0].fingerprint;
       // open 态不能 close
-      assert.throws(() => closeFinding(d, "fx", fp, { outcome: "fixed", basis: "x", recheck: { runId: "r", valid: true, reportedFingerprints: [] } }), /状态机拒绝/);
+      assert.throws(() => closeFinding(d, "fx", fp, { outcome: "fixed", basis: "x", recheck: { runId: "r", valid: true, reportedFingerprints: [], isRecheck: true, at: "2026-09-28T23:00:00.000Z" } }), /状态机拒绝/);
       requestResolve(d, "fx", fp, { at: at(0, 1) });
-      assert.throws(() => closeFinding(d, "fx", fp, { outcome: "nope", basis: "x", recheck: { runId: "r", valid: true, reportedFingerprints: [] } }), /outcome 非法/);
-      assert.throws(() => closeFinding(d, "fx", fp, { outcome: "fixed", recheck: { runId: "r", valid: true, reportedFingerprints: [] } }), /basis/);
-      assert.throws(() => closeFinding(d, "fx", fp, { outcome: "fixed", basis: "x", recheck: { runId: "r", valid: false, reportedFingerprints: [] } }), /非 valid/);
-      assert.throws(() => closeFinding(d, "fx", fp, { outcome: "fixed", basis: "x", recheck: { runId: "r", valid: true, reportedFingerprints: [fp] } }), /仍报该发现/);
+      assert.throws(() => closeFinding(d, "fx", fp, { outcome: "nope", basis: "x", recheck: { runId: "r", valid: true, reportedFingerprints: [], isRecheck: true, at: "2026-09-28T23:00:00.000Z" } }), /outcome 非法/);
+      assert.throws(() => closeFinding(d, "fx", fp, { outcome: "fixed", recheck: { runId: "r", valid: true, reportedFingerprints: [], isRecheck: true, at: "2026-09-28T23:00:00.000Z" } }), /basis/);
+      assert.throws(() => closeFinding(d, "fx", fp, { outcome: "fixed", basis: "x", recheck: { runId: "r", valid: false, reportedFingerprints: [], isRecheck: true, at: "2026-09-28T23:00:00.000Z" } }), /非 valid/);
+      assert.throws(() => closeFinding(d, "fx", fp, { outcome: "fixed", basis: "x", recheck: { runId: "r", valid: true, reportedFingerprints: [fp], isRecheck: true, at: "2026-09-28T23:00:00.000Z" } }), /仍报该发现/);
       assert.equal(loadFindingsFile(d, "fx").findings[fp].status, "resolve-requested");
     } finally {
       rmSync(d, { recursive: true, force: true });

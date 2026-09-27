@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   BASELINE_DUTY_ID,
@@ -383,11 +383,20 @@ test("⑨输入包/隔离原语：facts-only 汇总+快照确定性+轨迹断言
     assert.ok(facts.steps.length === 1);
     assert.equal(facts.candidate.headSha.length >= 40, true);
     assert.equal(facts.policy, null, "策略记录未落档时如实 null");
-    // 轨迹断言：/var→/private/var realpath 归一（macOS tmpdir 陷阱）
+    // 轨迹断言：/var→/private/var realpath 归一（macOS tmpdir 陷阱）；不存在路径=幻影不判 breach
     const inside = assertReadsContained(JSON.stringify({ file_path: join(res.runDir, "input.json") }) + "\n", [res.runDir]);
     assert.equal(inside.ok, true, "界内路径过（realpath 归一后）");
-    const outside = assertReadsContained(JSON.stringify({ cwd: "/elsewhere" }) + "\n", [res.runDir]);
-    assert.equal(outside.ok, false);
+    const outsideReal = join(d, "..", `outside-${basename(d)}`);
+    writeFileSync(outsideReal, "x\n");
+    try {
+      const outside = assertReadsContained(JSON.stringify({ cwd: outsideReal }) + "\n", [res.runDir]);
+      assert.equal(outside.ok, false, "界外存在路径=breach");
+      const phantom = assertReadsContained(JSON.stringify({ cwd: "/nonexistent-phantom-path-xyz" }) + "\n", [res.runDir]);
+      assert.equal(phantom.ok, true, "不存在路径=幻影尝试不判 breach（无数据流动）");
+      assert.equal(phantom.phantoms.length, 1, "幻影如实计数透出");
+    } finally {
+      rmSync(outsideReal, { force: true });
+    }
     rmSync(res.runDir, { recursive: true, force: true });
   } finally {
     rmSync(d, { recursive: true, force: true });

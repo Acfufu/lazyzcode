@@ -31,6 +31,9 @@ import { findEngine } from "../../core/paths.js";
 import { detectHeadlessAuth, spawnHeadless } from "../../core/headless.js";
 import { querySessionPoints, computePoints } from "../../core/cost.js";
 import { queryHostDb } from "../../core/hostdb.js";
+import { recordAuthorization } from "../../core/contract.js";
+import { dutyTemplateHash } from "../../core/review.js";
+import { candidateIdentity } from "../../core/verify.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..", "..");
@@ -72,6 +75,7 @@ if (f.help === true || CASE === "help") {
   capability         M0 能力探针（隔离/负对照/计量/击杀续跑，真实引擎会话 5 次）
   capability-meter   计量零会话复跑（--prev-result 指向先前 capability result.json，复读账本不 spawn）
   gate-matrix        统一门反例矩阵（零会话：八体 gate explain 活体 + finish/dispatch/reconcile/act 四入口）
+  review-runtime     评审运行器活体矩阵（替身八体拒绝矩阵 + LIGHT/HEAVY 真实绿例各 1——预注册预算）
 退出契约: 0=全部断言过 1=有断言败 2=用法错 3=blocked（缺能力/轨迹不可核验，不算 SKIP 通过）`);
   process.exit(0);
 }
@@ -987,6 +991,328 @@ async function gateMatrixCase() {
   };
 }
 
+// ── case: review-runtime（受控评审运行器活体矩阵；goal v040-m2-review#N8，§8.1 review-runtime）──
+// 判据面：替身引擎（按引擎 CLI 约定出单 JSON 摘要 + 写引擎约定转录 + 按腿写/不写子账本——
+// 列形状按 core/cost.js 聚合列）驱动 `lzy review run` 真链，八体拒绝矩阵逐体命名断言
+//（命令退出码/记录判因/零 spawn）；LIGHT 与 HEAVY 两档真实绿例（真引擎会话、预注册预算）
+// 走 review run → review show → gate explain → loop finish 全链到 attestation，并核计量行
+//（子账本 points>0 双读不累加 + 宿主对照零行=计量缝收口）与隔离读数（input 零泄漏）。
+// auth/引擎/sqlite3 缺席=blocked(3) 具名（绿例不可达，不算 SKIP 通过）。
+const QAR_CONTRACT = "task: review qa fixture\nendpoint: A\nscope: .\nrecipe: none\nbudget-ref: none\n\n- [A1] marker file works\n";
+const QAR_PLAN = "- [N1] add marker file\n- [F1] marker exists\naccepts: A1\n";
+
+function writeStubEngine(dir) {
+  const p = join(dir, "stub-engine.cjs");
+  writeFileSync(
+    p,
+    `#!/usr/bin/env node
+// 评审 qa 替身引擎（LZY_STUB_LEG 选腿）：argv=[--prompt X --json --mode plan] → stdout 单 JSON
+// 摘要 {sessionId,response,usage}（引擎 --json 契约）；转录=引擎约定 model-io jsonl；
+// 子账本=LZY_STUB_LEDGER=1 时按 cost.js 聚合列写 sqlite。
+const fs = require("node:fs");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
+const leg = process.env.LZY_STUB_LEG ?? "green";
+const home = process.env.HOME ?? process.env.USERPROFILE;
+const cwd = process.cwd();
+const sessionId = "sess-stub-" + (process.env.LZY_STUB_SID ?? leg);
+const prompt = process.argv.includes("--prompt") ? process.argv[process.argv.indexOf("--prompt") + 1] : "";
+fs.mkdirSync(path.join(home, ".zcode", "cli", "rollout"), { recursive: true });
+fs.writeFileSync(
+  path.join(home, ".zcode", "cli", "rollout", "model-io-" + sessionId + ".jsonl"),
+  JSON.stringify({ tool: "read", file_path: (prompt.match(/输入包（facts-only）：(\\S+)/) ?? [])[1] ?? path.join(cwd, "a.txt") }) + "\\n",
+);
+if (process.env.LZY_STUB_LEDGER === "1") {
+  const db = path.join(home, ".zcode", "cli", "db", "db.sqlite");
+  fs.mkdirSync(path.dirname(db), { recursive: true });
+  const r = spawnSync("sqlite3", [db, "CREATE TABLE IF NOT EXISTS model_usage (session_id TEXT, model_id TEXT, started_at INTEGER, input_tokens INTEGER, cache_read_input_tokens INTEGER, output_tokens INTEGER, status TEXT); INSERT INTO model_usage VALUES ('" + sessionId + "', 'glm-5.3-flash', 1, 100000, 0, 1000, 'completed');"]);
+  if (r.status !== 0) { process.stderr.write(String(r.stderr)); process.exit(9); }
+}
+if (process.env.LZY_STUB_RACE_REPO) {
+  fs.writeFileSync(path.join(process.env.LZY_STUB_RACE_REPO, "race.txt"), "racer\\n");
+  spawnSync("git", ["add", "-A"], { cwd: process.env.LZY_STUB_RACE_REPO });
+  spawnSync("git", ["commit", "-qm", "race"], { cwd: process.env.LZY_STUB_RACE_REPO });
+}
+if (process.env.LZY_STUB_TAINT === "1") fs.writeFileSync(path.join(cwd, "a.txt"), "tampered-by-stub\\n");
+let response = "";
+if (leg === "green") {
+  response = "\\\`\\\`\\\`json\\\\n" + JSON.stringify({ duty: "review.general-correctness", verdict: "pass", findings: [], summary: "替身绿例：候选树小而干净，未发现通用正确性缺陷" }) + "\\\\n\\\`\\\`\\\`";
+} else if (leg === "parsefail") {
+  response = "评审完成，但本腿不产出机器可解析的围栏。";
+} else if (leg === "contradiction") {
+  response = "\\\`\\\`\\\`json\\\\n" + JSON.stringify({ duty: "review.general-correctness", verdict: "pass", findings: [{ id: "F-1", title: "stub blocking", severity: "P1", blocking: true, location: "a.txt:1", evidence: "stub", summary: "结构自相矛盾体" }], summary: "pass 与阻塞发现并存" }) + "\\\\n\\\`\\\`\\\`";
+}
+if (leg === "sleep") { const end = Date.now() + 120000; while (Date.now() < end) {} }
+process.stdout.write(JSON.stringify({ sessionId, response, usage: { input_tokens: 1, output_tokens: 1 } }) + "\\n");
+`,
+    { mode: 0o755 },
+  );
+  return p;
+}
+
+async function reviewRuntimeCase() {
+  const assertions = [];
+  const push = (id, ok, expected, observed, evidence) => assertions.push({ id, ok: Boolean(ok), expected, observed: String(observed).slice(0, 600), evidence });
+  const CLI = join(REPO, "cli", "lzy.js");
+  const TRIGGER = join(REPO, "plugin", "hooks", "trigger.js");
+  const caseDir = join(fixtureRoot, "review-runtime");
+  rmSync(caseDir, { recursive: true, force: true }); // 幂等：本案例独占子目录
+  mkdirSync(caseDir, { recursive: true });
+  const stub = writeStubEngine(caseDir);
+  const baseEnv = { ...process.env };
+
+  // 夹具：v2 目标全链（register → 真实 UPS 批准 → plan → start）；HEAVY 采纳带 PASS 评审串。
+  function fixture(name, { tier = "light" } = {}) {
+    const home = mkdtempSync(join(tmpdir(), `lzy-qar-${name}-home-`));
+    const d = join(caseDir, name);
+    mkdirSync(d, { recursive: true });
+    const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+    g(["init", "-q"]);
+    g(["config", "user.email", "t@l"]);
+    g(["config", "user.name", "t"]);
+    // .gitignore 先行：.lazyzcode/ 不得入候选快照（git archive HEAD）——否则评审读到陈旧循环
+    // 状态与输入包事实自相矛盾（light 探针实锤：评审判 blocked 点名 goal.json 步骤 pending）。
+    writeFileSync(join(d, ".gitignore"), ".lazyzcode/\nnode_modules/\n");
+    writeFileSync(join(d, "a.txt"), "a\n");
+    writeFileSync(join(d, "contract.md"), QAR_CONTRACT);
+    writeFileSync(join(d, "plan.md"), QAR_PLAN);
+    g(["add", "-A"]);
+    g(["commit", "-qm", "fixture"]);
+    const slug = name;
+    const lzy = (args, extra = {}) => {
+      const r = spawnSync(process.execPath, [CLI, ...args], { cwd: d, encoding: "utf8", timeout: 600_000, env: { ...baseEnv, HOME: home, USERPROFILE: home, ...extra } });
+      return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+    };
+    const hook = (prompt) => {
+      const r = spawnSync(process.execPath, [TRIGGER], {
+        cwd: d, encoding: "utf8", timeout: 30_000,
+        input: JSON.stringify({ prompt, cwd: d, sessionId: "sess_qar" }),
+        env: { ...baseEnv, HOME: home, USERPROFILE: home },
+      });
+      return { exit: r.status, out: r.stdout ?? "" };
+    };
+    const readGoal = () => JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+    const reg = lzy(["loop", "register", slug, "--title", "t", "--contract", "contract.md", ...(tier === "heavy" ? ["--tier", "heavy"] : [])]);
+    if (reg.exit !== 0) throw new Error(`register 失败：${reg.out}`);
+    const passReview = "VERDICT: PASS — 夹具计划决策完备（N1/F1、accepts 映射闭合、无未决事项）";
+    // HEAVY 的机器评审门在计划门先于契约门触发：两次 plan 都须带 PASS 评审串（light 不需要）。
+    const p1 = lzy(["loop", "plan", "plan.md", ...(tier === "heavy" ? ["--review", passReview] : [])]);
+    if (p1.exit !== 1) throw new Error(`首采应拒（contractPending）：${p1.out}`);
+    const short = readGoal().contractPending.contractHash.slice(0, 8);
+    const ap = hook(`批准 ${short}`);
+    if (!ap.out.includes("Human approval recorded for contract")) throw new Error(`批准未记录：${ap.out}`);
+    const p2 = lzy(["loop", "plan", "plan.md", ...(tier === "heavy" ? ["--review", passReview] : [])]);
+    if (p2.exit !== 0) throw new Error(`采纳失败：${p2.out}`);
+    const st = lzy(["loop", "start"]);
+    if (st.exit !== 0) throw new Error(`start 失败：${st.out}`);
+    return { d, home, lzy, hook, readGoal, slug, g };
+  }
+
+  // 目标推进到「评审就绪」态：F1 红半（基线树）→ N1 提交 → F1 绿半 →（HEAVY）对照件。
+  function readyGoal(fx) {
+    const red = fx.lzy(["evidence", "red", "F1", "--evidence", "red: marker.txt absent on baseline tree"]);
+    if (red.exit !== 0) throw new Error(`红半失败：${red.out}`);
+    writeFileSync(join(fx.d, "marker.txt"), "marker\n");
+    fx.g(["add", "-A"]);
+    fx.g(["commit", "-qm", "add marker"]);
+    const n1 = fx.lzy(["step", "done", "N1", "--note", "add marker file"]);
+    if (n1.exit !== 0) throw new Error(`N1 失败：${n1.out}`);
+    const f1 = fx.lzy(["step", "done", "F1", "--evidence", "green: marker.txt present in HEAD tree"]);
+    if (f1.exit !== 0) throw new Error(`F1 失败：${f1.out}`);
+    return fx;
+  }
+
+  const engineEnv = (leg, extra = {}) => ({ LZY_ZCODE_ENGINE: stub, LZY_STUB_LEG: leg, ...extra });
+  const listRuns = (fx) => {
+    const dir = join(fx.d, ".lazyzcode", "review");
+    try {
+      return readdirSync(dir).filter((x) => x.endsWith(".json"));
+    } catch {
+      return []; // 前置拒不落档=族目录缺席（r5 零 spawn 面依赖此语义）
+    }
+  };
+
+  // ── 替身拒绝矩阵八体 ──
+  const bodies = [
+    {
+      id: "r1-candidate-race",
+      run: (fx) => fx.lzy(["review", "run", "--timeout-ms", "30000"], engineEnv("green", { LZY_STUB_RACE_REPO: fx.d })),
+      expect: (fx, r) => {
+        push("r1", r.exit === 1 && /candidate-moved/.test(r.out), "exit 1 且判因 candidate-moved（后台改候选）", `exit=${r.exit} out=${r.out.split("\n")[0]}`);
+      },
+    },
+    {
+      id: "r2-parse-fail",
+      run: (fx) => fx.lzy(["review", "run", "--timeout-ms", "30000"], engineEnv("parsefail")),
+      expect: (fx, r) => {
+        push("r2", r.exit === 1 && /parse-fail/.test(r.out), "exit 1 且判因 parse-fail（无围栏）", `exit=${r.exit} out=${r.out.split("\n")[0]}`);
+      },
+    },
+    {
+      id: "r3-timeout",
+      run: (fx) => fx.lzy(["review", "run", "--timeout-ms", "4000"], engineEnv("sleep")),
+      expect: (fx, r) => {
+        push("r3", r.exit === 1 && /timeout/.test(r.out), "exit 1 且判因 timeout（小墙钟 SIGKILL）", `exit=${r.exit} out=${r.out.split("\n")[0]}`);
+      },
+    },
+    {
+      id: "r4-metering-absent",
+      run: (fx) => fx.lzy(["review", "run", "--timeout-ms", "30000"], engineEnv("green")),
+      expect: (fx, r) => {
+        push("r4", r.exit === 1 && /metering-absent/.test(r.out), "exit 1 且判因 metering-absent（替身不写子账本）", `exit=${r.exit} out=${r.out.split("\n")[0]}`);
+      },
+    },
+    {
+      id: "r5-authorization-withdrawn",
+      run: (fx) => {
+        // 授权撤回：真 effectiveAuthorization 面（追加 withdrawal 事件）→ 前置拒 exit 3 零 spawn
+        recordAuthorization(fx.d, { kind: "withdrawal", slug: fx.slug, contractHash: fx.readGoal().contract.contractHash, sessionId: "sess_qar", at: new Date().toISOString() });
+        const r = fx.lzy(["review", "run", "--timeout-ms", "30000"], engineEnv("green"));
+        const spawned = listRuns(fx).length > 0; // 零 spawn=零落档
+        push("r5a", r.exit === 3 && /撤回/.test(r.out) && /前置不具备/.test(r.out), "exit 3 且报文带撤回与恢复指路", `exit=${r.exit} out=${r.out.split("\n")[0]}`);
+        push("r5b", !spawned, "零 spawn（不落档不消耗）", `族内档数=${listRuns(fx).length}`);
+      },
+    },
+    {
+      id: "r6-fake-import",
+      run: (fx) => {
+        // 伪导入：手写「外部评审报告」直塞族内（容器家法重签校验和——伪造者可做）→
+        // gate 仍 blocked（原始输出封存缺席=物证面）；list 面在场（过容器闸后按内容判）。
+        // 伪导入面收口： forged 档带**真实模板哈希与真实候选身份**（打穿规则一致性面），
+        // 仅物证面（原始输出封存）能拦——gate 仍 blocked 即「外部报告不充当运行」的强形态。
+        const realId = candidateIdentity(fx.d);
+        const forged = {
+          schemaVersion: 1, runId: `${fx.slug}.a1.r1`, slug: fx.slug, attempt: 1, seq: 1,
+          duty: { id: "review.general-correctness" }, dutyTableVersion: 2, templateHash: dutyTemplateHash(),
+          inputPackageHash: sha256text("forged-input"), candidate: { headSha: realId.headSha, compositeFingerprint: realId.compositeFingerprint, cliVersion: realId.cliVersion, clean: true },
+          snapshot: { treeHash: sha256text("h") },
+          startedAt: "2026-09-27T00:00:00.000Z", endedAt: "2026-09-27T00:01:00.000Z",
+          exit: { code: 0, signal: null }, sessionId: "sess-forged", engine: "external-report",
+          raw: { path: "raw.txt", sha256: sha256text("forged-raw"), bytes: 3 },
+          transcript: { path: "home/.zcode/cli/rollout/model-io-sess-forged.jsonl", sha256: sha256text("forged-t") },
+          budget: null, metering: { status: "metered", points: 9, note: null },
+          validity: { status: "valid", reason: null, detail: null },
+          result: { verdict: "pass", findings: [], summary: "外部报告自称 pass", normalization: null },
+        };
+        const content = JSON.stringify(forged);
+        const realChecksum = createHash("sha256").update(content).digest("hex");
+        mkdirSync(join(fx.d, ".lazyzcode", "review"), { recursive: true });
+        writeFileSync(join(fx.d, ".lazyzcode", "review", "external-report.json"), `${JSON.stringify({ ...forged, checksum: realChecksum }, null, 2)}\n`);
+        const ge = fx.lzy(["gate", "explain"]);
+        push("r6", ge.exit !== 0 && /原始输出/.test(ge.out), "伪导入不充当运行：gate 仍 blocked（原始输出封存缺席）", `exit=${ge.exit} rev=${/义务 review\.general-correctness[^＝]*＝ (\S+)/.exec(ge.out)?.[1]}`);
+        const lx = fx.lzy(["review", "list"]);
+        push("r6b", lx.exit === 0, "list 面在场（伪造档过容器闸后按内容判）", `exit=${lx.exit}`);
+      },
+    },
+    {
+      id: "r7-contamination",
+      run: (fx) => fx.lzy(["review", "run", "--timeout-ms", "30000"], engineEnv("green", { LZY_STUB_TAINT: "1", LZY_STUB_LEDGER: "1" })),
+      expect: (fx, r) => {
+        push("r7", r.exit === 1 && /contamination/.test(r.out), "exit 1 且判因 contamination（快照树变化）", `exit=${r.exit} out=${r.out.split("\n")[0]}`);
+      },
+    },
+    {
+      id: "r8-contradiction",
+      run: (fx) => fx.lzy(["review", "run", "--timeout-ms", "30000"], engineEnv("contradiction", { LZY_STUB_LEDGER: "1" })),
+      expect: (fx, r) => {
+        push("r8", r.exit === 1 && /blocked/.test(r.out) && /归一化/.test(r.out), "pass∧blocking 并存按 blocked 判（归一化注记），exit 1 不可改判", `exit=${r.exit} out=${r.out.split("\n")[0]}`);
+      },
+    },
+  ];
+
+  for (const b of bodies) {
+    const fx = readyGoal(fixture(b.id));
+    try {
+      await b.run(fx);
+    } catch (e) {
+      push(b.id, false, "体执行无异常", String(e?.message ?? e).slice(0, 200));
+    }
+    rmSync(join(caseDir, b.id), { recursive: true, force: true }); // 逐体即焚
+  }
+
+  // ── 能力探测（绿例前置；缺席=blocked(3) 具名）──
+  const cap = {
+    auth: detectHeadlessAuth(),
+    engine: findEngine(),
+    sqlite3: spawnSync("sqlite3", ["--version"], { timeout: 5000 }).status === 0,
+  };
+  const capMissing = [!cap.auth?.ok && "auth", !cap.engine && "engine", !cap.sqlite3 && "sqlite3"].filter(Boolean);
+  if (capMissing.length > 0) {
+    return {
+      blocked: `绿例不可达：缺 ${capMissing.join("/")}（auth/引擎/sqlite3 缺席=blocked(3) 具名，不算 SKIP）`,
+      assertions,
+      bodies: bodies.map((b) => b.id),
+      probeBudget: { preregisteredSessions: 0, usedSessions: 0, note: "替身矩阵完成，真实绿例因环境缺能力未跑" },
+    };
+  }
+
+  // ── 两档真实绿例（真引擎会话；预注册预算内）──
+  const sessions = [];
+  const meteringRows = [];
+  let usedSessions = 0;
+  for (const tier of ["light", "heavy"]) {
+    const name = `green-${tier}`;
+    const fx = readyGoal(fixture(name, { tier }));
+    if (tier === "heavy") {
+      const cmp = join(caseDir, `${name}-cmp.json`);
+      writeFileSync(cmp, `${JSON.stringify({ slug: fx.slug, items: [{ fid: "F1", verdict: "MATCH", generation: 1, basis: "marker 存在性断言绿半对照" }] }, null, 2)}\n`);
+      const at = fx.lzy(["attest", "comparator", "--file", cmp]);
+      if (at.exit !== 0) throw new Error(`对照件失败：${at.out}`);
+    }
+    const t0 = Date.now();
+    // 真实会话（预注册预算内）；引擎瞬态死亡（1302/内容杀流类）qa 级重试一次——runner 语义
+    // 保持严格（exit-nonzero=invalid 落档），重试是 harness 韧性不是改判；逐次计入 usedSessions。
+    let rr = fx.lzy(["review", "run", "--timeout-ms", "420000"], { LZY_ZCODE_ENGINE: cap.engine });
+    usedSessions += 1;
+    if (rr.exit !== 0 && /exit-nonzero|interrupted/.test(rr.out)) {
+      rr = fx.lzy(["review", "run", "--timeout-ms", "420000"], { LZY_ZCODE_ENGINE: cap.engine });
+      usedSessions += 1;
+    }
+    const recFile = existsSync(join(fx.d, ".lazyzcode", "review")) ? readdirSync(join(fx.d, ".lazyzcode", "review")).filter((x) => x.endsWith(".json")).at(-1) : null;
+    const rec = recFile ? JSON.parse(readFileSync(join(fx.d, ".lazyzcode", "review", recFile), "utf8")) : null;
+    push(`${tier}-run`, rr.exit === 0 && rec?.validity?.status === "valid" && rec?.result?.verdict === "pass",
+      "真实会话产出 valid metered pass（exit 0）",
+      `exit=${rr.exit} validity=${rec?.validity?.status} verdict=${rec?.result?.verdict} reason=${rec?.validity?.reason ?? ""} ${String(rr.out.split("\n")[0]).slice(0, 120)}`);
+    if (rr.exit !== 0 || !rec || rec.validity.status !== "valid") {
+      continue; // 绿例不可达如实判败（不冒充）——后续读数腿跳过
+    }
+    const sid = rec.sessionId;
+    sessions.push({ leg: tier, sessionId: sid, runId: rec.runId });
+    const sh = fx.lzy(["review", "show", rec.runId]);
+    push(`${tier}-show`, sh.exit === 0 && sh.out.includes(rec.runId) && /判决 pass/.test(sh.out), "review show 逐字段面", `exit=${sh.exit}`);
+    const ge = fx.lzy(["gate", "explain"]);
+    push(`${tier}-gate`, ge.exit === 0 && /裁决 PASS/.test(ge.out), "gate 评审义务翻 satisfied → 裁决 PASS", `exit=${ge.exit} verdict=${/裁决 (\S+)/.exec(ge.out)?.[1]}`);
+    const fin = fx.lzy(["loop", "finish"]);
+    const attDir = join(fx.d, ".lazyzcode", "attestations");
+    const att = existsSync(attDir) ? readdirSync(attDir).filter((x) => x.endsWith(".json")) : [];
+    push(`${tier}-finish`, fin.exit === 0 && att.length === 1, "finish 过门落终验 attestation", `exit=${fin.exit} att=${att.length} out=${String(fin.out.split("\n")[0]).slice(0, 120)}`);
+    // 计量：子账本（=运行目录内隔离 home）points>0、双读不累加、宿主对照零行（计量缝收口）
+    const runHome = join(fx.d, ".lazyzcode", "review", rec.runId, "home");
+    const sub1 = childLedgerRead(runHome, sid);
+    const sub2 = childLedgerRead(runHome, sid);
+    const hostRead = querySessionPoints(sid);
+    meteringRows.push({ leg: tier, sessionId: sid, points: sub1.points, hostAbsent: hostRead.absent, db: sub1.db });
+    push(`${tier}-metering`, sub1.absent === false && sub1.points > 0 && sub2.points === sub1.points && hostRead.absent === true,
+      "子账本 metered>0 ∧ 双读不累加 ∧ 宿主零行（M0 发现一收口面）",
+      `points=${sub1.points}/${sub2.points} hostAbsent=${hostRead.absent}`);
+    // 隔离读数：input 包零在先运行标记（facts-only；轨迹已在 run 时判——validity=valid 蕴含）
+    const priorInput = readFileSync(join(fx.d, ".lazyzcode", "review", rec.runId, "input.json"), "utf8");
+    const leak = [rec.runId].some((needle) => priorInput.includes(needle));
+    push(`${tier}-isolation`, leak === false, "input 包零在先运行标记（facts-only）", `leak=${leak}`);
+    console.error(`[v040-qa] ${tier} 绿例：points=${sub1.points} wallMs=${Date.now() - t0} runId=${rec.runId}`);
+    rmSync(join(caseDir, name), { recursive: true, force: true });
+  }
+
+  return {
+    blocked: null,
+    assertions,
+    bodies: bodies.map((b) => b.id),
+    sessions,
+    metering: meteringRows,
+    probeBudget: { preregisteredSessions: 12, usedSessions, note: "真实会话=两档绿例各 1（预注册 ≤12：开发 ≤4、绿例 2、自审 1-2、复跑余量）" },
+  };
+}
+
 // ── 执行 ───────────────────────────────────────────────────────────────────
 const started = nowIso();
 let result;
@@ -996,8 +1322,10 @@ if (CASE === "capability") {
   result = await capabilityMeterCase();
 } else if (CASE === "gate-matrix") {
   result = await gateMatrixCase();
+} else if (CASE === "review-runtime") {
+  result = await reviewRuntimeCase();
 } else {
-  die(`未知 --case：${CASE}（capability|capability-meter|gate-matrix）`);
+  die(`未知 --case：${CASE}（capability|capability-meter|gate-matrix|review-runtime）`);
 }
 
 const assertions = result.assertions ?? [];

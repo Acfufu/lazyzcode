@@ -209,11 +209,24 @@ export function evaluateGate(cwd, { goal: goalOverride } = {}) {
           } catch {
             currentTpl = null; // 职责不在现行职责表：无运行可匹配（fail-closed 走「无在案运行」）
           }
-          const runs = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).filter(
-            (r) => r.duty?.id === ob.id && r.dutyTableVersion === record.dutyTableVersion && r.templateHash === currentTpl,
-          );
-          const last = runs.at(-1);
-          if (!last) {
+          let runs = null;
+          let familyErr = null;
+          try {
+            runs = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).filter(
+              (r) => r.duty?.id === ob.id && r.dutyTableVersion === record.dutyTableVersion && r.templateHash === currentTpl,
+            );
+          } catch (e) {
+            // 家族损坏 fail-closed：读不出即不可放行（与 doctor checkReview 的 fail 级同口径），
+            // 阻塞原因具名而非让异常炸穿 evaluateGate。
+            familyErr = e;
+            runs = null;
+          }
+          const last = Array.isArray(runs) ? runs.at(-1) : null;
+          if (familyErr) {
+            entry.state = "unsatisfied";
+            entry.reasons = [`评审运行族不可读（fail-closed：${String(familyErr?.message ?? familyErr).slice(0, 100)}）——备份后清理损坏档可重建读面`];
+            entry.basis = { runsInGeneration: 0 };
+          } else if (!last) {
             entry.state = "unsatisfied";
             entry.reasons = ["评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）"];
             entry.basis = { runsInGeneration: 0 };

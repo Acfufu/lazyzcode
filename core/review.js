@@ -6,7 +6,7 @@
 //（拍板 6）；dutyTableVersion 不在此钉现行值——旧规则版本的记录须保持可读，一致性由 gate 判。
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync, openSync, closeSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { join, resolve, sep, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawnSync } from "node:child_process";
 import { loadFamilyFile, saveFamilyFile, budgetView } from "./queue.js";
@@ -451,7 +451,9 @@ export function assertNoLeak(inputText, priorRuns) {
 
 // 读取轨迹断言（拍板 4）：解析引擎转录（jsonl 逐行），键名含 path/file/dir/cwd 的以 / 开头
 // 字符串值=读取面候选；realpath 归一（/var→/private/var）后须落在任一允许前缀内（含边界 sep）。
-// 命中前缀外=breach；转录缺席由调用方按 isolation-breach 判（隔离未证——M0 口径）。
+// **不存在路径=幻影尝试不计 breach**（light 探针实锤：模型拼错路径的失败读取也入转录——
+// 读失败无数据流动，隔离语义管的是事实流入不管尝试意图；幻影单独计数如实透出）。
+// 命中前缀外且路径存在=breach；转录缺席由调用方按 isolation-breach 判（隔离未证——M0 口径）。
 export function assertReadsContained(transcriptText, allowedPrefixes) {
   const norm = (p) => {
     try {
@@ -466,10 +468,15 @@ export function assertReadsContained(transcriptText, allowedPrefixes) {
     return prefixes.some((pre) => q === pre || q.startsWith(pre.endsWith(sep) ? pre : `${pre}${sep}`));
   };
   const breaches = [];
+  const phantoms = [];
   const visit = (v, key, line) => {
     if (typeof v === "string") {
-      if (key && /path|file|dir|cwd/i.test(key) && v.startsWith("/") && !contained(v)) {
-        breaches.push({ path: v.slice(0, 200), line });
+      if (key && /path|file|dir|cwd/i.test(key) && v.startsWith("/")) {
+        if (!existsSync(v)) {
+          phantoms.push({ path: v.slice(0, 200), line });
+        } else if (!contained(v)) {
+          breaches.push({ path: v.slice(0, 200), line });
+        }
       }
     } else if (Array.isArray(v)) {
       for (const x of v) visit(x, key, line);
@@ -487,7 +494,7 @@ export function assertReadsContained(transcriptText, allowedPrefixes) {
     }
     visit(obj, null, i + 1);
   });
-  return { ok: breaches.length === 0, breaches };
+  return { ok: breaches.length === 0, breaches, phantoms };
 }
 
 // ── N3：运行执行与结构化结果（拍板 3/5/11）──
@@ -656,9 +663,18 @@ function composePrompt(dutyText, inputPath) {
     `1. 先读输入包（facts-only）：${inputPath}`,
     "2. 评审对象=你的当前工作目录（候选树快照）。",
     "3. 全程只读，不得修改任何文件。",
-    "4. 最终输出按职责文件「输出契约」节：恰一个 ```json 围栏块。",
+    "4. 读取范围硬约束：只许读「输入包 + 当前工作目录（候选树快照）+ 你的隔离主目录」——" +
+      "宿主工作区的 .git、.lazyzcode 及其余任何绝对路径一律不读（越界即评审无效）。",
+    "5. 最终答复的末尾必须是**恰一个** ```json 围栏块：不要输出示例回显、修正版或「严格版补充」的第二围栏；" +
+      "围栏内字段以职责文件「输出契约」为准，禁止附加字段；输出前自查一遍再作答。",
   ].join("\n");
 }
+
+// 重跑指令（拍板 3 收窄模板路径：更强格式约束 + 恰一次重跑——上一轮解析失败时附本段再spawn）
+const RETRY_SUFFIX_REASON = (reason) =>
+  `\n\n── 重跑指令（上一轮结构解析失败：${reason}）──\n` +
+  "上一轮已作废。最终答复必须包含且仅包含一个 ```json 围栏块；不得回显示例、不得输出修正版或补充版第二围栏；" +
+  "字段恰为 duty/verdict/findings/summary（finding 七字段），无附加字段。";
 
 // 评审运行主入口（拍板 11：deps 注入面=spawnHeadless/detectAuth/querySessionPoints/preflight——
 // CI 无凭据零真引擎可跑）。返回 { record, exitHint }；前置不具备抛 ReviewPreflightError
@@ -704,51 +720,95 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps 
     let sessionId = null;
     let rawInfo = null;
     let transcriptInfo = null;
+    let result = null;
+    const sessionMeta = []; // 逐会话（单次重跑=两会话）：{attempt, sessionId, transcript, rawText}
     if (failures.length === 0) {
       spawned = true;
-      run = await (deps.spawnHeadless ?? spawnHeadless)({
-        prompt: composePrompt(loadDutyTemplate(duty), pkg.inputPath),
-        mode: "plan",
-        cwd: snap.candidateDir,
-        home: iso.home,
-        timeoutMs: timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS,
-        deps: typeof deps.run === "function" ? { run: deps.run } : null,
-      });
-      // 封存（拍板 3）：stdout+stderr 逐字落 raw.txt（分节标注；sha256/字节数入记录）
-      const rawText = `── stdout ──\n${run.stdout}\n── stderr ──\n${run.stderr}`;
+      const basePrompt = composePrompt(loadDutyTemplate(duty), pkg.inputPath);
+      // 会话循环（拍板 3 收窄模板路径：恰一次重跑——首轮 parse-fail 时附更强格式约束重spawn；
+      // timeout/非零退出/矛盾体等非解析失败不重跑）。逐会话封存+转录，计量按会话求和。
+      let prevReason = null;
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        const prompt = attempt === 1 ? basePrompt : `${basePrompt}${RETRY_SUFFIX_REASON(prevReason ?? "解析失败")}`;
+        run = await (deps.spawnHeadless ?? spawnHeadless)({
+          prompt,
+          mode: "plan",
+          cwd: snap.candidateDir,
+          home: iso.home,
+          timeoutMs: timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS,
+          deps: typeof deps.run === "function" ? { run: deps.run } : null,
+        });
+        const sid = run.sessionId ?? extractSessionId(run.stdout);
+        let tinfo = null;
+        const tp = sid ? findTranscript(iso.home, sid) : null;
+        if (tp) {
+          const t = readFileSync(tp);
+          tinfo = { path: tp.slice(reserve.runDir.length + 1), sha256: createHash("sha256").update(t).digest("hex") };
+        }
+        sessionMeta.push({ attempt, sessionId: sid, transcript: tinfo, stdout: run.stdout, stderr: run.stderr });
+        if (attempt === 1) {
+          sessionId = sid; // 记录主 sessionId=首轮（gate basis 可读；重跑会话入 metering 注记）
+          transcriptInfo = tinfo;
+        } else {
+          sessionId = sid ?? sessionId;
+          transcriptInfo = tinfo ?? transcriptInfo; // 终轮会话=判决面（转录取终轮）
+        }
+        if (run.timedOut) {
+          failures.push(["timeout", `墙钟预算耗尽（SIGKILL，${Math.round((timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS) / 1000)}s，attempt ${attempt}）`]);
+          break;
+        }
+        if (run.spawnError) {
+          failures.push(["interrupted", `引擎进程启动失败：${run.spawnError}`]);
+          break;
+        }
+        if (run.exitCode !== 0) {
+          failures.push(["exit-nonzero", `引擎非零退出（exit ${run.exitCode}${run.signal ? ` · signal ${run.signal}` : ""}，attempt ${attempt}）`]);
+          break;
+        }
+        if (!sid) {
+          failures.push(["interrupted", "引擎退出 0 但无 sessionId（会话身份缺席）"]);
+          break;
+        }
+        const parsed = parseReviewResult(run.response, { dutyId: duty });
+        if (parsed.ok) {
+          result = normalizeVerdict(parsed.result);
+          break;
+        }
+        if (attempt === 1) {
+          prevReason = parsed.reason; // 单次重跑（收窄模板路径，拍板 3）
+          continue;
+        }
+        failures.push(["parse-fail", `${parsed.reason}（含单次重跑）`]);
+      }
+      // 封存（拍板 3）：全部会话 stdout+stderr 逐字落 raw.txt（分节标注；sha256/字节数入记录）
+      const rawText = sessionMeta
+        .map((m) => `── attempt ${m.attempt} stdout ──\n${m.stdout}\n── attempt ${m.attempt} stderr ──\n${m.stderr}`)
+        .join("\n");
       const rawPath = join(reserve.runDir, "raw.txt");
       writeFileSync(rawPath, rawText, { mode: 0o600 });
       rawInfo = { path: "raw.txt", sha256: createHash("sha256").update(rawText).digest("hex"), bytes: Buffer.byteLength(rawText) };
-      sessionId = run.sessionId ?? extractSessionId(run.stdout);
-      const tp = findTranscript(iso.home, sessionId);
-      if (tp) {
-        const t = readFileSync(tp);
-        transcriptInfo = { path: tp.slice(reserve.runDir.length + 1), sha256: createHash("sha256").update(t).digest("hex") };
-      }
-      if (run.timedOut) failures.push(["timeout", `墙钟预算耗尽（SIGKILL，${Math.round((timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS) / 1000)}s）`]);
-      else if (run.spawnError) failures.push(["interrupted", `引擎进程启动失败：${run.spawnError}`]);
-      else if (run.exitCode !== 0) failures.push(["exit-nonzero", `引擎非零退出（exit ${run.exitCode}${run.signal ? ` · signal ${run.signal}` : ""}）`]);
-      else if (!sessionId) failures.push(["interrupted", "引擎退出 0 但无 sessionId（会话身份缺席）"]);
     }
-    // 结构化结果解析（spawn 过才可能 parse；leak 档无 result）
-    let result = null;
-    if (spawned && run && !run.spawnError && run.exitCode === 0 && !run.timedOut) {
-      const parsed = parseReviewResult(run.response, { dutyId: duty });
-      if (!parsed.ok) failures.push(["parse-fail", parsed.reason]);
-      else result = normalizeVerdict(parsed.result);
-    }
-    // 隔离证词（拍板 4）：转录缺席=invalid（隔离未证）；读取越界=invalid
+    // 隔离证词（拍板 4）：每会话转录缺席=invalid（隔离未证）；读取越界=invalid
     if (spawned) {
-      if (!transcriptInfo) {
+      if (sessionMeta.length === 0 || sessionMeta.some((m) => !m.transcript)) {
         failures.push(["isolation-breach", "转录缺席（隔离 HOME 内未找到 model-io 转录——隔离未证，M0 口径）"]);
       } else {
-        const contained = assertReadsContained(readFileSync(join(reserve.runDir, transcriptInfo.path), "utf8"), [
-          snap.candidateDir,
-          reserve.runDir,
-          iso.home,
-        ]);
-        if (!contained.ok) {
-          failures.push(["isolation-breach", `读取轨迹越界：${contained.breaches.slice(0, 3).map((b) => b.path).join("、")}`]);
+        // 允许前缀（拍板 4）：候选快照/运行目录/隔离 home/**引擎自身前缀**（provider 配置目录+
+        // 引擎安装目录+node 可执行目录——引擎自身运行所需读取不构成隔离破口）。
+        const enginePrefixes = [dirname(findEngine() ?? "/nonexistent"), dirname(process.execPath)];
+        for (const key of ["ZCODE_BUILTIN_PROVIDER_CONFIG_FILE", "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"]) {
+          if (process.env[key]) enginePrefixes.push(dirname(process.env[key]));
+        }
+        for (const m of sessionMeta) {
+          const contained = assertReadsContained(readFileSync(join(reserve.runDir, m.transcript.path), "utf8"), [
+            snap.candidateDir,
+            reserve.runDir,
+            iso.home,
+            ...enginePrefixes,
+          ]);
+          if (!contained.ok) {
+            failures.push(["isolation-breach", `读取轨迹越界（attempt ${m.attempt}）：${contained.breaches.slice(0, 3).map((b) => b.path).join("、")}`]);
+          }
         }
       }
     }
@@ -765,29 +825,46 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps 
       }
     }
     // 计量（拍板 7）：读数唯一走 querySessionPoints（默认=真读数，恒传隔离 HOME 子账本路径；
-    // deps 注入供 CI）。三分类映射：absent 行 / 全表外零计价 / metered（表外行如实注记下界）。
+    // deps 注入供 CI）。逐会话读数求和（单次重跑=两会话，点数合计=诚实记账）；三分类映射：
+    // absent 行 / 全表外零计价 / metered（表外行如实注记下界）。
     let metering;
     if (!spawned) {
       metering = { status: "absent", points: null, note: "未 spawn——无计量可读（未消耗；不算零口径不适用）" };
     } else {
-      let r = null;
-      let mErr = null;
-      try {
-        r = await (deps.querySessionPoints ?? querySessionPoints)(sessionId, {
-          dbPath: join(iso.home, ".zcode", "cli", "db", "db.sqlite"),
-        });
-      } catch (e) {
-        mErr = e;
+      const reads = [];
+      for (const m of sessionMeta) {
+        if (!m.sessionId) continue;
+        try {
+          const r = await (deps.querySessionPoints ?? querySessionPoints)(m.sessionId, {
+            dbPath: join(iso.home, ".zcode", "cli", "db", "db.sqlite"),
+          });
+          reads.push({ sessionId: m.sessionId, r });
+        } catch (e) {
+          reads.push({ sessionId: m.sessionId, r: null, err: String(e?.message ?? e).slice(0, 80) });
+        }
       }
-      if (mErr) metering = { status: "absent", points: null, note: `计量读数失败（${String(mErr?.message ?? mErr).slice(0, 80)}）——缺用量不算零（ADR-0027 修正节）` };
-      else if (!r || r.absent) metering = { status: "absent", points: null, note: `sessionId ${sessionId ?? "?"} 在子账本无完成用量行——缺用量不算零（ADR-0027 修正节）` };
-      else if (r.points === 0 && Array.isArray(r.unpriced) && r.unpriced.length > 0) {
-        metering = { status: "unpriced", points: null, note: `模型未计价（表外 ${r.unpriced.length} 行）——unpriced 不算零（ADR-0027 修正节）` };
+      const withRows = reads.filter((x) => x.r && x.r.absent === false);
+      const totalPoints = withRows.reduce((acc, x) => acc + (Number(x.r.points) || 0), 0);
+      const anyUnpriced = reads.some((x) => x.r && x.r.absent === false && x.r.points === 0 && Array.isArray(x.r.unpriced) && x.r.unpriced.length > 0);
+      const allAbsent = reads.length > 0 && withRows.length === 0;
+      const sidList = reads.map((x) => x.sessionId).join("+");
+      const sessionNote = reads.length > 1 ? `${reads.length} 会话（含单次重跑：${sidList}）` : `sessionId ${sidList}`;
+      if (reads.some((x) => x.err)) {
+        metering = { status: "absent", points: null, note: `计量读数失败（${reads.find((x) => x.err)?.err}）——缺用量不算零（ADR-0027 修正节）` };
+      } else if (allAbsent) {
+        metering = { status: "absent", points: null, note: `${sessionNote} 在子账本无完成用量行——缺用量不算零（ADR-0027 修正节）` };
+      } else if (totalPoints === 0 && anyUnpriced) {
+        metering = { status: "unpriced", points: null, note: `模型未计价（表外行；${sessionNote}）——unpriced 不算零（ADR-0027 修正节）` };
       } else {
+        const hasUnpriced = reads.some((x) => x.r && Array.isArray(x.r.unpriced) && x.r.unpriced.length > 0);
         metering = {
           status: "metered",
-          points: r.points,
-          note: Array.isArray(r.unpriced) && r.unpriced.length > 0 ? `表外模型 ${r.unpriced.length} 行计 0——读数为下界（计价子集口径）` : null,
+          points: totalPoints,
+          note: hasUnpriced
+            ? `表外模型行计 0——读数为下界（计价子集口径；${sessionNote}）`
+            : reads.length > 1
+              ? `${sessionNote}（点数=两会话合计）`
+              : null,
         };
       }
     }

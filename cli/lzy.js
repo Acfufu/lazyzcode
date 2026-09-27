@@ -72,7 +72,7 @@ import {
 } from "../core/dag.js";
 import { recordComparatorAttestation } from "../core/attest.js";
 import { computePolicyIdentity, loadPolicyRecord, identityStableHash, deriveObligations, REVIEW_RUNNER_FACE, reassessObligation } from "../core/policy.js"; // 0.4.0 M1 N7 解释面 + M3 N8 reassess 面
-import { ReviewPreflightError, listReviewRuns, runReview, BASELINE_DUTY_ID } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面
+import { ReviewPreflightError, ReviewError, listReviewRuns, runReview, qualifyReviewScope, BASELINE_DUTY_ID } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面 + M4 N2 资格执行器
 import { listFindings, requestResolve, closeFinding, diagnoseFinding, relinkFindings, findingFingerprint, CLOSED_FINDING_STATUSES, DIAGNOSIS_REQUIRED_THRESHOLD, openBlockingFindings } from "../core/findings.js"; // 0.4.0 M3 N6/N7 发现账本 CLI 面
 import { evaluateGate } from "../core/gate.js";
 import { findEngine, pluginsRoot, repoPluginDir, userCliLogDir } from "../core/paths.js";
@@ -107,7 +107,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms", "outcome", "basis", "recheck", "root-cause", "from", "to", "impact", "cancel-reason", "obligation", "fingerprint"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms", "outcome", "basis", "recheck", "root-cause", "from", "to", "impact", "cancel-reason", "obligation", "fingerprint", "scope"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1029,6 +1029,11 @@ function printHelp() {
                                             显式落账）；退出码同 run
   lzy review list [--goal <slug>]           在案评审运行枚举（只读；家族损坏 fail-closed 非 0）
   lzy review show <runId>                   逐字段+发现表+原始输出指针（只读）
+  lzy review qualify <runId> --scope <声明JSON>
+                                            评审范围资格挑战（0.4.0 M4，ADR-0032）：声明依赖范围+
+                                            五轴机械对抗验证；granted/拒绝双面落档
+                                            .lazyzcode/review-scope/；不 spawn 零积分；退出码：
+                                            0=granted，1=拒绝（已落档），2=用法错，3=前置不具备
 
 发现账本（0.4.0 M3，V06/V07/V12——关闭通道唯一：resolve-request → review recheck → close）：
   lzy finding list [--goal <slug>]          发现链枚举（含别名闭包；损坏 fail-closed 非 0）
@@ -1850,6 +1855,54 @@ async function cmdReview(args) {
     process.exitCode = res.exitHint;
     return;
   }
+  if (sub === "qualify") {
+    // M4 N2（ADR-0032）：评审范围资格挑战——base 运行有效且 pass ∧ 职责 declarable ∧
+    // 声明合法同职责 ∧ 套件在案合法 ⇒ 机械挑战逐轴对表 oracle；granted/拒绝双面落档。
+    // 不 spawn 会话零积分；退出码：0=granted，1=拒绝（已落档），2=用法错，3=前置不具备。
+    const runId = _[1];
+    if (!runId || typeof f.scope !== "string") {
+      console.error("用法错：lzy review qualify <runId> --scope <声明JSON文件>");
+      process.exitCode = 2;
+      return;
+    }
+    let scopeDecl;
+    try {
+      scopeDecl = JSON.parse(readFileSync(f.scope, "utf8"));
+    } catch (err) {
+      console.error(`用法错：--scope 文件不可读或非合法 JSON：${f.scope}（${String(err?.message ?? err).slice(0, 120)}）`);
+      process.exitCode = 2;
+      return;
+    }
+    let res;
+    try {
+      res = await qualifyReviewScope(cwd, { runId, scopeDecl });
+    } catch (err) {
+      if (err instanceof ReviewPreflightError) {
+        console.error(`前置不具备（不 spawn、不消耗、不落档）：${err.message}`);
+        process.exitCode = 3;
+        return;
+      }
+      if (err instanceof ReviewError) {
+        console.error(`资格拒绝（未落档）：${err.message}`);
+        process.exitCode = 1;
+        return;
+      }
+      throw err;
+    }
+    const r = res.record;
+    console.log(
+      `资格挑战 ${r.id} · ${r.dutyId} · base ${r.baseRunId} · ${r.granted ? "GRANTED（资格在案）" : "REJECTED（拒绝已落档——拒绝也是事实）"}`,
+    );
+    console.log(`  声明 scopeHash ${r.scopeHash.slice(0, 12)}… · 规则 ${r.scope.rules.length} 条 · 共享输入 ${r.scope.sharedInputs.length} 项`);
+    console.log(`  结构身份 rulesHash ${r.identity.rulesHash.slice(0, 12)}… · dutyTableVersion ${r.identity.dutyTableVersion} · 模板 ${r.identity.templateHash.slice(0, 12)}…`);
+    console.log(`  套件 ${r.suite.file}（procedureVersion ${r.suite.procedureVersion} · sha256 ${r.suite.suiteHash.slice(0, 12)}…）`);
+    for (const c of r.challenges) {
+      console.log(`    ${c.ok ? "✔" : "✖"} ${c.id}（${c.axis} · 期望 ${c.expect}）→ ${c.observed}`);
+    }
+    console.log(`  档 ${join(cwd, ".lazyzcode", "review-scope", `${r.id}.json`)} · 零积分（mechanical）`);
+    process.exitCode = res.granted ? 0 : 1;
+    return;
+  }
   if (sub === "list") {
     const runs = listReviewRuns(cwd, { slug: f.goal });
     if (runs.length === 0) {
@@ -1908,7 +1961,7 @@ async function cmdReview(args) {
     }
     return;
   }
-  console.error("用法错：lzy review run|recheck|list|show（run=真实评审运行；recheck=独立复核+闭候选对账；list/show 只读）");
+  console.error("用法错：lzy review run|recheck|qualify|list|show（run=真实评审运行；recheck=独立复核+闭候选对账；qualify=范围资格挑战；list/show 只读）");
   process.exitCode = 2;
 }
 

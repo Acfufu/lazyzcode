@@ -252,9 +252,12 @@ export function rollingWaterlinePoints() {
 // **0.3.1 棒2（ADR-0027 修正节）：自 core/queue.js 迁入本模块=计量原语单源**——queue 侧
 // （结算/dedup）与 drive 侧（段界归因）共用同一查询面，不另建积分权威；core/queue.js
 // 保留 re-export 供既有导入面（test/queue-metering 等）。导出面=测试缝与 drive 注入缝。
-export function querySessionPoints(sessionId) {
+// **0.4.0 M2（N4）：dbPath 参数化**——受控评审 runner 恒传隔离 HOME 子账本路径（计量缝
+// 收口面，M0 发现一）；默认值=宿主账本，既有调用点零变化。SELECT 只读幂等：同 sessionId
+// 二次读不累加（读数无状态，拍板 7 去重语义天然满足）。
+export function querySessionPoints(sessionId, { dbPath = billingDbPath() } = {}) {
   if (typeof sessionId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) return { absent: true, unpriced: [], points: 0 };
-  const db = billingDbPath();
+  const db = dbPath;
   if (!existsSync(db)) return { absent: true, unpriced: [], points: 0 };
   const sql =
     "SELECT m.session_id AS sid, m.model_id AS model, m.started_at/3600000 AS h, " +

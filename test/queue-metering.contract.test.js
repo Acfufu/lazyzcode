@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -159,5 +159,43 @@ test("⑤killed-inflight 申报在积分限批次下触发停派；墙钟批次�
     assert.equal(budgetView(d).pointsStopped, true); // 未决消耗不假零→停积分限派发
   } finally {
     rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// 0.4.0 M2 N4：querySessionPoints dbPath 参数化（计量缝收口面，M0 发现一）——默认值=宿主
+// 账本（既有调用点零变化），runner 恒传隔离 HOME 子账本路径。HAS_SQLITE3 分腿（sqlite3
+// 缺席环境两腿都退化 absent，参数化面无从断言）。
+const HAS_SQLITE3_N4 = spawnSync("sqlite3", ["--version"], { timeout: 5_000 }).status === 0;
+
+test("⑥0.4.0 M2 参数化：默认路径=宿主账本（隔离 HOME 缺席→absent）；显式 dbPath 读子账本 metered>0 且二次读不累加", { skip: !HAS_SQLITE3_N4 }, () => {
+  // 子账本夹具：隔离 HOME 外的独立路径（=评审运行目录 home 的形状）
+  const sub = mkdtempSync(join(tmpdir(), "lzy-qmeter-sub-"));
+  const dbDir = join(sub, ".zcode", "cli", "db");
+  mkdirSync(dbDir, { recursive: true });
+  const db = join(dbDir, "db.sqlite");
+  const w = spawnSync(
+    "sqlite3",
+    [
+      db,
+      "CREATE TABLE model_usage (session_id TEXT, model_id TEXT, started_at INTEGER, input_tokens INTEGER, cache_read_input_tokens INTEGER, output_tokens INTEGER, status TEXT);" +
+        "INSERT INTO model_usage VALUES ('sess-n4', 'glm-5.3-flash', 1, 1000000, 0, 1000, 'completed');",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(w.status, 0, `夹具账本写入：${w.stderr}`);
+  try {
+    // 默认路径（隔离 HOME 的宿主账本）不存在 → absent（默认行为未变）
+    assert.equal(querySessionPoints("sess-n4").absent, true, "默认路径=宿主账本缺席→absent");
+    // 显式 dbPath → 子账本读数 metered>0
+    const m = querySessionPoints("sess-n4", { dbPath: db });
+    assert.equal(m.absent, false);
+    assert.ok(m.points > 0, `子账本读数 points>0（得 ${m.points}）`);
+    // 二次读不累加（SELECT 只读幂等，拍板 7 去重语义）
+    const m2 = querySessionPoints("sess-n4", { dbPath: db });
+    assert.equal(m2.points, m.points, "同 sessionId 二次读同值（不累加）");
+    // 白名单净化照走参数化路径
+    assert.equal(querySessionPoints("evil;--", { dbPath: db }).absent, true);
+  } finally {
+    rmSync(sub, { recursive: true, force: true });
   }
 });

@@ -9,12 +9,14 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpat
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawnSync } from "node:child_process";
-import { loadFamilyFile, saveFamilyFile } from "./queue.js";
+import { loadFamilyFile, saveFamilyFile, budgetView } from "./queue.js";
 import { candidateIdentity, listReceipts } from "./verify.js";
 import { loadPolicyRecord, DUTY_TABLE_VERSION } from "./policy.js";
 import { createGit } from "./git.js";
 import { findEngine } from "./paths.js";
-import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless } from "./headless.js";
+import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless, detectHeadlessAuth } from "./headless.js";
+import { effectiveAuthorization, loadContract } from "./contract.js";
+import { querySessionPoints } from "./cost.js";
 
 export const REVIEW_VERSION = 1;
 export const REVIEW_FAMILY = "review";
@@ -151,13 +153,21 @@ export function assertRunShape(rec, p) {
     if (typeof rec.transcript.path !== "string" || !rec.transcript.path) bad("transcript.path 缺席或空");
     if (!HEX64.test(rec.transcript.sha256)) bad("transcript.sha256 须为 64 hex");
   }
+  // 预算面（拍板 7③：budget-ref 非 none 读视图记占位不执法；none=只记事实）
+  if (rec.budget !== null) {
+    if (!rec.budget || typeof rec.budget !== "object" || Array.isArray(rec.budget)) bad("budget 须为对象或 null");
+    if (rec.budget.ref !== null && typeof rec.budget.ref !== "string") bad("budget.ref 须为字符串或 null");
+    if (typeof rec.budget.note !== "string" || !rec.budget.note) bad("budget.note 缺席或空（如实注记义务）");
+    if (rec.budget.enforced !== false) bad("budget.enforced 恒 false（M2 不执法——执法面列 M3 输入）");
+  }
   // 计量面（拍板 7：metered ⇒ points 数；absent/unpriced ⇒ points:null + 非空「不算零」注记）
   const m = rec.metering;
   if (!m || typeof m !== "object" || Array.isArray(m)) bad("metering 须为对象");
   if (!METERING_STATUSES.includes(m.status)) bad(`metering.status 不识别：${JSON.stringify(m.status ?? null)}`);
   if (m.note !== null && typeof m.note !== "string") bad("metering.note 须为字符串或 null");
   if (m.status === "metered") {
-    if (!Number.isInteger(m.points) || m.points < 0) bad("metered 记录须 points 为 ≥0 整数");
+    // points=积分折算值（computePoints 小数，非整数——0.00155 级），有限非负数即可
+    if (!Number.isFinite(m.points) || m.points < 0) bad("metered 记录须 points 为 ≥0 有限数");
   } else if (m.points !== null) {
     bad(`status=${m.status} 须 points:null（缺用量不算零——ADR-0027 修正节口径）`);
   } else if (typeof m.note !== "string" || !m.note) {
@@ -491,6 +501,64 @@ export class ReviewPreflightError extends Error {
   }
 }
 
+// 启动前置核对（拍板 7 四查；spawn 前，任一不过=拒且不 spawn、不消耗）：
+// ① 引擎认证（隔离 HOME 会话创建门）②契约授权（撤回/无效=拒，报文带撤回短码与恢复指路）
+// ③预算视图（budget-ref 非 none 读预算视图如实记占位——M2 不执法；none=只记事实）
+// ④计量能力（sqlite3 在场可执行——不过=拒，避免烧掉预注册预算后才落 invalid）。
+export function preflightReview(cwd, goal, { deps = {} } = {}) {
+  const auth = (deps.detectAuth ?? detectHeadlessAuth)();
+  if (!auth?.ok) {
+    throw new ReviewPreflightError(
+      "无引擎认证（OAuth 凭据与 provider env 均缺席）——隔离 HOME 下评审会话无法创建；恢复：桌面端登录或注入 provider env 后重跑（lzy doctor 看 headless 行）",
+      { reason: "no-auth" },
+    );
+  }
+  let budget = null;
+  if (goal?.contract?.contractHash) {
+    const az = effectiveAuthorization(cwd, goal.slug, goal.contract.contractHash);
+    if (!az.authorized) {
+      const short = String(goal.contract.contractHash).slice(0, 8);
+      const last = az.lastEvent;
+      throw new ReviewPreflightError(
+        `契约 ${short} 授权${last?.kind === "withdrawal" ? `已撤回（${last.at}）` : "无效（无在案批准）"}——` +
+          `恢复：用户重发「批准 ${short}」原话后重跑（批准记录只由真实用户消息经 UPS 钩子写入）`,
+        { reason: "unauthorized" },
+      );
+    }
+  }
+  if (goal?.contract?.path) {
+    let budgetRef = null;
+    try {
+      budgetRef = loadContract(goal.contract.path, cwd).budgetRef ?? null;
+    } catch (e) {
+      throw new ReviewPreflightError(`契约文件不可读（${String(e?.message ?? e).slice(0, 120)}）——评审输入包无法组装；恢复：核对 goal 绑定契约路径`, { reason: "contract-unreadable" });
+    }
+    if (budgetRef && budgetRef !== "none") {
+      let view = null;
+      try {
+        const v = budgetView(cwd);
+        view = { wallMs: v?.wallMs ?? null, points: v?.points ?? null };
+      } catch {}
+      budget = { ref: budgetRef, enforced: false, view, note: "budget-ref 非 none——预算视图如实记录占位；M2 不执法（执法面列 M3 输入）" };
+    } else {
+      budget = { ref: budgetRef ?? null, enforced: false, view: null, note: "budget-ref=none——只记事实不执法（如实注记）" };
+    }
+  }
+  const probe = (deps.sqliteProbe ?? defaultSqliteProbe)();
+  if (!probe?.ok) {
+    throw new ReviewPreflightError(
+      "计量能力缺席（sqlite3 不可执行）——评审后无法读隔离子账本用量，义务将不可满足；拒绝先行避免烧掉预注册预算（原因 metering-capability）",
+      { reason: "metering-capability" },
+    );
+  }
+  return { auth: { oauth: auth.oauth === true, envAuth: auth.envAuth === true }, budget };
+}
+
+function defaultSqliteProbe() {
+  const r = spawnSync("sqlite3", ["--version"], { shell: false, timeout: 5_000, encoding: "utf8" });
+  return r.error || r.status !== 0 ? { ok: false } : { ok: true, version: String(r.stdout ?? "").trim() };
+}
+
 function readGoalJson(cwd) {
   try {
     return JSON.parse(readFileSync(join(cwd, ".lazyzcode", "loop", "goal.json"), "utf8"));
@@ -603,9 +671,8 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps 
   if (!goal || goal.version !== 2) {
     throw new ReviewPreflightError("无 v2 活跃目标（.lazyzcode/loop/goal.json 缺席或 v1）——评审运行针对当前目标", { reason: "no-goal" });
   }
-  if (typeof deps.preflight === "function") {
-    await deps.preflight(cwd, goal); // N4 落真实四前置（auth/授权/预算/计量能力）；拒绝=抛 ReviewPreflightError
-  }
+  // 前置四查（拍板 7）：默认真前置；deps.preflight 可注入（CI 无凭据面替换）
+  const pre = await (deps.preflight ?? preflightReview)(cwd, goal, { deps });
   const startedAt = new Date();
   // 候选固定（拍板 5）：三字段 + 净树断言——脏树=前置拒（评审候选须提交态，先提交再评审）
   const identity = candidateIdentity(cwd);
@@ -697,24 +764,32 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps 
         failures.push(["contamination", "快照树哈希变化（运行期间候选快照被改动）"]);
       }
     }
-    // 计量（拍板 7）：读数唯一走 querySessionPoints（N4 起默认=参数化子账本路径；deps 注入供 CI）
+    // 计量（拍板 7）：读数唯一走 querySessionPoints（默认=真读数，恒传隔离 HOME 子账本路径；
+    // deps 注入供 CI）。三分类映射：absent 行 / 全表外零计价 / metered（表外行如实注记下界）。
     let metering;
     if (!spawned) {
       metering = { status: "absent", points: null, note: "未 spawn——无计量可读（未消耗；不算零口径不适用）" };
-    } else if (typeof deps.querySessionPoints === "function") {
-      let points = null;
+    } else {
+      let r = null;
       let mErr = null;
       try {
-        points = await deps.querySessionPoints(sessionId, { dbPath: join(iso.home, ".zcode", "cli", "db", "db.sqlite") });
+        r = await (deps.querySessionPoints ?? querySessionPoints)(sessionId, {
+          dbPath: join(iso.home, ".zcode", "cli", "db", "db.sqlite"),
+        });
       } catch (e) {
         mErr = e;
       }
       if (mErr) metering = { status: "absent", points: null, note: `计量读数失败（${String(mErr?.message ?? mErr).slice(0, 80)}）——缺用量不算零（ADR-0027 修正节）` };
-      else if (points == null) metering = { status: "absent", points: null, note: `sessionId ${sessionId ?? "?"} 在子账本无用量行——缺用量不算零（ADR-0027 修正节）` };
-      else if (!Number.isFinite(points)) metering = { status: "unpriced", points: null, note: "模型未计价（退出价表）——unpriced 不算零（ADR-0027 修正节）" };
-      else metering = { status: "metered", points, note: null };
-    } else {
-      metering = { status: "absent", points: null, note: "计量面未接入（N4 落参数化读）——缺用量不算零" };
+      else if (!r || r.absent) metering = { status: "absent", points: null, note: `sessionId ${sessionId ?? "?"} 在子账本无完成用量行——缺用量不算零（ADR-0027 修正节）` };
+      else if (r.points === 0 && Array.isArray(r.unpriced) && r.unpriced.length > 0) {
+        metering = { status: "unpriced", points: null, note: `模型未计价（表外 ${r.unpriced.length} 行）——unpriced 不算零（ADR-0027 修正节）` };
+      } else {
+        metering = {
+          status: "metered",
+          points: r.points,
+          note: Array.isArray(r.unpriced) && r.unpriced.length > 0 ? `表外模型 ${r.unpriced.length} 行计 0——读数为下界（计价子集口径）` : null,
+        };
+      }
     }
     // 计量三分类耦合（拍板 7）：absent/unpriced ⇒ invalid（义务不可满足），运行照常落档
     if (spawned && metering.status === "absent") {
@@ -743,6 +818,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps 
       engine: spawned ? (findEngine() ?? "unknown") : null,
       raw: rawInfo,
       transcript: transcriptInfo,
+      budget: pre?.budget ?? null,
       metering,
       validity,
       result,
@@ -770,12 +846,13 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, deps 
       engine: null,
       raw: null,
       transcript: null,
+      budget: null,
       metering: { status: "absent", points: null, note: "运行器异常——无计量可读（不算零）" },
       validity: { status: "invalid", reason: "interrupted", detail: `运行器异常：${String(err?.message ?? err).slice(0, 200)}` },
       result: null,
     };
     try {
-      return { record: finishRun(cwd, reserve, record), exitHint: 1, thrown: err };
+      return { ...finishRun(cwd, reserve, record), thrown: err };
     } catch {
       throw err; // 落档也失败（如磁盘满）——原异常上抛
     }

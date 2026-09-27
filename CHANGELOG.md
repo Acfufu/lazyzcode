@@ -7,6 +7,25 @@ versioning is SemVer.
 
 ### Added
 
+- **Finding lifecycle + obligation reassessment** (0.4.0 M3, goal `v040-m3-findings`; ADR-0031 §4.2 / ADR-0033):
+  blocking findings land in a checksummed `.lazyzcode/findings/<slug>.json` ledger (loop-external, survives
+  reset; fingerprint = sha256 over severity|title|location) and an unclosed blocking finding blocks the unified
+  gate as its own clause across finish/queue/delivery. Closure is single-channel: `lzy finding resolve-request`
+  → `lzy review recheck` (fresh independent same-duty session, closure-candidates readout) → `lzy finding close
+  --outcome fixed|falsified --basis … --recheck <runId>`. Two consecutive invalid fix cycles flip the finding to
+  `diagnosis-required` (resolve denied until `lzy finding diagnose --root-cause …` resets the counter). Renamed
+  goals stay chained via `lzy finding relink`. `lzy policy reassess <id> --impact … --cancel-reason … --basis …`
+  cancels an extra obligation whose generating condition disappeared (three-part rationale appended to
+  obligationsLog; baseline obligations, still-derived obligations, and obligations tied to unclosed blocking
+  findings are refused). Review session consumption enters the budget ledger as a new `review` kind bound to
+  (slug, contractHash) with a separate `budgetView` breakdown; a contract `budget-ref: points:N` binding now
+  enforces a review spend cap at preflight (approximate-limit semantics: overspend denies the next launch).
+  M2 handoff defect batch #5/#7–#13 fixed: multi-subject rejection moved to preflight (exit 3, no record),
+  auth leg judged by the isolated HOME session-creation gate, evidence files referenced with disclosure,
+  metering deduped by distinct sessionId with bounded subledger-flush retries, run-prefix single-writer lock,
+  phantom read attempts persisted, byte-accurate UTF-8 input truncation, unpriced note points at the pricing
+  table.
+
 - **Controlled independent review runner** (0.4.0 M2, goal `v040-m2-review`; ADR-0031): `lzy review run|list|show`
   runs a real isolated review session (facts-only input package + candidate snapshot via `git archive` + per-run
   isolated HOME) against the current goal, parses exactly one JSON verdict fence, seals stdout/stderr with sha256,

@@ -382,6 +382,10 @@ lzy gate explain                        # unified read-only gate: per-obligation
 lzy review run [--duty <id>] [--timeout-ms N]   # controlled independent review runner (0.4.0 M2): isolated HOME +
                                         # candidate snapshot, structured verdict on record; 0=pass&valid / 1=blocked·invalid / 2=usage / 3=precondition (no spawn)
 lzy review list                         # enumerate review runs on record (read-only; corrupt family fails closed non-zero)
+lzy review recheck [--fingerprint <p8>] # independent recheck run (0.4.0 M3): fresh same-duty session + closure candidates
+lzy finding list|show|resolve-request|close|diagnose|relink
+                                        # findings ledger (0.4.0 M3): unclosed blocking findings survive
+                                        # reset/supersede; closure only via resolve-request → recheck → close
 lzy review show <runId>                 # field-by-field + findings table + raw output pointer (read-only)
 lzy loop finish                         # the final gate: all done + fresh evidence + all trees clean (+ HEAVY: MATCH attestation); writes the final attestation and auto-archives
 lzy loop export                         # re-export the evidence bundle

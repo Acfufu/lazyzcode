@@ -207,6 +207,16 @@ export function loadPolicyRecord(cwd, slug, attempt) {
   });
 }
 
+// 按路径读（doctor 巡逻面用）：给定文件直接过家族闸（校验和+版本+形状），不推导 slug。
+export function loadPolicyFile(p) {
+  return loadFamilyFile(p, {
+    versionKey: "schemaVersion",
+    version: POLICY_VERSION,
+    label: "策略记录",
+    shapeFn: assertPolicyShape,
+  });
+}
+
 // ensure：读在案记录（v1 目标={applicable:false}，不建不读）；无记录→生成落档；有记录且
 // 输入身份一致→原样返回；有记录但漂移→**不重导**，drifted=true 连原因返回（闸面阻塞，
 // V02）。expand=true 才允许输入扩大下的重导：只增不删（删除即 PolicyError），差异入

@@ -11,6 +11,7 @@ import { detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
 import { projectCheck } from "./project.js";
 import { loadMigrationState } from "./migrate.js";
+import { loadPolicyFile } from "./policy.js"; // 0.4.0 M1：policy 家族巡逻（形状闸 fail-closed）
 // workers 残留三桶的形态/哨兵谓词单一源（core/drive.js；ADJ-39 同族纪律）。
 import { DRIVE_WORKERS_ROOT_DIRNAME, WORKERS_LOG_DIR_RE, WORKERS_RUN_DIR_RE, readWorkersSentinel } from "./drive.js";
 import { readRepoManifest, readRegistry, sha256File } from "./installer.js";
@@ -559,6 +560,45 @@ function checkApprovals(push, cwd) {
     return;
   }
   push("approvals", "ok", `批准记录 ${names.length} 条（形状合法；ADR-0018 审计面——记录身份=文件+at/sessionId 字段）`);
+}
+
+// 策略家族诊断（0.4.0 M1）：.lazyzcode/policy/ 家族健康巡逻——记录/兼容锚逐个 loadPolicyRecord
+// 家法读（fail-closed），损坏逐个点名；家族缺席/全空=skip。与孤儿 tmp 计数（countLoopResidueTmp
+// 的 policy 目录登记面）互补：这里管「在场文件的形状」，那边管「落单 .tmp 残片」。只读零写。
+function checkPolicy(push, cwd) {
+  const dir = join(cwd, ".lazyzcode", "policy");
+  let names;
+  try {
+    names = readdirSync(dir).filter((f) => f.endsWith(".json") && !f.startsWith("."));
+  } catch {
+    push("policy", "skip", "无策略家族（尚无 v2 目标/兼容锚——0.4.0 M1 面未启用）");
+    return;
+  }
+  if (names.length === 0) {
+    push("policy", "skip", "策略家族空（无策略记录/兼容锚）");
+    return;
+  }
+  const bad = [];
+  let records = 0;
+  let compat = 0;
+  for (const f of names) {
+    try {
+      const rec = JSON.parse(readFileSync(join(dir, f), "utf8"));
+      if (rec?.kind === "compat-goal-v1") {
+        compat += 1; // 兼容锚：loadPolicyRecord 家族闸不放行此 kind，形状由写入面保证
+        continue;
+      }
+      loadPolicyFile(join(dir, f));
+      records += 1;
+    } catch (e) {
+      bad.push(`${f}：${String(e?.message ?? e).slice(0, 80)}`);
+    }
+  }
+  if (bad.length > 0) {
+    push("policy", "warn", `策略家族 ${names.length} 件（记录 ${records}/兼容锚 ${compat}）· ⚠ 不可读 ${bad.length} 件：${bad.slice(0, 3).join("；")}${bad.length > 3 ? "…" : ""}——损坏记录 fail-closed 拒放行，备份后删除可重建读面`);
+    return;
+  }
+  push("policy", "ok", `策略家族 ${names.length} 件（策略记录 ${records} · 兼容锚 ${compat}）· 形状闸全过`);
 }
 
 // 契约授权诊断（0.3.0 M1，ADR-0024）：活跃 goal 绑契约时的授权态与漂移复核——ok=授权
@@ -1157,6 +1197,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkClaims(p, cwd),
     (p) => checkApprovals(p, cwd),
     (p) => checkContract(p, cwd),
+    (p) => checkPolicy(p, cwd),
     (p) => checkProjectManifest(p, cwd),
     (p) => checkMigratePreview(p, cwd),
     (p) => checkHostGit(p, cwd),

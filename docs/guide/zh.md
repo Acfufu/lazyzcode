@@ -303,6 +303,8 @@ lzy evidence red <Fid> --evidence "…"   # 红半绑自己的面（waive-red --
 lzy dag dependents <id|surface>         # 「什么依赖 X」（中央账本，只读）
 lzy dag stale                           # 失效预览：对照现行复合指纹（只展示不进门）
 lzy attest comparator --file <json>     # 对照判决落 attestation（HEAVY finish 强制 MATCH）
+lzy policy show|explain                 # 策略身份与义务集解释（0.4.0 M1；v1 目标显示「政策裁决不适用」）
+lzy gate explain                        # 统一只读门逐义务解释+快照哈希（blocked 退出码非 0）
 lzy loop finish                         # 终验门：全部 done+证据新鲜+全树 clean（HEAVY 另需 MATCH 对照）；落终验 attestation 并自动归档
 lzy loop export                         # 重导出证据包
 lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次
@@ -567,6 +569,8 @@ lzy loop lease acquire|heartbeat|release|reclaim  运行级认领（分钟级互
                                   reclaim=僵尸租约出口；ADR-0020）
 lzy loop budget init|spend|remaining  运行预算（墙钟+积分双硬顶；ADR-0020）
 lzy loop status                 进度、下一步、证据新鲜度、tier/subjects/快照
+lzy policy show|explain         策略身份与义务集解释（0.4.0 M1；v1 目标显示「政策裁决不适用」）
+lzy gate explain                统一只读门逐义务解释+快照哈希（blocked 退出码非 0）
 lzy loop verify                 证据时效审计（退出码 1 = 过期/未绑定/无目标）；逐树头哈希/脏态行
 lzy step done <ID> [--note <注记>] [--evidence <证据>] [--evidence-file <文件>]…
 lzy loop finish                 终验门：全部 done + 证据新鲜 + {host}∪subjects 全树 clean（HEAVY 另需 MATCH 对照）；落终验 attestation+原子归档

@@ -71,6 +71,8 @@ import {
   stalePreview,
 } from "../core/dag.js";
 import { recordComparatorAttestation } from "../core/attest.js";
+import { computePolicyIdentity, loadPolicyRecord, identityStableHash, deriveObligations, REVIEW_RUNNER_FACE } from "../core/policy.js"; // 0.4.0 M1 N7 解释面
+import { evaluateGate } from "../core/gate.js";
 import { findEngine, pluginsRoot, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
 import { auditAgentsMd, formatAgentsMd } from "../core/agentsmd.js";
@@ -1007,6 +1009,13 @@ function printHelp() {
   lzy loop claim [<id>] [--release]         步级认领（决策 #21）：占步互斥 48h；无参列出可
                                             认领集（同目标多工人挑步）；done 自动释放
   lzy loop status                           查看进度与下一步
+  lzy policy show|explain                   策略身份与义务集解释面（0.4.0 M1）：策略身份/评审
+                                            运行器面/逐条义务（源·适用理由·满足条件）；v1 目标
+                                            显示「政策裁决不适用（v1 旧规则延续）」
+  lzy gate explain                          统一只读门解释面（0.4.0 M1）：逐合取项+逐义务满足
+                                            情况+快照哈希；退出码=blocked/身份无效/家族损坏非 0，
+                                            v2 全满足 0，v1/无身份 0（接线面 finish/queue/delivery
+                                            自动执法，本命令只解释）
   lzy loop list [--root <目录>]             跨仓清单（只读）：扫锚目录一级子目录各仓的循环
                                             状态（默认锚=当前目录的同级，含自身）
   lzy loop history                         目标谱系（只读）：证据包 ∪ salvage 存根 ∪ git
@@ -1600,6 +1609,73 @@ function cmdDelivery(args) {
   throw new LoopError("用法：lzy delivery request|status|act|readback（有限交付面，0.3.0 M4）");
 }
 
+// ── 策略与统一门解释面（0.4.0 M1，N7）────────────────────────────────────────
+// 退出码契约（唯一定义处，N4/N9 只引用）：gate explain——blocked/身份无效/家族损坏→非 0；
+// v2 全义务满足→0；v1/无身份目标→0 且裁决行逐字「政策裁决不适用（v1 旧规则延续）」。
+// policy show/explain 为纯读面（无记录且 goal v2 时现算显示并标注「未落档」，零写）。
+function cmdPolicy(args) {
+  const { _ } = parseArgs(args);
+  const sub = _[0] ?? "show";
+  const cwd = process.cwd();
+  if (sub !== "show" && sub !== "explain") {
+    throw new LoopError("用法：lzy policy show|explain（v2 目标的策略身份与义务集解释面；M1 无 reassess——取消通道属 M3）");
+  }
+  const goal = readGoal(cwd);
+  if (!goal) throw new LoopError("本目录没有进行中的目标——policy 解释面需要目标（先 lzy loop register）");
+  if (goal.version !== 2) {
+    console.log(`策略 · 目标 ${goal.slug} · v1 旧规则延续（拍板 5 分域）`);
+    console.log("  政策裁决不适用（v1 旧规则延续）——无义务集、无策略记录");
+    return;
+  }
+  const identity = computePolicyIdentity(cwd, goal);
+  let record = null;
+  try {
+    record = loadPolicyRecord(cwd, goal.slug, goal.attempt);
+  } catch {
+    record = null; // 损坏/缺席→下方现算显示，标注未落档
+  }
+  const onDisk = record !== null && record.inputsHash === identityStableHash(identity);
+  const shown = onDisk ? record : { obligations: deriveObligations(identity), runnerFace: REVIEW_RUNNER_FACE, inputsHash: identityStableHash(identity) };
+  console.log(`策略 · 目标 ${goal.slug}（attempt ${goal.attempt ?? 0} · v2） · ${onDisk ? `记录在案（inputsHash ${shown.inputsHash.slice(0, 8)}… · dutyTable v${shown.dutyTableVersion}）` : "⚠ 未落档（现算显示——接线面 ensurePolicyRecord 首门落档）"}`);
+  console.log(`  输入身份：tier ${identity.tier ?? "n/a"} · risk ${identity.risk ?? "n/a"} · endpoint ${identity.endpoint ?? "无契约"} · 契约 ${identity.contractHash ? identity.contractHash.slice(0, 8) + "…" : "null"} · 清单 ${identity.manifestPresent ? identity.manifestHash.slice(0, 8) + "…" : "缺席"}${identity.contractDrift ? " · ⚠ 契约盘上漂移" : ""}`);
+  console.log(`  评审运行器：${shown.runnerFace?.available ? "在案" : `未接入（${shown.runnerFace?.plannedPhase ?? "M2"}）——评审义务诚实阻塞`}`);
+  console.log(`  义务集（${shown.obligations.length} 条）：`);
+  for (const o of shown.obligations) {
+    console.log(`    [${o.type}${o.baseline ? "·底线" : ""}] ${o.id}`);
+    console.log(`      源 ${o.source} · ${o.appliesBecause}`);
+    console.log(`      满足：${o.satisfaction}`);
+  }
+}
+
+function cmdGate(args) {
+  const { _ } = parseArgs(args);
+  const sub = _[0] ?? "explain";
+  if (sub !== "explain") throw new LoopError("用法：lzy gate explain（统一只读门解释面；接线面自动执法，本命令只解释不裁决写）");
+  const cwd = process.cwd();
+  const gate = evaluateGate(cwd);
+  if (!gate.applicable) {
+    console.log(`统一门 · 目标 ${gate.slug}（v${gate.goalVersion}）`);
+    console.log(`  ${gate.verdict}`);
+    return; // v1/分域外：退出码 0（契约定义）
+  }
+  console.log(`统一门 · 目标 ${gate.slug}（v2 · tier ${gate.tier ?? "n/a"} · ${gate.status}） · 裁决 ${gate.verdict.toUpperCase()}（快照 ${gate.snapshotHash.slice(0, 8)}…）`);
+  for (const [name, c] of Object.entries(gate.clauses)) {
+    console.log(`  ${c.ok ? "✔" : "✘"} ${name}${c.reasons.length ? `：${c.reasons[0]}` : ""}`);
+    for (const extra of c.reasons.slice(1)) console.log(`      ${extra}`);
+  }
+  for (const o of gate.obligations) {
+    const mark = o.state === "satisfied" ? "✔" : "✘";
+    console.log(`  ${mark} 义务 ${o.id}（${o.type}${o.baseline ? "·底线" : ""}）＝ ${o.state}${o.basis?.runId ? ` · 回执 ${o.basis.runId}` : ""}`);
+    for (const reason of o.reasons) console.log(`      ${reason}`);
+  }
+  if (gate.blocked) {
+    console.log(`阻塞 ${gate.blockedReasons.length} 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。`);
+    process.exitCode = 1; // 退出码契约（本函数块顶注释：唯一定义处）
+    return;
+  }
+  console.log("政策层放行（既有 finish 门族照常独立执法——本裁决不含步骤/证据/comparator/净树判定）");
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const cmd = args[0];
@@ -1646,6 +1722,10 @@ async function main() {
       return cmdQueue(args.slice(1));
     case "delivery":
       return cmdDelivery(args.slice(1));
+    case "policy":
+      return cmdPolicy(args.slice(1));
+    case "gate":
+      return cmdGate(args.slice(1));
     case "agents-md":
       return cmdAgentsMd();
     case "version":

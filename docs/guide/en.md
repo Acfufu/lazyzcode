@@ -377,6 +377,8 @@ lzy evidence red <Fid> --evidence "…"   # red half on its own surface (waive-r
 lzy dag dependents <id|surface>         # "what depends on X" (central ledger, read-only)
 lzy dag stale                           # invalidation preview vs current fingerprint (display-only)
 lzy attest comparator --file <json>     # comparator verdicts as attestation (HEAVY finish enforces MATCH)
+lzy policy show|explain                 # policy identity & obligation set explainer (0.4.0 M1; v1 goals print "not applicable")
+lzy gate explain                        # unified read-only gate: per-obligation verdicts + snapshot hash (blocked exits non-zero)
 lzy loop finish                         # the final gate: all done + fresh evidence + all trees clean (+ HEAVY: MATCH attestation); writes the final attestation and auto-archives
 lzy loop export                         # re-export the evidence bundle
 lzy loop handoff --snapshot <file>      # register a clean handoff; next Stop releases once

@@ -464,7 +464,11 @@ export function judgeReceiptIdentity(cwd, base) {
   } catch (err) {
     reasons.push(`项目清单不可读（${err?.message?.slice(0, 80) ?? err}）——身份无锚（fail-closed）`);
   }
-  if (loaded && (base?.recipe?.manifestHash ?? null) !== loaded.hash) {
+  // 清单轴仅适用于**清单配方回执**（kind∈run/reuse/qualification 的 recipe.manifestHash）。
+  // ci 回执是查询面产物（queryCiChecks 如实记 recipe.manifestHash=null，它没有清单配方）——
+  // 按清单轴核会产生结构性非绿（ci 义务须声明清单才生成 ⇒ 清单恒在场 ⇒ 恒判漂移），
+  // 0.4.0 M1 N8 修正：ci 的清单身份由 repo+sha 候选轴承载，不受本轴。
+  if (loaded && base?.kind !== "ci" && (base?.recipe?.manifestHash ?? null) !== loaded.hash) {
     reasons.push(
       `清单漂移（回执 ${base?.recipe?.manifestHash?.slice(0, 8) ?? "null"} ≠ 现行 ${loaded.hash.slice(0, 8)}）——配方身份变化，适用性重估`,
     );

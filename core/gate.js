@@ -150,6 +150,11 @@ export function evaluateGate(cwd, { goal: goalOverride } = {}) {
             ok: false,
             reasons: [`策略规则版本漂移（在案 ${record.rulesHash.slice(0, 8)}…≠现行 ${policyRulesHash().slice(0, 8)}…）——新版本只能作为采纳提案，不自动替换在途（§3.1）`],
           };
+        } else if (identity.manifestInvalid) {
+          clauses.policyIdentity = {
+            ok: false,
+            reasons: ["项目清单不可读或解析失败——策略身份无清单锚（fail-closed；lzy project check 看现状）"],
+          };
         } else {
           clauses.policyIdentity = { ok: true, reasons: [`策略身份有效（${record.inputsHash.slice(0, 8)}… · dutyTable v${record.dutyTableVersion}）`] };
         }

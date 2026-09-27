@@ -32,6 +32,7 @@ import {
   saveDag,
 } from "./dag.js";
 import { evaluateGate } from "./gate.js"; // 0.4.0 M1 N5①：finishLoop 统一政策门（call-time 用，ESM 环安全）
+import { ensurePolicyRecord } from "./policy.js"; // 0.4.0 M1 N8：采纳落策略身份档（call-time 用，ESM 环安全）
 
 export const GOAL_VERSION = 2; // 0.4.0 M1 N6：1→2（v1=legacy 延续，readGoal 分流；v2 恒带策略身份）
 // v2 goal.policy.schemaVersion 盖章值——与 core/policy.js POLICY_VERSION 同一数值（家族
@@ -1359,6 +1360,13 @@ function doAdoptPlan(cwd, planFile, { force = false, review = null, supersede = 
   } else {
     bindPlanToAttempt(cwd, { slug: goal.slug, n: goal.attempt, planHash, tier: goal.tier ?? null });
   }
+  // ── 策略身份落档（0.4.0 M1 N8 收口 N4/N7 承诺的「接线面 ensurePolicyRecord 首门落档」）：
+  // 采纳=任务运行身份的定案时点（契约哈希/项目清单/tier/risk 与 attempt 齐备、人权门已过），
+  // v2 目标在此落策略记录。expand=影响事实重算并入档（§3.2 只增不删，差异入 obligationsLog）：
+  // 采纳是授权的重规划时点（契约内重规划免人权门 ADR-0024；legacy 重采纳带新 planHash 批
+  // 准），正是合法扩大的入口——删除即 PolicyError 抛=采纳失败。写序=goal.json 前（落档失败/
+  // 清单损坏=采纳拒，与 dag-first 同家法）。v1（legacy/分域外）返回 applicable:false 零写。
+  ensurePolicyRecord(cwd, goal, { expand: true, reason: "计划采纳——影响事实重算并入档（人权/契约门已过）" });
   writeGoal(cwd, goal);
   return { goal, warnings, superseded: supersede ? { from: priorAttempt, to: goal.attempt } : null };
 }

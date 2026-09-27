@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { loadProjectManifest } from "./project.js";
-import { loadContract } from "./contract.js";
+import { loadContract, manifestHashIfPresent } from "./contract.js";
 import { readGoal } from "./loop.js";
 import { loadFamilyFile, saveFamilyFile, QueueError } from "./queue.js";
 
@@ -61,6 +61,7 @@ export function computePolicyIdentity(cwd, goal) {
     contractDrift: false,
     manifestPresent: false,
     manifestHash: null,
+    manifestInvalid: false,
     checkIds: [],
     ciRequiredChecks: [], // N3 接线：project.js 承认 capabilities.ci 后由 loadProjectManifest 供源
   };
@@ -74,14 +75,24 @@ export function computePolicyIdentity(cwd, goal) {
       identity.contractDrift = true; // 契约文件不可读/解析失败——闸面按无效判，不猜
     }
   }
-  const manifest = loadProjectManifest(cwd); // 损坏=ProjectError 上抛（fail-closed，闸面报身份无效）
-  if (manifest) {
+  // 清单身份（0.4.0 M1 N8 收口）：字节哈希恒为锚（=契约 recipe 绑定的同一算法，contract.js
+  // manifestHashIfPresent 单源）；清单**解析失败**不使身份不可算——如实记 manifestInvalid
+  // 旗交闸面阻塞，不让「清单坏了」在采纳面变成比契约门（查 e 只看字节）更严的新前置。
+  const bytes = manifestHashIfPresent(cwd);
+  if (bytes !== null) {
     identity.manifestPresent = true;
-    identity.manifestHash = manifest.hash;
-    identity.checkIds = manifest.manifest.capabilities.check.map((r) => r.id).sort();
-    // ci 必需集合（0.4.0 M1 N3 接线：project.js validateManifest 承认并验形后在此供源）
-    const ci = manifest.manifest.capabilities.ci;
-    if (ci?.requiredChecks) identity.ciRequiredChecks = [...ci.requiredChecks].sort();
+    identity.manifestHash = bytes;
+  }
+  try {
+    const manifest = loadProjectManifest(cwd);
+    if (manifest) {
+      identity.checkIds = manifest.manifest.capabilities.check.map((r) => r.id).sort();
+      // ci 必需集合（0.4.0 M1 N3 接线：project.js validateManifest 承认并验形后在此供源）
+      const ci = manifest.manifest.capabilities.ci;
+      if (ci?.requiredChecks) identity.ciRequiredChecks = [...ci.requiredChecks].sort();
+    }
+  } catch {
+    identity.manifestInvalid = true;
   }
   return identity;
 }

@@ -43,7 +43,7 @@ function lzyIn(d, args) {
   return { status: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
-function goalRepo(prefix) {
+function goalRepo(prefix, { v1 = true } = {}) {
   const d = mkdtempSync(join(tmpdir(), prefix));
   const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
   g(["init", "-q"]);
@@ -54,7 +54,7 @@ function goalRepo(prefix) {
   g(["commit", "-qm", "init"]);
   g(["remote", "add", "origin", `https://github.com/${REPO}.git`]);
   const r1 = lzyIn(d, ["loop", "register", "dgate", "--title", "t"]);
-    demoteV1(d);
+  if (v1) demoteV1(d); // v1=false：保留 v2 形态（N8 回归对的一半——v2 阻断面）
   if (r1.status !== 0) throw new Error(`register 失败：${r1.out}`);
   writeFileSync(join(d, "p.md"), "- [N1] x\n");
   const r2 = lzyIn(d, ["loop", "plan", "p.md"]);
@@ -385,5 +385,28 @@ test("⑩origin 穿线：beginAct 携 origin→意图记录在场+delivery statu
     assert.throws(() => actDeliveryB(d2, { ...opts, origin: { kind: "queue" } }, fakeDeps()), /origin\.itemId\/slug 类型/);
   } finally {
     rmSync(d2, { recursive: true, force: true });
+  }
+});
+
+// 0.4.0 M1 N8 回归对（v2 阻断面；v1 成功面=本文件①③⑦⑩既有绿）：授权门之后的统一政策门——
+// v2 目标（带策略身份）在 B∧C 双授权齐备下仍被政策层拒，且**零外部调用、零意图落账**
+// （被阻塞的外发意图不落账，contractPending 亦不动）。逐义务矩阵与其两缝由
+// test/unified-gate.contract.test.js 全量覆盖，此处只钉 delivery 入口这一缝。
+test("⑩0.4.0 M1 N8 v2 阻断：act B 过授权门后被统一门拒（零外部调用、零意图落账）", () => {
+  const d = goalRepo("lzy-dgate-m1-", { v1: false });
+  try {
+    const { b, c } = bindBoth(d);
+    recordAuthorization(d, { kind: "approval", slug: "dgate", contractHash: b.hash, sessionId: "t", at: new Date().toISOString() });
+    recordAuthorization(d, { kind: "approval", slug: "dgate", contractHash: c.hash, sessionId: "t", at: new Date().toISOString() });
+    const deps = fakeDeps();
+    assert.throws(
+      () => actDeliveryB(d, opts, deps),
+      /外发前置统一门（ep B）阻塞[\s\S]*受控评审运行器未接入（M2）/,
+      "v2 目标：政策层放行是外发先决（评审义务 M1 恒阻塞=诚实形态）",
+    );
+    assert.equal(deps._calls.length, 0, `应零外部调用，实得：${deps._calls.join("|")}`);
+    assert.equal((loadIntents(d)?.intents ?? []).length, 0, "被阻塞的外发意图不落账");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
   }
 });

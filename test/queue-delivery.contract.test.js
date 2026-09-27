@@ -371,3 +371,54 @@ test("⑩HEAVY 入队透传：dispatch 注册后 goal.json tier=heavy/risk=med �
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+// 0.4.0 M1 N8 回归对（v2 阻断面；v1 成功面=本文件⑤⑦既有绿，makeDoneGoal 降级夹具）：
+// done 旧记录不免核——queue.js 收口前的统一门把 done 目标照拦（授权撤回/契约漂移/义务失效
+// 不得因「已 done」而免检）：item 回 ready、tx 记 killed 未竟、finishCause 带门原因，绝不假完成。
+test("⑧0.4.0 M1 N8 v2 阻断：done 记录不免核——item 回 ready、tx killed、不假完成", async () => {
+  // 自造 endpoint A 夹具（无交付契约=declaredEps 空，交付绑定不介入本断言面）
+  const d = mkdtempSync(join(tmpdir(), "lzy-qbridge-m1-"));
+  try {
+    const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+    g(["init", "-q"]);
+    g(["config", "user.email", "t@l"]);
+    g(["config", "user.name", "t"]);
+    writeFileSync(join(d, "a.txt"), "a\n");
+    writeFileSync(join(d, "lzy.project.json"), JSON.stringify({ schemaVersion: 1, capabilities: {} }));
+    writeFileSync(join(d, "c-main.md"), "task: main A\nendpoint: A\nscope: .\nrecipe: none\n\n- [A1] x\n");
+    writeFileSync(join(d, "p.md"), "- [N1] x\n");
+    g(["add", "-A"]);
+    g(["commit", "-qm", "fixture"]);
+    const it = addQueueItem(d, { title: "m1-item", contractFile: join(d, "c-main.md"), planFile: join(d, "p.md"), goalSlug: "qbridge", endpoint: "A" });
+    recordAuthorization(d, { kind: "approval", slug: "qbridge", contractHash: it.contractHash, sessionId: "t", at: new Date().toISOString() });
+    refreshQueue(d);
+    // 槽位造「v2 done」态：真注册+真采纳（N8 接线=采纳落策略记录）→ 手改 status（测试态）
+    const r = spawnSync(process.execPath, [CLI, "loop", "register", "qbridge", "--title", "t"], {
+      cwd: d, encoding: "utf8",
+      env: { ...process.env, HOME, USERPROFILE: HOME, LZY_ZCODE_ENGINE: "/nonexistent-lzy-suppressed" },
+    });
+    assert.equal(r.status, 0, `${r.stderr ?? ""}${r.stdout ?? ""}`);
+    writeFileSync(join(d, "slot-p.md"), "- [N1] x\n");
+    const p = spawnSync(process.execPath, [CLI, "loop", "plan", "slot-p.md"], {
+      cwd: d, encoding: "utf8",
+      env: { ...process.env, HOME, USERPROFILE: HOME, LZY_ZCODE_ENGINE: "/nonexistent-lzy-suppressed" },
+    });
+    assert.equal(p.status, 0, `${p.stderr ?? ""}${p.stdout ?? ""}`);
+    const gp = join(d, ".lazyzcode", "loop", "goal.json");
+    const goal = JSON.parse(readFileSync(gp, "utf8"));
+    assert.equal(goal.version, 2, "N6：注册产物恒 v2");
+    assert.ok(goal.policy, "v2 目标带策略身份字段");
+    goal.status = "done";
+    writeFileSync(gp, `${JSON.stringify(goal, null, 2)}\n`);
+    const res = await runQueueDispatch(d, {}, { ...fakeExt({}), drive: async () => ({ ok: true, cause: "fake-ok" }) });
+    const final = itemOf(d, it.id);
+    assert.equal(final.state, "ready", `v2 done 过门被拒须回 ready：${JSON.stringify(res)}`);
+    assert.match(String(res.results?.[0]?.cause ?? ""), /统一门阻塞（done 记录不免核/);
+    assert.match(String(res.results?.[0]?.cause ?? ""), /受控评审运行器未接入（M2）/);
+    const tx = loadDispatch(d).txs.find((t) => t.itemId === it.id);
+    assert.equal(tx.phase, "killed", "未竟收束：tx killed（消耗如实结算，不假完成）");
+    assert.match(tx.note, /未竟（finish 未过：统一门阻塞（done 记录不免核/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

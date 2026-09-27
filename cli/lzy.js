@@ -72,7 +72,8 @@ import {
 } from "../core/dag.js";
 import { recordComparatorAttestation } from "../core/attest.js";
 import { computePolicyIdentity, loadPolicyRecord, identityStableHash, deriveObligations, REVIEW_RUNNER_FACE } from "../core/policy.js"; // 0.4.0 M1 N7 解释面
-import { ReviewPreflightError, listReviewRuns, runReview } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面
+import { ReviewPreflightError, listReviewRuns, runReview, BASELINE_DUTY_ID } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面
+import { listFindings, requestResolve, closeFinding, diagnoseFinding, relinkFindings, findingFingerprint, CLOSED_FINDING_STATUSES, DIAGNOSIS_REQUIRED_THRESHOLD } from "../core/findings.js"; // 0.4.0 M3 N6 发现账本 CLI 面
 import { evaluateGate } from "../core/gate.js";
 import { findEngine, pluginsRoot, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
@@ -106,7 +107,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms", "outcome", "basis", "recheck", "root-cause", "from", "to", "impact", "cancel-reason", "obligation"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1024,6 +1025,21 @@ function printHelp() {
                                             失败不可改判），2=用法错，3=前置不具备（不 spawn 不消耗）
   lzy review list [--goal <slug>]           在案评审运行枚举（只读；家族损坏 fail-closed 非 0）
   lzy review show <runId>                   逐字段+发现表+原始输出指针（只读）
+
+发现账本（0.4.0 M3，V06/V07/V12——关闭通道唯一：resolve-request → review recheck → close）：
+  lzy finding list [--goal <slug>]          发现链枚举（含别名闭包；损坏 fail-closed 非 0）
+  lzy finding show <指纹前8>                逐字段+历史（首见/末见/无效修复/根因/关闭依据）
+  lzy finding resolve-request <指纹前8> [--note …]
+                                            声称已修（open→resolve-requested；
+                                            diagnosis-required 态拒——先 diagnose）
+  lzy finding close <指纹前8> --outcome fixed|falsified --basis … --recheck <runId>
+                                            独立复核后关闭（basis 必填；recheck 须 valid、
+                                            同职责、不报该指纹；无手工关闭通道）
+  lzy finding diagnose <指纹前8> --root-cause …
+                                            重复根因诊断（diagnosis-required 唯一出口；
+                                            根因入账+无效修复计数重置）
+  lzy finding relink --from <旧slug> --to <新slug>
+                                            别名链登记（目标改名后同链可读；查环拒绝）
   lzy loop list [--root <目录>]             跨仓清单（只读）：扫锚目录一级子目录各仓的循环
                                             状态（默认锚=当前目录的同级，含自身）
   lzy loop history                         目标谱系（只读）：证据包 ∪ salvage 存根 ∪ git
@@ -1794,6 +1810,157 @@ async function cmdReview(args) {
   process.exitCode = 2;
 }
 
+// 发现账本 CLI（0.4.0 M3 N6，V06/V07/V12）：list/show/resolve-request/close/diagnose/relink。
+// 退出码契约：0=成功；1=语义拒绝（状态机/校验拒——发现不在账、态不受理、recheck 引用不合法、
+// basis 缺失）；2=用法错（参数缺/指纹歧义）。close 的 recheck 引用校验在此层做（读运行档），
+// 账本状态机在 core/findings.js——CLI 不复制状态转移。
+async function cmdFinding(args) {
+  const { _, f } = parseArgs(args);
+  const sub = _[0] ?? "";
+  const cwd = process.cwd();
+  const usage = (msg) => {
+    console.error(`用法错：${msg}`);
+    console.error("用法：lzy finding list|show <指纹前8>|resolve-request <指纹前8> [--note …]|close <指纹前8> --outcome fixed|falsified --basis … --recheck <runId>|diagnose <指纹前8> --root-cause …|relink --from <旧slug> --to <新slug>");
+    process.exitCode = 2;
+  };
+  const scopeSlug = typeof f.goal === "string" ? f.goal : readGoal(cwd)?.slug ?? null;
+  if (sub === "list") {
+    if (!scopeSlug) {
+      console.log("无活跃目标且未指 --goal——发现账本按 goal slug 记账（lzy finding list --goal <slug>）");
+      return;
+    }
+    let rows;
+    try {
+      rows = listFindings(cwd, scopeSlug);
+    } catch (err) {
+      console.error(`[lzy] ${err?.message ?? err}`); // fail-closed：账本损坏非 0（与 doctor findings 行同口径）
+      process.exitCode = 1;
+      return;
+    }
+    if (rows.length === 0) {
+      console.log(`发现账本 ${scopeSlug}（含别名链）空——评审 blocked 发现落账后在此可读`);
+      return;
+    }
+    const open = rows.filter((x) => !CLOSED_FINDING_STATUSES.includes(x.status));
+    const closed = rows.filter((x) => CLOSED_FINDING_STATUSES.includes(x.status));
+    console.log(`发现账本 ${scopeSlug}（含别名链）${rows.length} 条 · 未关闭 ${open.length}：`);
+    for (const x of open) {
+      console.log(`  ${x.fingerprint.slice(0, 8)} [${x.status}] ${x.severity} ${x.title}（${x.location}）· 累计 ${x.occurrences} · 首见 ${x.firstSeen.runId}${x.originSlug !== scopeSlug ? ` · 源 ${x.originSlug}` : ""}`);
+    }
+    for (const x of closed) {
+      console.log(`  ${x.fingerprint.slice(0, 8)} [${x.status}] ${x.severity} ${x.title} · 闭于 ${x.closure?.recheckRunId ?? "?"}${x.originSlug !== scopeSlug ? ` · 源 ${x.originSlug}` : ""}`);
+    }
+    return;
+  }
+  const fpArg = _[1];
+  const resolveFp = (rows) => {
+    if (!fpArg || !/^[0-9a-f]{1,64}$/i.test(fpArg)) return { err: "指纹前缀须为 hex" };
+    const hits = rows.filter((x) => x.fingerprint.startsWith(fpArg.toLowerCase()));
+    if (hits.length === 0) return { err: `发现不在账：${fpArg}（lzy finding list 看在案集）` };
+    if (hits.length > 1) return { err: `指纹前缀歧义：${hits.length} 条命中（补长前缀）` };
+    return { hit: hits[0] };
+  };
+  if (sub === "show") {
+    if (!scopeSlug) return usage("无活跃目标且未指 --goal");
+    let rows;
+    try {
+      rows = listFindings(cwd, scopeSlug);
+    } catch (err) {
+      console.error(`[lzy] ${err?.message ?? err}`);
+      process.exitCode = 1;
+      return;
+    }
+    const { hit, err } = resolveFp(rows);
+    if (err) {
+      console.error(`用法错：${err}`);
+      process.exitCode = 2;
+      return;
+    }
+    console.log(`发现 ${hit.fingerprint.slice(0, 8)}（账 ${hit.originSlug}）：`);
+    console.log(`  ${hit.severity} ${hit.title}（${hit.location}）· 状态 ${hit.status}`);
+    console.log(`  首见 ${hit.firstSeen.runId}（attempt ${hit.firstSeen.attempt}）· 末见 ${hit.lastSeen.runId} · 累计 ${hit.occurrences} · 无效修复 ${hit.invalidFixCount}/${DIAGNOSIS_REQUIRED_THRESHOLD}`);
+    if (hit.resolveRequest) console.log(`  修复声称 ${hit.resolveRequest.at}${hit.resolveRequest.note ? ` · ${hit.resolveRequest.note}` : ""}`);
+    if (hit.diagnosis) console.log(`  根因诊断 ${hit.diagnosis.at} · ${hit.diagnosis.rootCause}`);
+    if (hit.closure) console.log(`  关闭 ${hit.closure.outcome} · 依据 ${hit.closure.basis} · recheck ${hit.closure.recheckRunId} · ${hit.closure.at}`);
+    console.log("  历史（末 8 条）：");
+    for (const h of hit.history.slice(-8)) {
+      console.log(`    ${h.at} ${h.kind}${h.runId ? ` · ${h.runId}` : ""}${h.note ? ` · ${h.note}` : ""}`);
+    }
+    return;
+  }
+  if (sub === "resolve-request" || sub === "diagnose" || sub === "close") {
+    if (!scopeSlug) return usage("状态变更须有活跃目标（slug 取自 goal）或显式 --goal");
+    let rows;
+    try {
+      rows = listFindings(cwd, scopeSlug, { includeClosed: true });
+    } catch (err) {
+      console.error(`[lzy] ${err?.message ?? err}`);
+      process.exitCode = 1;
+      return;
+    }
+    const { hit, err } = resolveFp(rows);
+    if (err) {
+      console.error(`[lzy] ${err}`);
+      process.exitCode = 1;
+      return;
+    }
+    const originSlug = hit.originSlug;
+    try {
+      if (sub === "resolve-request") {
+        const r = requestResolve(cwd, originSlug, hit.fingerprint, { note: f.note });
+        console.log(`修复已声称：${r.fingerprint.slice(0, 8)} → ${r.status}——独立复核：lzy review recheck；recheck 不再报后 lzy finding close ${r.fingerprint.slice(0, 8)} --outcome fixed|falsified --basis …`);
+        return;
+      }
+      if (sub === "diagnose") {
+        if (typeof f["root-cause"] !== "string" || !f["root-cause"].trim()) return usage("diagnose 须带 --root-cause（重复根因诊断必填）");
+        const r = diagnoseFinding(cwd, originSlug, hit.fingerprint, { rootCause: f["root-cause"] });
+        console.log(`根因已入账：${r.fingerprint.slice(0, 8)} → ${r.status}（无效修复计数重置）——可再入关闭通道`);
+        return;
+      }
+      // close：recheck 引用校验在此层（读运行档）——valid、review 职责、不报该指纹
+      const outcome = f.outcome;
+      const basis = f.basis;
+      const runId = f.recheck;
+      if (outcome !== "fixed" && outcome !== "falsified") return usage("close 须 --outcome fixed|falsified");
+      if (typeof basis !== "string" || !basis.trim()) return usage("close 须 --basis（修复/证伪依据必填）");
+      if (typeof runId !== "string" || !runId) return usage("close 须 --recheck <runId>（独立复核运行档）");
+      const run = listReviewRuns(cwd, {}).find((x) => x.runId === runId);
+      if (!run) {
+        console.error(`[lzy] recheck 运行档不存在：${runId}（lzy review list 看在案集）`);
+        process.exitCode = 1;
+        return;
+      }
+      const blockingFps = (run.result?.findings ?? [])
+        .filter((x) => x.blocking === true)
+        .map((x) => findingFingerprint({ severity: x.severity, title: x.title, location: x.location }));
+      const r = closeFinding(cwd, originSlug, hit.fingerprint, {
+        outcome,
+        basis,
+        recheck: { runId, valid: run.validity?.status === "valid" && run.duty?.id === BASELINE_DUTY_ID, reportedFingerprints: blockingFps },
+      });
+      console.log(`发现已关闭：${r.fingerprint.slice(0, 8)} → ${r.status}（recheck ${r.closure.recheckRunId} · 依据 ${r.closure.basis}）`);
+      return;
+    } catch (err) {
+      console.error(`[lzy] ${err?.message ?? err}`); // 状态机/校验拒绝=语义拒（exit 1）
+      process.exitCode = 1;
+      return;
+    }
+  }
+  if (sub === "relink") {
+    if (typeof f.from !== "string" || typeof f.to !== "string") return usage("relink 须 --from <旧slug> --to <新slug>");
+    try {
+      const r = relinkFindings(cwd, f.from, f.to);
+      console.log(r.changed ? `别名已记：${r.slug} ← ${f.from}（闭包并集读）` : `别名已在案：${r.slug} ← ${f.from}`);
+      return;
+    } catch (err) {
+      console.error(`[lzy] ${err?.message ?? err}`);
+      process.exitCode = 1;
+      return;
+    }
+  }
+  usage("未知子命令");
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const cmd = args[0];
@@ -1846,6 +2013,8 @@ async function main() {
       return cmdGate(args.slice(1));
     case "review":
       return cmdReview(args.slice(1));
+    case "finding":
+      return cmdFinding(args.slice(1));
     case "agents-md":
       return cmdAgentsMd();
     case "version":

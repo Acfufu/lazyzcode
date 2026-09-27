@@ -7,7 +7,9 @@
 //   ③ 外发前置：beginAct 阻塞不落 acting、contractPending 原样保留，v1 对照半放行。
 // 家法：判定面直调 evaluateGate（core 函数级模子）；接线面走真 CLI/真 API（真子进程 +
 // HOME 隔离 + 假 gh 注入缝 LZY_GH_BIN）。契约批准走真实 UPS 短语（hook trigger），不用手写
-// 批准记录。评审义务在 M1 恒不可满足（runnerFace.available=false）=诚实阻塞，非缺陷。
+// 批准记录。评审义务在 M1 恒不可满足（runnerFace.available=false）=诚实阻塞；0.4.0 M2 N5
+// 翻面（runner available=true）后阻塞理由位移为「评审无在案运行」（拍板 6：夹具无评审运行
+// 在案，七合取缺席）——重钉≠放宽，义务仍恒 unsatisfied。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -102,7 +104,7 @@ function approvedGoal(prefix, opts) {
   return d;
 }
 
-const REVIEW_REASON = /受控评审运行器未接入（M2）/;
+const REVIEW_REASON = /评审无在案运行——lzy review run/;
 
 // 基态：唯一的 unsatisfied 义务=评审底线（M1 诚实阻塞）；其余义务与子句全 satisfied。
 function assertReviewOnlyBlocker(gate) {

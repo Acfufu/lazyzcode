@@ -675,7 +675,9 @@ async function gateMatrixCase() {
     return { d, home, lzy, hook, readGoal, goalPath: join(d, ".lazyzcode", "loop", "goal.json"), gh, short };
   }
 
-  const REVIEW_RE = /受控评审运行器未接入（M2）/;
+  // 0.4.0 M2 N5 翻面重钉：夹具无评审运行在案 ⇒ gate 阻塞理由位移为「评审无在案运行」
+  //（拍板 6 七合取缺席；红半=改前树旧理由「受控评审运行器未接入（M2）」成立，F2 harness 采）。
+  const REVIEW_RE = /评审无在案运行——lzy review run/;
   // 解释面结构化解析：子句行「✔/✘ <name>：reason」+ 义务行「✔/✘ 义务 <id>（type）＝ state」，
   // 其后 6 空格缩进行为该条理由（人工可读输出与机器断言共用同一份活体 stdout）。
   const parseGate = (out) => {

@@ -414,7 +414,7 @@ test("⑧0.4.0 M1 N8 v2 阻断：done 记录不免核——item 回 ready、tx k
     const final = itemOf(d, it.id);
     assert.equal(final.state, "ready", `v2 done 过门被拒须回 ready：${JSON.stringify(res)}`);
     assert.match(String(res.results?.[0]?.cause ?? ""), /统一门阻塞（done 记录不免核/);
-    assert.match(String(res.results?.[0]?.cause ?? ""), /受控评审运行器未接入（M2）/);
+    assert.match(String(res.results?.[0]?.cause ?? ""), /评审无在案运行/);
     const tx = loadDispatch(d).txs.find((t) => t.itemId === it.id);
     assert.equal(tx.phase, "killed", "未竟收束：tx killed（消耗如实结算，不假完成）");
     assert.match(tx.note, /未竟（finish 未过：统一门阻塞（done 记录不免核/);

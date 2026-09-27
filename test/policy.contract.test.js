@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -26,6 +26,7 @@ import {
   stableStringify,
 } from "../core/policy.js";
 import { evaluateAcceptanceCoverage } from "../core/loop.js";
+import { evaluateGate } from "../core/gate.js";
 import { judgeReceiptIdentity } from "../core/verify.js";
 import { loadContract } from "../core/contract.js";
 
@@ -289,7 +290,8 @@ test("真 CLI 面：采纳即落策略档（V01/V13 M1 面）+ 解释面两次�
     assert.equal(s1.status, 0, `${s1.stdout ?? ""}${s1.stderr ?? ""}`);
     assert.equal(`${s1.stdout ?? ""}${s1.stderr ?? ""}`, `${s2.stdout ?? ""}${s2.stderr ?? ""}`);
     assert.match(s1.stdout ?? "", /记录在案/);
-    assert.match(s1.stdout ?? "", /受控评审运行器未接入/);
+    assert.match(s1.stdout ?? "", /评审运行器：在案/); // 0.4.0 M2 N5 翻面：runner available ⇒「在案」
+    assert.match(s1.stdout ?? "", /dutyTable v2/);
     // 二次采纳（无变更）= 零写
     const before = recordBytes(d, "polcli");
     assert.equal(lzy(["loop", "plan", "p.md"]).status, 0);
@@ -329,6 +331,41 @@ test("V03 旧 null 契约绑定不得猜测补齐：无契约归属的回执不�
     // 对照半：携带现行契约归属的回执在契约轴上过（清单/候选漂移各自另判）
     const own = judgeReceiptIdentity(d, { runId: "r-own", contractHash: goalHash, recipe: { manifestHash: null }, candidate: null });
     assert.equal(own.reasons.filter((r) => r.includes("契约归属")).length, 0);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// 0.4.0 M2 N5 拍板 2 读侧放宽双断言：旧 dutyTableVersion 档可读（形状闸只验正整数）∧
+// rulesHash 不符走漂移判（gate ③「规则版本漂移…采纳提案」，非形状损坏）。
+test("⑪0.4.0 M2 N5 读侧放宽：旧版本档可读；版本漂移由 rulesHash 子句判不由形状闸判", () => {
+  const d = scratch();
+  try {
+    const goal = frozenInputs(d);
+    // gate 需要目标承载身份（readGoal 严格闸：v2 须 policy 身份）：夹具 goal 落盘
+    mkdirSync(join(d, ".lazyzcode", "loop"), { recursive: true });
+    writeFileSync(join(d, ".lazyzcode", "loop", "goal.json"), `${JSON.stringify({ ...goal, policy: { schemaVersion: 1 } }, null, 2)}\n`);
+    const created = ensurePolicyRecord(d, goal);
+    assert.ok(created.applicable, "现行记录落档");
+    // 手改盘上档：版本降回 1 + 规则哈希清零（旧规则版本形态），校验和按容器家法重签——
+    // 被测面=读侧对旧版本档的形状放宽与 gate 漂移判，不是校验和闸。
+    const p = recordPath(d);
+    const rec = JSON.parse(readFileSync(p, "utf8"));
+    const { checksum: _omit, ...rest } = rec;
+    rest.dutyTableVersion = 1;
+    rest.rulesHash = "0".repeat(64);
+    rest.runnerFace = { available: false, plannedPhase: "M2" };
+    writeRawRecord(p, rest);
+    // ① 旧 dutyTableVersion 档可读：形状闸不再严格相等拒
+    const loaded = loadPolicyFile(p);
+    assert.equal(loaded.dutyTableVersion, 1, "旧版本档过形状闸（正整数即读）");
+    // ② gate 走漂移判：policyIdentity 子句阻塞且原因=规则版本漂移（非「形状非法/不可读」）
+    const gate = evaluateGate(d);
+    assert.equal(gate.applicable, true);
+    assert.equal(gate.clauses.policyIdentity.ok, false);
+    const why = gate.clauses.policyIdentity.reasons.join("\n");
+    assert.match(why, /规则版本漂移/, `阻断原因须为漂移判：${why}`);
+    assert.doesNotMatch(why, /形状非法|不可读/, "旧版本档不得被形状闸/读面拒绝");
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

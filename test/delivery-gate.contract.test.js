@@ -401,8 +401,8 @@ test("⑩0.4.0 M1 N8 v2 阻断：act B 过授权门后被统一门拒（零外�
     const deps = fakeDeps();
     assert.throws(
       () => actDeliveryB(d, opts, deps),
-      /外发前置统一门（ep B）阻塞[\s\S]*受控评审运行器未接入（M2）/,
-      "v2 目标：政策层放行是外发先决（评审义务 M1 恒阻塞=诚实形态）",
+      /外发前置统一门（ep B）阻塞[\s\S]*评审无在案运行/,
+      "v2 目标：政策层放行是外发先决（夹具无评审运行在案——0.4.0 M2 翻面后理由位移，重钉≠放宽）",
     );
     assert.equal(deps._calls.length, 0, `应零外部调用，实得：${deps._calls.join("|")}`);
     assert.equal((loadIntents(d)?.intents ?? []).length, 0, "被阻塞的外发意图不落账");

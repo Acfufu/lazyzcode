@@ -8,10 +8,15 @@
 //   交付事实     = core/delivery.js loadIntents（done 意图的 mergeCiState 核对）
 //   步骤/证据/comparator/净树/竞态 = finish 既有门执法——本门只引用不重复取证（单一事实源）
 //   阻塞发现面   = M3 建账——本门如实声明「未建立」，不冒充已核
+// 评审义务（0.4.0 M2 N5 拍板 6 七合取）：同代次 ∧ duty/规则版本/模板哈希一致 ∧ valid ∧
+// metered ∧ pass ∧ 候选三字段现行 ∧ 原始输出在场哈希相符；取同代次最新一档裁决（最新评
+// 审状态=义务现状），逐因阻塞点名。旧规则版本记录（runnerFace.available=false）按旧语义
+// 诚实阻塞并指路 supersede。
 // 分域（拍板 5）：仅 v2（带策略身份）目标产出政策裁决；v1 旧目标 applicable=false 恒不
-// 阻塞（「政策裁决不适用（v1 旧规则延续）」逐字裁决行由 CLI N7 出口）。评审义务在 M1
-// 恒不可满足（runnerFace.available=false）——诚实阻塞是本阶段的正确形态，不伪造 PASS。
+// 阻塞（「政策裁决不适用（v1 旧规则延续）」逐字裁决行由 CLI N7 出口）。
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { readGoal, evaluateContractGateFacts, evaluateAcceptanceCoverage } from "./loop.js";
 import {
   loadPolicyRecord,
@@ -27,6 +32,7 @@ import {
   judgeReceiptIdentity,
   judgeRequiredCiChecks,
 } from "./verify.js";
+import { listReviewRuns, dutyTemplateHash } from "./review.js"; // 0.4.0 M2 N5：评审运行族读面（call-time 用，ESM 环安全）
 import { loadIntents } from "./delivery.js";
 import { stableStringify } from "./policy.js";
 
@@ -40,6 +46,23 @@ function snapshotHashOf(body) {
 
 function latestReceipt(receipts) {
   return [...receipts].sort((a, b) => String(b.endedAt ?? "").localeCompare(String(a.endedAt ?? "")))[0] ?? null;
+}
+
+// 原始输出封存核对（拍板 6 第七合取）：raw 文件在场 ∧ sha256 与记录相符。
+function verifyRawSeal(cwd, run) {
+  if (!run.raw || !run.raw.path) return { ok: false, reason: "原始输出缺席（raw 未封存——未 spawn 的 invalid 运行不能放行）" };
+  const p = join(cwd, ".lazyzcode", "review", run.runId, run.raw.path);
+  let buf;
+  try {
+    buf = readFileSync(p);
+  } catch {
+    return { ok: false, reason: `原始输出文件缺席：${run.runId}/${run.raw.path}（封存面被删？）` };
+  }
+  const sha = createHash("sha256").update(buf).digest("hex");
+  if (sha !== run.raw.sha256) {
+    return { ok: false, reason: `原始输出哈希不符（盘上 ${sha.slice(0, 8)}… ≠ 记录 ${String(run.raw.sha256).slice(0, 8)}…）——封存被篡改` };
+  }
+  return { ok: true };
 }
 
 // 交付事实核对（M1 面）：在途（acting/unknown）→阻塞「交付未收束」；done 意图逐个核对
@@ -174,12 +197,69 @@ export function evaluateGate(cwd, { goal: goalOverride } = {}) {
         if (!record.runnerFace?.available) {
           entry.state = "unsatisfied";
           entry.reasons = [
-            `受控评审运行器未接入（${record.runnerFace?.plannedPhase ?? "M2"}）——评审义务诚实阻塞，本阶段不伪造评审完成声明（§8 M1 出口）`,
+            `受控评审运行器未接入（旧规则版本记录，plannedPhase ${record.runnerFace?.plannedPhase ?? "M2"}）——现行规则已翻面（dutyTable v2 起 runner available）；本记录属旧策略版本，走 lzy loop supersede 重采纳后按新语义判`,
           ];
           entry.basis = { runnerFace: record.runnerFace ?? { available: false } };
         } else {
-          entry.state = "unsatisfied";
-          entry.reasons = ["评审回执面未实现——评审运行记录家族缺席（M2 交付）"];
+          // 拍板 6 七合取：同代次 ∧ duty/规则版本一致（dutyTableVersion+模板哈希）∧ valid ∧
+          // metered ∧ pass ∧ 候选三字段现行 ∧ 原始输出在场哈希相符；取同代次最新一档。
+          let currentTpl = null;
+          try {
+            currentTpl = dutyTemplateHash(ob.id);
+          } catch {
+            currentTpl = null; // 职责不在现行职责表：无运行可匹配（fail-closed 走「无在案运行」）
+          }
+          const runs = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).filter(
+            (r) => r.duty?.id === ob.id && r.dutyTableVersion === record.dutyTableVersion && r.templateHash === currentTpl,
+          );
+          const last = runs.at(-1);
+          if (!last) {
+            entry.state = "unsatisfied";
+            entry.reasons = ["评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）"];
+            entry.basis = { runsInGeneration: 0 };
+          } else {
+            entry.basis = {
+              runId: last.runId,
+              sessionId: last.sessionId ? String(last.sessionId).slice(0, 12) : null,
+              points: last.metering?.points ?? null,
+              attempt: last.attempt,
+              runsInGeneration: runs.length,
+            };
+            const blockers = [];
+            if (last.validity?.status !== "valid") {
+              blockers.push(`运行无效（${last.validity?.reason ?? "?"}${last.validity?.detail ? `：${String(last.validity.detail).slice(0, 120)}` : ""}）——修复后重跑（lzy review run）`);
+            } else {
+              if (last.metering?.status !== "metered") {
+                blockers.push(`计量非 metered（${last.metering?.status ?? "?"}）——缺用量不算零（ADR-0027 修正节），义务不可满足`);
+              }
+              if (last.result?.verdict !== "pass") {
+                const blocking = (last.result?.findings ?? []).filter((f) => f.blocking === true || f.severity === "P0" || f.severity === "P1");
+                blockers.push(
+                  `评审判 blocked（阻塞发现 ${blocking.length} 条：${blocking.slice(0, 3).map((f) => f.id).join("、") || "结构自相矛盾归一"}）` +
+                    `——发现关闭通道属 M3，本阶段唯一出路=修复后重跑`,
+                );
+              }
+              const nowId = candidateIdentity(cwd);
+              if (
+                last.candidate?.headSha !== nowId.headSha ||
+                last.candidate?.compositeFingerprint !== nowId.compositeFingerprint ||
+                last.candidate?.cliVersion !== nowId.cliVersion
+              ) {
+                blockers.push(`候选漂移（运行时 head ${String(last.candidate?.headSha ?? "?").slice(0, 8)} ≠ 现行 ${String(nowId.headSha ?? "?").slice(0, 8)}）——对现行候选重跑`);
+              }
+              const rawOk = verifyRawSeal(cwd, last);
+              if (!rawOk.ok) blockers.push(rawOk.reason);
+            }
+            if (blockers.length > 0) {
+              entry.state = "unsatisfied";
+              entry.reasons = blockers;
+            } else {
+              entry.reasons = [
+                `评审运行 ${last.runId} 满足七合取（metered ${last.metering.points} 分 · verdict=pass · 候选现行 · 原始输出哈希符）` +
+                  `；发现生命周期（独立复核关闭/证伪）属 M3——本阶段无 CLI 出口`,
+              ];
+            }
+          }
         }
       } else if (ob.type === "check") {
         const checkId = ob.id.slice("check.".length);

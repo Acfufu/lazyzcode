@@ -11,7 +11,7 @@ import { detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
 import { projectCheck } from "./project.js";
 import { loadMigrationState } from "./migrate.js";
-import { loadPolicyFile } from "./policy.js"; // 0.4.0 M1：policy 家族巡逻（形状闸 fail-closed）
+import { loadPolicyFile, DUTY_TABLE_VERSION } from "./policy.js"; // 0.4.0 M1：policy 家族巡逻（形状闸 fail-closed）+ M2 N5 版本漂移读数
 import { loadReviewFile } from "./review.js"; // 0.4.0 M2：review 运行族巡逻（形状闸 fail-closed，损坏=fail 级）
 // workers 残留三桶的形态/哨兵谓词单一源（core/drive.js；ADJ-39 同族纪律）。
 import { DRIVE_WORKERS_ROOT_DIRNAME, WORKERS_LOG_DIR_RE, WORKERS_RUN_DIR_RE, readWorkersSentinel } from "./drive.js";
@@ -580,6 +580,7 @@ function checkPolicy(push, cwd) {
     return;
   }
   const bad = [];
+  const drifted = [];
   let records = 0;
   let compat = 0;
   for (const f of names) {
@@ -589,14 +590,28 @@ function checkPolicy(push, cwd) {
         compat += 1; // 兼容锚：loadPolicyRecord 家族闸不放行此 kind，形状由写入面保证
         continue;
       }
-      loadPolicyFile(join(dir, f));
+      const loaded = loadPolicyFile(join(dir, f));
       records += 1;
+      // 版本漂移读数（0.4.0 M2 N5 拍板 2 读侧放宽的配套面）：旧版本档可读不=损坏，
+      // 阻断由 gate rulesHash 子句判——这里只把漂移事实亮出来（warn 不翻退出码）。
+      if (loaded.dutyTableVersion !== DUTY_TABLE_VERSION) {
+        drifted.push(`${f}（在案 v${loaded.dutyTableVersion} vs 现行 v${DUTY_TABLE_VERSION}）`);
+      }
     } catch (e) {
       bad.push(`${f}：${String(e?.message ?? e).slice(0, 80)}`);
     }
   }
   if (bad.length > 0) {
     push("policy", "warn", `策略家族 ${names.length} 件（记录 ${records}/兼容锚 ${compat}）· ⚠ 不可读 ${bad.length} 件：${bad.slice(0, 3).join("；")}${bad.length > 3 ? "…" : ""}——损坏记录 fail-closed 拒放行，备份后删除可重建读面`);
+    return;
+  }
+  if (drifted.length > 0) {
+    push(
+      "policy",
+      "warn",
+      `策略家族 ${names.length} 件（记录 ${records} · 兼容锚 ${compat}）· ⚠ 规则版本漂移 ${drifted.length} 件：${drifted.slice(0, 3).join("；")}${drifted.length > 3 ? "…" : ""}` +
+        `——旧档仍可读（形状闸放宽），阻断由 rulesHash 判（「规则版本漂移…新版本只能作为采纳提案」）；重采纳走 lzy loop supersede`,
+    );
     return;
   }
   push("policy", "ok", `策略家族 ${names.length} 件（策略记录 ${records} · 兼容锚 ${compat}）· 形状闸全过`);

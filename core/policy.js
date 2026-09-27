@@ -15,22 +15,26 @@ import { loadProjectManifest } from "./project.js";
 import { loadContract, manifestHashIfPresent } from "./contract.js";
 import { readGoal } from "./loop.js";
 import { loadFamilyFile, saveFamilyFile, QueueError } from "./queue.js";
+import { DUTY_TABLE as REVIEW_DUTY_TABLE, dutyTemplateHash } from "./review.js"; // 0.4.0 M2 N5：职责模板内容哈希入 rulesHash（call-time 用，ESM 环安全）
 
 export const POLICY_VERSION = 1; // 记录家族 schema 版本
-export const DUTY_TABLE_VERSION = 1; // 默认义务表版本（§3.1「少量配置」）
-// M1 事实：受控评审运行器未接入（M2）。翻面时必须同批 bump DUTY_TABLE_VERSION——
-// 该旗标参与 rulesHash，翻面=策略身份变化=新策略版本（不自动替换在途记录，§3.1）。
-export const REVIEW_RUNNER_FACE = Object.freeze({ available: false, plannedPhase: "M2" });
+// 0.4.0 M2 N5 翻面：受控评审运行器在案（core/review.js runReview），职责表 v1→v2 同批
+//（旗标参与 rulesHash，翻面=策略身份变化=新策略版本——在途旧记录不自动替换，§3.1）。
+export const DUTY_TABLE_VERSION = 2;
+export const REVIEW_RUNNER_FACE = Object.freeze({ available: true });
 export const OBLIGATION_TYPES = ["check", "review", "ci", "delivery-audit"];
 export const BASELINE_REVIEW_ID = "review.general-correctness";
 
 export class PolicyError extends Error {}
 
-// 规则内容哈希（§3.1 记录面）：覆盖塑形导出的配置面（义务表版本/类型域/运行器旗标），
+// 规则内容哈希（§3.1 记录面）：覆盖塑形导出的配置面（义务表版本/类型域/运行器旗标/职责
+// 模板内容哈希——M2 N5 增补：模板文本即职责定义的内容面，漂移同样构成规则版本变化），
 // 不覆盖导出产物本身（那是 obligations 内容，随输入走）。
 export function policyRulesHash() {
+  const dutyTemplates = {};
+  for (const d of REVIEW_DUTY_TABLE) dutyTemplates[d.id] = dutyTemplateHash(d.id);
   return createHash("sha256")
-    .update(JSON.stringify({ dutyTableVersion: DUTY_TABLE_VERSION, types: OBLIGATION_TYPES, runnerFace: REVIEW_RUNNER_FACE }))
+    .update(JSON.stringify({ dutyTableVersion: DUTY_TABLE_VERSION, types: OBLIGATION_TYPES, runnerFace: REVIEW_RUNNER_FACE, dutyTemplates }))
     .digest("hex");
 }
 
@@ -103,17 +107,17 @@ export function deriveObligations(identity) {
   const obligations = [];
   const manifestRef = identity.manifestPresent ? `manifest:${identity.manifestHash.slice(0, 8)}` : "manifest:absent";
   // ① 通用正确性评审（底线，§3.1 必选）：全部 v2 目标恒生成，无契约亦生成（拍板 7）。
+  // 0.4.0 M2 N5 翻面：runner available ⇒ 满足条件改 M2 七合取语义（gate.js 评审子句同源）。
   obligations.push({
     id: BASELINE_REVIEW_ID,
     type: "review",
     baseline: true,
     source: `policy.dutyTable.v${DUTY_TABLE_VERSION}`,
-    appliesBecause: "首版评审职责通用正确性必选（§3.1）——全部 v2 目标",
+    appliesBecause: "通用正确性评审职责必选（§3.1）——全部 v2 目标",
     acceptanceIds: [],
-    satisfaction: REVIEW_RUNNER_FACE.available
-      ? "覆盖本职责的受控评审真实运行在案且经独立复核（复用依据另行适用性判定）"
-      : "受控评审运行器未接入（M2）——本阶段恒不可满足，诚实阻塞",
-    dependsOn: REVIEW_RUNNER_FACE.available ? ["runner:controlled-review"] : ["runner:m2-controlled-review"],
+    satisfaction:
+      "同 (slug,attempt) 代次的受控评审运行在案：duty/dutyTableVersion/模板哈希与现行规则一致 ∧ validity=valid ∧ metering=metered ∧ verdict=pass ∧ 候选三字段=现行 ∧ 原始输出在场哈希相符（lzy review run；发现生命周期处理属 M3）",
+    dependsOn: ["runner:controlled-review"],
     version: POLICY_VERSION,
   });
   // ② check 义务：项目清单 check 类配方逐条（清单为源；映射经回执 acceptanceIds 承载）。
@@ -187,7 +191,11 @@ function assertPolicyShape(rec, p) {
   }
   if (typeof rec.attempt !== "number") throw bad("attempt 须为数字");
   if (rec.policyVersion !== POLICY_VERSION) throw bad(`policyVersion 不符（${rec.policyVersion}）`);
-  if (rec.dutyTableVersion !== DUTY_TABLE_VERSION) throw bad(`dutyTableVersion 不符（${rec.dutyTableVersion}）`);
+  // 读侧放宽（0.4.0 M2 N5 拍板 2）：dutyTableVersion 只要求正整数——旧规则版本档保持可读，
+  // 版本漂移一律由 rulesHash 子句判（gate ③「规则版本漂移…采纳提案」），不在此 fail-closed。
+  if (!Number.isInteger(rec.dutyTableVersion) || rec.dutyTableVersion < 1) {
+    throw bad(`dutyTableVersion 须为正整数（${rec.dutyTableVersion}）`);
+  }
   if (!rec.inputs || typeof rec.inputs !== "object") throw bad("inputs 缺席");
   if (!Array.isArray(rec.obligations) || rec.obligations.length === 0) throw bad("obligations 须为非空数组");
   const seen = new Set();

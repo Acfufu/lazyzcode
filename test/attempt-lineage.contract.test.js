@@ -14,6 +14,17 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证非政策面——注册后直写降级
+// v1 legacy 夹具（拍板 5 分域：统一门对 v1 不适用）。拍板 6：不新增任何消融缝。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 import { createGit } from "../core/git.js";
 import {
   ATTEMPT_VERSION,
@@ -85,6 +96,7 @@ function writePlan(d, text) {
 
 function cycle(d, slug = "t") {
   registerGoal(d, slug, "title");
+  demoteV1(d);
   adoptPlan(d, writePlan(d, "- [N1] x\n- [F1] v\n"));
   startLoop(d, createGit(d));
 }
@@ -171,6 +183,7 @@ test("写护栏：盘上有载荷而写入空 attempts=拒（覆写即毁世系�
 test("register 初始化单条 active；adoptPlan 绑定 planHash", () => {
   const d = repo();
   registerGoal(d, "t", "title");
+  demoteV1(d);
   let lin = loadAttempts(d);
   assert.equal(lin.attempts[0].n, 1);
   assert.equal(lin.attempts[0].planHash, null);
@@ -210,6 +223,7 @@ test("supersede forward-only：attempt+1、旧快照归档、世系置换、plan
 test("supersede 拒绝面：planning 态拒；无 planHash 走恢复出口拒", () => {
   const d = repo();
   registerGoal(d, "t", "title");
+  demoteV1(d);
   const p = writePlan(d, "- [N1] x\n- [F1] v\n");
   adoptPlan(d, p);
   assert.throws(() => supersedePlan(d, p), /仅 executing 态有语义/);
@@ -227,6 +241,7 @@ test("supersede 拒绝面：planning 态拒；无 planHash 走恢复出口拒", 
 test("HEAVY supersede 评审门照走：无 PASS 机器拒，PASS 放行", () => {
   const d = repo();
   registerGoal(d, "t", "title", { tier: "heavy" });
+  demoteV1(d);
   adoptPlan(d, writePlan(d, "- [N1] x\n- [F1] v\n"), { review: "plan-reviewer: PASS — r1" });
   startLoop(d, createGit(d));
   const p2 = writePlan(d, "- [N1] x CHANGED\n- [F1] v\n");
@@ -268,6 +283,7 @@ test("finish/abandon 收口进世系；跨 reset 常驻且重注册派生衔接"
   assert.ok(existsSync(attemptFileOf(d)), "reset 不清世系（同 dag.json）");
   // 重注册同 slug：deriveAttempt=账本最大戳+1=2；世系文件重置为本运行，派生视图补历史
   registerGoal(d, "t", "title again");
+  demoteV1(d);
   assert.equal(goalJson(d).attempt, 2);
   const lin = loadAttempts(d);
   assert.deepEqual(lin.attempts.map((a) => a.n), [1, 2], "同 slug 重注册追加，历史 supersede 链保真");
@@ -316,6 +332,7 @@ test("supersedeAttempt/bindPlanToAttempt/closeAttempt 派生基准：无文件�
 test("CLI supersede 流 + attempts 读面 + plan 拒面（隔离 HOME spawn）", () => {
   const d = repo();
   let r = cli(["loop", "register", "t", "--title", "T"], d);
+    demoteV1(d);
   assert.equal(r.code, 0);
   const p = join(d, ".lazyzcode", "plan.md");
   mkdirSync(join(d, ".lazyzcode"), { recursive: true });
@@ -345,6 +362,7 @@ test("CLI supersede 流 + attempts 读面 + plan 拒面（隔离 HOME spawn）",
 test("CLI reset 清孤儿 tmp（.attempt.json.*.tmp 家族）但留世系本体", () => {
   const d = repo();
   cli(["loop", "register", "t", "--title", "T"], d);
+    demoteV1(d);
   const loop = join(d, ".lazyzcode", "loop");
   writeFileSync(join(loop, ".attempt.json.999.123.tmp"), "orphan");
   const r = cli(["loop", "reset"], d);
@@ -358,6 +376,7 @@ test("CLI reset 清孤儿 tmp（.attempt.json.*.tmp 家族）但留世系本体"
 test("CLI dag stale：fresh/stale/superseded/外部/n-a 五态逐一命中", () => {
   const d = repo();
   let r = cli(["loop", "register", "t", "--title", "T"], d);
+    demoteV1(d);
   assert.equal(r.code, 0);
   const p = writePlan(d, "- [N1] x\n- [F1] v\n- [F2] w\n");
   r = cli(["loop", "plan", p], d);
@@ -393,6 +412,7 @@ test("CLI dag stale：fresh/stale/superseded/外部/n-a 五态逐一命中", () 
 test("CLI rm 后重注册：supersede 链跨 reset 由派生视图续读", () => {
   const d = repo();
   cli(["loop", "register", "t", "--title", "T"], d);
+    demoteV1(d);
   const p = writePlan(d, "- [N1] x\n- [F1] v\n");
   cli(["loop", "plan", p], d);
   cli(["loop", "start"], d);
@@ -400,6 +420,7 @@ test("CLI rm 后重注册：supersede 链跨 reset 由派生视图续读", () =>
   cli(["loop", "supersede", p], d);
   cli(["loop", "reset"], d);
   cli(["loop", "register", "t", "--title", "T2"], d);
+    demoteV1(d);
   const r = cli(["loop", "attempts"], d);
   assert.match(r.out, /#1 superseded → #2/);
   assert.match(r.out, /#2 superseded → #3/);

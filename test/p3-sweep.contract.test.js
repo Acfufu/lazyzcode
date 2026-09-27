@@ -10,6 +10,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证非政策面——注册后直写降级
+// v1 legacy 夹具（拍板 5 分域：统一门对 v1 不适用）。拍板 6：不新增任何消融缝。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
+
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const HOOKS = join(ROOT, "plugin", "hooks");
 const LAUNCHER = join(HOOKS, "run-hook"); // POSIX 面（win32 走 run-hook.cmd 孪生，见启动器契约）
@@ -38,6 +49,7 @@ function startGoal(d) {
   writeFileSync(plan, "- [N1] 实现步骤一\n- [N2] 实现步骤二\n- [F1] · 终验：CLI stdout 显示 ok\n");
   gitInit(d); // 非 git 宿主 register 硬拒（ADR-0019，0.1.1）：夹具补 git 初始化
   assert.equal(lzy(["loop", "register", "t1", "--title", "t"], d).status, 0);
+    demoteV1(d);
   assert.equal(lzy(["loop", "plan", plan], d).status, 0);
   assert.equal(lzy(["loop", "start"], d).status, 0);
 }
@@ -61,12 +73,14 @@ test("parseArgs：--force=true 布尔归一放行带未决标记计划；--force
     const plan = join(d, ".lazyzcode", "plans", "p.md");
     writeFileSync(plan, "- [N1] 含未决字样：待定（--force 越过属设计内）\n");
     assert.equal(lzy(["loop", "register", "t1", "--title", "t"], d).status, 0);
+    demoteV1(d);
     const r1 = lzy(["loop", "plan", plan, "--force=true"], d);
     assert.equal(r1.status, 0, r1.stderr || r1.stdout);
     const d2 = scratch();
     try {
       gitInit(d2);
       assert.equal(lzy(["loop", "register", "t2", "--title", "t"], d2).status, 0);
+    demoteV1(d2);
       const r2 = lzy(["loop", "plan", "--force", plan], d2);
       assert.equal(r2.status, 0, r2.stderr || r2.stdout);
     } finally {
@@ -93,7 +107,7 @@ test("step done：note 301 拒 / 300 收；evidence 4001 拒（R2-9）", () => {
   }
 });
 
-test("goal 版本不兼容快败并指路 reset（R2-10）", () => {
+test("goal 版本不识别快败并指路 reset（R2-10；0.4.0 M1 起认 v1 legacy/v2 两态）", () => {
   const d = scratch();
   try {
     startGoal(d);
@@ -103,7 +117,7 @@ test("goal 版本不兼容快败并指路 reset（R2-10）", () => {
     writeFileSync(gp, JSON.stringify(g));
     const r = lzy(["loop", "status"], d);
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /版本不兼容/);
+    assert.match(r.stderr, /版本不识别/);
   } finally {
     cleanup(d);
   }

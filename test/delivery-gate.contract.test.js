@@ -10,6 +10,17 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证非政策面——注册后直写降级
+// v1 legacy 夹具（拍板 5 分域：统一门对 v1 不适用）。拍板 6：不新增任何消融缝。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 import { loadAuthorizations, recordAuthorization } from "../core/contract.js";
 import { bindDeliveryContract } from "../core/loop.js";
 import { actDeliveryB, deliveryStatus, loadIntents, validateDeliveryContract } from "../core/delivery.js";
@@ -43,6 +54,7 @@ function goalRepo(prefix) {
   g(["commit", "-qm", "init"]);
   g(["remote", "add", "origin", `https://github.com/${REPO}.git`]);
   const r1 = lzyIn(d, ["loop", "register", "dgate", "--title", "t"]);
+    demoteV1(d);
   if (r1.status !== 0) throw new Error(`register 失败：${r1.out}`);
   writeFileSync(join(d, "p.md"), "- [N1] x\n");
   const r2 = lzyIn(d, ["loop", "plan", "p.md"]);

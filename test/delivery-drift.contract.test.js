@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,7 +49,18 @@ function goalRepo(prefix) {
     const r = lzyIn(d, args);
     if (r.status !== 0) throw new Error(`${what} 失败：${r.out}`);
   }
+  demoteV1(d);
   return d;
+}
+
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证非政策面——注册后直写降级
+// v1 legacy 夹具（拍板 5 分域）。不新增消融缝。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
 }
 
 function bindB(d) {

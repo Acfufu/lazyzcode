@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,10 +56,20 @@ function approvedItem(d, slug) {
   return it;
 }
 
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证计量面——直写降 v1 分域外。
+function demoteV1(cwd) {
+  const gp = join(cwd, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 const okDriveDeps = {
   enginePath: "/fake/engine.cjs",
   detectAuth: () => ({ ok: true }),
   drive: async (cwd, opts) => {
+    demoteV1(cwd); // 0.4.0 M1 sweep（拍板 6a）：降 v1 分域外（本文件验证计量面，非政策面）
     spawnSync(process.execPath, [CLI, "step", "done", "N1"], { cwd, encoding: "utf8", env: { ...process.env } });
     spawnSync(process.execPath, [CLI, "step", "done", "F1", "--evidence", "done"], { cwd, encoding: "utf8", env: { ...process.env } });
     opts.segmentRecords.push({ sessionId: "sess-m1", durationMs: 100, exitCode: 0, endedAt: new Date().toISOString() });

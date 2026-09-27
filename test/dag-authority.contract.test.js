@@ -15,6 +15,17 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证非政策面——注册后直写降级
+// v1 legacy 夹具（拍板 5 分域：统一门对 v1 不适用）。拍板 6：不新增任何消融缝。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 import { createGit } from "../core/git.js";
 import {
   appendComparatorNode,
@@ -92,6 +103,7 @@ function commitAll(d, msg) {
 // red=false 造缺红夹具（0.1.0 棒B INV-09 拒面测试专用；默认红半在场=0.0.10 行为基线）。
 function cycle(d, { heavy = false, red = true } = {}) {
   registerGoal(d, "t", "title", { tier: heavy ? "heavy" : "light" });
+  demoteV1(d);
   const p = join(d, ".lazyzcode", "plan.md");
   mkdirSync(join(d, ".lazyzcode"), { recursive: true });
   writeFileSync(p, "- [N1] x\n- [F1] v\n");
@@ -460,6 +472,7 @@ test("CLI verify：正常链新鲜判定照常（权威切换零回归）", () =
 test("对照绑证据：缺绑定/悬空 nodeId/先对照后取证都在入账处拒；绑定后存实际节点 id 与代次", () => {
   const d = repo();
   registerGoal(d, "t", "title", { tier: "heavy" });
+  demoteV1(d);
   const p = join(d, ".lazyzcode", "plan.md");
   mkdirSync(join(d, ".lazyzcode"), { recursive: true });
   writeFileSync(p, "- [F1] v\n");
@@ -527,6 +540,7 @@ test("finish 门绑定：rebind 后复用旧对照（指纹已同步）→未绑
 test("零 F HEAVY：采纳时拒零 F 计划；存量（light 采纳后升 heavy）finish 零 F 豁免过门", () => {
   const d = repo();
   registerGoal(d, "t", "title", { tier: "heavy" });
+  demoteV1(d);
   const p = join(d, ".lazyzcode", "plan.md");
   mkdirSync(join(d, ".lazyzcode"), { recursive: true });
   writeFileSync(p, "- [N1] x\n");
@@ -534,6 +548,7 @@ test("零 F HEAVY：采纳时拒零 F 计划；存量（light 采纳后升 heavy
   // 存量形态：light 采纳零 F 计划→升 heavy→finish 豁免（无对照可录）
   const d2 = repo();
   registerGoal(d2, "t", "title");
+  demoteV1(d2);
   const p2 = join(d2, ".lazyzcode", "plan.md");
   mkdirSync(join(d2, ".lazyzcode"), { recursive: true });
   writeFileSync(p2, "- [N1] x\n");

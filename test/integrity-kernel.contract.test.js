@@ -14,6 +14,17 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证非政策面——注册后直写降级
+// v1 legacy 夹具（拍板 5 分域：统一门对 v1 不适用）。拍板 6：不新增任何消融缝。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 import { createGit } from "../core/git.js";
 import {
   addSubject,
@@ -72,6 +83,7 @@ function cycle(d, { subjects = null, review = null, evidence = "ev" } = {}) {
   // register→plan(可选 subjects 头)→start→N1→F1 取证 的最小全链（每用例自建 scratch，勿共用）。
   // 计划一律置 .lazyzcode/ 内：根上未跟踪计划文件会绊 finish 完整性闸门（0.0.8 语义）。
   registerGoal(d, "t", "title");
+  demoteV1(d);
   const body = subjects === null ? PLAN : `subjects: ${subjects}\n\n${PLAN}`;
   const p = writePlan(d, body, ".lazyzcode/plan.md");
   adoptPlan(d, p, review ? { review } : {});
@@ -134,6 +146,7 @@ test("subjects 头：多行相对路径→realpath 绝对路径数组；host 不
   const sib = repo("lzy-v008-sib-");
   try {
     registerGoal(d, "t", "title");
+    demoteV1(d);
     const sibName = basename(sib); // 兄弟目录名（同 tmpdir 父级）
     const p = writePlan(d, `subjects: ../${sibName}\n\n${PLAN}`);
     adoptPlan(d, p, {});
@@ -153,6 +166,7 @@ test("subjects 头四拒：不存在 / 非 git / 头内重复 / 正文杂散行�
   const sibName = basename(sib);
   try {
     registerGoal(d, "t", "title");
+    demoteV1(d);
     assert.throws(() => adoptPlan(d, writePlan(d, `subjects: ../no-such-repo\n\n${PLAN}`), {}), /subject 路径不存在/);
     const plainSib = mkdtempSync(join(tmpdir(), "lzy-v008-plain-")); // 兄弟位置的普通目录（非 git）
     try {
@@ -183,6 +197,7 @@ test("subjects 包含关系拒：host 子目录与父目录均拒（尾分隔符
   const d = repo();
   try {
     registerGoal(d, "t", "title");
+    demoteV1(d);
     mkdirSync(join(d, "sub"));
     spawnSync("git", ["init", "-q"], { cwd: join(d, "sub") });
     spawnSync("git", ["commit", "-qm", "init", "--allow-empty"], { cwd: join(d, "sub") });
@@ -234,6 +249,7 @@ test("addSubject/removeSubject：planning 拒、校验镜像、幂等去重、�
   const sibPath = join(tmpdir(), basename(sib));
   try {
     registerGoal(d, "t", "title");
+    demoteV1(d);
     adoptPlan(d, writePlan(d), {});
     assert.throws(() => addSubject(d, sibPath), /planning/); // 仅 executing
     startLoop(d, createGit(d));
@@ -267,6 +283,7 @@ test("ADJ-16：remove 匹配=解析后路径相等——镜像尾形态不误删
   const sibReal = realpathSync(sib);
   try {
     registerGoal(d, "t", "title");
+    demoteV1(d);
     adoptPlan(d, writePlan(d), {});
     startLoop(d, createGit(d));
     addSubject(d, sibForm);
@@ -302,6 +319,7 @@ test("CLI subject 面：add/remove/list + planning 态拒文案", () => {
   const sibPath = join(tmpdir(), basename(sib));
   try {
     assert.equal(cli(["loop", "register", "t", "--title", "x"], d).code, 0);
+    demoteV1(d);
     assert.match(cli(["loop", "subject", "add", sibPath], d).out, /planning/);
     writePlan(d);
     assert.equal(cli(["loop", "plan", "plan.md"], d).code, 0);
@@ -389,6 +407,7 @@ test("三显示面指纹短码：step done 回显/status/exportReport；无「�
   const d = repo();
   try {
     registerGoal(d, "t", "title");
+    demoteV1(d);
     adoptPlan(d, writePlan(d, PLAN, ".lazyzcode/plan.md"), {});
     startLoop(d, createGit(d));
     const stepOut = cli(["step", "done", "N1", "--note", "n"], d).out;
@@ -533,6 +552,7 @@ test("snapshot 三方一致（planHash==sha256(快照)==review.planHash）且改
   const d = repo();
   try {
     registerGoal(d, "t", "title");
+    demoteV1(d);
     const p = writePlan(d);
     adoptPlan(d, p, { review: "plan-reviewer: VERDICT: PASS — ok" });
     const g = goalJson(d);
@@ -553,6 +573,7 @@ test("复采纳 warn 双臂：无 --review 与同串 --review 均警；新评审
   const d = repo();
   try {
     registerGoal(d, "t", "title");
+    demoteV1(d);
     const p = writePlan(d, PLAN, "plan-a.md");
     const a1 = adoptPlan(d, p, { review: "plan-reviewer: VERDICT: PASS — v1" });
     assert.equal(a1.warnings.length, 0);
@@ -578,6 +599,7 @@ test("status 快照行：复核一致 → 篡改 warn；planHash 缺席静默（
   const d = repo();
   try {
     registerGoal(d, "t", "title");
+    demoteV1(d);
     adoptPlan(d, writePlan(d), {});
     assert.match(cli(["loop", "status"], d).out, /快照 [0-9a-f]{10} · 复核一致/);
     appendFileSync(join(d, ".lazyzcode", "loop", "snapshots", "t.md"), "tampered\n");
@@ -596,6 +618,7 @@ test("reset 后快照留存 + salvage 存根快照指针（在场/缺席两分�
   const d = repo();
   try {
     registerGoal(d, "t", "title");
+    demoteV1(d);
     adoptPlan(d, writePlan(d), {});
     resetLoop(d, createGit(d));
     assert.ok(existsSync(join(d, ".lazyzcode", "loop", "snapshots", "t.md"))); // reset 不清
@@ -603,6 +626,7 @@ test("reset 后快照留存 + salvage 存根快照指针（在场/缺席两分�
     assert.match(stub, /计划快照：\.lazyzcode\/loop\/snapshots\/t\.md/); // 指针行
     // 缺席分支：手剥 planHash 后 reset 无指针行
     registerGoal(d, "t2", "title");
+    demoteV1(d);
     const p2 = writePlan(d, PLAN, "p2.md");
     adoptPlan(d, p2, {});
     const gp = join(d, ".lazyzcode", "loop", "goal.json");
@@ -631,6 +655,7 @@ test("tier register 面：--tier heavy 持久化、bogus 拒、大小写归一",
   const d = repo();
   try {
     registerGoal(d, "a", "x", { tier: "heavy" });
+    demoteV1(d);
     assert.equal(goalJson(d).tier, "heavy");
     assert.throws(() => registerGoal(d, "b", "x", { tier: "bogus" }), /tier 不合法/);
   } finally {
@@ -650,6 +675,7 @@ test("HEAVY 机器门：无 review 拒 / --force 拒 / UNVERIFIED 串拒 / PASS 
   const d = repo();
   try {
     registerGoal(d, "h", "x", { tier: "heavy" });
+    demoteV1(d);
     const p = writePlan(d);
     assert.throws(() => adoptPlan(d, p, {}), /HEAVY 目标机器拒：无 PASS 评审不得采纳（未带 --review）/) ;
     assert.throws(() => adoptPlan(d, p, { force: true }), /机器拒/); // --force 不越过
@@ -671,6 +697,7 @@ test("tier 子命令：单向（反向 LoopError）、同值 no-op、大小写�
   const d = repo();
   try {
     registerGoal(d, "t", "x");
+    demoteV1(d);
     adoptPlan(d, writePlan(d), {});
     startLoop(d, createGit(d));
     const r = setTier(d, "HEAVY"); // 大小写归一
@@ -692,6 +719,7 @@ test("缺键容忍：无 tier/subjects 键按 light/空集显示与计算（0.0.
   const d = repo();
   try {
     registerGoal(d, "t", "x");
+    demoteV1(d);
     adoptPlan(d, writePlan(d, PLAN, ".lazyzcode/plan.md"), {});
     const gp = join(d, ".lazyzcode", "loop", "goal.json");
     const g = goalJson(d);
@@ -720,6 +748,7 @@ test("未知子命令清单含 subject/tier；status 正向 tier/subjects/快照
     assert.match(out, /subject/);
     assert.match(out, /tier/);
     registerGoal(d, "t", "x");
+    demoteV1(d);
     adoptPlan(d, writePlan(d), {});
     const st = cli(["loop", "status"], d).out;
     assert.match(st, /快照 [0-9a-f]{10} · 复核一致/);

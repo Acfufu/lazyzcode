@@ -10,6 +10,17 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证非政策面——注册后直写降级
+// v1 legacy 夹具（拍板 5 分域：统一门对 v1 不适用）。拍板 6：不新增任何消融缝。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 import {
   addQueueItem,
   loadDispatch,
@@ -97,6 +108,7 @@ test("②判定表(b)：未决 tx×goal done→补结算诚实归账+item comple
     approvedItem(d, "qi-rb");
     await runQueueDispatch(d, {}, crashingDeps);
     // 手工把 goal 推到 done（模拟另一路径完成归档而队列确认未达）
+    demoteV1(d); // 0.4.0 M1：v2 done 会被统一门诚实阻塞（评审义务）——本测试验 reconcile 机件面，降 v1
     const goal = JSON.parse(readFileSync(goalJson(d), "utf8"));
     goal.status = "done";
     writeFileSync(goalJson(d), `${JSON.stringify(goal, null, 2)}\n`);
@@ -175,6 +187,7 @@ test("⑤腾槽时序：两项串行→两项各自完成后槽位腾空（确�
   }
 });
 const markSteps = (cwd) => {
+  demoteV1(cwd); // 0.4.0 M1 sweep（拍板 6a）：队列注册产物 v2，本文件验证派发恢复面——降 v1 分域外
   spawnSync(process.execPath, [CLI, "step", "done", "N1"], { cwd, encoding: "utf8", env: { ...process.env } });
   spawnSync(process.execPath, [CLI, "step", "done", "F1", "--evidence", "fake drive 完成"], { cwd, encoding: "utf8", env: { ...process.env } });
 };
@@ -230,6 +243,7 @@ test("⑧槽位被他活跃目标占用：队列不越权处置——tx orphan+i
     approvedItem(d, "qi-rh");
     // 造一个无关 executing goal 占槽（人权门消融 env 直采）
     spawnSync(process.execPath, [CLI, "loop", "register", "other-goal", "--title", "t"], { cwd: d, encoding: "utf8", env: { ...process.env } });
+    demoteV1(d);
     writeFileSync(join(d, "pp.md"), "- [N1] x\n");
     spawnSync(process.execPath, [CLI, "loop", "plan", "pp.md"], { cwd: d, encoding: "utf8", env: { ...process.env } });
     spawnSync(process.execPath, [CLI, "loop", "start"], { cwd: d, encoding: "utf8", env: { ...process.env } });
@@ -251,6 +265,7 @@ test("⑨真实 runDrive 协同：段记录 sink 逐段外报（队列结算输�
   const d = qrepo("lzy-qrecov-9-");
   try {
     spawnSync(process.execPath, [CLI, "loop", "register", "drv-q", "--title", "t"], { cwd: d, encoding: "utf8", env: { ...process.env } });
+    demoteV1(d);
     writeFileSync(join(d, "p2.md"), "- [N1] x\n");
     spawnSync(process.execPath, [CLI, "loop", "plan", "p2.md"], { cwd: d, encoding: "utf8", env: { ...process.env } });
     spawnSync(process.execPath, [CLI, "loop", "start"], { cwd: d, encoding: "utf8", env: { ...process.env } });

@@ -61,11 +61,21 @@ function bridgeRepo(prefix, { endpoint = "C", delivery } = {}) {
   return { d, it };
 }
 
+// 0.4.0 M1 sweep（拍板 6a）帮手：队列注册产物恒 v2（N6）——直写降 v1 分域外。
+function demoteV1(cwd) {
+  const gp = join(cwd, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 // 假 drive（M3 配方）：真 CLI 标记 N1/F1 done（LIGHT finish 过）
 const fakeDrive = {
   enginePath: "/fake/engine.cjs",
   detectAuth: () => ({ ok: true }),
   drive: async (cwd, opts) => {
+    demoteV1(cwd); // 0.4.0 M1 sweep（拍板 6a）：队列注册产物 v2——降 v1 分域外（本文件验证交付桥缝合面）
     spawnSync(process.execPath, [CLI, "step", "done", "N1"], { cwd, encoding: "utf8", env: { ...process.env } });
     spawnSync(process.execPath, [CLI, "step", "done", "F1", "--evidence", "bridge-fake"], { cwd, encoding: "utf8", env: { ...process.env } });
     opts.segmentRecords.push({ sessionId: "sess-bridge", durationMs: 42, exitCode: 0, endedAt: new Date().toISOString() });
@@ -114,6 +124,10 @@ function makeDoneGoal(d) {
   if (r.status !== 0) throw new Error(`register 失败：${r.stderr || r.stdout}`);
   const gp = join(d, ".lazyzcode", "loop", "goal.json");
   const g = JSON.parse(readFileSync(gp, "utf8"));
+  // 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6）——本文件验证 queue↔delivery 缝合面
+  // （done 旧记录免核语义的本体反例另在 unified-gate 契约测试），此处降 v1 分域外。
+  g.version = 1;
+  delete g.policy;
   g.status = "done";
   writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
 }
@@ -279,6 +293,7 @@ test("⑧幂等续跑：B 已 done（同来源）→ 重派时跳过 B 只补 C"
     const noopDrive = { ...fakeDrive, drive: async (cwd, opts) => { opts.segmentRecords.push({ sessionId: "s0", durationMs: 1, exitCode: 0 }); return { ok: true, cause: "noop" }; } };
     const r1 = await runQueueDispatch(d, {}, { ...noopDrive, ...fakeExt() });
     assert.equal(r1.results[0].outcome, "ready", JSON.stringify(r1));
+    demoteV1(d); // 0.4.0 M1：后续 actB/重派在 v1 分域外（本测试验桥幂等机件，非政策面）
     // 预置 B 的 done 意图（桥来源）
     const ext = fakeExt();
     const rB = actDeliveryB(d, { origin: { kind: "queue", itemId: it.id, slug: "qbridge" }, repo: REPO, branch: "v031", base: "main", prTitle: "t", prBodyFile: "pb.md" }, ext);

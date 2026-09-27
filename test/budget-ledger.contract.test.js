@@ -53,6 +53,15 @@ function qrepo(prefix) {
 const AUTH = () => ({ slug: "qi-w", contractHash: "a".repeat(64) });
 
 // 两项串行队列夹具（q2 deps q1），全部真实批准记录
+// 0.4.0 M1 sweep（拍板 6a）帮手：注册产物 v2，本文件验证预算/账本面——直写降 v1 分域外。
+function demoteV1(cwd) {
+  const gp = join(cwd, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 function twoItemQueue(d, slugs = ["qi-w1", "qi-w2"]) {
   const i1 = addQueueItem(d, { title: "w1", contractFile: join(d, "c.md"), planFile: join(d, "p.md"), goalSlug: slugs[0] });
   recordAuthorization(d, { kind: "approval", slug: slugs[0], contractHash: i1.contractHash, sessionId: "t", at: new Date().toISOString() });
@@ -63,6 +72,7 @@ function twoItemQueue(d, slugs = ["qi-w1", "qi-w2"]) {
 
 // 假 drive 骨架（逐测试内联展开，带各自的 sessionId/耗时）
 const markSteps = (cwd) => {
+  demoteV1(cwd); // 0.4.0 M1 sweep（拍板 6a）：队列注册产物 v2，本文件验证预算/账本面——降 v1 分域外
   spawnSync(process.execPath, [CLI, "step", "done", "N1"], { cwd, encoding: "utf8", env: { ...process.env } });
   spawnSync(process.execPath, [CLI, "step", "done", "F1", "--evidence", "fake drive 完成"], { cwd, encoding: "utf8", env: { ...process.env } });
 };

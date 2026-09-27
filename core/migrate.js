@@ -306,7 +306,9 @@ export function classifyGoal(root, now = Date.now()) {
   if (!existsSync(goalPath)) return { kind: "none" };
   const goal = readJsonSafe(goalPath);
   if (!goal) return { kind: "corrupt", goalPath };
-  if (goal.version != null && goal.version !== 1) {
+  // 0.4.0 M1 N6：v1=legacy 延续（可显式迁移补策略）、v2=现行格式——两者皆真形态；
+  // 其余版本不识别=corrupt（写前停口径不变）。
+  if (goal.version != null && goal.version !== 1 && goal.version !== 2) {
     return { kind: "corrupt", goalPath, reason: `未知 goal schemaVersion ${JSON.stringify(goal.version)}` };
   }
   if (!ACTIVE_GOAL_STATES.has(goal.status)) return { kind: "finished", goal };

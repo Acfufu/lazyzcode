@@ -67,8 +67,18 @@ function verdictFile(d, body) {
 }
 
 // HEAVY goal：N1+F1，可选红半/harness，绿半可选 harness。
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6）——注册后直写降 v1（拍板 5 分域，本文件
+// 验证红绿门/对照门非政策面）；v1 目标的 HEAVY 对照机器门照旧由 tier 驱动，行为不变。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
 function heavyCycle(d, { red = false, redHarness = null, greenHarness = null, waive = false } = {}) {
   registerGoal(d, "t", "title", { tier: "heavy" });
+  demoteV1(d);
   adoptPlan(d, writePlan(d, "- [N1] x\n- [F1] v\n"), { review: "plan-reviewer: PASS — t" });
   startLoop(d, createGit(d));
   completeStep(d, createGit(d), "N1", { note: "x" });
@@ -114,6 +124,7 @@ test("INV-09：绿前录红（经典改前取证）照常过门；LIGHT 缺红�
   // LIGHT：无对照门无 INV-09——缺红 finish 照常过（执法在协议文本+comparator）
   const d2 = repo();
   registerGoal(d2, "t", "title");
+  demoteV1(d2);
   adoptPlan(d2, writePlan(d2, "- [N1] x\n- [F1] v\n"));
   startLoop(d2, createGit(d2));
   completeStep(d2, createGit(d2), "N1", { note: "x" });
@@ -142,6 +153,7 @@ test("INV-08：红绿同 harness 过门；错配拒；缺省（未声明）不�
 test("INV-08 现行红口径：红重录统一 harness 后旧代红不绊门（red_of 多条、最新为现行 §4#24）；现行红错配仍拒", () => {
   const cycle = (d, greenHarness) => {
     registerGoal(d, "t", "title", { tier: "heavy" });
+    demoteV1(d);
     adoptPlan(d, writePlan(d, "- [N1] x\n- [F1] v\n"), { review: "plan-reviewer: PASS — t" });
     startLoop(d, createGit(d));
     completeStep(d, createGit(d), "N1", { note: "x" });
@@ -196,6 +208,7 @@ test("CLI：--harness 旗标贯通红绿两半；INV-09 拒面在 finish stdout 
   const d = repo();
   let r = cli(["loop", "register", "t", "--title", "T", "--tier", "heavy"], d);
   assert.equal(r.code, 0);
+  demoteV1(d); // 0.4.0 M1 sweep（拍板 6a）：CLI 注册产物 v2——本测试验证 harness 旗标面，降 v1
   const p = writePlan(d, "- [N1] x\n- [F1] v\n");
   r = cli(["loop", "plan", p, "--review", "plan-reviewer: PASS — t"], d);
   assert.equal(r.code, 0);

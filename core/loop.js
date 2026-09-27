@@ -15,6 +15,7 @@ import {
   supersedeAttempt,
 } from "./attempt.js";
 import { assertFenceIfPresent } from "./runtime.js";
+import { saveFamilyFile } from "./queue.js"; // 0.4.0 M1 N6：v1 兼容锚登记（policy 家族；call-time 用，ESM 环安全）
 import { effectiveAuthorization, loadContract, manifestHashIfPresent } from "./contract.js";
 import {
   addCapturedOn,
@@ -32,7 +33,10 @@ import {
 } from "./dag.js";
 import { evaluateGate } from "./gate.js"; // 0.4.0 M1 N5①：finishLoop 统一政策门（call-time 用，ESM 环安全）
 
-export const GOAL_VERSION = 1;
+export const GOAL_VERSION = 2; // 0.4.0 M1 N6：1→2（v1=legacy 延续，readGoal 分流；v2 恒带策略身份）
+// v2 goal.policy.schemaVersion 盖章值——与 core/policy.js POLICY_VERSION 同一数值（家族
+// schema 单源在 policy.js；此处字面钉死防环 import，升版时两侧同批改——互指家法）。
+export const GOAL_POLICY_SCHEMA_VERSION = 1;
 const ACTIVE_STATES = new Set(["planning", "executing"]);
 // risk_class 轴序（0.2.0 棒1，ADR-0020）：只升不降的比较基准。
 export const RISK_ORDER = ["low", "med", "high", "restricted"];
@@ -146,17 +150,73 @@ export function readGoal(cwd) {
         `恢复：手工修复 JSON，或先备份该文件再 lzy loop reset 清除后重新注册（清除不可逆）`,
     );
   }
-  // 版本快败：schema 不符的状态文件会在远离成因处被误读（评审 R2-10）。
-  if (goal && typeof goal === "object" && goal.version !== GOAL_VERSION) {
+  // 版本分流（0.4.0 M1 N6，拍板 7 / §7 Q9）：v1=legacy 延续（旧规则原样，不要求策略身份，
+  // 首次写面在 policy 家族登记兼容锚）；v2=现行（策略身份字段 fail-closed——缺失/损坏=错误，
+  // 不猜测补齐）；其余版本不识别拒绝（schema 不符的状态文件会在远离成因处被误读，R2-10）。
+  if (goal && typeof goal === "object") {
+    if (goal.version === 1) return goal; // legacy：读面零副作用，兼容锚由 writeGoal 登记
+    if (goal.version === GOAL_VERSION) {
+      const p = goal.policy;
+      if (!p || typeof p !== "object" || Array.isArray(p) || p.schemaVersion !== GOAL_POLICY_SCHEMA_VERSION) {
+        throw new LoopError(
+          `v2 目标缺策略身份字段或形状损坏（policy.schemaVersion 须为 ${GOAL_POLICY_SCHEMA_VERSION}）——` +
+            `新格式目标必须有策略身份（§7 Q9），不猜测补齐：备份后 lzy loop reset 重新注册`,
+        );
+      }
+      return goal;
+    }
     throw new LoopError(
-      `goal 状态文件版本不兼容（盘上 v${goal.version}，本 lzy 期望 v${GOAL_VERSION}）；` +
+      `goal 状态文件版本不识别（盘上 v${goal.version}，本 lzy 认 v1（legacy 延续）/v${GOAL_VERSION}）；` +
         `lzy loop reset 清除后重新注册`,
     );
   }
   return goal;
 }
 
+// v1 兼容锚（0.4.0 M1 N6，拍板 7/§7 Q9）：旧格式仅允许既有目标延续——首次状态写操作
+//（writeGoal 写面恒在锁内，家法）在 policy 家族登记 compat 锚。幂等（在案即零写）；
+// 观测面非授权面（不构成任何义务/批准来源）；update/sync 永不触 goal.json 故永不触发。
+// 新建同名目标恒 v2 且 attempt 前移——不继承旧锚，亦不继承旧资格（N8 断言面）。
+function registerV1CompatAnchor(cwd, goal) {
+  const p = join(cwd, ".lazyzcode", "policy", `compat-${goal.slug}.a${goal.attempt ?? 0}.json`);
+  if (existsSync(p)) return;
+  saveFamilyFile(
+    p,
+    {
+      kind: "compat-goal-v1",
+      slug: goal.slug,
+      attempt: goal.attempt ?? 0,
+      observedGoal: {
+        version: 1,
+        tier: goal.tier ?? null,
+        risk: goal.risk ?? null,
+        contractHash: goal.contract?.contractHash ?? null,
+        status: goal.status ?? null,
+      },
+      note: "v1 旧规则延续锚（compat-goal-v1）——观测快照，非授权非义务来源",
+    },
+    {
+      versionKey: "schemaVersion",
+      version: GOAL_POLICY_SCHEMA_VERSION,
+      label: "v1 兼容锚",
+      shapeFn: (rec, path) => {
+        if (rec.kind !== "compat-goal-v1") throw new LoopError(`兼容锚形状损坏（kind 不符）：${path}`);
+        if (typeof rec.slug !== "string" || typeof rec.attempt !== "number") throw new LoopError(`兼容锚形状损坏（slug/attempt）：${path}`);
+        if (!rec.observedGoal || typeof rec.observedGoal !== "object") throw new LoopError(`兼容锚形状损坏（observedGoal）：${path}`);
+      },
+    },
+  );
+}
+
 function writeGoal(cwd, goal) {
+  if (goal?.version === 1) {
+    try {
+      registerV1CompatAnchor(cwd, goal);
+    } catch (e) {
+      // 锚写失败=状态写一并失败（fail-closed：不让未登记的 legacy 写静默发生）
+      throw new LoopError(`v1 兼容锚登记失败——目标状态写一并中止（§7 Q9 首次状态操作在锁内登记）：${e?.message ?? e}`);
+    }
+  }
   const p = goalPath(cwd);
   mkdirSync(dirname(p), { recursive: true });
   const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
@@ -380,6 +440,8 @@ export function registerGoal(cwd, slug, title, { tier = "light", risk = "low", c
       // 契约绑定（0.3.0 M1）：null=legacy goal（现行 planHash 人权门不变）；
       // 在场=契约 goal（采纳走契约门，ADR-0024）。
       contract: contractBinding,
+      // 策略身份盖章（0.4.0 M1 N6）：v2 恒带——readGoal 对 v2 缺此字段 fail-closed（§7 Q9）。
+      policy: { schemaVersion: GOAL_POLICY_SCHEMA_VERSION },
       // 实例戳（ADJ-44，0.0.10）：跨 reset 常驻账本里同 slug 多实例并存，节点带
       // attempt 戳隔离——配对/supersedes/锚定都限本实例。序号从账本既有最大戳+1
       // 推导（reset 后重注册不回退）；0.0.9 旧节点无戳=隔离于新实例之外。
@@ -1069,13 +1131,15 @@ export function evaluateContractGateFacts(cwd, goal) {
 
 // 验收覆盖只读面（0.4.0 M1）：assertAcceptanceCoverage（ADR-0024 查 c）的纯判定版——
 // 返回 {ok, unknownIds, missingIds}，不抛。写侧语义单源同上（两侧注释互指，同批改）。
+// 键双吃：解析件（当场 parse）挂 it.accepts；持久件（goal.steps）挂 it.acceptsRefs
+//（adoptPlan 落盘键名，loop.js:1310）——统一门读持久件，写侧查解析件，同一覆盖语义。
 export function evaluateAcceptanceCoverage(contract, items) {
   if (!contract) return { applicable: false, unknownIds: [], missingIds: [] };
   const contractIds = new Set(contract.acceptances.map((a) => a.id));
   const covered = new Set();
   const unknownIds = new Set();
   for (const it of items ?? []) {
-    for (const ref of it.accepts ?? []) {
+    for (const ref of it.acceptsRefs ?? it.accepts ?? []) {
       if (contractIds.has(ref)) covered.add(ref);
       else unknownIds.add(`${it.id}→${ref}`);
     }

@@ -170,7 +170,7 @@ test("迁移 apply：活体 lease 拒（写前停止，零副作用）", () => {
 });
 
 test("迁移 apply：goal.json 损坏/未知版本=写前停（零副作用）", () => {
-  for (const goalRaw of ["{broken", JSON.stringify({ version: 2, slug: "x", status: "done" })]) {
+  for (const goalRaw of ["{broken", JSON.stringify({ version: 3, slug: "x", status: "done" })]) {
     const { d, HOME, lz } = legacyRoot({ goalRaw });
     const r = lzyAt(["migrate", "apply", d], d, HOME);
     assert.equal(r.code, 1, goalRaw);

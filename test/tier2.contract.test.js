@@ -46,8 +46,18 @@ const THREE_STEPS = "- [N1] x\n- [F1] v\n";
 const PNG_BYTES = Buffer.from("89504e470d0a1a0a0000", "hex");
 
 // 只跑到 plan 采纳（start 由各测试自控，便于断言 start 自身的输出）
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6）——注册后直写降 v1（本文件验证 tier/risk
+// 轴与证据附件面，非政策面；v1 的 tier 机器门照旧）。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
 function setupGoal(lzy, d, slug = "t2") {
   assert.equal(lzy(["loop", "register", slug, "--title", "t"], d).code, 0);
+  demoteV1(d);
   const p = join(d, "plan.md");
   writeFileSync(p, THREE_STEPS);
   assert.equal(lzy(["loop", "plan", p, "--review", "plan-reviewer: VERDICT: PASS — ok"], d).code, 0);

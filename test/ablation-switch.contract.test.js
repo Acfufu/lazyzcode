@@ -61,11 +61,23 @@ function commitAll(cwd, msg) {
 
 // 造一个已取证的 executing goal（N1/F1 done，F1 证据新鲜，树净）。plan 落 .lazyzcode/
 // （账本目录不计脏，integrity 闸门口径）；heavy=true 时带 PASS 评审过 HEAVY 采纳门。
+
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证非政策面——注册后直写降级
+// v1 legacy 夹具（拍板 5 分域）。不新增消融缝。
+function demoteV1(d) {
+  const gp = join(d, '.lazyzcode', 'loop', 'goal.json');
+  const g = JSON.parse(readFileSync(gp, 'utf8'));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 function cycle(d, { heavy = false } = {}) {
   assert.equal(
     lzy(["loop", "register", "t", "--title", "t", ...(heavy ? ["--tier", "heavy"] : [])], d).code,
     0,
   );
+  demoteV1(d);
   writeFileSync(join(d, ".lazyzcode", "plan.md"), "- [N1] x\n- [F1] v\n");
   const adopt = lzy(
     ["loop", "plan", ".lazyzcode/plan.md", ...(heavy ? ["--review", "plan-reviewer: PASS — t"] : [])],

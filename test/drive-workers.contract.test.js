@@ -14,6 +14,17 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证非政策面——注册后直写降级
+// v1 legacy 夹具（拍板 5 分域：统一门对 v1 不适用）。拍板 6：不新增任何消融缝。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 import { runDrive } from "../core/drive.js";
 import { loadRuntime } from "../core/runtime.js";
 
@@ -74,6 +85,7 @@ function repo(prefix, { steps = ["- [N1] x", "- [N2] y", "- [N3] z"], risk, plan
   g(["add", "a.txt"]);
   g(["commit", "-qm", "init"]);
   lzyIn(d, ["loop", "register", "dw", "--title", "t", ...(risk ? ["--risk", risk] : []), ...(tier ? ["--tier", tier] : [])]);
+    demoteV1(d);
   writeFileSync(join(d, "p.md"), `${steps.join("\n")}\n`);
   const plan = lzyIn(d, ["loop", "plan", "p.md", ...(tier === "heavy" ? ["--review", "plan-reviewer: PASS — 夹具"] : [])]);
   if (plan.status !== 0) throw new Error(`plan 失败：${plan.stdout}${plan.stderr}`);

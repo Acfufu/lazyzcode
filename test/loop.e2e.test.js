@@ -8,6 +8,17 @@ import { mkdtempSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, u
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// 0.4.0 M1 sweep（拍板 6a）：注册产物恒 v2（N6），本文件验证非政策面——注册后直写降级
+// v1 legacy 夹具（拍板 5 分域：统一门对 v1 不适用）。拍板 6：不新增任何消融缝。
+function demoteV1(d) {
+  const gp = join(d, ".lazyzcode", "loop", "goal.json");
+  const g = JSON.parse(readFileSync(gp, "utf8"));
+  delete g.policy;
+  g.version = 1;
+  writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
+}
+
 import { lintHandoffSnapshot } from "../core/loop.js";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
@@ -69,6 +80,7 @@ test("全链：计划门→REVISE force 不越过→证据门→过期拦截→f
   const d = repo();
   try {
     assert.equal(lzy(["loop", "register", "e2e", "--title", "t"], d).code, 0);
+    demoteV1(d);
     const bad = setup(d, "- [N1] ok\n- 背景注：去留未定\n");
     const rBad = lzy(["loop", "plan", bad], d);
     assert.equal(rBad.code, 1);
@@ -112,12 +124,14 @@ test("abandon 两态可用（P1 回归）；abandoned 占用工作区直至 rese
   const d = repo();
   try {
     assert.equal(lzy(["loop", "register", "ab", "--title", "t"], d).code, 0);
+    demoteV1(d);
     const a1 = lzy(["loop", "abandon"], d); // planning 态
     assert.equal(a1.code, 0);
     assert.match(a1.out, /已放弃/);
     assert.equal(lzy(["loop", "register", "ab2", "--title", "t"], d).code, 1); // abandoned 仍占用
     assert.equal(lzy(["loop", "reset"], d).code, 0);
     assert.equal(lzy(["loop", "register", "ab3", "--title", "t"], d).code, 0);
+    demoteV1(d);
     writeFileSync(join(d, "p.md"), "- [N1] x\n");
     assert.equal(lzy(["loop", "plan", "p.md"], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
@@ -131,6 +145,7 @@ test("并发 step done：锁串行化，全部落账且 goal.json 合法（R2-5 
   const d = repo();
   try {
     assert.equal(lzy(["loop", "register", "cc", "--title", "t"], d).code, 0);
+    demoteV1(d);
     writeFileSync(join(d, "p.md"), "- [N1] x\n- [N2] y\n- [N3] z\n");
     assert.equal(lzy(["loop", "plan", "p.md"], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
@@ -195,6 +210,7 @@ test("register：git 宿主照常注册（ADR-0019 门不误伤）+doctor host-g
   const d = repo(); // git 仓夹具
   try {
     assert.equal(lzy(["loop", "register", "gk", "--title", "t"], d).code, 0);
+    demoteV1(d);
     const doc = lzy(["doctor"], d);
     assert.match(doc.out, /host-git/);
     assert.match(doc.out, /git 仓在位/);
@@ -207,6 +223,7 @@ test("finish 埋点与 rebind 痕迹（plan-v2 Phase 2-1）：三分拒绝计数
   const d = repo();
   try {
     assert.equal(lzy(["loop", "register", "m", "--title", "t"], d).code, 0);
+    demoteV1(d);
     const p = setup(d, THREE_STEPS);
     assert.equal(lzy(["loop", "plan", p], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
@@ -296,6 +313,7 @@ test("handoff（ADR-0009）：三拒（缺参/不存在/过期）+ 登记可见 
   const d = repo();
   try {
     assert.equal(lzy(["loop", "register", "ho", "--title", "t"], d).code, 0);
+    demoteV1(d);
     const p = setup(d, THREE_STEPS);
     assert.equal(lzy(["loop", "plan", p], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0); // handoff 仅 executing 态有语义
@@ -329,6 +347,7 @@ test("放行计数（可观测面）：登记 +1、reset 后永续、status 双�
   const d = repo();
   try {
     assert.equal(lzy(["loop", "register", "ho", "--title", "t"], d).code, 0);
+    demoteV1(d);
     const p = setup(d, THREE_STEPS);
     assert.equal(lzy(["loop", "plan", p], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
@@ -466,6 +485,7 @@ test("handoff 写面入锁（R6A-3）：过锁外预检后持锁即 5s 超时拦
   try {
     // 前置：executing 态 + 真实新鲜快照，先过锁外两道预检才会阻塞在锁上
     assert.equal(lzy(["loop", "register", "hk", "--title", "t"], d).code, 0);
+    demoteV1(d);
     const p = setup(d, THREE_STEPS);
     assert.equal(lzy(["loop", "plan", p], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
@@ -492,7 +512,7 @@ test("status 损坏 goal.json 降级（R6A-2）：单项 warn 不炸全套检查
     const r = lzy(["status"], d);
     assert.equal(r.code, base.code); // warn-only 不翻退出码（criticalFail 语义，对齐 doctor fail-soft）；修复前=单行 LoopError 炸掉全部且 exit 1
     assert.match(r.out, /goal 状态不可读/);
-    assert.match(r.out, /版本不兼容/); // 原始成因信息保留
+    assert.match(r.out, /版本不识别/); // 原始成因信息保留（0.4.0 M1 措辞：认 v1 legacy/v2）
     assert.match(r.out, /install/); // 其余检查行仍在场（全套未丢）
     assert.match(r.out, /files/);
   } finally {
@@ -507,6 +527,7 @@ test("步级认领：executing 闸门/阻塞拒/互斥拒/释放/过期重认领
   const goalAt = join(d, ".lazyzcode", "loop", "goal.json");
   try {
     assert.equal(lzy(["loop", "register", "cl", "--title", "t"], d).code, 0);
+    demoteV1(d);
     // planning 态认领拒（executing 闸门）
     const early = lzy(["loop", "claim", "N1"], d);
     assert.equal(early.code, 1);
@@ -579,6 +600,7 @@ test("认领健壮性：旧 goal.json 无 deps/claim 字段容忍、畸形 claim
   const goalAt = join(d, ".lazyzcode", "loop", "goal.json");
   try {
     assert.equal(lzy(["loop", "register", "cl2", "--title", "t"], d).code, 0);
+    demoteV1(d);
     const p = setup(d, THREE_STEPS);
     assert.equal(lzy(["loop", "plan", p], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
@@ -629,6 +651,7 @@ test("status 下一步标注（R1-A4）：指向被认领/被阻塞步时点名�
   const d = repo();
   try {
     assert.equal(lzy(["loop", "register", "nx", "--title", "t"], d).code, 0);
+    demoteV1(d);
     const p = setup(d, DEPS_PLAN);
     assert.equal(lzy(["loop", "plan", p], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
@@ -691,6 +714,7 @@ test("ADJ-45：loop attempts --goal 指向他 slug 的历史世系；无参默�
   try {
     writeFileSync(p, "- [N1] x\n- [F1] v\n");
     lzy(["loop", "register", "old", "--title", "t"], d);
+    demoteV1(d);
     assert.equal(lzy(["loop", "plan", "p.md"], d).code, 0);
     assert.equal(lzy(["loop", "start"], d).code, 0);
     assert.equal(lzy(["loop", "abandon"], d).code, 0);

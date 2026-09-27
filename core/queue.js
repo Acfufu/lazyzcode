@@ -33,7 +33,9 @@ export const QUEUE_VERSION = 1;
 export const ITEM_STATES = ["proposed", "authorized", "ready", "running", "completed", "blocked", "failed", "cancelled"];
 export const TERMINAL_STATES = ["completed", "failed", "cancelled"];
 export const TX_PHASES = ["open", "settled", "killed", "reconciled-orphan"];
-export const LEDGER_KINDS = ["wall", "points", "metering-absent", "killed-inflight", "overrun"];
+// M3 N9 增 "review"：评审会话消耗入账（绑 (slug, contractHash)；metered 才写——absent/
+// unpriced 不算零口径照旧，另见运行档计量面）。非停派族：评审运行是显式发起非自动派发。
+export const LEDGER_KINDS = ["wall", "points", "metering-absent", "killed-inflight", "overrun", "review"];
 // 停受积分限额约束的自动派发的显式记录族（#32：不算零、如实申报；--resume-points 人工恢复）。
 export const POINTS_STOP_KINDS = ["metering-absent", "killed-inflight"];
 
@@ -297,10 +299,16 @@ export function budgetView(cwd) {
   const limit = q?.budget ?? {};
   let wallMs = 0;
   let points = 0;
+  let reviewPoints = 0;
   let openWallMs = 0;
   let openPoints = 0;
   const stopKinds = [];
   for (const e of ledger?.entries ?? []) {
+    if (e.kind === "review") {
+      // 评审分项（N9）：独立轴单列，不混入队列派发积分（评审会话非队列工人段）
+      reviewPoints += Number(e.points) || 0;
+      continue;
+    }
     wallMs += Number(e.ms) || 0;
     points += Number(e.points) || 0;
     if (POINTS_STOP_KINDS.includes(e.kind)) stopKinds.push(e);
@@ -319,7 +327,7 @@ export function budgetView(cwd) {
   return {
     pointsLimit: limit.pointsLimit ?? null,
     wallLimitMs: limit.wallLimitMs ?? null,
-    wallMs, points, openWallMs, openPoints,
+    wallMs, points, reviewPoints, openWallMs, openPoints,
     wallRemainingMs: limit.wallLimitMs != null ? limit.wallLimitMs - wallMs - openWallMs : null,
     pointsRemaining: limit.pointsLimit != null ? limit.pointsLimit - points - openPoints : null,
     wallExhausted: limit.wallLimitMs != null && wallMs + openWallMs >= limit.wallLimitMs,
@@ -1332,4 +1340,14 @@ export function showQueueItem(cwd, id) {
   const txs = (d?.txs ?? []).filter((t) => t.itemId === id);
   const readiness = TERMINAL_STATES.includes(it.state) ? { ready: false, reasons: [] } : describeReadiness(cwd, it);
   return { item: it, txs, readiness };
+}
+
+// 评审消耗按 slug 汇总（N9 执法面读数）：budget-ref points 绑定的 preflight 用——
+// 累计该 (slug) 名下 review 类条目点数（近似限制语义的「已耗」面；在途无评审占用概念，
+// 超额=拒绝下一次启动，运行中超额如实记账，决策 #32）。
+export function reviewLedgerPoints(cwd, slug) {
+  const l = loadLedger(cwd);
+  return (l?.entries ?? [])
+    .filter((e) => e.kind === "review" && e.authorization?.slug === slug)
+    .reduce((acc, e) => acc + (Number(e.points) || 0), 0);
 }

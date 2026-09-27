@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpat
 import { join, resolve, sep, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawnSync } from "node:child_process";
-import { loadFamilyFile, saveFamilyFile, budgetView } from "./queue.js";
+import { loadFamilyFile, saveFamilyFile, budgetView, appendLedgerEntry, reviewLedgerPoints } from "./queue.js";
 import { recordFindingSightings, openBlockingFindings, findingFingerprint } from "./findings.js"; // 0.4.0 M3：运行落账接线（findings.js 不反向依赖本模块，无环）
 import { candidateIdentity, listReceipts } from "./verify.js";
 import { loadPolicyRecord, DUTY_TABLE_VERSION } from "./policy.js";
@@ -155,12 +155,17 @@ export function assertRunShape(rec, p) {
     if (typeof rec.transcript.path !== "string" || !rec.transcript.path) bad("transcript.path 缺席或空");
     if (!HEX64.test(rec.transcript.sha256)) bad("transcript.sha256 须为 64 hex");
   }
-  // 预算面（拍板 7③：budget-ref 非 none 读视图记占位不执法；none=只记事实）
+  // 预算面（拍板 7③；N9 翻执法：points:N 绑定 → enforced=true + capPoints/usedPoints 读数；
+  // none/非 points 形=enforced false 只记事实）
   if (rec.budget !== null) {
     if (!rec.budget || typeof rec.budget !== "object" || Array.isArray(rec.budget)) bad("budget 须为对象或 null");
     if (rec.budget.ref !== null && typeof rec.budget.ref !== "string") bad("budget.ref 须为字符串或 null");
     if (typeof rec.budget.note !== "string" || !rec.budget.note) bad("budget.note 缺席或空（如实注记义务）");
-    if (rec.budget.enforced !== false) bad("budget.enforced 恒 false（M2 不执法——执法面列 M3 输入）");
+    if (typeof rec.budget.enforced !== "boolean") bad("budget.enforced 须为布尔");
+    if (rec.budget.enforced === true) {
+      if (!Number.isFinite(rec.budget.capPoints) || rec.budget.capPoints < 0) bad("budget.capPoints 须为 ≥0 数（enforced 面）");
+      if (!Number.isFinite(rec.budget.usedPoints) || rec.budget.usedPoints < 0) bad("budget.usedPoints 须为 ≥0 数（enforced 面）");
+    }
   }
   // 计量面（拍板 7：metered ⇒ points 数；absent/unpriced ⇒ points:null + 非空「不算零」注记）
   const m = rec.metering;
@@ -606,9 +611,32 @@ export function preflightReview(cwd, goal, { deps = {} } = {}) {
       let view = null;
       try {
         const v = budgetView(cwd);
-        view = { wallMs: v?.wallMs ?? null, points: v?.points ?? null };
+        view = { wallMs: v?.wallMs ?? null, points: v?.points ?? null, reviewPoints: v?.reviewPoints ?? null };
       } catch {}
-      budget = { ref: budgetRef, enforced: false, view, note: "budget-ref 非 none——预算视图如实记录占位；M2 不执法（执法面列 M3 输入）" };
+      // N9 执法面（决策 #32 近似限制语义）：budget-ref points:N 绑定 → 该 slug 累计评审消耗
+      // ≥上限=拒绝下一次启动（在途超额如实记账，运行中不中途杀）；非 points 形=只记不执法。
+      const capMatch = /^points:([0-9]+(?:\.[0-9]+)?)$/.exec(String(budgetRef));
+      if (capMatch) {
+        const capPoints = Number(capMatch[1]);
+        const used = reviewLedgerPoints(cwd, goal.slug);
+        budget = {
+          ref: budgetRef,
+          enforced: true,
+          capPoints,
+          usedPoints: used,
+          view,
+          note: "budget-ref points 绑定——评审消耗执法面（近似限制：超限拒下一次启动，在途超额如实记账，决策 #32）",
+        };
+        if (used >= capPoints) {
+          throw new ReviewPreflightError(
+            `评审预算已耗尽（累计 ${Math.round(used * 100) / 100}/${capPoints} 分，budget-ref ${budgetRef}）——拒绝启动新评审会话。` +
+              `恢复：调高契约 budget-ref 并重采纳，或按 ADR-0033 走义务复判`,
+            { reason: "budget-exhausted" },
+          );
+        }
+      } else {
+        budget = { ref: budgetRef, enforced: false, view, note: "budget-ref 非 points:N 形——预算视图如实记录（不执法）" };
+      }
     } else {
       budget = { ref: budgetRef ?? null, enforced: false, view: null, note: "budget-ref=none——只记事实不执法（如实注记）" };
     }
@@ -1010,7 +1038,22 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null } : null,
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
     };
-    return finishRun(cwd, reserve, record);
+    const out = finishRun(cwd, reserve, record);
+    // N9：评审消耗入账（LEDGER review 类）——契约绑定才写（authorization 形状须 64hex
+    // contractHash；无契约 goal 保持运行档 durable 面）；metered 才写（absent/unpriced
+    // 不算零口径由运行档计量面承载）；dedup=runId（天然唯一，重放幂等）。
+    if (goal.contract?.contractHash && out.record.metering?.status === "metered") {
+      appendLedgerEntry(cwd, {
+        kind: "review",
+        dedupKey: `review:${out.record.runId}`,
+        authorization: { slug: out.record.slug, contractHash: goal.contract.contractHash },
+        points: out.record.metering.points ?? 0,
+        sessionId: out.record.sessionId ?? null,
+        provenance: { runId: out.record.runId, duty: out.record.duty.id, source: "review-runner" },
+        note: `评审运行计量入账（budget ${out.record.budget?.ref ?? "none"}）`,
+      });
+    }
+    return out;
   } catch (err) {
     if (err instanceof ReviewPreflightError) throw err; // 前置型拒绝不落档（N3 #11 锁忙走此通道）
     if (err instanceof LoopError) {

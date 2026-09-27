@@ -76,6 +76,9 @@ if (f.help === true || CASE === "help") {
   capability-meter   计量零会话复跑（--prev-result 指向先前 capability result.json，复读账本不 spawn）
   gate-matrix        统一门反例矩阵（零会话：八体 gate explain 活体 + finish/dispatch/reconcile/act 四入口）
   review-runtime     评审运行器活体矩阵（替身八体拒绝矩阵 + LIGHT/HEAVY 真实绿例各 1——预注册预算）
+  finding-lifecycle  发现生命周期全链（M3：替身确定性链 A-D + 真会话腿——注缺陷评审 1 +
+                     recheck 收口 1，预注册 ≤12；A=阻塞/finish 必拒/两次无效/diagnose/关闭
+                     B=证伪分支 C=reset/rename/supersede 存续 D=reassess 取消与拒删）
 退出契约: 0=全部断言过 1=有断言败 2=用法错 3=blocked（缺能力/轨迹不可核验，不算 SKIP 通过）`);
   process.exit(0);
 }
@@ -1036,11 +1039,15 @@ if (process.env.LZY_STUB_RACE_REPO) {
 if (process.env.LZY_STUB_TAINT === "1") fs.writeFileSync(path.join(cwd, "a.txt"), "tampered-by-stub\\n");
 let response = "";
 if (leg === "green") {
-  response = "\\\`\\\`\\\`json\\\\n" + JSON.stringify({ duty: "review.general-correctness", verdict: "pass", findings: [], summary: "替身绿例：候选树小而干净，未发现通用正确性缺陷" }) + "\\\\n\\\`\\\`\\\`";
+  response = "\\\`\\\`\\\`json\\n" + JSON.stringify({ duty: "review.general-correctness", verdict: "pass", findings: [], summary: "替身绿例：候选树小而干净，未发现通用正确性缺陷" }) + "\\n\\\`\\\`\\\`";
+} else if (leg === "blocked") {
+  // M3 finding-lifecycle 替身阻塞腿：确定性阻塞发现（title/location 可经 env 注入变体）
+  const finding = { id: "F-1", title: process.env.LZY_STUB_TITLE ?? "授权撤回缺陷：已撤销令牌仍可放行", severity: "P1", blocking: true, location: process.env.LZY_STUB_LOC ?? "auth.js:12", evidence: "auth.js 的放行分支未查询撤回账（替身复现体）", summary: "替身阻塞例：授权撤回检查缺席" };
+  response = "\\\`\\\`\\\`json\\n" + JSON.stringify({ duty: "review.general-correctness", verdict: "blocked", findings: [finding], summary: "替身阻塞例：授权撤回检查缺席" }) + "\\n\\\`\\\`\\\`";
 } else if (leg === "parsefail") {
   response = "评审完成，但本腿不产出机器可解析的围栏。";
 } else if (leg === "contradiction") {
-  response = "\\\`\\\`\\\`json\\\\n" + JSON.stringify({ duty: "review.general-correctness", verdict: "pass", findings: [{ id: "F-1", title: "stub blocking", severity: "P1", blocking: true, location: "a.txt:1", evidence: "stub", summary: "结构自相矛盾体" }], summary: "pass 与阻塞发现并存" }) + "\\\\n\\\`\\\`\\\`";
+  response = "\\\`\\\`\\\`json\\n" + JSON.stringify({ duty: "review.general-correctness", verdict: "pass", findings: [{ id: "F-1", title: "stub blocking", severity: "P1", blocking: true, location: "a.txt:1", evidence: "stub", summary: "结构自相矛盾体" }], summary: "pass 与阻塞发现并存" }) + "\\n\\\`\\\`\\\`";
 }
 if (leg === "sleep") { const end = Date.now() + 120000; while (Date.now() < end) {} }
 process.stdout.write(JSON.stringify({ sessionId, response, usage: { input_tokens: 1, output_tokens: 1 } }) + "\\n");
@@ -1313,6 +1320,281 @@ async function reviewRuntimeCase() {
   };
 }
 
+// ── M3 finding-lifecycle：发现生命周期全链（替身确定性链 + 真会话 recheck 收口腿）──
+const FL_CONTRACT_B = "task: finding lifecycle fixture\nendpoint: B\nscope: .\nrecipe: none\nbudget-ref: none\n\n- [A1] marker file works\n";
+const FL_DEFECT = "function authorize(token) {\n  // 契约要求：已撤销令牌必须拒绝（见 contract.md A1）。\n  // 缺陷体：本实现直接放行任意令牌——撤回账查询缺席。\n  return { ok: true, token };\n}\n";
+
+async function findingLifecycleCase() {
+  const assertions = [];
+  const push = (id, ok, expected, observed, evidence) => assertions.push({ id, ok: Boolean(ok), expected, observed: String(observed).slice(0, 600), evidence });
+  const CLI = join(REPO, "cli", "lzy.js");
+  const TRIGGER = join(REPO, "plugin", "hooks", "trigger.js");
+  const caseDir = join(fixtureRoot, "finding-lifecycle");
+  rmSync(caseDir, { recursive: true, force: true });
+  mkdirSync(caseDir, { recursive: true });
+  const stub = writeStubEngine(caseDir);
+  const baseEnv = { ...process.env };
+
+  function fixture(name, { contractText = QAR_CONTRACT } = {}) {
+    const home = mkdtempSync(join(tmpdir(), `lzy-qafl-${name}-home-`));
+    const d = join(caseDir, name);
+    mkdirSync(d, { recursive: true });
+    const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+    g(["init", "-q"]);
+    g(["config", "user.email", "t@l"]);
+    g(["config", "user.name", "t"]);
+    writeFileSync(join(d, ".gitignore"), ".lazyzcode/\nnode_modules/\n");
+    writeFileSync(join(d, "a.txt"), "a\n");
+    writeFileSync(join(d, "contract.md"), contractText);
+    writeFileSync(join(d, "plan.md"), QAR_PLAN);
+    writeFileSync(join(d, "auth.js"), FL_DEFECT);
+    g(["add", "-A"]);
+    g(["commit", "-qm", "fixture"]);
+    const slug = `fl-${name}`;
+    const lzy = (args, extra = {}) => {
+      const r = spawnSync(process.execPath, [CLI, ...args], { cwd: d, encoding: "utf8", timeout: 600_000, env: { ...baseEnv, HOME: home, USERPROFILE: home, ...extra } });
+      return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+    };
+    const hook = (prompt) => {
+      const r = spawnSync(process.execPath, [TRIGGER], {
+        cwd: d, encoding: "utf8", timeout: 30_000,
+        input: JSON.stringify({ prompt, cwd: d, sessionId: "sess_qafl" }),
+        env: { ...baseEnv, HOME: home, USERPROFILE: home },
+      });
+      return { exit: r.status, out: r.stdout ?? "" };
+    };
+    const readGoal = () => JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+    const reg = lzy(["loop", "register", slug, "--title", "t", "--contract", "contract.md"]);
+    if (reg.exit !== 0) throw new Error(`register 失败：${reg.out}`);
+    const p1 = lzy(["loop", "plan", "plan.md"]);
+    if (p1.exit !== 1) throw new Error(`首采应拒（contractPending）：${p1.out}`);
+    const short = readGoal().contractPending.contractHash.slice(0, 8);
+    const ap = hook(`批准 ${short}`);
+    if (!ap.out.includes("Human approval recorded for contract")) throw new Error(`批准未记录：${ap.out}`);
+    const p2 = lzy(["loop", "plan", "plan.md"]);
+    if (p2.exit !== 0) throw new Error(`采纳失败：${p2.out}`);
+    const st = lzy(["loop", "start"]);
+    if (st.exit !== 0) throw new Error(`start 失败：${st.out}`);
+    return { d, home, lzy, hook, readGoal, g, slug };
+  }
+
+  function readyGoal(fx) {
+    const red = fx.lzy(["evidence", "red", "F1", "--evidence", "red: marker.txt absent on baseline tree"]);
+    if (red.exit !== 0) throw new Error(`红半失败：${red.out}`);
+    writeFileSync(join(fx.d, "marker.txt"), "marker\n");
+    fx.g(["add", "-A"]);
+    fx.g(["commit", "-qm", "add marker"]);
+    if (fx.lzy(["step", "done", "N1", "--note", "add marker file"]).exit !== 0) throw new Error("N1 失败");
+    if (fx.lzy(["step", "done", "F1", "--evidence", "green: marker.txt present in HEAD tree"]).exit !== 0) throw new Error("F1 失败");
+    return fx;
+  }
+  const runStub = (fx, leg, extra = {}) => fx.lzy(["review", "run", "--timeout-ms", "30000"], { LZY_ZCODE_ENGINE: stub, LZY_STUB_LEDGER: "1", LZY_STUB_LEG: leg, ...extra });
+  const lastRec = (fx) => {
+    const dir = join(fx.d, ".lazyzcode", "review");
+    const f = readdirSync(dir).filter((x) => x.endsWith(".json")).sort().at(-1);
+    return JSON.parse(readFileSync(join(dir, f), "utf8"));
+  };
+  const fp8Of = (fx) => {
+    const p = join(fx.d, ".lazyzcode", "findings", `${fx.slug}.json`);
+    return Object.keys(JSON.parse(readFileSync(p, "utf8")).findings)[0].slice(0, 8);
+  };
+  const readLedger = (fx) => JSON.parse(readFileSync(join(fx.d, ".lazyzcode", "findings", `${fx.slug}.json`), "utf8")).findings;
+
+  // ── 替身确定性链 A：阻塞→finish 必拒（findings 唯一残因）→两次无效→diagnosis-required
+  //    →diagnose 重入→recheck 绿→close→gate PASS→finish 过门 ──
+  const A = readyGoal(fixture("chain-a"));
+  const r1 = runStub(A, "blocked");
+  push("a1-blocked-run", r1.exit === 1 && lastRec(A).validity.status === "valid" && lastRec(A).result.verdict === "blocked" && lastRec(A).findingsLedger.upserted === 1,
+    "替身阻塞运行 valid 落档且阻塞发现入账（exit 1）", `exit=${r1.exit} validity=${lastRec(A).validity.status} upserted=${lastRec(A).findingsLedger.upserted}`);
+  const fpA = fp8Of(A);
+  runStub(A, "green"); // 常规绿运行翻满足 review 义务——findings 子句成唯一残因
+  const gateOnlyFindings = A.lzy(["gate", "explain"]);
+  const finDenied = A.lzy(["loop", "finish"]);
+  push("a2-finish-denied", finDenied.exit !== 0 && /findings|阻塞发现/.test(finDenied.out) && /findings/.test(gateOnlyFindings.out),
+    "review 义务已满足而未关闭阻塞发现 ⇒ finish 必拒（报文点名 findings）",
+    `finExit=${finDenied.exit} gateHasFindings=${/findings/.test(gateOnlyFindings.out)} out=${String(finDenied.out.split("\n").filter((l) => /findings|阻塞/.test(l)).join("|").slice(0, 140))}`);
+  push("a3-resolve", A.lzy(["finding", "resolve-request", fpA, "--note", "修复撤回检查"]).exit === 0, "resolve-request 0", "exit=0");
+  runStub(A, "blocked");
+  let fl = readLedger(A);
+  const fpFullA = Object.keys(fl)[0];
+  push("a4-invalid-fix-1", fl[fpFullA].invalidFixCount === 1 && fl[fpFullA].status === "open",
+    "recheck 仍报=无效修复 1（回 open）", `invalidFixCount=${fl[fpFullA].invalidFixCount} status=${fl[fpFullA].status}`);
+  A.lzy(["finding", "resolve-request", fpA]);
+  runStub(A, "blocked");
+  fl = readLedger(A);
+  push("a5-diagnosis-required", fl[fpFullA].status === "diagnosis-required" && fl[fpFullA].invalidFixCount === 2,
+    "两次无效修复 ⇒ diagnosis-required", `status=${fl[fpFullA].status} count=${fl[fpFullA].invalidFixCount}`);
+  const denied = A.lzy(["finding", "resolve-request", fpA]);
+  push("a6-resolve-denied", denied.exit === 1 && /diagnosis-required/.test(denied.out), "diagnosis-required 态 resolve 拒（exit 1）", `exit=${denied.exit} out=${denied.out.slice(0, 100)}`);
+  const dg = A.lzy(["finding", "diagnose", fpA, "--root-cause", "公共放行函数未接撤回账（连续两轮同一缺陷）"]);
+  push("a7-diagnose-reset", dg.exit === 0, "diagnose 记根因重置（exit 0）", `exit=${dg.exit}`);
+  writeFileSync(join(A.d, "auth.js"), "function authorize(token) {\n  if (revokedSet.has(token)) return { ok: false };\n  return { ok: true, token };\n}\n");
+  A.g(["add", "-A"]);
+  A.g(["commit", "-qm", "fix: revoke check"]);
+  // F1 rebind（未变面重录——marker.txt 在 fix 提交后的 HEAD 树仍在场；finish 证据新鲜度要求）
+  if (A.lzy(["step", "done", "F1", "--evidence", "green rebind: marker.txt present in HEAD tree（fix 提交后未变面重录）"]).exit !== 0) throw new Error("A rebind 失败");
+  A.lzy(["finding", "resolve-request", fpA, "--note", "撤回检查已接入"]);
+  const rcClose = A.lzy(["review", "recheck", "--timeout-ms", "30000"], { LZY_ZCODE_ENGINE: stub, LZY_STUB_LEDGER: "1", LZY_STUB_LEG: "green" });
+  const closeRec = lastRec(A);
+  push("a8-recheck-candidates", rcClose.exit === 0 && Array.isArray(closeRec.findingsLedger.closureCandidates) && closeRec.findingsLedger.closureCandidates.length === 1,
+    "recheck 绿 ⇒ 闭候选 1 条（报文指路 close）", `exit=${rcClose.exit} cands=${(closeRec.findingsLedger.closureCandidates ?? []).length}`);
+  const cl = A.lzy(["finding", "close", fpA, "--outcome", "fixed", "--basis", "撤回检查已入放行函数（recheck 不再报）", "--recheck", closeRec.runId]);
+  push("a9-close-fixed", cl.exit === 0 && /closed-fixed/.test(cl.out), "close fixed 0", `exit=${cl.exit}`);
+  const gatePass = A.lzy(["gate", "explain"]);
+  const finOk = A.lzy(["loop", "finish"]);
+  const attA = existsSync(join(A.d, ".lazyzcode", "attestations")) ? readdirSync(join(A.d, ".lazyzcode", "attestations")).filter((x) => x.endsWith(".json")).length : 0;
+  push("a10-gate-finish", gatePass.exit === 0 && /裁决 PASS/.test(gatePass.out) && finOk.exit === 0 && attA === 1,
+    "发现全闭 ⇒ gate PASS ⇒ finish 过门落 attestation", `gate=${/裁决 (\S+)/.exec(gatePass.out)?.[1]} finExit=${finOk.exit} att=${attA}`);
+
+  // ── 替身链 B：证伪分支（falsified——替身腿 fixture 标记）──
+  const B = readyGoal(fixture("chain-b"));
+  runStub(B, "blocked");
+  const fpB = fp8Of(B);
+  B.lzy(["finding", "resolve-request", fpB, "--note", "原报与代码不符"]);
+  runStub(B, "green");
+  const lastRunB = lastRec(B).runId;
+  const clB = B.lzy(["finding", "close", fpB, "--outcome", "falsified", "--basis", "原报证据与代码不符——撤回账在别处已查（误报证伪）", "--recheck", lastRunB]);
+  const flB = readLedger(B);
+  push("b1-falsified", clB.exit === 0 && flB[Object.keys(flB)[0]].status === "closed-falsified",
+    "证伪分支 close falsified（替身腿，fixture 标记）", `exit=${clB.exit} status=${flB[Object.keys(flB)[0]].status}`);
+
+  // ── 替身链 C：存续（单工作区三面：reset 后同 slug 重注册 / rename relink / supersede）──
+  const C = readyGoal(fixture("chain-c"));
+  runStub(C, "blocked");
+  const fpC = fp8Of(C);
+  C.lzy(["loop", "reset"]);
+  const rereg = C.lzy(["loop", "register", C.slug, "--title", "t2", "--contract", "contract.md"]);
+  if (rereg.exit !== 0) throw new Error(`re-register 失败：${rereg.out}`);
+  // 授权绑 contractHash（家族 reset 不清）——同契约重注册首采可能直接过（在案批准仍有效）
+  const p1C = C.lzy(["loop", "plan", "plan.md"]);
+  if (p1C.exit === 1) {
+    const shortC = C.readGoal().contractPending.contractHash.slice(0, 8);
+    C.hook(`批准 ${shortC}`);
+    if (C.lzy(["loop", "plan", "plan.md"]).exit !== 0) throw new Error("重采纳失败");
+  } else if (p1C.exit !== 0) {
+    throw new Error(`重注册采纳异常：${p1C.out}`);
+  }
+  if (C.lzy(["loop", "start"]).exit !== 0) throw new Error("重启失败");
+  const listAfterReset = C.lzy(["finding", "list"]);
+  push("c1-survives-reset", /未关闭 1/.test(listAfterReset.out) && listAfterReset.out.includes(fpC),
+    "reset 后同 slug 发现链存续（未关闭 1）", `out=${String(listAfterReset.out.split("\n").filter((l) => /fl-|未关闭/.test(l)).join("|").slice(0, 140))}`);
+  // rename：reset → 同目录新 slug 重注册 → relink 旧→新（旧档同目录在案，并集可读）
+  const REN = "fl-chain-c-renamed";
+  C.lzy(["loop", "reset"]);
+  const rereg2 = C.lzy(["loop", "register", REN, "--title", "t3", "--contract", "contract.md"]);
+  if (rereg2.exit !== 0) throw new Error(`改名注册失败：${rereg2.out}`);
+  const p1R = C.lzy(["loop", "plan", "plan.md"]);
+  if (p1R.exit === 1) {
+    const shortR = C.readGoal().contractPending.contractHash.slice(0, 8);
+    C.hook(`批准 ${shortR}`);
+    if (C.lzy(["loop", "plan", "plan.md"]).exit !== 0) throw new Error("改名采纳失败");
+  } else if (p1R.exit !== 0) {
+    throw new Error(`改名采纳异常：${p1R.out}`);
+  }
+  if (C.lzy(["loop", "start"]).exit !== 0) throw new Error("改名 start 失败");
+  C.lzy(["finding", "relink", "--from", C.slug, "--to", REN]);
+  const listRelinked = C.lzy(["finding", "list", "--goal", REN]);
+  const gateRelinked = C.lzy(["gate", "explain"]);
+  push("c2-survives-rename", listRelinked.out.includes(fpC) && gateRelinked.out.includes(fpC),
+    "relink 后别名链并集可读且 gate 仍拦", `list=${listRelinked.out.includes(fpC)} gateHas=${gateRelinked.out.includes(fpC)}`);
+  // supersede（attempt 递进）不洗发现
+  writeFileSync(join(C.d, "plan.md"), `${QAR_PLAN}\n<!-- attempt2 supersede probe -->\n`);
+  C.g(["add", "-A"]);
+  C.g(["commit", "-qm", "plan attempt2"]);
+  const sup = C.lzy(["loop", "supersede", "plan.md", "--review", "VERDICT: PASS — attempt2 增补探针注释，义务与验收映射不变"]);
+  const listAfterSup = C.lzy(["finding", "list"]);
+  push("c3-survives-supersede", sup.exit === 0 && listAfterSup.out.includes(fpC) && C.readGoal().attempt === 2,
+    "supersede attempt2 后发现链存续", `supExit=${sup.exit} attempt=${C.readGoal().attempt} list=${listAfterSup.out.includes(fpC)}`);
+
+  // ── 替身链 D：reassess（endpoint B 契约 → 强制拒删 + 取消活体）──
+  const D = fixture("chain-d", { contractText: FL_CONTRACT_B });
+  const trio = ["--impact", "endpoint B→A（契约改 A）", "--cancel-reason", "交付核对义务适用条件消失", "--basis", "re-derive 不再生成 delivery.audit（ADR-0033 §5）"];
+  const denyBaseline = D.lzy(["policy", "reassess", "review.general-correctness", ...trio]);
+  push("d1-reassess-baseline-denied", denyBaseline.exit === 1 && /baseline/.test(denyBaseline.out),
+    "baseline 义务取消拒（exit 1）", `exit=${denyBaseline.exit}`);
+  const denyStillDerived = D.lzy(["policy", "reassess", "delivery.audit", ...trio]);
+  push("d2-reassess-derived-denied", denyStillDerived.exit === 1 && /取消无独立依据/.test(denyStillDerived.out),
+    "现行推导仍含=取消拒", `exit=${denyStillDerived.exit}`);
+  writeFileSync(join(D.d, "contract.md"), QAR_CONTRACT);
+  D.g(["add", "-A"]);
+  D.g(["commit", "-qm", "endpoint A"]);
+  const okCancel = D.lzy(["policy", "reassess", "delivery.audit", ...trio]);
+  const showD = D.lzy(["policy", "show"]);
+  push("d3-reassess-cancel", okCancel.exit === 0 && !/delivery\.audit \n/.test(`${showD.out}\n`) && !/delivery\.audit$/.test(showD.out.trim().split("\n").filter((l) => /\[.*\] delivery/.test(l)).join("\n")),
+    "额外义务取消活体（义务集不再列 delivery.audit）", `exit=${okCancel.exit} showStill=${/\[.*delivery\.audit\]/.test(showD.out)}`);
+
+  // ── 真会话腿（能力探测后；预注册预算内）──
+  const cap = {
+    auth: detectHeadlessAuth(),
+    engine: findEngine(),
+    sqlite3: spawnSync("sqlite3", ["--version"], { timeout: 5000 }).status === 0,
+  };
+  const capMissing = [!cap.auth?.ok && "auth", !cap.engine && "engine", !cap.sqlite3 && "sqlite3"].filter(Boolean);
+  const sessions = [];
+  let usedSessions = 0;
+  if (capMissing.length > 0) {
+    push("real-legs", false, "真会话腿可达", `缺 ${capMissing.join("/")}（blocked(3) 具名，不算 SKIP；替身链不能充抵真腿）`);
+    return {
+      blocked: `真会话腿不可达：缺 ${capMissing.join("/")}（auth/引擎/sqlite3 缺席=blocked(3) 具名，不算 SKIP）`,
+      assertions,
+      sessions,
+      probeBudget: { preregisteredSessions: 12, usedSessions: 0, note: "替身链完成；真会话腿因缺能力未跑" },
+    };
+  }
+  // R1：真实评审对注缺陷夹具——valid+metered 必断言；verdict 如实记录（模型判决不预设）
+  const R1 = readyGoal(fixture("real-defect"));
+  const t1 = Date.now();
+  let rr1 = R1.lzy(["review", "run", "--timeout-ms", "420000"], { LZY_ZCODE_ENGINE: cap.engine });
+  usedSessions += 1;
+  if (rr1.exit !== 0 && /exit-nonzero|interrupted/.test(rr1.out)) {
+    rr1 = R1.lzy(["review", "run", "--timeout-ms", "420000"], { LZY_ZCODE_ENGINE: cap.engine });
+    usedSessions += 1;
+  }
+  const rec1 = lastRec(R1);
+  push("r1-real-run", rec1.validity.status === "valid" && rec1.metering.status === "metered" && rec1.metering.points > 0,
+    "真实会话 valid metered（对注缺陷夹具；verdict 如实）", `validity=${rec1.validity.status} verdict=${rec1.result?.verdict} points=${rec1.metering.points} wallMs=${Date.now() - t1}`);
+  sessions.push({ leg: "real-defect", sessionId: rec1.sessionId, verdict: rec1.result?.verdict ?? null, ledgerUpserted: rec1.findingsLedger?.upserted ?? null });
+  // R2：真实 recheck 收口链——替身播种阻塞→修复→resolve→真 recheck→close→finish
+  const R2 = readyGoal(fixture("real-close"));
+  runStub(R2, "blocked");
+  const fpR2 = fp8Of(R2);
+  writeFileSync(join(R2.d, "auth.js"), "function authorize(token) {\n  if (revokedSet.has(token)) return { ok: false };\n  return { ok: true, token };\n}\n");
+  R2.g(["add", "-A"]);
+  R2.g(["commit", "-qm", "fix: revoke check"]);
+  // F1 rebind（未变面重录——finish 证据新鲜度要求）
+  if (R2.lzy(["step", "done", "F1", "--evidence", "green rebind: marker.txt present in HEAD tree（fix 提交后未变面重录）"]).exit !== 0) throw new Error("R2 rebind 失败");
+  if (R2.lzy(["finding", "resolve-request", fpR2, "--note", "撤回检查已接入"]).exit !== 0) throw new Error("R2 resolve 失败");
+  const t2 = Date.now();
+  let rcReal = R2.lzy(["review", "recheck", "--timeout-ms", "420000"], { LZY_ZCODE_ENGINE: cap.engine });
+  usedSessions += 1;
+  if (rcReal.exit !== 0 && /exit-nonzero|interrupted/.test(rcReal.out)) {
+    rcReal = R2.lzy(["review", "recheck", "--timeout-ms", "420000"], { LZY_ZCODE_ENGINE: cap.engine });
+    usedSessions += 1;
+  }
+  const recR2 = lastRec(R2);
+  push("r2-real-recheck", rcReal.exit === 0 && recR2.validity.status === "valid" && recR2.result?.verdict === "pass" && Array.isArray(recR2.findingsLedger.closureCandidates) && recR2.findingsLedger.closureCandidates.length === 1,
+    "真实 recheck 绿 ⇒ 闭候选 1（原发现不再报）", `exit=${rcReal.exit} verdict=${recR2.result?.verdict} cands=${(recR2.findingsLedger.closureCandidates ?? []).length} wallMs=${Date.now() - t2}`);
+  sessions.push({ leg: "real-recheck", sessionId: recR2.sessionId, verdict: recR2.result?.verdict ?? null });
+  if (rcReal.exit === 0 && Array.isArray(recR2.findingsLedger.closureCandidates) && recR2.findingsLedger.closureCandidates.length === 1) {
+    const closeReal = R2.lzy(["finding", "close", recR2.findingsLedger.closureCandidates[0].slice(0, 8), "--outcome", "fixed", "--basis", "真实 recheck 不再报——撤回检查已接入", "--recheck", recR2.runId]);
+    const gateReal = R2.lzy(["gate", "explain"]);
+    const finReal = R2.lzy(["loop", "finish"]);
+    const attR2 = existsSync(join(R2.d, ".lazyzcode", "attestations")) ? readdirSync(join(R2.d, ".lazyzcode", "attestations")).filter((x) => x.endsWith(".json")).length : 0;
+    push("r2-real-close-finish", closeReal.exit === 0 && finReal.exit === 0 && attR2 === 1,
+      "真实全链收口：close→gate→finish attestation", `close=${closeReal.exit} fin=${finReal.exit} att=${attR2}`);
+  } else {
+    push("r2-real-close-finish", false, "真实全链收口", "前置腿未达（如实判败）");
+  }
+  console.error(`[v040-qa] finding-lifecycle 真会话腿：${usedSessions} 次（预注册 12 内）`);
+
+  return {
+    blocked: null,
+    assertions,
+    sessions,
+    probeBudget: { preregisteredSessions: 12, usedSessions, note: "真会话=注缺陷评审 1 + recheck 收口 1（各含韧性重跑 1 次余量）" },
+  };
+}
+
 // ── 执行 ───────────────────────────────────────────────────────────────────
 const started = nowIso();
 let result;
@@ -1324,8 +1606,10 @@ if (CASE === "capability") {
   result = await gateMatrixCase();
 } else if (CASE === "review-runtime") {
   result = await reviewRuntimeCase();
+} else if (CASE === "finding-lifecycle") {
+  result = await findingLifecycleCase();
 } else {
-  die(`未知 --case：${CASE}（capability|capability-meter|gate-matrix|review-runtime）`);
+  die(`未知 --case：${CASE}（capability|capability-meter|gate-matrix|review-runtime|finding-lifecycle）`);
 }
 
 const assertions = result.assertions ?? [];

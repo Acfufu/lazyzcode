@@ -1452,7 +1452,8 @@ async function findingLifecycleCase() {
   runStub(B, "blocked");
   const fpB = fp8Of(B);
   B.lzy(["finding", "resolve-request", fpB, "--note", "原报与代码不符"]);
-  runStub(B, "green");
+  // 证伪关闭同样须 recheck 运行（自审 r5-F2 收口——常规运行不构成独立复核）
+  B.lzy(["review", "recheck", "--timeout-ms", "30000"], { LZY_ZCODE_ENGINE: stub, LZY_STUB_LEDGER: "1", LZY_STUB_LEG: "green" });
   const lastRunB = lastRec(B).runId;
   const clB = B.lzy(["finding", "close", fpB, "--outcome", "falsified", "--basis", "原报证据与代码不符——撤回账在别处已查（误报证伪）", "--recheck", lastRunB]);
   const flB = readLedger(B);

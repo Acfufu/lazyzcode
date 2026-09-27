@@ -238,7 +238,7 @@ function assertPolicyShape(rec, p) {
 export function loadPolicyRecord(cwd, slug, attempt) {
   return loadFamilyFile(policyRecordPath(cwd, slug, attempt), {
     versionKey: "schemaVersion",
-    version: POLICY_VERSION,
+    version: [POLICY_VERSION, 1], // v1 档读侧放宽（家族版本闸层——N8 自审 r5-F1 收口）；写恒 v2
     label: "策略记录",
     shapeFn: assertPolicyShape,
   });
@@ -248,7 +248,7 @@ export function loadPolicyRecord(cwd, slug, attempt) {
 export function loadPolicyFile(p) {
   return loadFamilyFile(p, {
     versionKey: "schemaVersion",
-    version: POLICY_VERSION,
+    version: [POLICY_VERSION, 1],
     label: "策略记录",
     shapeFn: assertPolicyShape,
   });

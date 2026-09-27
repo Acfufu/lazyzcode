@@ -22,6 +22,10 @@ export const FINDING_STATUSES = [
 export const CLOSURE_OUTCOMES = ["fixed", "falsified"];
 // 终态（关闭）；非终态（open/resolve-requested/diagnosis-required）都是「阻塞在场」。
 export const CLOSED_FINDING_STATUSES = ["closed-fixed", "closed-falsified"];
+// 本族专用恢复指路（自审 r5-F5 收口）：未关闭阻塞发现是放行依据（V06），不沿用队列族
+// 的「删除只损失记账」口径。
+export const FINDINGS_RECOVERY =
+  "恢复：本家族在 loop/ 外、reset 不触及；未关闭阻塞发现是统一门放行依据（V06），删除/破坏不解除阻塞只破坏可判性——先备份再人工核对该文件";
 export const DIAGNOSIS_REQUIRED_THRESHOLD = 2;
 // slug 即文件名成分——路径穿越面在账本入口钉死（relink --from 的入参不走 goal.json，须自证清白）。
 const SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -110,12 +114,18 @@ export function assertFindingsShape(rec, p) {
 }
 
 export function loadFindingsFile(cwd, slug) {
-  return loadFamilyFile(findingsPath(cwd, slug), {
-    versionKey: "schemaVersion",
-    version: FINDINGS_VERSION,
-    label: "发现账本",
-    shapeFn: assertFindingsShape,
-  });
+  try {
+    return loadFamilyFile(findingsPath(cwd, slug), {
+      versionKey: "schemaVersion",
+      version: FINDINGS_VERSION,
+      label: "发现账本",
+      shapeFn: assertFindingsShape,
+    });
+  } catch (err) {
+    if (err instanceof FindingsError) throw err;
+    // 家族容器错误（QueueError）换本族恢复指路重抛——口径对齐放行依据语义（r5-F5）。
+    throw new FindingsError(`${String(err?.message ?? err).split("。恢复：")[0]}。${FINDINGS_RECOVERY}`);
+  }
 }
 
 function saveFindingsFile(cwd, payload) {

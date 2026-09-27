@@ -79,8 +79,11 @@ export function loadFamilyFile(p, { versionKey, version, label, shapeFn }) {
   if (checksum !== checksumOf(rest)) {
     throw new QueueError(`${label}校验和不符（内容与落盘时态不一致）：${p}。${RECOVERY}`);
   }
-  if (rest[versionKey] !== version) {
-    throw new QueueError(`${label}版本不兼容（盘上 v${rest[versionKey]}，本 lzy 期望 v${version}）：${p}。${RECOVERY}`);
+  // M3 N8（自审 r5-F1 收口）：version 允许传数组=多代读侧放宽（policy v1 档在 v2 代可读）——
+  // 写侧恒 stamp 现行 version（saveFamilyFile 不变）。
+  const allowedVersions = Array.isArray(version) ? version : [version];
+  if (!allowedVersions.includes(rest[versionKey])) {
+    throw new QueueError(`${label}版本不兼容（盘上 v${rest[versionKey]}，本 lzy 期望 v${allowedVersions.join("/")}）：${p}。${RECOVERY}`);
   }
   shapeFn(rest, p);
   return rest;

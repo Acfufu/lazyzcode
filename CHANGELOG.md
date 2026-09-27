@@ -3,6 +3,27 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Controlled independent review runner** (0.4.0 M2, goal `v040-m2-review`; ADR-0031): `lzy review run|list|show`
+  runs a real isolated review session (facts-only input package + candidate snapshot via `git archive` + per-run
+  isolated HOME) against the current goal, parses exactly one JSON verdict fence, seals stdout/stderr with sha256,
+  and lands a checksummed run record under `.lazyzcode/review/`. Exit codes: 0 = pass & valid, 1 = blocked/invalid
+  (on record, never re-judged), 2 = usage, 3 = precondition failed (no auth / authorization withdrawn / dirty tree /
+  no sqlite3 — no spawn, no spend). Metering reads the isolated subledger via parameterized
+  `querySessionPoints(sessionId, {dbPath})` (host ledger untouched — the M0 metering gap is closed).
+
+### Changed
+
+- **Unified gate review clause is live** (duty table v1→v2, runner face available=true, duty-template hash folded
+  into rulesHash — one batch, per §3.1): the review obligation is satisfied iff the latest same-generation run is
+  valid ∧ metered ∧ pass ∧ candidate matches ∧ raw seal intact. Old-rule records stay readable (shape gate now
+  accepts any positive dutyTableVersion) and block with the drift reason instead of a shape error. doctor checks
+  the review family with fail-level corruption reporting (stricter than policy's warn by design — review records
+  are release evidence).
+
 ## [0.3.1] - 2026-09-26
 
 ### Added

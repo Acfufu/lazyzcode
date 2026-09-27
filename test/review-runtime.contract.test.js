@@ -283,12 +283,17 @@ test("⑦计量三分类与前置：metered 过/absent invalid/unpriced invalid�
   rmSync(d4, { recursive: true, force: true });
 
   // 真 preflight：批准后过、撤回后拒（真 effectiveAuthorization 面，报文带撤回短码）
+  // N4 #8：认证腿=隔离 HOME 会话创建门（provider env）——OAuth-only 形态拒（宿主 OAuth
+  // 不进入隔离面，白烧前拒绝先行）。
   const d5 = fixture();
   recordAuthorization(d5, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-27T00:00:00.000Z" });
-  const okRun = await runReview(d5, { deps: { detectAuth: () => ({ ok: true }), spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }) } });
+  await assert.rejects(() => runReview(d5, { deps: { detectAuth: () => ({ oauth: true, envAuth: false, ok: true }) } }), (e) => {
+    return e instanceof ReviewPreflightError && e.reason === "no-auth" && e.message.includes("OAuth");
+  });
+  const okRun = await runReview(d5, { deps: { detectAuth: () => ({ ok: true, envAuth: true }), spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }) } });
   assert.equal(okRun.exitHint, 0);
   recordAuthorization(d5, { kind: "withdrawal", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-27T01:00:00.000Z" });
-  await assert.rejects(() => runReview(d5, { deps: { detectAuth: () => ({ ok: true }) } }), (e) => {
+  await assert.rejects(() => runReview(d5, { deps: { detectAuth: () => ({ ok: true, envAuth: true }) } }), (e) => {
     return e instanceof ReviewPreflightError && e.reason === "unauthorized" && e.message.includes("已撤回") && e.message.includes("cccccccc");
   });
   rmSync(d5, { recursive: true, force: true });
@@ -296,7 +301,7 @@ test("⑦计量三分类与前置：metered 过/absent invalid/unpriced invalid�
   // 计量能力缺席=拒（sqliteProbe 注入；批准在场——前置四查按序走到第④查）
   const d6 = fixture();
   recordAuthorization(d6, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-27T00:00:00.000Z" });
-  await assert.rejects(() => runReview(d6, { deps: { detectAuth: () => ({ ok: true }), sqliteProbe: () => ({ ok: false }) } }), (e) => e.reason === "metering-capability");
+  await assert.rejects(() => runReview(d6, { deps: { detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: false }) } }), (e) => e.reason === "metering-capability");
   rmSync(d6, { recursive: true, force: true });
 });
 

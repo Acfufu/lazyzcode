@@ -309,16 +309,23 @@ export function listReviewRuns(cwd, { slug, attempt } = {}) {
 const AGENTS_CAP = 100 * 1024;
 const EVIDENCE_CAP = 64 * 1024;
 const RECEIPTS_CAP = 200;
+// N4 #10：子账本落库延迟有界重试（M0 实测落库有滞后）——最坏 3 次读、间隔 750ms（≈1.5s 预算）。
+const METERING_READ_RETRIES = 2;
+const METERING_RETRY_DELAY_MS = 750;
 
-function readCappedText(p, cap) {
-  const buf = readFileSync(p);
+function cappedFromBuffer(buf, cap) {
   if (buf.length <= cap) return { text: buf.toString("utf8"), bytes: buf.length, truncated: false };
   // N3 #13（M2 自审 F-7）：字节精确截断——按 UTF-8 码点边界回退（不落续字节），注记报真实
   // 注入字节数。此前按 UTF-16 码元切片而注记称字节，中文内容实际注入可达标称约 3 倍。
+  // （N4 #9 起证据面共用本函数。）
   let end = cap;
   while (end > 0 && (buf[end] & 0xc0) === 0x80) end -= 1;
   const text = `${buf.subarray(0, end).toString("utf8")}\n…[输入包截断：原文 ${buf.length} 字节，只注入前 ${end} 字节（UTF-8 码点边界安全）]`;
   return { text, bytes: buf.length, truncated: true, injectedBytes: end };
+}
+
+function readCappedText(p, cap) {
+  return cappedFromBuffer(readFileSync(p), cap);
 }
 
 // facts-only 输入包（拍板 4 唯一定义）：契约文本、项目清单、AGENTS.md 项目规则、目标步骤与
@@ -335,15 +342,27 @@ export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID
     }
   };
   let evidence = [];
+  let evidenceDirAbsent = false;
   try {
+    // N4 #9（M2 自审 F-3）：证据面三修——(a) 不再只收 .txt（非文本附件以引用+披露入包，
+    // 内容不注入：隔离面不读宿主路径，评审如需该证据须在报告如实声明）；文本件内容照旧
+    // 封顶注入（cappedFromBuffer 字节精确）。
     evidence = readdirSync(join(cwd, ".lazyzcode", "evidence"))
-      .filter((f) => f.startsWith(`${goal.slug}.`) && f.endsWith(".txt"))
+      .filter((f) => f.startsWith(`${goal.slug}.`))
       .sort()
       .map((f) => {
-        const capped = readCappedText(join(cwd, ".lazyzcode", "evidence", f), EVIDENCE_CAP);
-        return { file: f, sha256: createHash("sha256").update(capped.text).digest("hex"), ...capped };
+        const p = join(cwd, ".lazyzcode", "evidence", f);
+        const buf = readFileSync(p);
+        const looksText = !buf.subarray(0, 8192).includes(0) && !buf.toString("utf8").includes("\ufffd");
+        if (!looksText) {
+          return { file: f, sha256: createHash("sha256").update(buf).digest("hex"), bytes: buf.length, included: false, note: "非文本附件——以引用入包（sha256/字节数），内容不注入（隔离面不读宿主路径）" };
+        }
+        const capped = cappedFromBuffer(buf, EVIDENCE_CAP);
+        return { file: f, sha256: createHash("sha256").update(capped.text).digest("hex"), ...capped, included: true };
       });
-  } catch {}
+  } catch {
+    evidenceDirAbsent = true;
+  }
   let receipts = [];
   try {
     receipts = listReceipts(cwd, goal.slug).slice(0, RECEIPTS_CAP).map((r) => ({
@@ -365,6 +384,15 @@ export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID
       obligations: rec.obligations.map((o) => ({ id: o.id, baseline: o.baseline === true, satisfaction: o.satisfaction ?? null, dependsOn: o.dependsOn ?? null })),
     };
   } // 记录未落档=null（如实缺项；损坏由 loadFamilyFile 家族闸抛）
+  // N4 #9(c)：缺项披露块——输入包如实声明哪些预期源缺席/未注入，评审结论可信度的边界面。
+  const agentsRules = readOptional(join(cwd, "AGENTS.md"), AGENTS_CAP);
+  const disclosure = [];
+  if (evidenceDirAbsent) disclosure.push("证据目录不可读（.lazyzcode/evidence 缺席）——证据面未注入");
+  else if (evidence.length === 0) disclosure.push("无在档证据文件——F 项证据对本次评审不可见");
+  for (const e of evidence) {
+    if (e.included === false) disclosure.push(`非文本附件未注入内容：${e.file}（引用面在场）`);
+  }
+  if (!agentsRules) disclosure.push("AGENTS.md 缺席——项目规则面未注入");
   const facts = {
     duty: { id: dutyId, templateHash: dutyTemplateHash(dutyId) },
     goal: {
@@ -381,7 +409,7 @@ export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID
       ? { path: goal.contract.path, ...readCappedText(resolve(cwd, goal.contract.path), AGENTS_CAP) }
       : null,
     projectManifest: readOptional(join(cwd, "lzy.project.json"), AGENTS_CAP),
-    agentsRules: readOptional(join(cwd, "AGENTS.md"), AGENTS_CAP),
+    agentsRules,
     steps: (goal.steps ?? []).map((s) => ({
       id: s.id,
       kind: s.kind ?? null,
@@ -389,11 +417,13 @@ export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID
       status: s.status,
       note: s.note ?? null,
       doneAt: s.doneAt ?? null,
+      evidence: s.evidence ?? null, // N4 #9(b)：步骤证据指针入包（此前映射漏该字段）
       acceptsRefs: s.acceptsRefs ?? [],
     })),
     evidence,
     receipts,
     policy,
+    disclosure,
     candidate: candidateIdentity(cwd),
     generatedAt: now.toISOString(),
   };
@@ -539,10 +569,16 @@ export class ReviewPreflightError extends Error {
 // ③预算视图（budget-ref 非 none 读预算视图如实记占位——M2 不执法；none=只记事实）
 // ④计量能力（sqlite3 在场可执行——不过=拒，避免烧掉预注册预算后才落 invalid）。
 export function preflightReview(cwd, goal, { deps = {} } = {}) {
+  // N4 #8（M2 自审 F-2）：认证腿按隔离 HOME 会话创建门判——评审会话跑在隔离 HOME（宿主
+  // 凭据文件不可继承），可用腿唯 provider env（引擎前缀文件经 extraEnv 透传）。宿主 OAuth
+  // 在场不再构成「认证 ok」：OAuth-only 机器此前白烧一次会话后才误分类为隔离失败。
   const auth = (deps.detectAuth ?? detectHeadlessAuth)();
-  if (!auth?.ok) {
+  if (!auth?.envAuth) {
     throw new ReviewPreflightError(
-      "无引擎认证（OAuth 凭据与 provider env 均缺席）——隔离 HOME 下评审会话无法创建；恢复：桌面端登录或注入 provider env 后重跑（lzy doctor 看 headless 行）",
+      "无 provider env 认证（隔离 HOME 会话创建门：ZCODE_*_PROVIDER_CONFIG_FILE 须在场且非空文件）" +
+        "——评审会话跑在隔离 HOME，宿主 OAuth 凭据不进入隔离面；" +
+        (auth?.oauth ? "宿主 OAuth 在场但对隔离会话不可用。" : "") +
+        "恢复：注入 provider env 后重跑（lzy doctor 看 headless 行）",
       { reason: "no-auth" },
     );
   }
@@ -876,46 +912,67 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       }
     }
     // 计量（拍板 7）：读数唯一走 querySessionPoints（默认=真读数，恒传隔离 HOME 子账本路径；
-    // deps 注入供 CI）。逐会话读数求和（单次重跑=两会话，点数合计=诚实记账）；三分类映射：
-    // absent 行 / 全表外零计价 / metered（表外行如实注记下界）。
+    // deps 注入供 CI）。N4 #10（M2 自审 F-4）三修：distinct sessionId 去重（引擎复用 sid 不双计）、
+    // 缺席会话「不算零」逐条入读数（不再静默 continue）、子账本落库延迟有界重试并记尝试数
+    //（M0 实测落库有滞后——末轮行未落库即被压低点数）；注记改逐会话分解（去「两会话合计」断言）。
     let metering;
     if (!spawned) {
       metering = { status: "absent", points: null, note: "未 spawn——无计量可读（未消耗；不算零口径不适用）" };
     } else {
       const reads = [];
+      const seenSids = new Set();
       for (const m of sessionMeta) {
-        if (!m.sessionId) continue;
-        try {
-          const r = await (deps.querySessionPoints ?? querySessionPoints)(m.sessionId, {
-            dbPath: join(iso.home, ".zcode", "cli", "db", "db.sqlite"),
-          });
-          reads.push({ sessionId: m.sessionId, r });
-        } catch (e) {
-          reads.push({ sessionId: m.sessionId, r: null, err: String(e?.message ?? e).slice(0, 80) });
+        if (!m.sessionId) {
+          reads.push({ sessionId: null, r: null, err: null, attempts: 0, detail: "会话身份缺席" });
+          continue;
         }
+        if (seenSids.has(m.sessionId)) continue;
+        seenSids.add(m.sessionId);
+        let last = null;
+        let lastErr = null;
+        let attempts = 0;
+        for (let i = 0; i <= METERING_READ_RETRIES; i += 1) {
+          attempts = i + 1;
+          try {
+            last = await (deps.querySessionPoints ?? querySessionPoints)(m.sessionId, {
+              dbPath: join(iso.home, ".zcode", "cli", "db", "db.sqlite"),
+            });
+            lastErr = null;
+          } catch (e) {
+            lastErr = String(e?.message ?? e).slice(0, 80);
+          }
+          if (last && last.absent === false) break;
+          if (i < METERING_READ_RETRIES) await new Promise((res) => setTimeout(res, METERING_RETRY_DELAY_MS));
+        }
+        reads.push({ sessionId: m.sessionId, r: last, err: lastErr, attempts });
       }
       const withRows = reads.filter((x) => x.r && x.r.absent === false);
       const totalPoints = withRows.reduce((acc, x) => acc + (Number(x.r.points) || 0), 0);
-      const anyUnpriced = reads.some((x) => x.r && x.r.absent === false && x.r.points === 0 && Array.isArray(x.r.unpriced) && x.r.unpriced.length > 0);
+      const anyUnpriced = withRows.some((x) => x.r.points === 0 && Array.isArray(x.r.unpriced) && x.r.unpriced.length > 0);
       const allAbsent = reads.length > 0 && withRows.length === 0;
-      const sidList = reads.map((x) => x.sessionId).join("+");
-      const sessionNote = reads.length > 1 ? `${reads.length} 会话（含单次重跑：${sidList}）` : `sessionId ${sidList}`;
-      if (reads.some((x) => x.err)) {
-        metering = { status: "absent", points: null, note: `计量读数失败（${reads.find((x) => x.err)?.err}）——缺用量不算零（ADR-0027 修正节）` };
+      const breakdown = reads
+        .map((x) => {
+          const label = x.sessionId ?? "无会话身份";
+          const val = x.err ? `读数失败(${x.err})` : x.r && x.r.absent === false ? `${Number(x.r.points) || 0} 分` : "缺席（不算零）";
+          return `${label}=${val}${x.attempts > 1 ? `（读 ${x.attempts} 次）` : ""}`;
+        })
+        .join("、");
+      if (reads.some((x) => x.err && !(x.r && x.r.absent === false))) {
+        metering = { status: "absent", points: null, note: `计量读数失败（逐会话：${breakdown}）——缺用量不算零（ADR-0027 修正节）` };
       } else if (allAbsent) {
-        metering = { status: "absent", points: null, note: `${sessionNote} 在子账本无完成用量行——缺用量不算零（ADR-0027 修正节）` };
+        metering = { status: "absent", points: null, note: `逐会话读数：${breakdown}——缺用量不算零（ADR-0027 修正节）` };
       } else if (totalPoints === 0 && anyUnpriced) {
-        metering = { status: "unpriced", points: null, note: `模型未计价（表外行；${sessionNote}）——unpriced 不算零（ADR-0027 修正节）` };
+        metering = {
+          status: "unpriced",
+          points: null,
+          note: `模型未计价（表外行；逐会话：${breakdown}）——unpriced 不算零（ADR-0027 修正节）；扩价：lzy loop cost 看未计价行，价表 core/cost.js MODEL_ALIASES（N4 #5）`,
+        };
       } else {
         const hasUnpriced = reads.some((x) => x.r && Array.isArray(x.r.unpriced) && x.r.unpriced.length > 0);
         metering = {
           status: "metered",
           points: totalPoints,
-          note: hasUnpriced
-            ? `表外模型行计 0——读数为下界（计价子集口径；${sessionNote}）`
-            : reads.length > 1
-              ? `${sessionNote}（点数=两会话合计）`
-              : null,
+          note: `逐会话（distinct sessionId 去重）：${breakdown}${hasUnpriced ? "；表外模型行计 0——读数为下界（计价子集口径）" : ""}`,
         };
       }
     }

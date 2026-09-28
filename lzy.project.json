@@ -14,6 +14,12 @@
         "argv": ["node", "cli/lzy.js", "--help"],
         "timeoutMs": 30000,
         "inputPaths": ["cli", "core", "package.json", "lzy.project.json"]
+      },
+      {
+        "id": "docs-links",
+        "argv": ["node", "scripts/check-docs-links.mjs"],
+        "timeoutMs": 60000,
+        "inputPaths": ["docs", ".github", "CHANGELOG.md", "README.md", "README.zh-CN.md", "scripts/check-docs-links.mjs"]
       }
     ]
   }

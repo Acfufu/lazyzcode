@@ -32,3 +32,13 @@ jobs:
       # --test 位置参数按 glob 解释，目录字面量形态不可用——glob 加引号防 shell 抢先展开
       - run: node --test "test/**/*.test.js"
       - run: node cli/lzy.js --help
+
+  # docs 断链/锚点检查（0.4.0 M5 N3，M4 输入 9①）——独立轻量 job，不入 4 腿矩阵重复跑。
+  docs-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/check-docs-links.mjs

@@ -239,3 +239,25 @@ for (const o of observations) console.log(`  ${o.id}: ${o.observed}`);
 console.log(`  → ${OUT}`);
 rmSync(work, { recursive: true, force: true });
 rmSync(fxHome, { recursive: true, force: true });
+
+// ── 结构失败出口（0.4.0 M5 N3，M4 输入 9②）：判据观察齐备 sanity——只核机器面（八判据 id
+// 齐备+读数可解析；spawn 失败的 exit=null 也算缺位），观察内容判读仍归 comparator（INV-08
+// 家法不破）。缺位=退化环境/重构事故，exit 1 防静默绿——红半=同突变对照实测（改前删一条
+// 观察仍 exit 0，artifacts/v040/M5/dev-evidence/n3-red-harness-mutant.txt）。
+const EXPECTED_OBS_IDS = [
+  "D1a-专项运行",
+  "D2a-资格落档",
+  "D2b-适用档落档",
+  "D3a-现行基线与回执",
+  "D3b-复用链满足",
+  "D2c-未知路径 fallback",
+  "D3c-复用腿实拦",
+  "D1b-命令族",
+];
+const structuralMissing = EXPECTED_OBS_IDS.filter(
+  (id) => !observations.some((o) => o.id === id && o.observed != null && !/exit=(null|undefined)\b/.test(o.observed)),
+);
+if (structuralMissing.length > 0) {
+  console.error(`[m4-harness] 结构失败（exit 1）：判据观察缺位或不可解析：${structuralMissing.join(" · ")}（观察 JSON 已落盘；内容判读归 comparator）`);
+  process.exit(1);
+}

@@ -7,6 +7,30 @@ versioning is SemVer.
 
 ### Added
 
+- **Review scope qualification & reuse** (0.4.0 M4, goal `v040-m4-scope-qualification`; ADR-0032):
+  a review duty's scope can now be *declared* and adversarially challenged, and a later candidate that
+  provably does not touch the duty may reuse the earlier review instead of paying for a new session.
+  `lzy review qualify <runId> --scope <file>` materializes challenge fixtures from the declaration and
+  the shipped per-duty suite (`core/review-duties/<duty>.qualify.json`, ten axes: in-scope / canary-keep /
+  missed-dependency / unknown-new / rename-delete / lockfile / check-script / env / contract / duty) and
+  records the grant **or the refusal** in `.lazyzcode/review-scope/` (checksummed family, survives reset).
+  An out-of-scope omission (a dependency artifact declared unrelated) is named and refused, not waved
+  through. `lzy review reuse <runId>` diffs the current candidate against the base run snapshot, classifies
+  every path first-match against the declaration, and records `applicable` or a per-reason `fallback`
+  (declared change, unknown path, structural axis drift incl. an env fingerprint). The unified gate accepts
+  a satisfied review obligation either by the seven base-run conjunctions or by the reuse leg (latest
+  applicable record for the same attempt, identities current, diff classification complete) and prints the
+  reuse chain. Closed-blocking-finding closure bases are audited for applicability: a drift that touches the
+  finding's located file blocks the gate as `closure-basis-stale` until the finding is re-checked and
+  re-closed — `lzy finding reopen <fingerprint>` is the controlled re-entry (append-only events; the
+  "was closed" history is preserved). Three specialized duties join the duty table
+  (`review.verification-deps` / `review.external-side-effects` / `review.state-recovery`,
+  DUTY_TABLE_VERSION 3→4, derived deterministically from the policy identity and suppressed when their
+  surface is absent). Fixed: a real-engine review run reported `metering-absent` forever because SQLite
+  leaves a WAL database unreadable by `sqlite3 -readonly` once its sidecars are gone — `queryHostDb` now
+  falls back to an immutable read-only open (guard: never when a non-empty `-wal` exists, so a stale
+  snapshot can never be read).
+
 - **Finding lifecycle + obligation reassessment** (0.4.0 M3, goal `v040-m3-findings`; ADR-0031 §4.2 / ADR-0033):
   blocking findings land in a checksummed `.lazyzcode/findings/<slug>.json` ledger (loop-external, survives
   reset; fingerprint = sha256 over severity|title|location) and an unclosed blocking finding blocks the unified

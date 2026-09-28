@@ -383,9 +383,17 @@ lzy review run [--duty <id>] [--timeout-ms N]   # controlled independent review 
                                         # candidate snapshot, structured verdict on record; 0=pass&valid / 1=blocked·invalid / 2=usage / 3=precondition (no spawn)
 lzy review list                         # enumerate review runs on record (read-only; corrupt family fails closed non-zero)
 lzy review recheck [--fingerprint <p8>] # independent recheck run (0.4.0 M3): fresh same-duty session + closure candidates
-lzy finding list|show|resolve-request|close|diagnose|relink
-                                        # findings ledger (0.4.0 M3): unclosed blocking findings survive
-                                        # reset/supersede; closure only via resolve-request → recheck → close
+lzy review qualify <runId> --scope <decl.json>  # scope qualification (0.4.0 M4): declare the duty's scope and run the
+                                        # adversarial challenge suite (ten axes); GRANTED (0) / REJECTED-but-recorded (1); zero points (no spawn)
+lzy review reuse <runId>                # reuse applicability (0.4.0 M4): classify the current candidate against the base
+                                        # snapshot path by path; all-unrelated = applicable (0) / any declared, unknown or
+                                        # structural-axis drift = fallback with per-reason lines (1); the base run and
+                                        # qualification records stay byte-identical (append-only judgment)
+lzy finding list|show|resolve-request|close|diagnose|relink|reopen
+                                        # findings ledger (0.4.0 M3/M4): unclosed blocking findings survive
+                                        # reset/supersede; closure only via resolve-request → recheck → close;
+                                        # reopen = controlled re-entry when the closure basis went stale
+                                        # (closed → resolve-requested, append-only events, history preserved)
 lzy review show <runId>                 # field-by-field + findings table + raw output pointer (read-only)
 lzy loop finish                         # the final gate: all done + fresh evidence + all trees clean (+ HEAVY: MATCH attestation); writes the final attestation and auto-archives
 lzy loop export                         # re-export the evidence bundle

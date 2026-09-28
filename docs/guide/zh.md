@@ -310,9 +310,16 @@ lzy review run [--duty <id>] [--timeout-ms N]   # 受控独立评审运行器（
 lzy review list                         # 在案评审运行枚举（只读；家族损坏 fail-closed 非 0）
 lzy review show <runId>                 # 逐字段+发现表+原始输出指针（只读）
 lzy review recheck [--fingerprint <前8>]  # 独立复核运行（0.4.0 M3）：同职责新会话重跑并产出闭候选读数
-lzy finding list|show|resolve-request|close|diagnose|relink
-                                        # 发现账本（0.4.0 M3）：未关闭阻塞发现跨 reset/supersede 存续；
-                                        # 关闭唯 resolve-request → review recheck → close 通道（basis 必填）
+lzy review qualify <runId> --scope <声明JSON>  # 范围资格（0.4.0 M4）：声明职责范围并跑对抗挑战（十轴），
+                                        # 通过=GRANTED（0）/拒绝=REJECTED 且照常落档（1）；零积分（不 spawn）
+lzy review reuse <runId>                # 复用适用性（0.4.0 M4）：当前候选对 base 快照逐路径分类，
+                                        # 全无关=applicable（0）/任一失效·未知·结构轴漂移=fallback 逐因（1）；
+                                        # 旧运行档与资格档字节不变（只追加判断）
+lzy finding list|show|resolve-request|close|diagnose|relink|reopen
+                                        # 发现账本（0.4.0 M3/M4）：未关闭阻塞发现跨 reset/supersede 存续；
+                                        # 关闭唯 resolve-request → review recheck → close 通道（basis 必填）；
+                                        # reopen=关闭依据失效时的受控重入（closed 两态→resolve-requested，
+                                        # 事件只追加，「曾关闭」历史不灭）——gate 的 closure-basis-stale 子句指路
 lzy loop finish                         # 终验门：全部 done+证据新鲜+全树 clean（HEAVY 另需 MATCH 对照）；落终验 attestation 并自动归档
 lzy loop export                         # 重导出证据包
 lzy loop handoff --snapshot <文件>       # 登记干净交接；下个 Stop 放行一次

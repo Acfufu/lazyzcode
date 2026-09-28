@@ -572,6 +572,51 @@ describe("⑧CLI 退出码（真子进程）", () => {
   });
 });
 
+// ── 0.4.0 M5 N1（M4 输入 7）：结构三轴必须真注入身份漂移并携带证据——旧实现直接以合成
+// reason 走聚合管线恒 fallback、不读 expect（恒真断言，不构成证据）。──
+describe("⑮结构轴真漂移注入（M5 N1）", () => {
+  const STRUCT_SUITE = {
+    schemaVersion: 1,
+    dutyId: DECLARABLE,
+    procedureVersion: 1,
+    challenges: [
+      ...SUITE.challenges,
+      { id: "C9", axis: "contract", expect: "invalidate" },
+      { id: "C10", axis: "duty", expect: "invalidate" },
+    ],
+  };
+  test("env/contract/duty 三轴真漂移检出+证据字段+expect 对表", async () => {
+    const d = fixture();
+    try {
+      saveBaseRun(d);
+      const res = await qualifyReviewScope(d, { runId: "fx.a1.r1", scopeDecl: DECL }, { dutyEntry: DUTY_ENTRY, suite: STRUCT_SUITE });
+      assert.equal(res.granted, true, "三轴真漂移应全部检出");
+      const struct = res.record.challenges.filter((c) => ["env", "contract", "duty"].includes(c.axis));
+      assert.equal(struct.length, 3);
+      for (const c of struct) {
+        assert.equal(c.observed, "invalidate", `${c.axis} 观察值须为身份漂移判定 invalidate（旧实现恒 structural-invalidate 合成串）`);
+        assert.equal(c.ok, true, `${c.axis} 挑战应通过`);
+        assert.equal(c.ok, c.observed === c.expect, `${c.axis} ok 须与 expect 对表（不再恒真）`);
+        assert.ok(c.drift && String(c.drift.base) !== String(c.drift.drifted), `${c.axis} 须携带真实漂移证据（base≠drifted）`);
+      }
+      const envC = struct.find((c) => c.axis === "env");
+      assert.match(String(envC.drift.drifted), /^[0-9a-f]{64}$/, "env 漂移值须为同形状 64 hex 指纹");
+      const dutyC = struct.find((c) => c.axis === "duty");
+      assert.equal(Number(dutyC.drift.drifted), Number(dutyC.drift.base) + 1, "duty 漂移=表版本+1");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+  test("structuralAxisDriftVerdict 纯函数真值表（漂移未发生=keep）", async () => {
+    const { structuralAxisDriftVerdict } = await import("../core/review.js");
+    assert.equal(structuralAxisDriftVerdict("env", { env: "a" }, { env: "a" }), "keep");
+    assert.equal(structuralAxisDriftVerdict("env", { env: "a" }, { env: "b" }), "invalidate");
+    assert.equal(structuralAxisDriftVerdict("contract", { contractHash: null }, { contractHash: HEX("d") }), "invalidate");
+    assert.equal(structuralAxisDriftVerdict("duty", { dutyTableVersion: 4 }, { dutyTableVersion: 5 }), "invalidate");
+    assert.equal(structuralAxisDriftVerdict("duty", { dutyTableVersion: 4 }, { dutyTableVersion: 4 }), "keep");
+  });
+});
+
 // CLI 用例辅助：声明文件落盘
 function writeTmpDecl(d) {
   const p = join(d, "decl.json");

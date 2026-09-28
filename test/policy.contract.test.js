@@ -425,10 +425,11 @@ test("M3 N8 reassess 拒面：review 型义务存在未关闭阻塞发现拒（V
     // 未关闭阻塞发现在场 → 拒
     recordFindingSightings(d, "pol", { runId: "pol.a1.r1", attempt: 1, at: "2026-09-28T00:00:00.000Z", findings: [{ severity: "P1", title: "开放阻塞", location: "a:1" }] });
     assert.throws(() => reassessObligation(d, goal, "review.custom", trio), /未关闭阻塞发现/);
-    // 关闭发现（fixed 经 recheck）→ 拒面解除
+    // 关闭发现（fixed 经 recheck）→ 拒面解除（recheck.at 须晚于修复声称=真实时钟——相对当下生成，
+    // 硬编码绝对时刻会在时钟越过它后炸时序断言，M5 N1 全量回归实测；plan-v2-phase2 同教训）
     const fp = Object.keys(loadFindingsFile(d, "pol").findings)[0];
     _rr(d, "pol", fp, { note: "已修" });
-    _cf(d, "pol", fp, { outcome: "fixed", basis: "已修", recheck: { runId: "pol.a1.r2", valid: true, reportedFingerprints: [], isRecheck: true, at: "2026-09-28T23:00:00.000Z" } });
+    _cf(d, "pol", fp, { outcome: "fixed", basis: "已修", recheck: { runId: "pol.a1.r2", valid: true, reportedFingerprints: [], isRecheck: true, at: new Date(Date.now() + 3_600_000).toISOString() } });
     const r = reassessObligation(d, goal, "review.custom", trio);
     assert.equal(r.removed, "review.custom");
   } finally {

@@ -1307,6 +1307,10 @@ function assertScopeShape(rec, p) {
       if (!CHALLENGE_EXPECTS.includes(c.expect)) bad(`challenges[].expect 不识别：${JSON.stringify(c.expect ?? null)}`);
       if (typeof c.ok !== "boolean") bad("challenges[].ok 须为布尔");
       if (c.observed !== undefined && typeof c.observed !== "string") bad("challenges[].observed 须为字符串（判定说明）");
+      if (c.drift !== undefined) {
+        if (!c.drift || typeof c.drift !== "object" || Array.isArray(c.drift)) bad("challenges[].drift 须为对象（结构轴漂移证据，M5 N1）");
+        if (!("base" in c.drift) || !("drifted" in c.drift)) bad("challenges[].drift 须带 base/drifted");
+      }
     }
     // granted 与逐挑战结果互证（机械自洽）
     if (rec.granted && !rec.challenges.every((c) => c.ok)) bad("granted=true 但存在未通过的挑战");
@@ -1765,14 +1769,39 @@ function mutateAppend(fx, rel) {
   writeFileSync(p, Buffer.concat([readFileSync(p), Buffer.from("\n// scope-challenge\n")]));
 }
 
-// 结构轴挑战（env/contract/duty）：不落路径注入，验证聚合管线对结构漂移的失效语义。
+// 结构轴挑战（env/contract/duty）：真身份漂移注入（0.4.0 M5 N1，M4 输入 7）——三轴各构造
+// 同形状漂移值（env=TZ 变体重算指纹；contract=变异哈希；duty=表版本+1），以漂移判定为主
+// 判据、聚合管线失效语义为伴断言。旧实现直接以合成 reason 走管线恒 fallback、不读 expect
+//（恒真断言，不构成证据）。
 const STRUCTURAL_CHALLENGE_REASONS = {
   env: "资格挑战注入：env 指纹漂移",
   contract: "资格挑战注入：契约哈希漂移",
   duty: "资格挑战注入：职责/规则版本漂移",
 };
+const STRUCTURAL_AXIS_FIELD = { env: "env", contract: "contractHash", duty: "dutyTableVersion" };
 
-function runChallengeSuite({ candDir, baseMap, declaration, suite }) {
+function structuralDriftAxes(axis, baseAxes) {
+  const drifted = { ...baseAxes };
+  if (axis === "env") {
+    drifted.env = createHash("sha256")
+      .update(JSON.stringify({ platform: process.platform, arch: process.arch, node: process.version, tz: `${process.env.TZ ?? "null"}+scope-challenge` }))
+      .digest("hex");
+  } else if (axis === "contract") {
+    drifted.contractHash = createHash("sha256").update("scope-challenge:contract-drift").digest("hex");
+  } else if (axis === "duty") {
+    drifted.dutyTableVersion = (baseAxes?.dutyTableVersion ?? 0) + 1;
+  }
+  return drifted;
+}
+
+// 纯函数：结构轴身份漂移判定——与 gate 复用腿身份轴比较同语义（String 归一，null 安全）；
+// 漂移未发生判 keep（挑战自无效，经 ok=observed!==expect 暴露为失败），漂移发生判 invalidate。
+export function structuralAxisDriftVerdict(axis, baseAxes, driftedAxes) {
+  const field = STRUCTURAL_AXIS_FIELD[axis] ?? axis;
+  return String(baseAxes?.[field] ?? "null") === String(driftedAxes?.[field] ?? "null") ? "keep" : "invalidate";
+}
+
+function runChallengeSuite({ candDir, baseMap, declaration, suite, identityAxes }) {
   const tmp = mkdtempSync(join(tmpdir(), "lzy-scope-qualify-"));
   const results = [];
   try {
@@ -1780,8 +1809,16 @@ function runChallengeSuite({ candDir, baseMap, declaration, suite }) {
       const mk = (observed, ok, path) => ({ id: c.id, axis: c.axis, expect: c.expect, ok, observed: `${observed}${path ? ` @${path}` : ""}` });
       const res = (() => {
         if (STRUCTURAL_CHALLENGE_REASONS[c.axis]) {
-          const v = scopeReuseVerdict([], [STRUCTURAL_CHALLENGE_REASONS[c.axis]]);
-          return mk(v.verdict === "fallback" ? "structural-invalidate" : "structural-kept(管线失效)", v.verdict === "fallback");
+          const field = STRUCTURAL_AXIS_FIELD[c.axis];
+          const driftedAxes = structuralDriftAxes(c.axis, identityAxes);
+          const observed = structuralAxisDriftVerdict(c.axis, identityAxes, driftedAxes);
+          if (observed === "invalidate") {
+            const v = scopeReuseVerdict([], [STRUCTURAL_CHALLENGE_REASONS[c.axis]]);
+            if (v.verdict !== "fallback") return mk(`structural-pipeline-broken:${v.verdict}`, false, null);
+          }
+          const entry = mk(observed, observed === c.expect, null);
+          entry.drift = { base: identityAxes?.[field] ?? null, drifted: driftedAxes?.[field] ?? null };
+          return entry;
         }
         const fx = join(tmp, `ch-${i}`);
         // verbatimSymlinks：缺省 false 会把相对链接目标改写成**绝对**路径串，而 buildFileMap
@@ -1925,11 +1962,21 @@ export async function qualifyReviewScope(cwd, { runId, scopeDecl }, deps = {}) {
     pre(`base 运行候选快照缺席（${candDir}）：${String(e?.message ?? e).slice(0, 120)}——无挑战夹具底座`);
   }
   // 执行
-  const challenges = runChallengeSuite({ candDir, baseMap, declaration: decl, suite });
-  const granted = challenges.every((c) => c.ok);
-  // 结构身份快照（资格时点五轴——reuse 时与现行对表，漂移即身份失效）
+  // 结构身份快照（资格时点七轴——reuse/gate 复用腿时与现行对表，漂移即身份失效）；
+  // 同一对象供结构轴挑战作漂移基线（M5 N1）。
   const goal = readGoal(cwd);
   const manifestHash = manifestHashOf(cwd, goal);
+  const identityAxes = {
+    rulesHash: policyRulesHash(),
+    dutyTableVersion: DUTY_TABLE_VERSION,
+    templateHash: dutyTemplateHash(decl.dutyId),
+    contractHash: goal?.contract?.contractHash ?? null,
+    manifestHash,
+    engine: findEngine(),
+    env: scopeEnvFingerprint(),
+  };
+  const challenges = runChallengeSuite({ candDir, baseMap, declaration: decl, suite, identityAxes });
+  const granted = challenges.every((c) => c.ok);
   const seqQ = nextScopeSeq(cwd, slug, attempt, "qualification");
   const rec = {
     schemaVersion: SCOPE_VERSION,
@@ -1942,15 +1989,7 @@ export async function qualifyReviewScope(cwd, { runId, scopeDecl }, deps = {}) {
     baseRunId: runId,
     scopeHash: decl.scopeHash,
     scope: { rules: decl.rules, sharedInputs: decl.sharedInputs },
-    identity: {
-      rulesHash: policyRulesHash(),
-      dutyTableVersion: DUTY_TABLE_VERSION,
-      templateHash: dutyTemplateHash(decl.dutyId),
-      contractHash: goal?.contract?.contractHash ?? null,
-      manifestHash,
-      engine: findEngine(),
-      env: scopeEnvFingerprint(),
-    },
+    identity: { ...identityAxes },
     suite: { file: suiteFileRel, suiteHash: challengeSuiteHash(suite), procedureVersion: suite.procedureVersion },
     granted,
     challenges,

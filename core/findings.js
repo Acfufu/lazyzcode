@@ -27,6 +27,9 @@ export const CLOSED_FINDING_STATUSES = ["closed-fixed", "closed-falsified"];
 export const FINDINGS_RECOVERY =
   "恢复：本家族在 loop/ 外、reset 不触及；未关闭阻塞发现是统一门放行依据（V06），删除/破坏不解除阻塞只破坏可判性——先备份再人工核对该文件";
 export const DIAGNOSIS_REQUIRED_THRESHOLD = 2;
+// 底线职责 id 本地副本（与 review.js BASELINE_DUTY_TABLE 同字面量；findings.js 不反向依赖
+// review.js 防环——两侧注释互指，改动须同批，单源纪律家法）。
+const BASELINE_DUTY_ID_LOCAL = "review.general-correctness";
 // slug 即文件名成分——路径穿越面在账本入口钉死（relink --from 的入参不走 goal.json，须自证清白）。
 const SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -95,6 +98,7 @@ function assertFindingEntry(fp, e, p) {
     bad("diagnosis 须为对象或 null");
   }
   if (!Array.isArray(e.history)) bad("history 须为数组");
+  if (e.duty !== undefined && (typeof e.duty !== "string" || !e.duty)) bad("duty 须为非空字符串（M4 拍板 13 入账面；旧账无此键=读侧兼容）");
   if (CLOSED_FINDING_STATUSES.includes(e.status) && !e.closure) {
     bad(`closed 态缺 closure`);
   }
@@ -192,7 +196,9 @@ export function openBlockingFindings(cwd, slug) {
 // ── 状态机 ──
 
 // 运行落账（N2 接线）：blocking 发现 upsert。返回逐条处置读数供运行档 note 与对账报文消费。
-export function recordFindingSightings(cwd, slug, { runId, attempt, at, findings }) {
+// M4 N6 拍板 13：发现档增 duty 字段（首次 sighting 的运行职责=来源职责，close 同职责复核
+// 校验的锚）；旧账无此键=读侧兼容，回退底线职责判。
+export function recordFindingSightings(cwd, slug, { runId, attempt, at, dutyId, findings }) {
   assertSlug(slug);
   if (!Array.isArray(findings)) throw new FindingsError("sightings.findings 须为数组");
   const rec = loadOrCreate(cwd, slug);
@@ -210,6 +216,7 @@ export function recordFindingSightings(cwd, slug, { runId, attempt, at, findings
         severity,
         title,
         location,
+        duty: typeof dutyId === "string" && dutyId ? dutyId : undefined,
         status: "open",
         firstSeen: seen,
         lastSeen: seen,
@@ -277,8 +284,10 @@ export function requestResolve(cwd, slug, fingerprint, { note, at } = {}) {
 }
 
 // close（独立复核关闭，V06 唯一通道）：resolve-requested → closed-fixed|closed-falsified。
-// recheck 证据由调用方（cli/review 层读运行档）传入，这里做机械校验——valid 且不再报该指纹。
-export function closeFinding(cwd, slug, fingerprint, { outcome, basis, recheck, at } = {}) {
+// recheck 证据由调用方（cli/review 层读运行档）传入事实字段，这里做机械校验——valid ∧
+// 不再报该指纹 ∧ 同目标代次（slug+attempt，M4 F-3）∧ 同职责（发现来源 duty，M4 拍板 13；
+// 旧账无 duty 键回退底线职责）。
+export function closeFinding(cwd, slug, fingerprint, { outcome, basis, recheck, at, expectedAttempt } = {}) {
   assertSlug(slug);
   if (!CLOSURE_OUTCOMES.includes(outcome)) {
     throw new FindingsError(`close outcome 非法：${JSON.stringify(outcome ?? null)}（fixed|falsified）`);
@@ -287,7 +296,7 @@ export function closeFinding(cwd, slug, fingerprint, { outcome, basis, recheck, 
     throw new FindingsError("close 须带 --basis（修复依据/证伪依据必填——无依据关闭=手工关闭通道，不允许）");
   }
   if (!recheck || typeof recheck !== "object" || typeof recheck.runId !== "string" || !recheck.runId) {
-    throw new FindingsError("close 须带 recheck 运行引用（{runId,valid,dutyId,reportedFingerprints}）");
+    throw new FindingsError("close 须带 recheck 运行引用（{runId,valid,slug,attempt,dutyId,reportedFingerprints}）");
   }
   if (recheck.valid !== true) {
     throw new FindingsError(`recheck 运行非 valid，不能作关闭依据：${recheck.runId}`);
@@ -298,6 +307,18 @@ export function closeFinding(cwd, slug, fingerprint, { outcome, basis, recheck, 
   const rec = loadFindingsFile(cwd, slug);
   if (!rec?.findings[fingerprint]) throw new FindingsError(`发现不在账：${slug} ${fingerprint.slice(0, 8)}`);
   const e = rec.findings[fingerprint];
+  // M4 F-3：recheck 引用补绑目标代次——跨 slug/attempt 的在案 valid 运行不得冒充本发现复核。
+  if (recheck.slug !== null && recheck.slug !== undefined && recheck.slug !== slug) {
+    throw new FindingsError(`recheck 运行代次不符：run slug=${recheck.slug} ≠ 账本 ${slug}——close 只认同目标代次的独立复核`);
+  }
+  if (expectedAttempt != null && recheck.attempt !== null && recheck.attempt !== undefined && Number(recheck.attempt) !== Number(expectedAttempt)) {
+    throw new FindingsError(`recheck 运行代次不符：attempt ${recheck.attempt} ≠ 目标 attempt ${expectedAttempt}——跨代次复核须重走（lzy review recheck）`);
+  }
+  // M4 拍板 13：同职责复核语义（发现来源 duty ↔ recheck 运行 duty）；旧账无 duty 键回退底线。
+  const expectedDuty = typeof e.duty === "string" && e.duty ? e.duty : BASELINE_DUTY_ID_LOCAL;
+  if (typeof recheck.dutyId === "string" && recheck.dutyId && recheck.dutyId !== expectedDuty) {
+    throw new FindingsError(`recheck 运行职责不符：${recheck.dutyId} ≠ 发现来源职责 ${expectedDuty}（V06 同职责复核——专项发现的复现依赖其职责模板）`);
+  }
   if (e.resolveRequest?.at && typeof recheck.at === "string" && recheck.at <= e.resolveRequest.at) {
     throw new FindingsError(`recheck 运行时序不符：不晚于修复声称（${e.resolveRequest.at}）——独立复核须发生在声称之后`);
   }
@@ -363,11 +384,23 @@ export function diagnoseFinding(cwd, slug, fingerprint, { rootCause, at } = {}) 
 }
 
 // relink（V06 别名变化）：to 的账本记 from 别名，查询面闭包并集——不搬记录、不改历史。
+// M4 F-4 方向校验（时间序版）：别名恒挂在 to 账上、查询走 to 的闭包——若两账都在案且
+// to 账的最后活动明显早于 from 账，则请求方向反了（把查询位放到旧账上，较新的发现反而
+// 不可达）。单边无账/空账不触发（改名后新账尚未落发现的合法流不受累）。
 export function relinkFindings(cwd, fromSlug, toSlug, { at } = {}) {
+  void at;
   assertSlug(fromSlug, "relink --from");
   assertSlug(toSlug, "relink --to");
   if (fromSlug === toSlug) throw new FindingsError("relink 自指：--from 与 --to 相同");
-  const rec = loadOrCreate(cwd, toSlug);
+  const toRec = loadFindingsFile(cwd, toSlug);
+  const fromRec = loadFindingsFile(cwd, fromSlug);
+  if (toRec && fromRec && Object.keys(toRec.findings).length > 0 && Object.keys(fromRec.findings).length > 0) {
+    const latest = (r) => Math.max(...Object.values(r.findings).map((e) => Date.parse(e.lastSeen?.at ?? "") || 0));
+    if (latest(toRec) < latest(fromRec)) {
+      throw new FindingsError(`relink 方向拒：--to ${toSlug} 账的最后活动早于 --from ${fromSlug} 账——别名须挂到较新（现行）账上（F-4 反挂=单向盲区）。正形：lzy finding relink --from ${toSlug} --to ${fromSlug}`);
+    }
+  }
+  const rec = toRec ?? emptyRecord(toSlug);
   if (rec.aliases.includes(fromSlug)) {
     return { slug: toSlug, aliases: rec.aliases, changed: false };
   }

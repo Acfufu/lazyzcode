@@ -19,6 +19,7 @@
 // 快照后非零）。deps 可注入（run/querySessionPoints/now/git）供离线契约测试（headless.js 先例）。
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { budgetView } from "./queue.js"; // M4 N6：评审预算分项读数行（展示性）
 import { spawnSync } from "node:child_process";
 import { progressSignature, signatureKey } from "./progress.js";
 import {
@@ -633,6 +634,15 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         const meterLine = meter.reportLine("本段");
         if (meterLine) console.log(meterLine);
       }
+      // M4 N6（M3 输入 #6，展示性）：段报文补评审预算分项读数——执法面在评审前置已生效
+      //（budget-ref 绑定超限 preflight 拒），本行只让独立轴消耗在 drive 侧可见（与
+      // budgetView/lzy loop budget 行同源，reviewPoints 不混入队列派发积分）。
+      try {
+        const bv = budgetView(cwd);
+        if (bv.reviewPoints > 0) {
+          console.log(`[drive] 评审预算视图：评审消耗累计 ${bv.reviewPoints} 分（独立轴·队列派发积分不含此项）`);
+        }
+      } catch {}
       if (seg === maxSegments) {
         windDown(true, `段数尽（${maxSegments} 段）`);
       }

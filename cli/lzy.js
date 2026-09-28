@@ -2159,10 +2159,23 @@ async function cmdFinding(args) {
       const blockingFps = (run.result?.findings ?? [])
         .filter((x) => x.blocking === true || x.severity === "P0" || x.severity === "P1")
         .map((x) => findingFingerprint({ severity: x.severity, title: x.title, location: x.location }));
+      // M4 拍板 13：CLI 只透传运行档事实字段（职责/代次校验下沉 core）——此前「职责=底线」
+      // 折叠进 valid 布尔，专项职责发现的复核关闭会被误拒（M3 报告 F-3/CLI-core 契约漂移）。
+      const goalAttempt = readGoal(cwd)?.attempt ?? null;
       const r = closeFinding(cwd, originSlug, hit.fingerprint, {
         outcome,
         basis,
-        recheck: { runId, valid: run.validity?.status === "valid" && run.duty?.id === BASELINE_DUTY_ID, reportedFingerprints: blockingFps, isRecheck, at: run.endedAt },
+        expectedAttempt: goalAttempt,
+        recheck: {
+          runId,
+          valid: run.validity?.status === "valid",
+          slug: run.slug ?? null,
+          attempt: run.attempt ?? null,
+          dutyId: run.duty?.id ?? null,
+          reportedFingerprints: blockingFps,
+          isRecheck,
+          at: run.endedAt,
+        },
       });
       console.log(`发现已关闭：${r.fingerprint.slice(0, 8)} → ${r.status}（recheck ${r.closure.recheckRunId} · 依据 ${r.closure.basis}）`);
       return;

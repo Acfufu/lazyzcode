@@ -1044,26 +1044,31 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null } : null,
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
     };
-    const out = finishRun(cwd, reserve, record);
+    const out = await finishRun(cwd, reserve, record);
     // N9：评审消耗入账（LEDGER review 类）——契约绑定才写（authorization 形状须 64hex
     // contractHash；无契约 goal 保持运行档 durable 面）；metered 才写（absent/unpriced
     // 不算零口径由运行档计量面承载）；dedup=runId（天然唯一，重放幂等）。
+    // F-7（M4 N6）：入账=load-modify-save，纳入写前缀短临界（与 prepare 锁时序分离不嵌套）。
     if (goal.contract?.contractHash && out.record.metering?.status === "metered") {
-      appendLedgerEntry(cwd, {
-        kind: "review",
-        dedupKey: `review:${out.record.runId}`,
-        authorization: { slug: out.record.slug, contractHash: goal.contract.contractHash },
-        points: out.record.metering.points ?? 0,
-        sessionId: out.record.sessionId ?? null,
-        provenance: { runId: out.record.runId, duty: out.record.duty.id, source: "review-runner" },
-        note: `评审运行计量入账（budget ${out.record.budget?.ref ?? "none"}）`,
-      });
+      await withLock(cwd, () =>
+        appendLedgerEntry(cwd, {
+          kind: "review",
+          dedupKey: `review:${out.record.runId}`,
+          authorization: { slug: out.record.slug, contractHash: goal.contract.contractHash },
+          points: out.record.metering.points ?? 0,
+          sessionId: out.record.sessionId ?? null,
+          provenance: { runId: out.record.runId, duty: out.record.duty.id, source: "review-runner" },
+          note: `评审运行计量入账（budget ${out.record.budget?.ref ?? "none"}）`,
+        }),
+      );
     }
     return out;
   } catch (err) {
     if (err instanceof ReviewPreflightError) throw err; // 前置型拒绝不落档（N3 #11 锁忙走此通道）
-    if (err instanceof LoopError) {
+    if (err instanceof LoopError && !spawned) {
       // N3 #11：锁忙（等待超时）→ preflight 型拒——不 spawn 不消耗不落档，exit 3 面。
+      // F-7（M4 N6）：spawn 后（落账相位）的锁忙不再误标前置拒——运行已消耗，走下方
+      // interrupted 落档路径（重试仍忙则如实抛原错，孤儿目录由 nextRunSeq 计数兜底）。
       throw new ReviewPreflightError(`评审运行写前缀锁忙（并发评审或循环操作持锁）：${String(err?.message ?? err).slice(0, 140)}`, { reason: "review-busy" });
     }
     if (!reserve) throw err; // 预留前失败（获锁失败/孤儿目录拒）——无运行可落档，原样上抛
@@ -1096,7 +1101,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       containment: null,
     };
     try {
-      return { ...finishRun(cwd, reserve, record), thrown: err };
+      return { ...(await finishRun(cwd, reserve, record)), thrown: err };
     } catch {
       throw err; // 落档也失败（如磁盘满）——原异常上抛
     }
@@ -1105,15 +1110,19 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
 
 // 记录组装收尾：dutyTableVersion 从现行策略记录取（记录缺/不可读=回退现行职责表版本——
 // runner 恒在现行规则下运行，不冒充他版）；随后落账接线（N2/V06）。
-function finishRun(cwd, reserve, record) {
+// F-7（M4 N6）：落账段（发现 upsert+运行档写入）原在 prepare 写前缀锁外——并发下可丢更新；
+// 此处与入账段同样取写前缀锁短临界（prepare 锁已释放，时序分离**不嵌套**——loop.js 锁家法）。
+async function finishRun(cwd, reserve, record) {
   let v = null;
   try {
     const rec = loadPolicyRecord(cwd, record.slug, record.attempt);
     if (rec && Number.isInteger(rec.dutyTableVersion)) v = rec.dutyTableVersion;
   } catch {}
   record.dutyTableVersion = v ?? DUTY_TABLE_VERSION;
-  record.findingsLedger = wireFindingsLedger(cwd, record);
-  const saved = saveReviewRun(cwd, record);
+  const saved = await withLock(cwd, () => {
+    record.findingsLedger = wireFindingsLedger(cwd, record);
+    return saveReviewRun(cwd, record);
+  });
   return { record: saved, exitHint: saved.validity.status === "valid" && saved.result?.verdict === "pass" ? 0 : 1 };
 }
 
@@ -1141,6 +1150,7 @@ function wireFindingsLedger(cwd, record) {
       runId: record.runId,
       attempt: record.attempt,
       at: record.endedAt,
+      dutyId: record.duty?.id ?? null, // M4 拍板 13：来源职责入账（close 同职责复核校验锚）
       findings: blocking.map((f) => ({ severity: f.severity, title: f.title, location: f.location })),
     });
   }

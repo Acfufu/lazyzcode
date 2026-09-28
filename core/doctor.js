@@ -705,10 +705,42 @@ function checkFindings(push, cwd) {
       if (!CLOSED_FINDING_STATUSES.includes(e.status)) openCount += 1;
     }
   }
+  // F-4（M4 N6）：孤儿指纹检测——同一指纹出现在多个账本而账间无别名边=改名未 relink 的
+  // 静默失效（fail-open 形态：现行 slug 的闭包读不到旧账里的同源发现）。warn 级显形不翻码。
+  const fpOwners = new Map();
+  for (const { file, rec } of records) {
+    for (const fp of Object.keys(rec.findings)) {
+      if (!fpOwners.has(fp)) fpOwners.set(fp, []);
+      fpOwners.get(fp).push(file.slice(0, -".json".length));
+    }
+  }
+  const hasAliasEdge = (a, b) => {
+    const ra = records.find((r) => r.file === `${a}.json`);
+    const rb = records.find((r) => r.file === `${b}.json`);
+    return Boolean(ra?.rec.aliases.includes(b) || rb?.rec.aliases.includes(a));
+  };
+  const orphans = [];
+  for (const [fp, owners] of fpOwners) {
+    if (owners.length < 2) continue;
+    let linked = false;
+    for (let i = 0; i < owners.length && !linked; i++) {
+      for (let j = i + 1; j < owners.length; j++) {
+        if (hasAliasEdge(owners[i], owners[j])) {
+          linked = true;
+          break;
+        }
+      }
+    }
+    if (!linked) orphans.push(`${fp.slice(0, 8)}@[${owners.join(",")}]`);
+  }
+  const orphanNote =
+    orphans.length > 0
+      ? ` · ⚠ 孤儿指纹 ${orphans.length} 个（同指纹跨账无别名关联：${orphans.slice(0, 2).join("、")}${orphans.length > 2 ? "…" : ""}）——改名后须 lzy finding relink --from <旧slug> --to <现行slug>`
+      : "";
   push(
     "findings",
-    "ok",
-    `发现账本 ${names.length} 件（发现 ${records.reduce((n, r) => n + Object.keys(r.rec.findings).length, 0)} 条 · 未关闭 ${openCount} · 别名链 ${aliasLinks}）· 形状闸全过`,
+    orphans.length > 0 ? "warn" : "ok",
+    `发现账本 ${names.length} 件（发现 ${records.reduce((n, r) => n + Object.keys(r.rec.findings).length, 0)} 条 · 未关闭 ${openCount} · 别名链 ${aliasLinks}）· 形状闸全过${orphanNote}`,
   );
 }
 

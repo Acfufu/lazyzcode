@@ -1038,17 +1038,19 @@ if (process.env.LZY_STUB_RACE_REPO) {
   spawnSync("git", ["commit", "-qm", "race"], { cwd: process.env.LZY_STUB_RACE_REPO });
 }
 if (process.env.LZY_STUB_TAINT === "1") fs.writeFileSync(path.join(cwd, "a.txt"), "tampered-by-stub\\n");
+const BT = String.fromCharCode(96);
+const fence = (obj) => BT + BT + BT + "json\\n" + JSON.stringify(obj) + "\\n" + BT + BT + BT;
 let response = "";
 if (leg === "green") {
-  response = "\\\`\\\`\\\`json\\n" + JSON.stringify({ duty: "review.general-correctness", verdict: "pass", findings: [], summary: "替身绿例：候选树小而干净，未发现通用正确性缺陷" }) + "\\n\\\`\\\`\\\`";
+  response = fence({ duty: "review.general-correctness", verdict: "pass", findings: [], summary: "替身绿例：候选树小而干净，未发现通用正确性缺陷" });
 } else if (leg === "blocked") {
   // M3 finding-lifecycle 替身阻塞腿：确定性阻塞发现（title/location 可经 env 注入变体）
   const finding = { id: "F-1", title: process.env.LZY_STUB_TITLE ?? "授权撤回缺陷：已撤销令牌仍可放行", severity: "P1", blocking: true, location: process.env.LZY_STUB_LOC ?? "auth.js:12", evidence: "auth.js 的放行分支未查询撤回账（替身复现体）", summary: "替身阻塞例：授权撤回检查缺席" };
-  response = "\\\`\\\`\\\`json\\n" + JSON.stringify({ duty: "review.general-correctness", verdict: "blocked", findings: [finding], summary: "替身阻塞例：授权撤回检查缺席" }) + "\\n\\\`\\\`\\\`";
+  response = fence({ duty: "review.general-correctness", verdict: "blocked", findings: [finding], summary: "替身阻塞例：授权撤回检查缺席" });
 } else if (leg === "parsefail") {
   response = "评审完成，但本腿不产出机器可解析的围栏。";
 } else if (leg === "contradiction") {
-  response = "\\\`\\\`\\\`json\\n" + JSON.stringify({ duty: "review.general-correctness", verdict: "pass", findings: [{ id: "F-1", title: "stub blocking", severity: "P1", blocking: true, location: "a.txt:1", evidence: "stub", summary: "结构自相矛盾体" }], summary: "pass 与阻塞发现并存" }) + "\\n\\\`\\\`\\\`";
+  response = fence({ duty: "review.general-correctness", verdict: "pass", findings: [{ id: "F-1", title: "stub blocking", severity: "P1", blocking: true, location: "a.txt:1", evidence: "stub", summary: "结构自相矛盾体" }], summary: "pass 与阻塞发现并存" });
 }
 if (leg === "sleep") { const end = Date.now() + 120000; while (Date.now() < end) {} }
 process.stdout.write(JSON.stringify({ sessionId, response, usage: { input_tokens: 1, output_tokens: 1 } }) + "\\n");
@@ -1231,9 +1233,12 @@ async function reviewRuntimeCase() {
   for (const b of bodies) {
     const fx = readyGoal(fixture(b.id));
     try {
-      await b.run(fx);
+      const r = await b.run(fx);
+      // M4 N6 修（M3 输入 #5）：expect 此前在循环里丢失——八体断言未被评估、result 仍
+      // passed=true 的哑弹面。run 产出 r 后必须过判据。
+      if (typeof b.expect === "function") b.expect(fx, r); // 部分体（r5-撤回/r6-伪导入）判据内联在 run/后续体
     } catch (e) {
-      push(b.id, false, "体执行无异常", String(e?.message ?? e).slice(0, 200));
+      push(b.id, false, "体执行+判据无异常", String(e?.message ?? e).slice(0, 200));
     }
     rmSync(join(caseDir, b.id), { recursive: true, force: true }); // 逐体即焚
   }

@@ -123,9 +123,26 @@ zpigeon-ios `08ebd3ea`。
 **收口自审轮（attempt 3 a3.r1；1800s 墙钟预算 3/3 内第 3 次）**：valid · metered · 16.20 分
 （sess_98b543a8）·verdict=**blocked**——六发现=2 P1 blocking（报告误记〔本节上文已改正，即 §5④
 的转录面〕+ closeFinding slug 绑死回归〔§5⑤〕）+1 P2（inputPaths 实体〔§5④〕）+3 P3（同批小修）。
-gate findings 子句正确拦截（机器门按设计挡下假收官面）；修复批落地后按条目细则 R4 重采 F1-F7——
-F7 重跑第 4/5 次真会话=**超注 2**（如实记账），两条 P1 经 resolve-request→recheck→close 通道闭环，
-recheck=修复后现行候选的新评审运行。终账随收口提交落。
+gate findings 子句正确拦截（机器门按设计挡下假收官面）；修复批落地后按条目细则 R4 重采 F1-F7。
+
+**终账（attempt 4，批准 a49ab0a3 supersede expand 再采纳后收官）**：
+
+- **身份再采纳**：inputPaths 修复改变清单哈希 ⇒ 策略输入身份漂移（在案 4ac4dacf ≠ 现算
+  32cee99c），V02 按代次冻结 ⇒ attempt 3 恒差 policyIdentity 一条；expand 唯一合法入口=采纳点，
+  收口 r2 增补节经 plan-reviewer PASS（七项账实核对符）+人权门短码 a49ab0a3 → supersede attempt 4
+  （expand 落新身份 8437be55）——「任务运行期间改 manifest 须再采纳」为本次实证的机械教训。
+- **自审修复批五笔**：4c761c3（slug 别名家族判+回归用例）／217efb7（报告如实转录+§5④⑤+inputPaths
+  +guide 清单）／615f6d4（夹具修复腿 ReferenceError）／bda1311（撤回账种子实钉——评审员三轮发现
+  全真：ReferenceError→拒绝分支不可达→种子后 pass，评审能力实证）／26aacfd（runReview catch 引用
+  try 块内 spawned 锁忙 ReferenceError——a4.r2 P1 实证，六声明上提+锁忙回归用例）。
+- **评审会话账（宿主 6 次，points 逐段 sessionId 归因）**：a3.r1 16.20（blocked·P1×2 抓获）
+  / a3.r2 13.05（recheck·闭 P1×2）/ a4.r2 10.15（blocked·锁忙 P1 抓获）/ a4.r3 13.05（pass）
+  / a4.r4 22.08（recheck·闭 934c2467）/ a4.r5 5.41（verification-deps pass）；F7 预注册 ≤3 耗尽后
+  全部超注如实记账；另有误触物化即杀（a3.r2 前身·无会话）、外部并行会话无效跑击杀、被杀基线
+  a4.r1（约 12 分研究段，metering-absent 如实缺席）三笔零/缺额记录在案。qa 夹具真会话腿 ~2 分。
+- **终态**：20/20 步 · 对照 7/7 MATCH（n666·绑现行绿 n658–n665）· 717/717 绿（基线 697→717）
+  · gate PASS（4/4 义务+findings+身份）· 3 条 P1 全 closed-fixed（V06 通道）· 终验 attestation
+  `.lazyzcode/attestations/v040-m4-scope-qualification-20260928T211049Z.json`（LOOP_COMPLETE）。
 
 ## 9. M5 输入清单
 
@@ -140,3 +157,10 @@ recheck=修复后现行候选的新评审运行。终账随收口提交落。
 5. **声明面摩擦**：过窄/过宽双向拒绝意味着真实仓首次接入需按套件轴枚举声明；M5 迁移/文档宜给
    「按职责取提示的模式清单」配方（本阶段的 `docs/guide` 用法条目为起点）。
 6. **批量 close 未实现**（拍板 11）：M5 若需一次收多发现，仍逐条走 resolve→recheck→close。
+7. **随包套件结构三轴恒真断言**（收口自审 a4.r3 P2）：env/contract/duty 三轴无漂移注入且不比对
+   expect，十轴中的 3 轴不构成证据——M5 须补漂移注入或诚实收窄轴面口径。
+8. **资格挑战夹具注入写越界面**（a4.r3 P2）：注入写入可经符号链接写出夹具外（目录/悬空链接直接
+   崩溃）——与缺陷 ② 同族，根解归 M5 物化面复核。
+9. **验证面自动化缺口**（a4.r5 P3）：docs 断链/锚点检查未接入 CI 与 check 清单；m4-scope-harness
+   无失败出口（退化环境仍 exit 0）；gate 复用腿结构身份不含 env 轴（与满足条件串字面一致，env 只
+   在 qualify/reuse 时点判）——三条如实入账随 M5 处置。

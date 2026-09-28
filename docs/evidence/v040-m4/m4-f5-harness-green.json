@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "harness": "m4-scope-harness",
+  "root": "/Users/acfufu/Codehub/lazyzcode",
+  "source": null,
+  "rootTree": "22b409a25a0daf813920573a2e375abdb6020d71",
+  "rootHead": "66a3b9480d69365653938fdbbe6ee2f94ea72538",
+  "rootCliVersion": "0.3.1",
+  "at": "2026-09-28T14:43:35.642Z",
+  "observations": [
+    {
+      "id": "D1a-专项运行",
+      "observed": "run.exit=0 在案=true duty=review.verification-deps valid/metered/pass",
+      "detail": "替代评审专项职责运行（红半期望=职责不在表拒+无运行档；绿半=valid metered pass）",
+      "raw": null
+    },
+    {
+      "id": "D3a-现行基线与回执",
+      "observed": "verify.exit=0 baseline.exit=0",
+      "detail": "C1 面：check 回执 + 基线评审运行均绑现行候选（复用腿判据的隔离前置——非 blocker 面）",
+      "raw": null
+    },
+    {
+      "id": "D2a-资格落档",
+      "observed": "qualify.exit=0 家族目录=在场 granted=true 挑战=10/10",
+      "detail": "资格挑战落档（红半期望=未知命令+目录不在场零写入；绿半=granted 且十轴全过落档）",
+      "raw": "资格挑战 m4h.a1.q1 · review.verification-deps · base m4h.a1.r1 · GRANTED（资格在案）\n  声明 scopeHash aa089fd750cb… · 规则 3 条 · 共享输入 1 项\n  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…\n  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）\n    ✔ C1（in-scope · 期望 invalidate）→ invalidate @src/util.js\n    ✔ C2（canary-keep · 期望 keep）→ keep @docs/readme.md\n    ✔ C3（missed-dependency · 期望 invalidate）→ invalidate @package-lock.json\n    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt\n    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @src/util.js\n    ✔ C6（lockfile · 期望 invalidate）→ invalidate @package-lock.json\n    ✔ C7（check-script · 期望 invalidate）→ invalidate @scripts/check.sh\n    ✔ C8（env · 期望 invalidate）→ structural-invalidate\n    ✔ C9（contract · 期望 invalidate）→ structural-invalidate\n    ✔ C10（duty · 期望 invalidate）→ structural-invalidate\n  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4h-BvQkoK/fixture/.lazyzcode/review-scope/m4h.a1.q1.json · 零积分（mechanical）\n"
+    },
+    {
+      "id": "D2b-适用档落档",
+      "observed": "reuse.exit=0 verdict=applicable 因=0 绑资格档=m4h.a1.q1",
+      "detail": "无关变化适用档（红半期望=未知命令零落档；绿半=applicable 且绑资格档 id）",
+      "raw": "适用性判定 m4h.a1.p1 · review.verification-deps · base m4h.a1.r1 · 资格 m4h.a1.q1 · APPLICABLE（旧结果仍适用）\n  目标候选 head 231dd43f7d52… · 指纹 f019bf81196f…\n  diff 1 项（base 树 e583eabb5cbc… → 目标树 7de8eadd4a16…）\n  逐因：变化全部落在声明 unrelated 区且结构身份无漂移——义务可由复用满足（gate 复用腿）\n  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4h-BvQkoK/fixture/.lazyzcode/review-scope/m4h.a1.p1.json · 零积分（mechanical·只追加）\n"
+    },
+    {
+      "id": "D3b-复用链满足",
+      "observed": "gate.exit=0 裁决=PASS（快照 复用字样=true 适用档=m4h.a1.p1 被引",
+      "detail": "C1 门裁决（红半期望=无复用链叙述且无该专项义务；绿半=专项义务经复用腿满足且叙述点名适用档 id）",
+      "raw": "统一门 · 目标 m4h（v2 · tier light · executing） · 裁决 PASS（快照 dbb22a34…）\n  ✔ contractAndAuth\n  ✔ acceptanceCoverage\n  ✔ policyIdentity：策略身份有效（05ee6d12… · dutyTable v4）\n  ✔ findings：发现面：无未关闭阻塞发现；已关闭 0 条的关闭依据均适用（M4 stale 审计）\n  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证\n  ✔ 义务 review.general-correctness（review·底线）＝ satisfied · 回执 m4h.a1.r2\n      评审运行 m4h.a1.r2 满足七合取（metered 0.11899999999999998 分 · verdict=pass · 候选现行 · 原始输出哈希符）；发现生命周期由 findings 子句执法（未关闭阻塞发现独立子句判）\n  ✔ 义务 review.verification-deps（review）＝ satisfied · 回执 m4h.a1.r1\n      评审运行 m4h.a1.r1 候选漂移由复用腿满足：适用档 m4h.a1.p1（applicable · diff 1 项全分类）＋资格 m4h.a1.q1 granted 且身份现行——ADR-0032 追加判断不改写旧记录\n  ✔ 义务 check.build（check）＝ satisfied · 回执 r-20260928T144332-15z9otro\n      回执 r-20260928T144332-15z9otro（run）适用∧成功∧身份三轴满足\n政策层放行（既有 finish 门族照常独立执法——本裁决不含步骤/证据/comparator/净树判定）\n"
+    },
+    {
+      "id": "D2c-未知路径 fallback",
+      "observed": "reuse.exit=1 verdict=fallback 因点名未知=1",
+      "detail": "未知新文件⇒最新适用档 fallback 逐因点名 stranger.txt（红半=未知命令）",
+      "raw": "适用性判定 m4h.a1.p2 · review.verification-deps · base m4h.a1.r1 · 资格 m4h.a1.q1 · FALLBACK（回退重评）\n  目标候选 head 35aef152e282… · 指纹 1b9129028f69…\n  diff 2 项（base 树 e583eabb5cbc… → 目标树 d61bbabecef1…）\n  逐因：\n    ✖ 未知路径：stranger.txt（added；不在声明规则内——保守回退，拍板 2）\n  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4h-BvQkoK/fixture/.lazyzcode/review-scope/m4h.a1.p2.json · 零积分（mechanical·只追加）\n"
+    },
+    {
+      "id": "D3c-复用腿实拦",
+      "observed": "gate.exit=1 裁决=BLOCKED（快照 复用不足因=true 点名声明依赖=true",
+      "detail": "C2 门裁决（红半期望=无复用腿可言；绿半=其余义务全现行下由复用不足因单独阻塞并点名未知路径）",
+      "raw": "统一门 · 目标 m4h（v2 · tier light · executing） · 裁决 BLOCKED（快照 ed413d54…）\n  ✔ contractAndAuth\n  ✔ acceptanceCoverage\n  ✔ policyIdentity：策略身份有效（05ee6d12… · dutyTable v4）\n  ✔ findings：发现面：无未关闭阻塞发现；已关闭 0 条的关闭依据均适用（M4 stale 审计）\n  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证\n  ✔ 义务 review.general-correctness（review·底线）＝ satisfied · 回执 m4h.a1.r3\n      评审运行 m4h.a1.r3 满足七合取（metered 0.11899999999999998 分 · verdict=pass · 候选现行 · 原始输出哈希符）；发现生命周期由 findings 子句执法（未关闭阻塞发现独立子句判）\n  ✘ 义务 review.verification-deps（review）＝ unsatisfied · 回执 m4h.a1.r1\n      候选漂移（运行时 head e7829a2d ≠ 现行 35aef152）——对现行候选重跑或走复用腿\n      复用腿不足：最新适用档 m4h.a1.p2 判 fallback（未知路径：stranger.txt（added；不在声明规则内——保守回退，拍板 2））——回退重评\n  ✔ 义务 check.build（check）＝ satisfied · 回执 r-20260928T144334-16i24wxu\n      回执 r-20260928T144334-16i24wxu（run）适用∧成功∧身份三轴满足\n阻塞 2 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。\n"
+    },
+    {
+      "id": "D1b-命令族",
+      "observed": "qualify.exit=2 规范用法名=true reuse.exit=2 规范用法名=true reopen.exit=1 未知子命令=false",
+      "detail": "三命令在场性（红半期望=qualify/reuse 的规范用法名缺席+reopen 报未知子命令；绿半=用法名在场、reopen 走域拒）",
+      "raw": "用法错：lzy review qualify <runId> --scope <声明JSON文件> | 用法错：lzy review reuse <runId> | [lzy] 发现不在账：0000000000000000（lzy finding list 看在案集）"
+    }
+  ]
+}

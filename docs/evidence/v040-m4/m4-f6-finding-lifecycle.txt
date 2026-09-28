@@ -1,0 +1,24 @@
+[v040-qa] finding-lifecycle 真会话腿：2 次（预注册 12 内）
+[v040-qa] case=finding-lifecycle passed=true
+  ✔ a1-blocked-run 替身阻塞运行 valid 落档且阻塞发现入账（exit 1）｜observed: exit=1 validity=valid upserted=1
+  ✔ a2-finish-denied review 义务已满足而未关闭阻塞发现 ⇒ finish 必拒（报文点名 findings）｜observed: finExit=1 gateHasFindings=true out=[lzy] 统一门阻塞（政策层，gate b8f6fd12）：|  - [findings] 未关闭阻塞发现 c7199fc1（P1 · 授权撤回缺陷：已撤销令牌仍可放行 · 状态 open · 首见 fl-chain-a.a1.r1 · 累计 1 次）——修复后 lzy rev
+  ✔ a3-resolve resolve-request 0｜observed: exit=0
+  ✔ a4-invalid-fix-1 recheck 仍报=无效修复 1（回 open）｜observed: invalidFixCount=1 status=open
+  ✔ a5-diagnosis-required 两次无效修复 ⇒ diagnosis-required｜observed: status=diagnosis-required count=2
+  ✔ a6-resolve-denied diagnosis-required 态 resolve 拒（exit 1）｜observed: exit=1 out=[lzy] diagnosis-required：连续 2 次无效修复——先 lzy finding diagnose c7199fc1 记录根因，方可再入关闭通道
+
+  ✔ a7-diagnose-reset diagnose 记根因重置（exit 0）｜observed: exit=0
+  ✔ a8-recheck-candidates recheck 绿 ⇒ 闭候选 1 条（报文指路 close）｜observed: exit=0 cands=1
+  ✔ a9-close-fixed close fixed 0｜observed: exit=0
+  ✔ a10-gate-finish 发现全闭 ⇒ gate PASS ⇒ finish 过门落 attestation｜observed: gate=PASS（快照 finExit=0 att=1
+  ✔ b1-falsified 证伪分支 close falsified（替身腿，fixture 标记）｜observed: exit=0 status=closed-falsified
+  ✔ c1-survives-reset reset 后同 slug 发现链存续（未关闭 1）｜observed: out=发现账本 fl-chain-c（含别名链）1 条 · 未关闭 1：|  c7199fc1 [open] P1 授权撤回缺陷：已撤销令牌仍可放行（auth.js:12）· 累计 1 · 首见 fl-chain-c.a1.r1
+  ✔ c2-survives-rename relink 后别名链并集可读且 gate 仍拦｜observed: list=true gateHas=true
+  ✔ c3-survives-supersede supersede attempt2 后发现链存续｜observed: supExit=0 attempt=2 list=true
+  ✔ d1-reassess-baseline-denied baseline 义务取消拒（exit 1）｜observed: exit=1
+  ✔ d2-reassess-derived-denied 现行推导仍含=取消拒｜observed: exit=1
+  ✔ d3-reassess-cancel 额外义务取消活体（义务集不再列 delivery.audit）｜observed: exit=0 showStill=false
+  ✔ r1-real-run 真实会话 valid metered（对注缺陷夹具；verdict 如实）｜observed: validity=valid verdict=blocked points=0.1393492 wallMs=94126
+  ✔ r2-real-recheck 真实 recheck 绿 ⇒ 闭候选 1（原发现不再报）｜observed: exit=0 verdict=pass cands=1 wallMs=102197
+  ✔ r2-real-close-finish 真实全链收口：close→gate→finish attestation｜observed: close=0 fin=0 att=1
+  result-finding-lifecycle.json → /tmp/m4-fevi/f6out/result-finding-lifecycle.json

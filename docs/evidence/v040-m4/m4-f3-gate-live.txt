@@ -1,0 +1,334 @@
+# F3 gate 复用合取与关闭依据原始取证（夹具：scope-gate=自建清单夹具；scope-stale=qa 夹具；scope-main=qa 夹具拒资面）
+
+# (a) scope-main 拒资面：最新资格档为拒绝态 ⇒ 复用不可用
+
+===== [2026-09-28T14:41:34Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-main) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review reuse scope-main.a1.r1
+前置不具备（不消耗、不落档）：base 运行最新资格档为拒绝态（scope-main.a1.q6）——修正声明重走资格挑战，不得以拒资复用
+===== EXIT: 3
+
+# (b) scope-stale 关闭依据全链
+
+===== [2026-09-28T14:41:34Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-stale) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js step done F1 --evidence green rebind: marker.txt present in HEAD tree（capt drift 后未变面重录）
+↻ 步骤重取证：F1 [F] marker exists（2/2）
+  证据已绑定 指纹 73673befd1：green rebind: marker.txt present in HEAD tree（capt drift 后未变面重录）
+  全部步骤已收口 → lzy loop finish 做终验
+===== EXIT: 0
+
+===== [2026-09-28T14:41:35Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-stale) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js gate explain
+统一门 · 目标 scope-stale（v2 · tier light · executing） · 裁决 BLOCKED（快照 92bc72f8…）
+  ✔ contractAndAuth
+  ✔ acceptanceCoverage
+  ✔ policyIdentity：策略身份有效（840dd4e4… · dutyTable v4）
+  ✘ findings：已关闭发现 3f4525cd（P1 · 授权撤回缺陷：已撤销令牌仍可放行）关闭依据失效：关闭依据候选已漂移且变更命中定位文件：marker.txt——lzy finding reopen 3f4525cd 后重走 review recheck → close（曾关闭事实保留）
+  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证
+  ✘ 义务 review.general-correctness（review·底线）＝ unsatisfied · 回执 scope-stale.a1.r4
+      候选漂移（运行时 head b054165e ≠ 现行 13b203f1）——对现行候选重跑或走复用腿
+      复用腿不可用：无在案适用档——对现行候选重跑（lzy review run）或先声明范围走资格挑战（lzy review qualify scope-stale.a1.r4 --scope <声明>）
+阻塞 3 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。
+===== EXIT: 1
+
+===== [2026-09-28T14:41:35Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-stale) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js finding list
+发现账本 scope-stale（含别名链）1 条 · 未关闭 0：
+  3f4525cd [closed-fixed] P1 授权撤回缺陷：已撤销令牌仍可放行 · 闭于 scope-stale.a1.r4
+===== EXIT: 0
+
+# finding 指纹前 8 位：3f4525cd
+
+===== [2026-09-28T14:41:35Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-stale) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js finding reopen 3f4525cd --note closure-basis-stale
+发现已重开：3f4525cd closed-fixed → resolve-requested（closure 历史保留）——独立复核后重新关闭：lzy review recheck --fingerprint 3f4525cd → lzy finding close 3f4525cd --outcome … --basis … --recheck <新复核runId>
+===== EXIT: 0
+
+===== [2026-09-28T14:41:35Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-stale) env LZY_ZCODE_ENGINE=/tmp/m4-fevi/fx/scope-qualification/stub-engine.cjs LZY_STUB_LEG=green LZY_STUB_DUTY=review.general-correctness LZY_STUB_LEDGER=1 node cli/lzy.js review recheck --timeout-ms 30000
+复核运行 scope-stale.a1.r5 · valid · pass · 计量 metered 0.11899999999999998 分
+  闭候选 1 条（本 run 不再报）：
+    3f4525cd —— lzy finding close 3f4525cd --outcome fixed|falsified --basis … --recheck scope-stale.a1.r5
+===== EXIT: 0
+
+# recheck 运行：scope-stale.a1.r5
+
+===== [2026-09-28T14:41:36Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-stale) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js finding close 3f4525cd --outcome fixed --basis 重开复核不再报 --recheck scope-stale.a1.r5
+发现已关闭：3f4525cd → closed-fixed（recheck scope-stale.a1.r5 · 依据 重开复核不再报）
+===== EXIT: 0
+
+===== [2026-09-28T14:41:36Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-stale) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js gate explain
+统一门 · 目标 scope-stale（v2 · tier light · executing） · 裁决 PASS（快照 cff39dfb…）
+  ✔ contractAndAuth
+  ✔ acceptanceCoverage
+  ✔ policyIdentity：策略身份有效（840dd4e4… · dutyTable v4）
+  ✔ findings：发现面：无未关闭阻塞发现；已关闭 1 条的关闭依据均适用（M4 stale 审计）
+  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证
+  ✔ 义务 review.general-correctness（review·底线）＝ satisfied · 回执 scope-stale.a1.r5
+      评审运行 scope-stale.a1.r5 满足七合取（metered 0.11899999999999998 分 · verdict=pass · 候选现行 · 原始输出哈希符）；发现生命周期由 findings 子句执法（未关闭阻塞发现独立子句判）
+政策层放行（既有 finish 门族照常独立执法——本裁决不含步骤/证据/comparator/净树判定）
+===== EXIT: 0
+
+# (c) scope-gate 清单夹具（capabilities.check 派生 review.verification-deps 专项义务）
+
+===== [2026-09-28T14:41:37Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js loop register m4gate --title t --contract contract.md
+✔ 目标已注册：m4gate — t（状态 planning · tier light · risk low）
+  契约已绑定：contract.md（contractHash 7ff625f3…）
+  采纳计划时走契约门：首次采纳将索「批准 <契约短码>」，契约内重规划不再逐版批准（ADR-0024）
+  下一步：写决策完备计划到 .lazyzcode/plans/<slug>.md，然后 lzy loop plan <文件>
+===== EXIT: 0
+
+===== [2026-09-28T14:41:37Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js loop plan plan.md
+[lzy] 人权门未过（契约授权，ADR-0024）：契约 contract.md（短码 7ff625f3）等待人类批准。把「批准 7ff625f3」原样转给用户，用户消息到达后重跑本命令。禁令：不得手写 authorizations/ 记录、也不得自跑命令冒充批准（正规通道只有 UserPromptSubmit 钩子在真实用户消息上写记录）——本门防偷懒不防伪证；补偿控制=协议文本+审计环（doctor contract 行），见 ADR-0024。本次拒绝已在 goal 落 contractPending（幂等再置）：处理完根因后重跑本命令即可。
+===== EXIT: 1
+
+# contractPending 短码：7ff625f3
+
+===== approve via trigger hook（批准 7ff625f3）
+{"additionalContext":"[lzy] Human approval recorded for contract of goal m4gate (short code 7ff625f3). The model may now re-run the adoption command (lzy loop plan <file>) to pass the contract gate."}===== EXIT: 0
+
+===== [2026-09-28T14:41:37Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js loop plan plan.md
+✔ 计划门通过：2 项已采纳（N:1 F:1）
+  ⚠ 未带 --review：LIGHT 无评审要求；若目标实为 HEAVY（多文件/高风险），tier 先行（register --tier heavy 或 lzy loop tier heavy）再过 plan-reviewer 评审门
+  计划快照：.lazyzcode/loop/snapshots/m4gate.md（sha256 ca57008021…，reset 不清）
+  下一步：lzy loop start 开跑
+===== EXIT: 0
+
+===== [2026-09-28T14:41:37Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js loop start
+✔ 目标循环开跑：m4gate（基线 tree 8a0edd31e6）
+  下一步 → N1 [N] add marker file
+===== EXIT: 0
+
+===== [2026-09-28T14:41:37Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js evidence red F1 --evidence red: marker.txt absent on baseline tree
+✔ 红半账本已记：n2 · red · m4gate/F1 gen1
+  表面（各绑各面）fingerprint:416b07a672
+===== EXIT: 0
+
+===== [2026-09-28T14:41:38Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js step done N1 --note add marker file
+✔ 步骤完成：N1 [N] add marker file（1/2）
+  下一步 → F1 [F] marker exists
+===== EXIT: 0
+
+===== [2026-09-28T14:41:38Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js step done F1 --evidence green: marker.txt present in HEAD tree
+✔ 步骤完成：F1 [F] marker exists（2/2）
+  证据已绑定 指纹 82d706aa96：green: marker.txt present in HEAD tree
+  全部步骤已收口 → lzy loop finish 做终验
+===== EXIT: 0
+
+===== [2026-09-28T14:41:38Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js verify run build
+执行回执 · build · exit 0 · runId r-20260928T144138-yzov0jl
+  候选 HEAD 6a0ab7ec44 · 复合指纹 82d706aa96dd · 清单 8c000de57172
+  回执 .lazyzcode/verify/m4gate/receipt-1-r-20260928T144138-yzov0jl.json · 原始输出 m4gate/raw/r-20260928T144138-yzov0jl.log（人工摘要与原始输出分离保存）
+===== EXIT: 0
+
+===== [2026-09-28T14:41:38Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/tmp/m4-fevi/fx/scope-qualification/stub-engine.cjs LZY_STUB_LEG=green LZY_STUB_DUTY=review.verification-deps LZY_STUB_LEDGER=1 node cli/lzy.js review run --duty review.verification-deps --timeout-ms 30000
+评审运行 m4gate.a1.r1 · review.verification-deps · valid · 计量 metered 0.11899999999999998 分
+  判决 pass · 发现 0 条
+  总评：替身绿例：候选树小而干净，未发现通用正确性缺陷
+  档 /private/tmp/m4-fevi/fx/scope-gate/.lazyzcode/review/m4gate.a1.r1.json · 同茎运行目录（input.json/candidate/home/raw.txt）
+===== EXIT: 0
+
+# (c1) 直跑满足（专项运行候选=现行）
+
+===== [2026-09-28T14:41:39Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js gate explain
+统一门 · 目标 m4gate（v2 · tier light · executing） · 裁决 BLOCKED（快照 8a678a50…）
+  ✔ contractAndAuth
+  ✔ acceptanceCoverage
+  ✔ policyIdentity：策略身份有效（56e424e6… · dutyTable v4）
+  ✔ findings：发现面：无未关闭阻塞发现；已关闭 0 条的关闭依据均适用（M4 stale 审计）
+  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证
+  ✘ 义务 review.general-correctness（review·底线）＝ unsatisfied
+      评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✔ 义务 review.verification-deps（review）＝ satisfied · 回执 m4gate.a1.r1
+      评审运行 m4gate.a1.r1 满足七合取（metered 0.11899999999999998 分 · verdict=pass · 候选现行 · 原始输出哈希符）；发现生命周期由 findings 子句执法（未关闭阻塞发现独立子句判）
+  ✔ 义务 check.build（check）＝ satisfied · 回执 r-20260928T144138-yzov0jl
+      回执 r-20260928T144138-yzov0jl（run）适用∧成功∧身份三轴满足
+阻塞 1 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。
+===== EXIT: 1
+
+# (c2) 候选漂移且从未走资格/复用 ⇒ 无在案适用档
+
+===== [2026-09-28T14:41:39Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js gate explain
+统一门 · 目标 m4gate（v2 · tier light · executing） · 裁决 BLOCKED（快照 8bdb8c2d…）
+  ✔ contractAndAuth
+  ✔ acceptanceCoverage
+  ✔ policyIdentity：策略身份有效（56e424e6… · dutyTable v4）
+  ✔ findings：发现面：无未关闭阻塞发现；已关闭 0 条的关闭依据均适用（M4 stale 审计）
+  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证
+  ✘ 义务 review.general-correctness（review·底线）＝ unsatisfied
+      评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✘ 义务 review.verification-deps（review）＝ unsatisfied · 回执 m4gate.a1.r1
+      候选漂移（运行时 head 6a0ab7ec ≠ 现行 feaf28b1）——对现行候选重跑或走复用腿
+      复用腿不可用：无在案适用档——对现行候选重跑（lzy review run）或先声明范围走资格挑战（lzy review qualify m4gate.a1.r1 --scope <声明>）
+  ✘ 义务 check.build（check）＝ unsatisfied · 回执 r-20260928T144138-yzov0jl
+      exit.code==0（真实执行零退出）
+      候选已前移（回执 head=6a0ab7ec ≠ 现行 feaf28b1）——对现行候选重验
+阻塞 5 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。
+===== EXIT: 1
+
+# (c3) 无在案资格档 ⇒ 复用前置拒（指路先资格挑战）
+
+===== [2026-09-28T14:41:39Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review reuse m4gate.a1.r1
+前置不具备（不消耗、不落档）：base 运行无在案资格档——先 lzy review qualify m4gate.a1.r1 --scope <声明>（复用只授已过资格挑战的声明，ADR-0032）
+===== EXIT: 3
+
+# (c4) 资格 granted + 复用 applicable ⇒ gate 复用链满足
+
+===== [2026-09-28T14:41:39Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review qualify m4gate.a1.r1 --scope /tmp/m4-fevi/fx/gate-good.decl.json
+资格挑战 m4gate.a1.q1 · review.verification-deps · base m4gate.a1.r1 · GRANTED（资格在案）
+  声明 scopeHash aa089fd750cb… · 规则 3 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…
+  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）
+    ✔ C1（in-scope · 期望 invalidate）→ invalidate @src/util.js
+    ✔ C2（canary-keep · 期望 keep）→ keep @docs/readme.md
+    ✔ C3（missed-dependency · 期望 invalidate）→ invalidate @package-lock.json
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @src/util.js
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @package-lock.json
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @scripts/check.sh
+    ✔ C8（env · 期望 invalidate）→ structural-invalidate
+    ✔ C9（contract · 期望 invalidate）→ structural-invalidate
+    ✔ C10（duty · 期望 invalidate）→ structural-invalidate
+  档 /private/tmp/m4-fevi/fx/scope-gate/.lazyzcode/review-scope/m4gate.a1.q1.json · 零积分（mechanical）
+===== EXIT: 0
+
+===== [2026-09-28T14:41:39Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review reuse m4gate.a1.r1
+适用性判定 m4gate.a1.p1 · review.verification-deps · base m4gate.a1.r1 · 资格 m4gate.a1.q1 · APPLICABLE（旧结果仍适用）
+  目标候选 head feaf28b1b626… · 指纹 ff1a746d9f41…
+  diff 1 项（base 树 12ae02cc9df3… → 目标树 62e47165a3fa…）
+  逐因：变化全部落在声明 unrelated 区且结构身份无漂移——义务可由复用满足（gate 复用腿）
+  档 /private/tmp/m4-fevi/fx/scope-gate/.lazyzcode/review-scope/m4gate.a1.p1.json · 零积分（mechanical·只追加）
+===== EXIT: 0
+
+===== [2026-09-28T14:41:40Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js gate explain
+统一门 · 目标 m4gate（v2 · tier light · executing） · 裁决 BLOCKED（快照 efafc431…）
+  ✔ contractAndAuth
+  ✔ acceptanceCoverage
+  ✔ policyIdentity：策略身份有效（56e424e6… · dutyTable v4）
+  ✔ findings：发现面：无未关闭阻塞发现；已关闭 0 条的关闭依据均适用（M4 stale 审计）
+  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证
+  ✘ 义务 review.general-correctness（review·底线）＝ unsatisfied
+      评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✔ 义务 review.verification-deps（review）＝ satisfied · 回执 m4gate.a1.r1
+      评审运行 m4gate.a1.r1 候选漂移由复用腿满足：适用档 m4gate.a1.p1（applicable · diff 1 项全分类）＋资格 m4gate.a1.q1 granted 且身份现行——ADR-0032 追加判断不改写旧记录
+  ✘ 义务 check.build（check）＝ unsatisfied · 回执 r-20260928T144138-yzov0jl
+      exit.code==0（真实执行零退出）
+      候选已前移（回执 head=6a0ab7ec ≠ 现行 feaf28b1）——对现行候选重验
+阻塞 3 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。
+===== EXIT: 1
+
+===== [2026-09-28T14:41:40Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js policy show
+策略 · 目标 m4gate（attempt 1 · v2） · 记录在案（inputsHash 56e424e6… · dutyTable v4）
+  输入身份：tier light · risk low · endpoint A · 契约 7ff625f3… · 清单 8c000de5…
+  评审运行器：在案
+  义务集（3 条）：
+    [review·底线] review.general-correctness
+      源 policy.dutyTable.v4 · 通用正确性评审职责必选（§3.1）——全部 v2 目标
+      满足：同 (slug,attempt) 代次的受控评审运行在案：duty/dutyTableVersion/模板哈希与现行规则一致 ∧ validity=valid ∧ metering=metered ∧ verdict=pass ∧ 候选三字段=现行 ∧ 原始输出在场哈希相符（lzy review run）∨ 复用腿（M4，ADR-0032）：在案 applicable 适用档（base 运行过资格挑战 ∧ 资格身份（rulesHash/模板/契约/清单/引擎）全现行 ∧ 目标候选=现行 ∧ diff 分类完备）替代候选现行合取项；∧ 无未关闭阻塞发现 ∧ 关闭依据仍适用（发现账本 findings 子句，V06——关闭唯 resolve-request → review recheck → close 通道，stale 发现经 finding reopen 重走复核）
+    [review] review.verification-deps
+      源 policy.dutyTable.v4.derived · 项目清单声明验证依据（check 1 项 · CI 0 项）——验证依赖面在场
+      满足：同 (slug,attempt) 代次的受控评审运行在案：duty/dutyTableVersion/模板哈希与现行规则一致 ∧ validity=valid ∧ metering=metered ∧ verdict=pass ∧ 候选三字段=现行 ∧ 原始输出在场哈希相符（lzy review run）∨ 复用腿（M4，ADR-0032）：在案 applicable 适用档（base 运行过资格挑战 ∧ 资格身份（rulesHash/模板/契约/清单/引擎）全现行 ∧ 目标候选=现行 ∧ diff 分类完备）替代候选现行合取项；∧ 无未关闭阻塞发现 ∧ 关闭依据仍适用（发现账本 findings 子句，V06——关闭唯 resolve-request → review recheck → close 通道，stale 发现经 finding reopen 重走复核）
+    [check] check.build
+      源 manifest:8c000de5.capabilities.check[] · 项目清单（8c000de5）check 类配方声明——v2 目标必需检查
+      满足：同 checkId 回执在案：契约归属一致 ∧ 适用（judgeReuse）∧ 成功（exit==0）∧ 候选=现行
+===== EXIT: 0
+
+# (c5) 候选再漂移（未重跑 reuse）⇒ 适用档目标候选非现行
+
+===== [2026-09-28T14:41:40Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js gate explain
+统一门 · 目标 m4gate（v2 · tier light · executing） · 裁决 BLOCKED（快照 ab14aef5…）
+  ✔ contractAndAuth
+  ✔ acceptanceCoverage
+  ✔ policyIdentity：策略身份有效（56e424e6… · dutyTable v4）
+  ✔ findings：发现面：无未关闭阻塞发现；已关闭 0 条的关闭依据均适用（M4 stale 审计）
+  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证
+  ✘ 义务 review.general-correctness（review·底线）＝ unsatisfied
+      评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✘ 义务 review.verification-deps（review）＝ unsatisfied · 回执 m4gate.a1.r1
+      候选漂移（运行时 head 6a0ab7ec ≠ 现行 2da536f4）——对现行候选重跑或走复用腿
+      复用腿不足：适用档目标候选非现行（m4gate.a1.p1）——重跑 lzy review reuse m4gate.a1.r1
+  ✘ 义务 check.build（check）＝ unsatisfied · 回执 r-20260928T144138-yzov0jl
+      exit.code==0（真实执行零退出）
+      候选已前移（回执 head=6a0ab7ec ≠ 现行 2da536f4）——对现行候选重验
+阻塞 5 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。
+===== EXIT: 1
+
+# (c6) 身份过期：engine 轴漂移（机械腿换 engine 取值=实存 stub 路径）
+
+===== [2026-09-28T14:41:41Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/tmp/m4-fevi/fx/scope-qualification/stub-engine.cjs node cli/lzy.js gate explain
+统一门 · 目标 m4gate（v2 · tier light · executing） · 裁决 BLOCKED（快照 f3a921f2…）
+  ✔ contractAndAuth
+  ✔ acceptanceCoverage
+  ✔ policyIdentity：策略身份有效（56e424e6… · dutyTable v4）
+  ✔ findings：发现面：无未关闭阻塞发现；已关闭 0 条的关闭依据均适用（M4 stale 审计）
+  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证
+  ✘ 义务 review.general-correctness（review·底线）＝ unsatisfied
+      评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✘ 义务 review.verification-deps（review）＝ unsatisfied · 回执 m4gate.a1.r1
+      候选漂移（运行时 head 6a0ab7ec ≠ 现行 2da536f4）——对现行候选重跑或走复用腿
+      复用腿不足：适用档目标候选非现行（m4gate.a1.p1）——重跑 lzy review reuse m4gate.a1.r1
+      复用腿不足：资格身份漂移 engine（null… → 现行 /tmp/m4-fevi…）
+  ✘ 义务 check.build（check）＝ unsatisfied · 回执 r-20260928T144138-yzov0jl
+      exit.code==0（真实执行零退出）
+      候选已前移（回执 head=6a0ab7ec ≠ 现行 2da536f4）——对现行候选重验
+阻塞 6 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。
+===== EXIT: 1
+
+# (c7) 声明内（in-scope）变化 ⇒ 最新适用档判 fallback（复用不足因）
+
+===== [2026-09-28T14:41:41Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review reuse m4gate.a1.r1
+适用性判定 m4gate.a1.p2 · review.verification-deps · base m4gate.a1.r1 · 资格 m4gate.a1.q1 · APPLICABLE（旧结果仍适用）
+  目标候选 head 2da536f4a3c1… · 指纹 2358d4757b99…
+  diff 1 项（base 树 12ae02cc9df3… → 目标树 789b40cbb088…）
+  逐因：变化全部落在声明 unrelated 区且结构身份无漂移——义务可由复用满足（gate 复用腿）
+  档 /private/tmp/m4-fevi/fx/scope-gate/.lazyzcode/review-scope/m4gate.a1.p2.json · 零积分（mechanical·只追加）
+===== EXIT: 0
+
+===== [2026-09-28T14:41:41Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review reuse m4gate.a1.r1
+适用性判定 m4gate.a1.p3 · review.verification-deps · base m4gate.a1.r1 · 资格 m4gate.a1.q1 · FALLBACK（回退重评）
+  目标候选 head bf99f0112c61… · 指纹 dc0f235f2d79…
+  diff 2 项（base 树 12ae02cc9df3… → 目标树 ced366cb851b…）
+  逐因：
+    ✖ 声明内/共享输入变化：src/util.js（modified）——职责影响不可排除，须重评
+  档 /private/tmp/m4-fevi/fx/scope-gate/.lazyzcode/review-scope/m4gate.a1.p3.json · 零积分（mechanical·只追加）
+===== EXIT: 1
+
+===== [2026-09-28T14:41:41Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-gate) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js gate explain
+统一门 · 目标 m4gate（v2 · tier light · executing） · 裁决 BLOCKED（快照 d698a21e…）
+  ✔ contractAndAuth
+  ✔ acceptanceCoverage
+  ✔ policyIdentity：策略身份有效（56e424e6… · dutyTable v4）
+  ✔ findings：发现面：无未关闭阻塞发现；已关闭 0 条的关闭依据均适用（M4 stale 审计）
+  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证
+  ✘ 义务 review.general-correctness（review·底线）＝ unsatisfied
+      评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✘ 义务 review.verification-deps（review）＝ unsatisfied · 回执 m4gate.a1.r1
+      候选漂移（运行时 head 6a0ab7ec ≠ 现行 bf99f011）——对现行候选重跑或走复用腿
+      复用腿不足：最新适用档 m4gate.a1.p3 判 fallback（声明内/共享输入变化：src/util.js（modified）——职责影响不可排除，须重评）——回退重评
+  ✘ 义务 check.build（check）＝ unsatisfied · 回执 r-20260928T144138-yzov0jl
+      exit.code==0（真实执行零退出）
+      候选已前移（回执 head=6a0ab7ec ≠ 现行 bf99f011）——对现行候选重验
+阻塞 5 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。
+===== EXIT: 1

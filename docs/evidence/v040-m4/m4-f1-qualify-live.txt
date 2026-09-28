@@ -1,0 +1,72 @@
+# F1 资格通道原始取证（夹具=qa scope-qualification/scope-main；机械腿零会话）
+
+===== [2026-09-28T14:39:33Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-main) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review qualify scope-main.a1.r1 --scope /tmp/m4-fevi/fx/scope-qualification/good.decl.json
+资格挑战 scope-main.a1.q4 · review.verification-deps · base scope-main.a1.r1 · GRANTED（资格在案）
+  声明 scopeHash aa089fd750cb… · 规则 3 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…
+  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）
+    ✔ C1（in-scope · 期望 invalidate）→ invalidate @src/util.js
+    ✔ C2（canary-keep · 期望 keep）→ keep @docs/readme.md
+    ✔ C3（missed-dependency · 期望 invalidate）→ invalidate @package-lock.json
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @src/util.js
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @package-lock.json
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @scripts/check.sh
+    ✔ C8（env · 期望 invalidate）→ structural-invalidate
+    ✔ C9（contract · 期望 invalidate）→ structural-invalidate
+    ✔ C10（duty · 期望 invalidate）→ structural-invalidate
+  档 /private/tmp/m4-fevi/fx/scope-qualification/scope-main/.lazyzcode/review-scope/scope-main.a1.q4.json · 零积分（mechanical）
+===== EXIT: 0
+
+===== [2026-09-28T14:39:33Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-main) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review qualify scope-main.a1.r1 --scope /tmp/m4-fevi/fx/scope-qualification/overbroad.decl.json
+资格挑战 scope-main.a1.q5 · review.verification-deps · base scope-main.a1.r1 · REJECTED（拒绝已落档——拒绝也是事实）
+  声明 scopeHash dc1f3532ed5a… · 规则 4 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…
+  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）
+    ✔ C1（in-scope · 期望 invalidate）→ invalidate @src/util.js
+    ✔ C2（canary-keep · 期望 keep）→ keep @docs/readme.md
+    ✖ C3（missed-dependency · 期望 invalidate）→ keep @shared/dep-config.json
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @src/util.js
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @package-lock.json
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @scripts/check.sh
+    ✔ C8（env · 期望 invalidate）→ structural-invalidate
+    ✔ C9（contract · 期望 invalidate）→ structural-invalidate
+    ✔ C10（duty · 期望 invalidate）→ structural-invalidate
+  档 /private/tmp/m4-fevi/fx/scope-qualification/scope-main/.lazyzcode/review-scope/scope-main.a1.q5.json · 零积分（mechanical）
+===== EXIT: 1
+
+===== [2026-09-28T14:39:33Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-main) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review qualify scope-main.a1.r1 --scope /tmp/m4-fevi/fx/scope-qualification/overnarrow.decl.json
+资格挑战 scope-main.a1.q6 · review.verification-deps · base scope-main.a1.r1 · REJECTED（拒绝已落档——拒绝也是事实）
+  声明 scopeHash 70604979d565… · 规则 3 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…
+  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）
+    ✔ C1（in-scope · 期望 invalidate）→ invalidate @src/util.js
+    ✖ C2（canary-keep · 期望 keep）→ no-unrelated-file（canary 无处安放——过窄声明）
+    ✔ C3（missed-dependency · 期望 invalidate）→ invalidate @package-lock.json
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @src/util.js
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @package-lock.json
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @scripts/check.sh
+    ✔ C8（env · 期望 invalidate）→ structural-invalidate
+    ✔ C9（contract · 期望 invalidate）→ structural-invalidate
+    ✔ C10（duty · 期望 invalidate）→ structural-invalidate
+  档 /private/tmp/m4-fevi/fx/scope-qualification/scope-main/.lazyzcode/review-scope/scope-main.a1.q6.json · 零积分（mechanical）
+===== EXIT: 1
+
+===== [2026-09-28T14:39:33Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-main) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review qualify scope-main.a1.r1 --scope /tmp/m4-fevi/fx/scope-qualification/narrow2.decl.json
+资格拒绝（未落档）：范围声明非法：scope.rules pattern 重复（首匹配语义下歧义）：docs/**
+===== EXIT: 1
+
+
+===== SHA256
+f5216b95a04f909578d6b4af8f75221e49c8a5b2b4c1d1c85c5564bdf8e53df9  m4-f1-qualification-scope-main.a1.q1.json
+6e946cd9632db9e4b1119985ed1dbc27b997ddbeb8cc45068761e6c70631f8f4  m4-f1-qualification-scope-main.a1.q2.json
+2abb22a7403ebeb1d529afc10ca8f99633ad597dba14a27cf077b1546f3d769d  m4-f1-qualification-scope-main.a1.q3.json
+1a2c0dad6863e0769807c286ebdc9c280d765db7ebb011441319d33d858c0d8f  m4-f1-qualification-scope-main.a1.q4.json
+dfc3c3da882e5a911ee3dbcdf1170e8c945bdd740959595baacc74cdba920573  m4-f1-qualification-scope-main.a1.q5.json
+3571ac7dfbeba5928ce40e94eeb7a78b7cb95a1bf1bea7c0d5d9e7b760d0713a  m4-f1-qualification-scope-main.a1.q6.json

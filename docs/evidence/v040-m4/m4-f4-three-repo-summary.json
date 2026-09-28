@@ -1,0 +1,299 @@
+{
+  "schemaVersion": 1,
+  "at": "2026-09-28T13:52:31.525Z",
+  "timeoutMs": 900000,
+  "legs": [
+    {
+      "repo": "openchamber",
+      "frozen": "63bd5070c8620432817e1e67de77791f801bcf3e",
+      "ok": true,
+      "blocked": null,
+      "readings": {
+        "fixtureFiles": 5399,
+        "fixtureTree": "20853fdb92f943ae6ee0ade0f6a02b102d2741fa",
+        "fixtureNote": "git archive 63bd5070c862 内容 + 基线提交（.gitignore 追加 .lazyzcode/）",
+        "declaration": {
+          "dutyId": "review.verification-deps",
+          "rules": [
+            {
+              "pattern": "packages/**",
+              "class": "in-scope"
+            },
+            {
+              "pattern": "src/**",
+              "class": "in-scope"
+            },
+            {
+              "pattern": "docs/**",
+              "class": "unrelated"
+            }
+          ],
+          "sharedInputs": [
+            "package.json"
+          ]
+        },
+        "inScopeFile": "packages/docs/CONTRIBUTING.md",
+        "unrelatedFile": "docs/.gitkeep",
+        "base": {
+          "runId": "m4-openchamber.a1.r1",
+          "validity": "valid",
+          "metering": "metered",
+          "points": 6.85410716,
+          "verdict": "pass",
+          "sessionId": "sess_38c14aca-f577-44fa-bf54-39afcb139f53",
+          "findings": 5
+        },
+        "qualification": {
+          "id": "m4-openchamber.a1.q1",
+          "granted": true,
+          "failed": []
+        },
+        "reuseUnrelated": {
+          "exit": 0,
+          "id": "m4-openchamber.a1.p1",
+          "verdict": "applicable",
+          "entries": [
+            "docs/.gitkeep"
+          ],
+          "reasons": 0
+        },
+        "reuseInScope": {
+          "exit": 1,
+          "verdict": "fallback",
+          "reasons": [
+            "声明内/共享输入变化：packages/docs/CONTRIBUTING.md（modified）——职责影响不可排除，须重评"
+          ]
+        },
+        "reeval": {
+          "runId": "m4-openchamber.a1.r2",
+          "validity": "valid",
+          "metering": "metered",
+          "points": 6.04719616,
+          "verdict": "pass",
+          "sessionId": "sess_7f58c0c4-faef-4f81-95da-6f6cc024399c"
+        },
+        "reuseUnknown": {
+          "exit": 1,
+          "verdict": "fallback",
+          "namedUnknown": true
+        },
+        "qualificationOverbroad": {
+          "exit": 1,
+          "granted": false,
+          "failed": [
+            "missed-dependency:keep @.openchamber/project.json"
+          ]
+        },
+        "byteStable": {
+          "baseRunUnchanged": true,
+          "qualificationUnchanged": true
+        }
+      },
+      "artifacts": [
+        "base-run.stdout.txt",
+        "qualify.stdout.txt",
+        "reuse-unrelated.stdout.txt",
+        "reuse-inscope-and-reeval.stdout.txt",
+        "qualify-overbroad.stdout.txt"
+      ]
+    },
+    {
+      "repo": "zpigeon-ios",
+      "frozen": "08ebd3eaa1c942eca9cedeaf2690d6ec433cc469",
+      "ok": true,
+      "blocked": null,
+      "readings": {
+        "fixtureFiles": 202,
+        "fixtureTree": "64baff783fbaaf71f9db411843424b71ddd68055",
+        "fixtureNote": "git archive 08ebd3eaa1c9 内容 + 基线提交（.gitignore 追加 .lazyzcode/）",
+        "declaration": {
+          "dutyId": "review.verification-deps",
+          "rules": [
+            {
+              "pattern": "ZPigeon/**",
+              "class": "in-scope"
+            },
+            {
+              "pattern": "Sources/**",
+              "class": "in-scope"
+            },
+            {
+              "pattern": "docs/**",
+              "class": "unrelated"
+            }
+          ],
+          "sharedInputs": [
+            "project.yml"
+          ]
+        },
+        "inScopeFile": "ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json",
+        "unrelatedFile": "docs/adr/0001-phone-reads-repo-wiki-via-channel.md",
+        "base": {
+          "runId": "m4-zpigeon-ios.a1.r1",
+          "validity": "valid",
+          "metering": "metered",
+          "points": 0.87639904,
+          "verdict": "pass",
+          "sessionId": "sess_581d8c49-0972-4381-af9d-360f2f682138",
+          "findings": 4
+        },
+        "qualification": {
+          "id": "m4-zpigeon-ios.a1.q1",
+          "granted": true,
+          "failed": []
+        },
+        "reuseUnrelated": {
+          "exit": 0,
+          "id": "m4-zpigeon-ios.a1.p1",
+          "verdict": "applicable",
+          "entries": [
+            "docs/adr/0001-phone-reads-repo-wiki-via-channel.md"
+          ],
+          "reasons": 0
+        },
+        "reuseInScope": {
+          "exit": 1,
+          "verdict": "fallback",
+          "reasons": [
+            "声明内/共享输入变化：ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json（modified）——职责影响不可排除，须重评"
+          ]
+        },
+        "reeval": {
+          "runId": "m4-zpigeon-ios.a1.r2",
+          "validity": "valid",
+          "metering": "metered",
+          "points": 1.3066823600000002,
+          "verdict": "pass",
+          "sessionId": "sess_3f695052-9533-4d33-a899-ba4f6754731d"
+        },
+        "reuseUnknown": {
+          "exit": 1,
+          "verdict": "fallback",
+          "namedUnknown": true
+        },
+        "qualificationOverbroad": {
+          "exit": 1,
+          "granted": false,
+          "failed": [
+            "in-scope:keep @ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json",
+            "missed-dependency:keep @ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json",
+            "rename-delete:rename=invalidate/delete=keep @ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json"
+          ]
+        },
+        "byteStable": {
+          "baseRunUnchanged": true,
+          "qualificationUnchanged": true
+        }
+      },
+      "artifacts": [
+        "base-run.stdout.txt",
+        "qualify.stdout.txt",
+        "reuse-unrelated.stdout.txt",
+        "reuse-inscope-and-reeval.stdout.txt",
+        "qualify-overbroad.stdout.txt"
+      ]
+    },
+    {
+      "repo": "lazyzcode",
+      "frozen": "54cb37632767671ea9c61ec02febd6be58e8889f",
+      "ok": true,
+      "blocked": null,
+      "readings": {
+        "fixtureFiles": 365,
+        "fixtureTree": "66d1a7a311cfe2d68ed7ca65d00a02abb45faee9",
+        "fixtureNote": "git archive 54cb37632767 内容 + 基线提交（.gitignore 追加 .lazyzcode/）",
+        "declaration": {
+          "dutyId": "review.verification-deps",
+          "rules": [
+            {
+              "pattern": "core/**",
+              "class": "in-scope"
+            },
+            {
+              "pattern": "cli/**",
+              "class": "in-scope"
+            },
+            {
+              "pattern": "plugin/**",
+              "class": "in-scope"
+            },
+            {
+              "pattern": "scripts/**",
+              "class": "in-scope"
+            },
+            {
+              "pattern": "docs/**",
+              "class": "unrelated"
+            }
+          ],
+          "sharedInputs": [
+            "package.json"
+          ]
+        },
+        "inScopeFile": "core/agentsmd.js",
+        "unrelatedFile": "docs/_config.yml",
+        "base": {
+          "runId": "m4-lazyzcode.a1.r1",
+          "validity": "valid",
+          "metering": "metered",
+          "points": 3.1438987999999997,
+          "verdict": "pass",
+          "sessionId": "sess_b611e1fc-3c8c-4617-ae6b-7cbbaba122d1",
+          "findings": 4
+        },
+        "qualification": {
+          "id": "m4-lazyzcode.a1.q1",
+          "granted": true,
+          "failed": []
+        },
+        "reuseUnrelated": {
+          "exit": 0,
+          "id": "m4-lazyzcode.a1.p1",
+          "verdict": "applicable",
+          "entries": [
+            "docs/_config.yml"
+          ],
+          "reasons": 0
+        },
+        "reuseInScope": {
+          "exit": 1,
+          "verdict": "fallback",
+          "reasons": [
+            "声明内/共享输入变化：core/agentsmd.js（modified）——职责影响不可排除，须重评"
+          ]
+        },
+        "reeval": {
+          "runId": "m4-lazyzcode.a1.r2",
+          "validity": "valid",
+          "metering": "metered",
+          "points": 2.06057096,
+          "verdict": "blocked",
+          "sessionId": "sess_51e9a658-77ae-4a97-af06-a37f411e9eb4"
+        },
+        "reuseUnknown": {
+          "exit": 1,
+          "verdict": "fallback",
+          "namedUnknown": true
+        },
+        "qualificationOverbroad": {
+          "exit": 1,
+          "granted": false,
+          "failed": [
+            "missed-dependency:keep @.claude-plugin/marketplace.json"
+          ]
+        },
+        "byteStable": {
+          "baseRunUnchanged": true,
+          "qualificationUnchanged": true
+        }
+      },
+      "artifacts": [
+        "base-run.stdout.txt",
+        "qualify.stdout.txt",
+        "reuse-unrelated.stdout.txt",
+        "reuse-inscope-and-reeval.stdout.txt",
+        "qualify-overbroad.stdout.txt"
+      ]
+    }
+  ]
+}

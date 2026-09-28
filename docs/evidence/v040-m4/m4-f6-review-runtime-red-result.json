@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "case": "review-runtime",
+  "passed": false,
+  "blocked": "绿例不可达：缺 engine（auth/引擎/sqlite3 缺席=blocked(3) 具名，不算 SKIP）",
+  "generatedAt": "2026-09-28T14:44:00.094Z",
+  "host": {
+    "headCommit": "",
+    "headTree": "",
+    "dirty": false
+  },
+  "fixtureRoot": "/tmp/m4-fevi/f6redfx",
+  "engine": null,
+  "auth": null,
+  "probeBudget": {
+    "preregisteredSessions": 0,
+    "usedSessions": 0,
+    "note": "替身矩阵完成，真实绿例因环境缺能力未跑"
+  },
+  "sessions": [],
+  "metering": [],
+  "kill": null,
+  "steps": [],
+  "bodies": [
+    "r1-candidate-race",
+    "r2-parse-fail",
+    "r3-timeout",
+    "r4-metering-absent",
+    "r5-authorization-withdrawn",
+    "r6-fake-import",
+    "r7-contamination",
+    "r8-contradiction"
+  ],
+  "entries": null,
+  "assertions": [
+    {
+      "id": "r5a",
+      "ok": true,
+      "expected": "exit 3 且报文带撤回与恢复指路",
+      "observed": "exit=3 out=前置不具备（不 spawn、不消耗、不落档）：契约 8848e2fe 授权已撤回（2026-09-28T14:44:19.648Z）——恢复：用户重发「批准 8848e2fe」原话后重跑（批准记录只由真实用户消息经 UPS 钩子写入）"
+    },
+    {
+      "id": "r5b",
+      "ok": true,
+      "expected": "零 spawn（不落档不消耗）",
+      "observed": "族内档数=0"
+    },
+    {
+      "id": "r6",
+      "ok": true,
+      "expected": "伪导入不充当运行：gate 仍 blocked（原始输出封存缺席）",
+      "observed": "exit=1 rev=unsatisfied"
+    },
+    {
+      "id": "r6b",
+      "ok": true,
+      "expected": "list 面在场（伪造档过容器闸后按内容判）",
+      "observed": "exit=0"
+    }
+  ],
+  "snapshots": null
+}

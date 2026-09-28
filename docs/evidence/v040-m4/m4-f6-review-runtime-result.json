@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "case": "review-runtime",
+  "passed": true,
+  "blocked": null,
+  "generatedAt": "2026-09-28T14:42:44.631Z",
+  "host": {
+    "headCommit": "66a3b9480d69365653938fdbbe6ee2f94ea72538",
+    "headTree": "22b409a25a0daf813920573a2e375abdb6020d71",
+    "dirty": true
+  },
+  "fixtureRoot": "/tmp/m4-fevi/f6fx",
+  "engine": null,
+  "auth": null,
+  "probeBudget": {
+    "preregisteredSessions": 12,
+    "usedSessions": 2,
+    "note": "真实会话=两档绿例各 1（预注册 ≤12：开发 ≤4、绿例 2、自审 1-2、复跑余量）"
+  },
+  "sessions": [
+    {
+      "leg": "light",
+      "sessionId": "sess_b61c7243-d5f1-4249-b8ec-ea5091d3c363",
+      "runId": "green-light.a1.r1"
+    },
+    {
+      "leg": "heavy",
+      "sessionId": "sess_00694b34-53e4-48bd-934b-d7ca8e482d7c",
+      "runId": "green-heavy.a1.r1"
+    }
+  ],
+  "metering": [
+    {
+      "leg": "light",
+      "sessionId": "sess_b61c7243-d5f1-4249-b8ec-ea5091d3c363",
+      "points": 0.19322524,
+      "hostAbsent": true,
+      "db": "/tmp/m4-fevi/f6fx/review-runtime/green-light/.lazyzcode/review/green-light.a1.r1/home/.zcode/cli/db/db.sqlite"
+    },
+    {
+      "leg": "heavy",
+      "sessionId": "sess_00694b34-53e4-48bd-934b-d7ca8e482d7c",
+      "points": 0.17867144000000001,
+      "hostAbsent": true,
+      "db": "/tmp/m4-fevi/f6fx/review-runtime/green-heavy/.lazyzcode/review/green-heavy.a1.r1/home/.zcode/cli/db/db.sqlite"
+    }
+  ],
+  "kill": null,
+  "steps": [],
+  "bodies": [
+    "r1-candidate-race",
+    "r2-parse-fail",
+    "r3-timeout",
+    "r4-metering-absent",
+    "r5-authorization-withdrawn",
+    "r6-fake-import",
+    "r7-contamination",
+    "r8-contradiction"
+  ],
+  "entries": null,
+  "assertions": [
+    {
+      "id": "r1",
+      "ok": true,
+      "expected": "exit 1 且判因 candidate-moved（后台改候选）",
+      "observed": "exit=1 out=评审运行 r1-candidate-race.a1.r1 · review.general-correctness · invalid（candidate-moved） · 计量 absent"
+    },
+    {
+      "id": "r2",
+      "ok": true,
+      "expected": "exit 1 且判因 parse-fail（无围栏）",
+      "observed": "exit=1 out=评审运行 r2-parse-fail.a1.r1 · review.general-correctness · invalid（parse-fail） · 计量 absent"
+    },
+    {
+      "id": "r3",
+      "ok": true,
+      "expected": "exit 1 且判因 timeout（小墙钟 SIGKILL）",
+      "observed": "exit=1 out=评审运行 r3-timeout.a1.r1 · review.general-correctness · invalid（timeout） · 计量 absent"
+    },
+    {
+      "id": "r4",
+      "ok": true,
+      "expected": "exit 1 且判因 metering-absent（替身不写子账本）",
+      "observed": "exit=1 out=评审运行 r4-metering-absent.a1.r1 · review.general-correctness · invalid（metering-absent） · 计量 absent"
+    },
+    {
+      "id": "r5a",
+      "ok": true,
+      "expected": "exit 3 且报文带撤回与恢复指路",
+      "observed": "exit=3 out=前置不具备（不 spawn、不消耗、不落档）：契约 8848e2fe 授权已撤回（2026-09-28T14:43:02.380Z）——恢复：用户重发「批准 8848e2fe」原话后重跑（批准记录只由真实用户消息经 UPS 钩子写入）"
+    },
+    {
+      "id": "r5b",
+      "ok": true,
+      "expected": "零 spawn（不落档不消耗）",
+      "observed": "族内档数=0"
+    },
+    {
+      "id": "r6",
+      "ok": true,
+      "expected": "伪导入不充当运行：gate 仍 blocked（原始输出封存缺席）",
+      "observed": "exit=1 rev=unsatisfied"
+    },
+    {
+      "id": "r6b",
+      "ok": true,
+      "expected": "list 面在场（伪造档过容器闸后按内容判）",
+      "observed": "exit=0"
+    },
+    {
+      "id": "r7",
+      "ok": true,
+      "expected": "exit 1 且判因 contamination（快照树变化）",
+      "observed": "exit=1 out=评审运行 r7-contamination.a1.r1 · review.general-correctness · invalid（contamination） · 计量 metered 0.11899999999999998 分"
+    },
+    {
+      "id": "r8",
+      "ok": true,
+      "expected": "pass∧blocking 并存按 blocked 判（归一化注记），exit 1 不可改判",
+      "observed": "exit=1 out=评审运行 r8-contradiction.a1.r1 · review.general-correctness · valid · 计量 metered 0.11899999999999998 分"
+    },
+    {
+      "id": "light-run",
+      "ok": true,
+      "expected": "真实会话产出 valid metered pass（exit 0）",
+      "observed": "exit=0 validity=valid verdict=pass reason= 评审运行 green-light.a1.r1 · review.general-correctness · valid · 计量 metered 0.19322524 分"
+    },
+    {
+      "id": "light-show",
+      "ok": true,
+      "expected": "review show 逐字段面",
+      "observed": "exit=0"
+    },
+    {
+      "id": "light-gate",
+      "ok": true,
+      "expected": "gate 评审义务翻 satisfied → 裁决 PASS",
+      "observed": "exit=0 verdict=PASS（快照"
+    },
+    {
+      "id": "light-finish",
+      "ok": true,
+      "expected": "finish 过门落终验 attestation",
+      "observed": "exit=0 att=1 out=✔✔ 目标完成：green-light — t"
+    },
+    {
+      "id": "light-metering",
+      "ok": true,
+      "expected": "子账本 metered>0 ∧ 双读不累加 ∧ 宿主零行（M0 发现一收口面）",
+      "observed": "points=0.19322524/0.19322524 hostAbsent=true"
+    },
+    {
+      "id": "light-isolation",
+      "ok": true,
+      "expected": "input 包零在先运行标记（facts-only）",
+      "observed": "leak=false"
+    },
+    {
+      "id": "heavy-run",
+      "ok": true,
+      "expected": "真实会话产出 valid metered pass（exit 0）",
+      "observed": "exit=0 validity=valid verdict=pass reason= 评审运行 green-heavy.a1.r1 · review.general-correctness · valid · 计量 metered 0.17867144000000001 分"
+    },
+    {
+      "id": "heavy-show",
+      "ok": true,
+      "expected": "review show 逐字段面",
+      "observed": "exit=0"
+    },
+    {
+      "id": "heavy-gate",
+      "ok": true,
+      "expected": "gate 评审义务翻 satisfied → 裁决 PASS",
+      "observed": "exit=0 verdict=PASS（快照"
+    },
+    {
+      "id": "heavy-finish",
+      "ok": true,
+      "expected": "finish 过门落终验 attestation",
+      "observed": "exit=0 att=1 out=✔✔ 目标完成：green-heavy — t"
+    },
+    {
+      "id": "heavy-metering",
+      "ok": true,
+      "expected": "子账本 metered>0 ∧ 双读不累加 ∧ 宿主零行（M0 发现一收口面）",
+      "observed": "points=0.17867144000000001/0.17867144000000001 hostAbsent=true"
+    },
+    {
+      "id": "heavy-isolation",
+      "ok": true,
+      "expected": "input 包零在先运行标记（facts-only）",
+      "observed": "leak=false"
+    }
+  ],
+  "snapshots": null
+}

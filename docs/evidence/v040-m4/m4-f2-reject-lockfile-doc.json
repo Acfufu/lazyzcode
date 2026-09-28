@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "kind": "applicability",
+  "id": "scope-reject.a1.p6",
+  "slug": "scope-reject",
+  "attempt": 1,
+  "seq": 6,
+  "dutyId": "review.verification-deps",
+  "baseRunId": "scope-reject.a1.r1",
+  "qualificationId": "scope-reject.a1.q1",
+  "target": {
+    "headSha": "c0b333a256a16344c627c9c014aa63f7291ed4c2",
+    "compositeFingerprint": "abd535846c1b6d2afd0118ed206eabb9001d6135a823fed5f5100074383607d7",
+    "cliVersion": null
+  },
+  "diff": {
+    "baseTreeHash": "99aa9807e98300b6fceb6e99fef76c9313b617b500ac2f3870f176d46b5de9d7",
+    "targetTreeHash": "bcbb962a2838ef4f287de26eb17eda23b17388dbc10f1a2838db70c04e9a9b24",
+    "entries": [
+      {
+        "path": "package-lock.json",
+        "type": "modified"
+      }
+    ]
+  },
+  "verdict": "fallback",
+  "reasons": [
+    "声明内/共享输入变化：package-lock.json（modified）——职责影响不可排除，须重评"
+  ],
+  "at": "2026-09-28T14:39:32.718Z",
+  "note": "mechanical（零积分——适用性=追加判断，不改写旧记录，ADR-0032）",
+  "checksum": "007c898b8f54cc5ff700f30b3cc29395e05cf18ded6df04ebbda66d8312fb4e8"
+}

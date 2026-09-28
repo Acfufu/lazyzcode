@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "kind": "applicability",
+  "id": "scope-reject.a1.p8",
+  "slug": "scope-reject",
+  "attempt": 1,
+  "seq": 8,
+  "dutyId": "review.verification-deps",
+  "baseRunId": "scope-reject.a1.r1",
+  "qualificationId": "scope-reject.a1.q1",
+  "target": {
+    "headSha": "7f8e1137def55bef7fb991187bc25898784299d2",
+    "compositeFingerprint": "1b592dbf0a4814cf0703965937704aa914604e3c01db7f914090ac1a81ed2080",
+    "cliVersion": null
+  },
+  "diff": {
+    "baseTreeHash": "99aa9807e98300b6fceb6e99fef76c9313b617b500ac2f3870f176d46b5de9d7",
+    "targetTreeHash": "08be18bdf7c9b1eec69a196a8791b532e89ca59e0cd27fe60af1d143ab647e44",
+    "entries": [
+      {
+        "path": "stranger.txt",
+        "type": "added"
+      }
+    ]
+  },
+  "verdict": "fallback",
+  "reasons": [
+    "未知路径：stranger.txt（added；不在声明规则内——保守回退，拍板 2）"
+  ],
+  "at": "2026-09-28T14:39:33.402Z",
+  "note": "mechanical（零积分——适用性=追加判断，不改写旧记录，ADR-0032）",
+  "checksum": "4549884f84cce6272f8314fc69fdf610828ad1a73d27ce4a6ea2818c9b13a8c7"
+}

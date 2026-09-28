@@ -1,0 +1,26 @@
+[v040-qa] light 绿例：points=0.19322524 wallMs=108799 runId=green-light.a1.r1
+[v040-qa] heavy 绿例：points=0.17867144000000001 wallMs=86619 runId=green-heavy.a1.r1
+[v040-qa] case=review-runtime passed=true
+  ✔ r1 exit 1 且判因 candidate-moved（后台改候选）｜observed: exit=1 out=评审运行 r1-candidate-race.a1.r1 · review.general-correctness · invalid（candidate-moved） · 计量 absent
+  ✔ r2 exit 1 且判因 parse-fail（无围栏）｜observed: exit=1 out=评审运行 r2-parse-fail.a1.r1 · review.general-correctness · invalid（parse-fail） · 计量 absent
+  ✔ r3 exit 1 且判因 timeout（小墙钟 SIGKILL）｜observed: exit=1 out=评审运行 r3-timeout.a1.r1 · review.general-correctness · invalid（timeout） · 计量 absent
+  ✔ r4 exit 1 且判因 metering-absent（替身不写子账本）｜observed: exit=1 out=评审运行 r4-metering-absent.a1.r1 · review.general-correctness · invalid（metering-absent） · 计量 absent
+  ✔ r5a exit 3 且报文带撤回与恢复指路｜observed: exit=3 out=前置不具备（不 spawn、不消耗、不落档）：契约 8848e2fe 授权已撤回（2026-09-28T14:43:02.380Z）——恢复：用户重发「批准 8848e2fe」原话后重跑（批准记录只由真实用户消息经 UPS 钩子写入）
+  ✔ r5b 零 spawn（不落档不消耗）｜observed: 族内档数=0
+  ✔ r6 伪导入不充当运行：gate 仍 blocked（原始输出封存缺席）｜observed: exit=1 rev=unsatisfied
+  ✔ r6b list 面在场（伪造档过容器闸后按内容判）｜observed: exit=0
+  ✔ r7 exit 1 且判因 contamination（快照树变化）｜observed: exit=1 out=评审运行 r7-contamination.a1.r1 · review.general-correctness · invalid（contamination） · 计量 metered 0.11899999999999998 分
+  ✔ r8 pass∧blocking 并存按 blocked 判（归一化注记），exit 1 不可改判｜observed: exit=1 out=评审运行 r8-contradiction.a1.r1 · review.general-correctness · valid · 计量 metered 0.11899999999999998 分
+  ✔ light-run 真实会话产出 valid metered pass（exit 0）｜observed: exit=0 validity=valid verdict=pass reason= 评审运行 green-light.a1.r1 · review.general-correctness · valid · 计量 metered 0.19322524 分
+  ✔ light-show review show 逐字段面｜observed: exit=0
+  ✔ light-gate gate 评审义务翻 satisfied → 裁决 PASS｜observed: exit=0 verdict=PASS（快照
+  ✔ light-finish finish 过门落终验 attestation｜observed: exit=0 att=1 out=✔✔ 目标完成：green-light — t
+  ✔ light-metering 子账本 metered>0 ∧ 双读不累加 ∧ 宿主零行（M0 发现一收口面）｜observed: points=0.19322524/0.19322524 hostAbsent=true
+  ✔ light-isolation input 包零在先运行标记（facts-only）｜observed: leak=false
+  ✔ heavy-run 真实会话产出 valid metered pass（exit 0）｜observed: exit=0 validity=valid verdict=pass reason= 评审运行 green-heavy.a1.r1 · review.general-correctness · valid · 计量 metered 0.17867144000000001 分
+  ✔ heavy-show review show 逐字段面｜observed: exit=0
+  ✔ heavy-gate gate 评审义务翻 satisfied → 裁决 PASS｜observed: exit=0 verdict=PASS（快照
+  ✔ heavy-finish finish 过门落终验 attestation｜observed: exit=0 att=1 out=✔✔ 目标完成：green-heavy — t
+  ✔ heavy-metering 子账本 metered>0 ∧ 双读不累加 ∧ 宿主零行（M0 发现一收口面）｜observed: points=0.17867144000000001/0.17867144000000001 hostAbsent=true
+  ✔ heavy-isolation input 包零在先运行标记（facts-only）｜observed: leak=false
+  result-review-runtime.json → /tmp/m4-fevi/f6out/result-review-runtime.json

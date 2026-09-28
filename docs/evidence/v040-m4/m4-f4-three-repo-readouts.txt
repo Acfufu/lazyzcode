@@ -1,0 +1,254 @@
+# F4 三仓真实正反例读数汇编（源=artifacts/v040/M4/；summary.json 见同目录 m4-f4-three-repo-summary.json）
+# 逐腿判据=「正反例齐备 ∨ 如实阻塞行」（计划「条目细则」R1/R2/R3）
+
+===== lazyzcode/base-run.stdout.txt =====
+### lzy review run --duty review.verification-deps（exit=0 596266ms）
+评审运行 m4-lazyzcode.a1.r1 · review.verification-deps · valid · 计量 metered 3.1438987999999997 分
+  判决 pass · 发现 4 条
+    [P2] F-1 test-suite 的 inputPaths 未覆盖套件真实读取面（docs/、scripts/、CHANGELOG.md、CI 定义、git 索引）（lzy.project.json:10）
+    [P3] F-2 help-smoke 的 inputPaths 未含 core/，与 cli/lzy.js 的静态导入图不符（lzy.project.json:16）
+    [P3] F-3 marketplace 版本/ref 联锁守卫（provenance-ready.mjs）未接入任何 check、CI 步骤或 npm script（scripts/provenance-ready.mjs:37）
+    [P3] F-4 check 的外部工具与环境输入未声明/未钉：TZ 只转发、PATH 上的 git/sqlite3/npm 版本面不入回执（core/verify.js:260）
+  总评：本次按验证依赖专项逐项核了六件事：清单与锁文件一致性、依赖与工具漂移、验证脚本真实性、验证依赖缺口、打包/入口面、环境输入。整体判断 pass——没有发现会让验证假装通过的结构性问题：根包零依赖属实且自洽（全仓无第三方模块说明符，node_modules 未入库），唯一带依赖的 scripts/docs-preview 有与清单逐条相符的 lock 且不入 npm 载荷，三处验证命令形态等价，CI 与清单声明的检查一一对应且无吞退出码/管道吞错，打包白名单与 bin 入口有契约测试在场，docs-preview 的 marked 双工具链不进入受验证面。最值得处置的是 F-1：范围档复用只看声明 inputPaths，而套件真实读取集还包含 docs/、scripts/、CHANGELOG.md、CI 定义与 git 索引（含对 docs/reviews/findings-ledger.jsonl 的 80 行内容定钉与对 M4 交付契约 docs/spikes/v030-m4-contract-B/C.md 的解析），未提交改动下绿回执可继续判「适用」；建议在把范围资格复用用到 M4 交付腿之前补齐这两条 check 的 inputPaths（或收窄套件读取面）。剩余风险两点如实备案：其一，受本会话只读模式限制我没能实跑 `node --test`，发现面非空的依据是树内记录与守护测试而非本次实跑，且声明面本身没有「最小用例数」绊线——若将来 Node 改变位置参数 glob 语义致匹配为空，命令会以 0 用例退出 0；其二，本候选快照无 .git，而 test/package.surface.test.js:31 的 `git ls-files` 断言要求真实工作树，故快照内实跑该用例必然红，这是快照抽取面的既知边界、非候选树缺陷。
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-y7keq1/lazyzcode/.lazyzcode/review/m4-lazyzcode.a1.r1.json · 同茎运行目录（input.json/candidate/home/raw.txt）
+
+===== lazyzcode/qualify.stdout.txt =====
+### lzy review qualify m4-lazyzcode.a1.r1 --scope <仓声明白>（exit=0）
+资格挑战 m4-lazyzcode.a1.q1 · review.verification-deps · base m4-lazyzcode.a1.r1 · GRANTED（资格在案）
+  声明 scopeHash 21b3c55369a8… · 规则 5 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…
+  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）
+    ✔ C1（in-scope · 期望 invalidate）→ invalidate @core/agentsmd.js
+    ✔ C2（canary-keep · 期望 keep）→ keep @docs/_config.yml
+    ✔ C3（missed-dependency · 期望 invalidate）→ invalidate @scripts/ablation/lock-queue-bench.mjs
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @core/agentsmd.js
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @package.json
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @scripts/ablation/tasks/f1-dual-wave/verdict/run.sh
+    ✔ C8（env · 期望 invalidate）→ structural-invalidate
+    ✔ C9（contract · 期望 invalidate）→ structural-invalidate
+    ✔ C10（duty · 期望 invalidate）→ structural-invalidate
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-y7keq1/lazyzcode/.lazyzcode/review-scope/m4-lazyzcode.a1.q1.json · 零积分（mechanical）
+
+===== lazyzcode/qualify-overbroad.stdout.txt =====
+### lzy review qualify m4-lazyzcode.a1.r1 --scope <越界声明>（exit=1）
+资格挑战 m4-lazyzcode.a1.q2 · review.verification-deps · base m4-lazyzcode.a1.r1 · REJECTED（拒绝已落档——拒绝也是事实）
+  声明 scopeHash 6d75ea456fa4… · 规则 6 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…
+  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）
+    ✔ C1（in-scope · 期望 invalidate）→ invalidate @core/agentsmd.js
+    ✔ C2（canary-keep · 期望 keep）→ keep @docs/_config.yml
+    ✖ C3（missed-dependency · 期望 invalidate）→ keep @.claude-plugin/marketplace.json
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @core/agentsmd.js
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @package.json
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @scripts/ablation/tasks/f1-dual-wave/verdict/run.sh
+    ✔ C8（env · 期望 invalidate）→ structural-invalidate
+    ✔ C9（contract · 期望 invalidate）→ structural-invalidate
+    ✔ C10（duty · 期望 invalidate）→ structural-invalidate
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-y7keq1/lazyzcode/.lazyzcode/review-scope/m4-lazyzcode.a1.q2.json · 零积分（mechanical）
+
+===== lazyzcode/reuse-unrelated.stdout.txt =====
+### lzy review reuse m4-lazyzcode.a1.r1（无关变化；exit=0）
+适用性判定 m4-lazyzcode.a1.p1 · review.verification-deps · base m4-lazyzcode.a1.r1 · 资格 m4-lazyzcode.a1.q1 · APPLICABLE（旧结果仍适用）
+  目标候选 head a633793e5f9d… · 指纹 2e1ef555aa6b…
+  diff 1 项（base 树 2e899d98b6e5… → 目标树 69f3d2056cf9…）
+  逐因：变化全部落在声明 unrelated 区且结构身份无漂移——义务可由复用满足（gate 复用腿）
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-y7keq1/lazyzcode/.lazyzcode/review-scope/m4-lazyzcode.a1.p1.json · 零积分（mechanical·只追加）
+
+===== lazyzcode/reuse-inscope-and-reeval.stdout.txt =====
+### lzy review reuse m4-lazyzcode.a1.r1（声明内变化；exit=1）
+适用性判定 m4-lazyzcode.a1.p2 · review.verification-deps · base m4-lazyzcode.a1.r1 · 资格 m4-lazyzcode.a1.q1 · FALLBACK（回退重评）
+  目标候选 head c17fd8844a3a… · 指纹 98574b22c059…
+  diff 2 项（base 树 2e899d98b6e5… → 目标树 c0e0599af81b…）
+  逐因：
+    ✖ 声明内/共享输入变化：core/agentsmd.js（modified）——职责影响不可排除，须重评
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-y7keq1/lazyzcode/.lazyzcode/review-scope/m4-lazyzcode.a1.p2.json · 零积分（mechanical·只追加）
+
+
+### lzy review run（真实重评；exit=1 487687ms）
+评审运行 m4-lazyzcode.a1.r2 · review.verification-deps · valid · 计量 metered 2.06057096 分
+  判决 blocked · 发现 3 条
+    [P1·blocking] F-1 test-suite 配方的 inputPaths 漏登记验证程序与数据（scripts/**、docs/**、CHANGELOG.md、CI 配置、README/LICENSE）（lzy.project.json:10）
+    [P1·blocking] F-2 help-smoke 配方的 inputPaths 漏登记 core/**（cli/lzy.js 装载期静态导入全部核心模块）（lzy.project.json:16）
+    [P3] F-3 PATH 参与检查执行但未入 envFingerprint，工具可用性差异不触发复用回退（core/verify.js:189）
+  总评：本次按验证依赖专项审查了候选树：锁文件与清单一致性（根包零依赖、无 node_modules 提交、无锁文件需求，package.surface 测试钉死零依赖；scripts/docs-preview 独立依赖 marked@18.0.11 / marked-gfm-heading-id@4.1.4 与其 lockfileVersion 3 锁文件逐项吻合，peer marked>=13<19 满足）；依赖漂移与幽灵依赖（test/core/cli/plugin/scripts 仅引 node: 内置与相对路径，无清单外依赖）；验证脚本真实性（package.json、CI、lzy.project.json 三处命令一致，glob 覆盖全部 63 个 *.test.js 且 test/ 外无游离测试，无吞退出码/管道吞错/|| true）；构建入口（bin cli/lzy.js 有 shebang，plugin 钩子载荷与 hooks.json 引用逐一对齐，运行时仅读包内 plugin/ 与 package.json）；环境输入（engines>=22 与 CI matrix 22/24 及 NODE_MAJOR_FLOOR=22 三点一致；TZ 依赖已在清单声明并经 envFingerprint 拦截跨时区复用；sqlite3/git/npm 缺失时前者按守卫 skip、后者硬失败不假绿）。结论 blocked：两份 check 配方的 inputPaths（ADR-0025 意义上的验证依赖清单）与实际依赖面不符，存在可复现的「依赖遗漏 → 旧绿被复用给现行候选」路径，须先补齐清单再放行。剩余风险：.claude-plugin/marketplace.json 的版本/ref 三体联锁仅由手工发布步骤 scripts/provenance-ready.mjs（docs/release-checklist.md:12）覆盖，未接入 CI 或 check 回执；PATH 未入环境指纹（F-3）。
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-y7keq1/lazyzcode/.lazyzcode/review/m4-lazyzcode.a1.r2.json · 同茎运行目录（input.json/candidate/home/raw.txt）
+
+===== lazyzcode/leg-log.txt =====
+夹具就绪 files=365 tree=66d1a7a311cf inScope=core/agentsmd.js unrelated=docs/_config.yml shared=package.json
+base 运行 exit=0 validity=valid metering=metered points=3.1438987999999997 verdict=pass session=sess_b611e1fc-3c8c-4617-ae6b-7cbbaba122d1
+qualify exit=0 granted=true 失败轴=无
+reuse(无关) exit=0 verdict=applicable entries=docs/_config.yml
+reuse(声明内) exit=1 verdict=fallback 因=1 | 重评 exit=1 validity=valid points=2.06057096
+reuse(未知) exit=1 verdict=fallback 点名=true
+qualify(越界) exit=1 granted=false 失败=missed-dependency
+字节不变 base=true 资格档=true
+
+===== openchamber/base-run.stdout.txt =====
+### lzy review run --duty review.verification-deps（exit=0 863376ms）
+评审运行 m4-openchamber.a1.r1 · review.verification-deps · valid · 计量 metered 6.85410716 分
+  判决 pass · 发现 5 条
+    [P2] F-1 release:test* 脚本指向已不存在的 packages/desktop（Tauri）布局，文档化的 macOS 发布前自检无法运行（scripts/test-release-build.sh:198）
+    [P2] F-2 build:electron 与根 build 中的 electron 环节是空操作，文档却声称会运行构建脚本（packages/electron/package.json:38）
+    [P2] F-3 移动端发布/CI 用未冻结的 bun install，产物不来自提交的锁文件（.github/workflows/mobile-release.yml:129）
+    [P3] F-4 electron 的 lint 为空操作，聚合 lint 与 CI 的 Lint 步骤对其特权外壳代码零覆盖（packages/electron/package.json:56）
+    [P3] F-5 工具链版本未在 CI/本地开发面钉住：Bun 版本只写在 packageManager/Dockerfile，.nvmrc 为 lts/*（.nvmrc:1）
+  总评：本次按验证依赖专项逐项核查了候选树：bun.lock 的全部 9 个 workspace 块与对应清单逐条一致（含 overrides/patchedDependencies/trustedDependencies），四个 bun patch 的目标版本都真实存在于锁内解析，精确钉子无一处漂移；根与各包脚本引用的文件全部存在，测试运行器、vitest include、docker live 测试 gate、发布 files/入口、changelog 生成物版本集（149 对 149）、OpenCode 多仓版本钉子、oxlint 1.78.0 与其插件规则面均自洽；对所有测试文件的静态/动态 import 做了幽灵依赖扫描，未发现未声明依赖。候选自身的改动仅为根目录 m4-marker.txt，不触碰清单、锁、脚本或 CI，没有任何验证路径引用它。整体判断：验证依赖面未发现放行即事故的问题，判定 pass；列出的 5 条为 P2/P3 备忘（失真的 release:test 脚本、electron 空操作的 build/lint、移动端未冻结安装、工具链版本未钉住），均不否决放行。剩余风险：只读约束下未实际执行 install/build/test/changelog:check 与 pod install，结论均为结构性比对；移动端 iOS 的 Podfile.lock 内嵌 bun store 哈希路径，若锁更新后未重新 cap sync 存在失效可能。
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/openchamber/.lazyzcode/review/m4-openchamber.a1.r1.json · 同茎运行目录（input.json/candidate/home/raw.txt）
+
+===== openchamber/qualify.stdout.txt =====
+### lzy review qualify m4-openchamber.a1.r1 --scope <仓声明白>（exit=0）
+资格挑战 m4-openchamber.a1.q1 · review.verification-deps · base m4-openchamber.a1.r1 · GRANTED（资格在案）
+  声明 scopeHash 11620cb52acf… · 规则 3 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…
+  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）
+    ✔ C1（in-scope · 期望 invalidate）→ invalidate @packages/docs/CONTRIBUTING.md
+    ✔ C2（canary-keep · 期望 keep）→ keep @docs/.gitkeep
+    ✔ C3（missed-dependency · 期望 invalidate）→ invalidate @bun.lock
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @packages/docs/CONTRIBUTING.md
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @package.json
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @packages/ui/scripts/build-libghostty-wasm.sh
+    ✔ C8（env · 期望 invalidate）→ structural-invalidate
+    ✔ C9（contract · 期望 invalidate）→ structural-invalidate
+    ✔ C10（duty · 期望 invalidate）→ structural-invalidate
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/openchamber/.lazyzcode/review-scope/m4-openchamber.a1.q1.json · 零积分（mechanical）
+
+===== openchamber/qualify-overbroad.stdout.txt =====
+### lzy review qualify m4-openchamber.a1.r1 --scope <越界声明>（exit=1）
+资格挑战 m4-openchamber.a1.q2 · review.verification-deps · base m4-openchamber.a1.r1 · REJECTED（拒绝已落档——拒绝也是事实）
+  声明 scopeHash 63b86c449d07… · 规则 4 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…
+  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）
+    ✔ C1（in-scope · 期望 invalidate）→ invalidate @packages/docs/CONTRIBUTING.md
+    ✔ C2（canary-keep · 期望 keep）→ keep @.openchamber/project.json
+    ✖ C3（missed-dependency · 期望 invalidate）→ keep @.openchamber/project.json
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @packages/docs/CONTRIBUTING.md
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @package.json
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @packages/ui/scripts/build-libghostty-wasm.sh
+    ✔ C8（env · 期望 invalidate）→ structural-invalidate
+    ✔ C9（contract · 期望 invalidate）→ structural-invalidate
+    ✔ C10（duty · 期望 invalidate）→ structural-invalidate
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/openchamber/.lazyzcode/review-scope/m4-openchamber.a1.q2.json · 零积分（mechanical）
+
+===== openchamber/reuse-unrelated.stdout.txt =====
+### lzy review reuse m4-openchamber.a1.r1（无关变化；exit=0）
+适用性判定 m4-openchamber.a1.p1 · review.verification-deps · base m4-openchamber.a1.r1 · 资格 m4-openchamber.a1.q1 · APPLICABLE（旧结果仍适用）
+  目标候选 head 7cc01303284a… · 指纹 e20b2af76840…
+  diff 1 项（base 树 afdd7872c99d… → 目标树 1242f06a21e4…）
+  逐因：变化全部落在声明 unrelated 区且结构身份无漂移——义务可由复用满足（gate 复用腿）
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/openchamber/.lazyzcode/review-scope/m4-openchamber.a1.p1.json · 零积分（mechanical·只追加）
+
+===== openchamber/reuse-inscope-and-reeval.stdout.txt =====
+### lzy review reuse m4-openchamber.a1.r1（声明内变化；exit=1）
+适用性判定 m4-openchamber.a1.p2 · review.verification-deps · base m4-openchamber.a1.r1 · 资格 m4-openchamber.a1.q1 · FALLBACK（回退重评）
+  目标候选 head fe0d5e5ccb48… · 指纹 4b775ce20a66…
+  diff 2 项（base 树 afdd7872c99d… → 目标树 8b251c5ed7ab…）
+  逐因：
+    ✖ 声明内/共享输入变化：packages/docs/CONTRIBUTING.md（modified）——职责影响不可排除，须重评
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/openchamber/.lazyzcode/review-scope/m4-openchamber.a1.p2.json · 零积分（mechanical·只追加）
+
+
+### lzy review run（真实重评；exit=0 842679ms）
+评审运行 m4-openchamber.a1.r2 · review.verification-deps · valid · 计量 metered 6.04719616 分
+  判决 pass · 发现 3 条
+    [P2] F-1 release:test* 系列脚本指向已不存在的 packages/desktop（Tauri 时代遗留），被 CONTRIBUTING 当作 macOS 发布前验证入口（scripts/test-release-build.sh:198）
+    [P3] F-2 postinstall 通过 fix-deprecation.js 直接改写已安装依赖源码，绕过锁文件的 patchedDependencies 机制且静默吞错（fix-deprecation.js:32）
+    [P3] F-3 mobile 两个工作流的安装未使用 --frozen-lockfile，其验证结果不受锁文件锚定（.github/workflows/mobile-ci.yml:25）
+  总评：本次按验证依赖专项逐项核查了候选树：root 与 7 个 workspace 的清单与 bun.lock 逐项比对（依赖/开发依赖/overrides/patchedDependencies 及解析版本是否满足声明范围）、sdk examples workspace 与锁条目对应、补丁文件与锁内目标版本、测试与验证脚本的真实性（run-isolated-tests.mjs 对无 runner 文件与失败均返回非零、vitest 配置与别名覆盖 web 全部测试目录、Docker 类测试显式 env 门控）、ghost 依赖（scripts/、server/bin、生产源码的裸导入全部有声明或属远端包名）、入口/bin/exports 目标存在性、CI 安装与检查步骤（除下述 mobile 外均为冻结锁安装，无吞错写法）、Docker 与 release 安装路径，以及环境输入（bun 1.4.2 双处钉子、CI Node 22、.nvmrc lts/* 与 ensure-electron 的 Node 差异修复相配套，视为有意设计）。整体判断为可放行：验证依赖面自洽，未发现 P0/P1；三条非阻断发现中，release:test* 是会误导维护者的陈旧验证入口（P2），另两条为依赖改写与安装一致性的 P3 备忘。残余风险：评审全程只读，未执行安装、构建、测试或 lint，bun-patches 补丁能否干净应用、changelog:check 当前是否通过未能实证。
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/openchamber/.lazyzcode/review/m4-openchamber.a1.r2.json · 同茎运行目录（input.json/candidate/home/raw.txt）
+
+===== openchamber/leg-log.txt =====
+夹具就绪 files=5399 tree=20853fdb92f9 inScope=packages/docs/CONTRIBUTING.md unrelated=docs/.gitkeep shared=package.json
+base 运行 exit=0 validity=valid metering=metered points=6.85410716 verdict=pass session=sess_38c14aca-f577-44fa-bf54-39afcb139f53
+qualify exit=0 granted=true 失败轴=无
+reuse(无关) exit=0 verdict=applicable entries=docs/.gitkeep
+reuse(声明内) exit=1 verdict=fallback 因=1 | 重评 exit=0 validity=valid points=6.04719616
+reuse(未知) exit=1 verdict=fallback 点名=true
+qualify(越界) exit=1 granted=false 失败=missed-dependency
+字节不变 base=true 资格档=true
+
+===== zpigeon-ios/base-run.stdout.txt =====
+### lzy review run --duty review.verification-deps（exit=0 423437ms）
+评审运行 m4-zpigeon-ios.a1.r1 · review.verification-deps · valid · 计量 metered 0.87639904 分
+  判决 pass · 发现 4 条
+    [P2] F-1 远程依赖只钉直接版本,Package.resolved 不入库,传递依赖解析面无记录（project.yml:15）
+    [P2] F-2 协议层 sibling 包 ZCodeKit 以本地路径引用,任何地方未记录其 revision（project.yml:9）
+    [P2] F-3 验证命令消费库外生成产物 ZPigeon.xcodeproj,xcodegen 无版本钉子也无存在性检查（scripts/release-build.sh:31）
+    [P3] F-4 全部验证门为人工约定,仓内无 CI 自动执行面（.github/PULL_REQUEST_TEMPLATE.md:42）
+  总评：本次按验证依赖六面逐项核查了候选树:锁文件与清单一致性(project.yml 为全仓唯一清单,无 Podfile/Cartfile/package.json/Makefile,亦无任何锁文件)、依赖版本漂移、scripts 四个脚本的真实性、测试与清单的依赖对齐、构建入口、环境输入。核对一致且未成发现的面:MarkdownUI 直接依赖 exact 钉 2.4.1 与 README/THIRD-PARTY 记载相符;vendored 资产版本可从内容实证(katex.min.js 内 version:"0.16.22"、mermaid.min.js 内 const rK="9.4.3",均与 THIRD-PARTY.md 相符),katex.min.css 引用的 20 个 woff2 与目录内 20 个字体文件一一对应;ZPigeon/Info.plist 与 project.yml 的 info 块一致(版本键走构建变量,无手改漂移);BGTask 标识符 io.zpigeon.app.refresh 在 project.yml:46/Info.plist/BackgroundRefresh.swift:14 三处一致;release-build.sh 两道夹具串判据的前提成立(字面量仅在 AppShell.swift 的 #if DEBUG 区内);CONTRIBUTING 的 65/33/19 文件计数与实际相符;测试无吞退出码封装,跳过均显式 XCTSkip 带理由(含上游冻结导致恒跳过的用例,读「全绿」需连 skip 计数一起看);四脚本的退出码语义与文档行文一致,均无仓内写入。四条发现全部非阻塞(P2×3、P3×1),故判 pass。剩余风险集中在「验证输入不可回溯」这一类:F-1/F-2 使绿色结论无法钉到确定的依赖图与 kit 提交,F-3 使清单改动可能未被实际验证;均属应当修复但不构成放行否决。评审限制:只读评审未运行构建;仓外 sibling ZCodeKit 不在候选树内,其产品/API 面不可核;未引入外部来源,MarkdownUI 的传递依赖清单未逐项枚举,该点敞口大小待执行者按依赖树确认;input.json 披露证据目录未注入,声称的取证产物无法交叉复核。
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/zpigeon-ios/.lazyzcode/review/m4-zpigeon-ios.a1.r1.json · 同茎运行目录（input.json/candidate/home/raw.txt）
+
+===== zpigeon-ios/qualify.stdout.txt =====
+### lzy review qualify m4-zpigeon-ios.a1.r1 --scope <仓声明白>（exit=0）
+资格挑战 m4-zpigeon-ios.a1.q1 · review.verification-deps · base m4-zpigeon-ios.a1.r1 · GRANTED（资格在案）
+  声明 scopeHash 5dfe530fd897… · 规则 3 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…
+  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）
+    ✔ C1（in-scope · 期望 invalidate）→ invalidate @ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json
+    ✔ C2（canary-keep · 期望 keep）→ keep @docs/adr/0001-phone-reads-repo-wiki-via-channel.md
+    ✔ C3（missed-dependency · 期望 invalidate）→ invalidate @ZPigeon/Sources/Features/Markdown/HtmlPreviewBlock.swift
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @project.yml
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @scripts/bump-version.sh
+    ✔ C8（env · 期望 invalidate）→ structural-invalidate
+    ✔ C9（contract · 期望 invalidate）→ structural-invalidate
+    ✔ C10（duty · 期望 invalidate）→ structural-invalidate
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/zpigeon-ios/.lazyzcode/review-scope/m4-zpigeon-ios.a1.q1.json · 零积分（mechanical）
+
+===== zpigeon-ios/qualify-overbroad.stdout.txt =====
+### lzy review qualify m4-zpigeon-ios.a1.r1 --scope <越界声明>（exit=1）
+资格挑战 m4-zpigeon-ios.a1.q2 · review.verification-deps · base m4-zpigeon-ios.a1.r1 · REJECTED（拒绝已落档——拒绝也是事实）
+  声明 scopeHash f7611173e4f3… · 规则 4 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 45b950d8ed31…
+  套件 core/review-duties/review.verification-deps.qualify.json（procedureVersion 1 · sha256 44af9183fb68…）
+    ✖ C1（in-scope · 期望 invalidate）→ keep @ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json
+    ✔ C2（canary-keep · 期望 keep）→ keep @ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json
+    ✖ C3（missed-dependency · 期望 invalidate）→ keep @ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✖ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=keep @ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @project.yml
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @scripts/bump-version.sh
+    ✔ C8（env · 期望 invalidate）→ structural-invalidate
+    ✔ C9（contract · 期望 invalidate）→ structural-invalidate
+    ✔ C10（duty · 期望 invalidate）→ structural-invalidate
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/zpigeon-ios/.lazyzcode/review-scope/m4-zpigeon-ios.a1.q2.json · 零积分（mechanical）
+
+===== zpigeon-ios/reuse-unrelated.stdout.txt =====
+### lzy review reuse m4-zpigeon-ios.a1.r1（无关变化；exit=0）
+适用性判定 m4-zpigeon-ios.a1.p1 · review.verification-deps · base m4-zpigeon-ios.a1.r1 · 资格 m4-zpigeon-ios.a1.q1 · APPLICABLE（旧结果仍适用）
+  目标候选 head b476d2251c58… · 指纹 0fad5c8a1f17…
+  diff 1 项（base 树 74a168341f56… → 目标树 38a2c10d05ed…）
+  逐因：变化全部落在声明 unrelated 区且结构身份无漂移——义务可由复用满足（gate 复用腿）
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/zpigeon-ios/.lazyzcode/review-scope/m4-zpigeon-ios.a1.p1.json · 零积分（mechanical·只追加）
+
+===== zpigeon-ios/reuse-inscope-and-reeval.stdout.txt =====
+### lzy review reuse m4-zpigeon-ios.a1.r1（声明内变化；exit=1）
+适用性判定 m4-zpigeon-ios.a1.p2 · review.verification-deps · base m4-zpigeon-ios.a1.r1 · 资格 m4-zpigeon-ios.a1.q1 · FALLBACK（回退重评）
+  目标候选 head 6d43b32d0974… · 指纹 a91ab74967b9…
+  diff 2 项（base 树 74a168341f56… → 目标树 69bbd6f63a38…）
+  逐因：
+    ✖ 声明内/共享输入变化：ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json（modified）——职责影响不可排除，须重评
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/zpigeon-ios/.lazyzcode/review-scope/m4-zpigeon-ios.a1.p2.json · 零积分（mechanical·只追加）
+
+
+### lzy review run（真实重评；exit=0 417325ms）
+评审运行 m4-zpigeon-ios.a1.r2 · review.verification-deps · valid · 计量 metered 1.3066823600000002 分
+  判决 pass · 发现 2 条
+    [P3] F-1 sibling 包 ZCodeKit 以本地 path 依赖接入且未钉修订，验证结果随仓库外 checkout 状态漂移（project.yml:9）
+    [P3] F-2 远程依赖图未入库锁定：exactVersion 只约束 MarkdownUI 本体，其下解析结果不落树内（project.yml:12）
+  总评：对候选树做了验证依赖专项走查：清单与锁文件一致性、版本漂移面、验证脚本真实性、验证依赖缺口与幽灵依赖、构建入口、环境输入六个面逐项核查。全树无锁文件（设计如此且注释在案），project.yml 是唯一清单，MarkdownUI 钉 exact 2.4.1 与 README/CONTRIBUTING/THIRD-PARTY 三处记载一致，vendored KaTeX 0.16.22 / mermaid 9.4.3 内嵌版本与 THIRD-PARTY 相符，render.html 零外部引用；四个验证脚本的实际行为与文档声称逐条相符，release-build 的判别力半真实可判、不会静默假绿；全部 import 均可追溯到清单或系统框架，未发现幽灵依赖，单测无跳过与外部夹具依赖；构建入口与验证命令（scheme/only-testing/Info.plist 版本键）自洽。未发现任何 blocking 发现，判定放行不否决。剩余风险为两条 P3 备忘（sibling 包未钉修订、远端依赖图未入库锁定）及审查限制（证据目录未注入，评论中引用的 evidence 文件无法交叉复核，但这些引用不构成运行期依赖）。
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-m4-3r-Tz3T6f/zpigeon-ios/.lazyzcode/review/m4-zpigeon-ios.a1.r2.json · 同茎运行目录（input.json/candidate/home/raw.txt）
+
+===== zpigeon-ios/leg-log.txt =====
+夹具就绪 files=202 tree=64baff783fba inScope=ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json unrelated=docs/adr/0001-phone-reads-repo-wiki-via-channel.md shared=project.yml
+base 运行 exit=0 validity=valid metering=metered points=0.87639904 verdict=pass session=sess_581d8c49-0972-4381-af9d-360f2f682138
+qualify exit=0 granted=true 失败轴=无
+reuse(无关) exit=0 verdict=applicable entries=docs/adr/0001-phone-reads-repo-wiki-via-channel.md
+reuse(声明内) exit=1 verdict=fallback 因=1 | 重评 exit=0 validity=valid points=1.3066823600000002
+reuse(未知) exit=1 verdict=fallback 点名=true
+qualify(越界) exit=1 granted=false 失败=in-scope,missed-dependency,rename-delete
+字节不变 base=true 资格档=true

@@ -1,0 +1,65 @@
+# F2 复用通道原始取证（夹具=qa scope-qualification 的 scope-main / scope-reject）
+# 程序：机械腿（零会话）；base/资格档字节不变=复用判断前后 sha256 对表
+
+===== SHA256 (cd /tmp/m4-fevi/fx/scope-qualification/scope-main) .lazyzcode/review/scope-main.a1.r1.json .lazyzcode/review-scope/scope-main.a1.q3.json
+f0c3cb7ea50c0a55be8dd38eb767ea5b7554e6cedead4094b62807efb8a07026  .lazyzcode/review/scope-main.a1.r1.json
+2abb22a7403ebeb1d529afc10ca8f99633ad597dba14a27cf077b1546f3d769d  .lazyzcode/review-scope/scope-main.a1.q3.json
+
+===== [2026-09-28T14:39:31Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-main) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review reuse scope-main.a1.r1
+适用性判定 scope-main.a1.p2 · review.verification-deps · base scope-main.a1.r1 · 资格 scope-main.a1.q3 · APPLICABLE（旧结果仍适用）
+  目标候选 head b0e9752b7756… · 指纹 810ef0ec2e71…
+  diff 1 项（base 树 99aa9807e983… → 目标树 f085d928ac98…）
+  逐因：变化全部落在声明 unrelated 区且结构身份无漂移——义务可由复用满足（gate 复用腿）
+  档 /private/tmp/m4-fevi/fx/scope-qualification/scope-main/.lazyzcode/review-scope/scope-main.a1.p2.json · 零积分（mechanical·只追加）
+===== EXIT: 0
+
+===== SHA256 (cd /tmp/m4-fevi/fx/scope-qualification/scope-main) .lazyzcode/review/scope-main.a1.r1.json .lazyzcode/review-scope/scope-main.a1.q3.json
+f0c3cb7ea50c0a55be8dd38eb767ea5b7554e6cedead4094b62807efb8a07026  .lazyzcode/review/scope-main.a1.r1.json
+2abb22a7403ebeb1d529afc10ca8f99633ad597dba14a27cf077b1546f3d769d  .lazyzcode/review-scope/scope-main.a1.q3.json
+
+# → 适用档副本：m4-f2-applicable-doc.json（scope-main.a1.p2.json）
+
+# 拒面夹具 scope-reject：base=172c8d56bbf348fc485f3097a35c8afee5bd933c
+
+===== [2026-09-28T14:39:32Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-reject) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed TZ=Asia/Tokyo node cli/lzy.js review reuse scope-reject.a1.r1
+适用性判定 scope-reject.a1.p5 · review.verification-deps · base scope-reject.a1.r1 · 资格 scope-reject.a1.q1 · FALLBACK（回退重评）
+  目标候选 head 172c8d56bbf3… · 指纹 b83184603a9f…
+  diff 0 项（base 树 99aa9807e983… → 目标树 99aa9807e983…）
+  逐因：
+    ✖ 资格身份漂移：env（资格 3f21f1d9ab13… → 现行 18e741da4f32…）——回退重评（plan §5.4）
+  档 /private/tmp/m4-fevi/fx/scope-qualification/scope-reject/.lazyzcode/review-scope/scope-reject.a1.p5.json · 零积分（mechanical·只追加）
+===== EXIT: 1
+
+===== [2026-09-28T14:39:32Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-reject) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review reuse scope-reject.a1.r1
+适用性判定 scope-reject.a1.p6 · review.verification-deps · base scope-reject.a1.r1 · 资格 scope-reject.a1.q1 · FALLBACK（回退重评）
+  目标候选 head c0b333a256a1… · 指纹 abd535846c1b…
+  diff 1 项（base 树 99aa9807e983… → 目标树 bcbb962a2838…）
+  逐因：
+    ✖ 声明内/共享输入变化：package-lock.json（modified）——职责影响不可排除，须重评
+  档 /private/tmp/m4-fevi/fx/scope-qualification/scope-reject/.lazyzcode/review-scope/scope-reject.a1.p6.json · 零积分（mechanical·只追加）
+===== EXIT: 1
+
+===== [2026-09-28T14:39:32Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-reject) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review reuse scope-reject.a1.r1
+适用性判定 scope-reject.a1.p7 · review.verification-deps · base scope-reject.a1.r1 · 资格 scope-reject.a1.q1 · FALLBACK（回退重评）
+  目标候选 head 6278541081d3… · 指纹 6dc0de26214b…
+  diff 1 项（base 树 99aa9807e983… → 目标树 463b9e50e536…）
+  逐因：
+    ✖ 声明内/共享输入变化：scripts/check.sh（modified）——职责影响不可排除，须重评
+  档 /private/tmp/m4-fevi/fx/scope-qualification/scope-reject/.lazyzcode/review-scope/scope-reject.a1.p7.json · 零积分（mechanical·只追加）
+===== EXIT: 1
+
+===== [2026-09-28T14:39:33Z]
+===== CMD: (cd /tmp/m4-fevi/fx/scope-qualification/scope-reject) env LZY_ZCODE_ENGINE=/nonexistent-lzy-suppressed node cli/lzy.js review reuse scope-reject.a1.r1
+适用性判定 scope-reject.a1.p8 · review.verification-deps · base scope-reject.a1.r1 · 资格 scope-reject.a1.q1 · FALLBACK（回退重评）
+  目标候选 head 7f8e1137def5… · 指纹 1b592dbf0a48…
+  diff 1 项（base 树 99aa9807e983… → 目标树 08be18bdf7c9…）
+  逐因：
+    ✖ 未知路径：stranger.txt（added；不在声明规则内——保守回退，拍板 2）
+  档 /private/tmp/m4-fevi/fx/scope-qualification/scope-reject/.lazyzcode/review-scope/scope-reject.a1.p8.json · 零积分（mechanical·只追加）
+===== EXIT: 1
+
+# → 四拒档副本：m4-f2-reject-{env,lockfile,checkscript,unknown}-doc.json

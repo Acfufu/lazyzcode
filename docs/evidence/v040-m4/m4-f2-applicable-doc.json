@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "applicability",
+  "id": "scope-main.a1.p2",
+  "slug": "scope-main",
+  "attempt": 1,
+  "seq": 2,
+  "dutyId": "review.verification-deps",
+  "baseRunId": "scope-main.a1.r1",
+  "qualificationId": "scope-main.a1.q3",
+  "target": {
+    "headSha": "b0e9752b7756c35c5a20a3d6b602259afdcd010c",
+    "compositeFingerprint": "810ef0ec2e715f813d422cc3b4d3d9b7ca2b543078da5649a3f994c54eccd51a",
+    "cliVersion": null
+  },
+  "diff": {
+    "baseTreeHash": "99aa9807e98300b6fceb6e99fef76c9313b617b500ac2f3870f176d46b5de9d7",
+    "targetTreeHash": "f085d928ac9883784587c46761ce4db061daafaef702b3ad02f38daebf459bdd",
+    "entries": [
+      {
+        "path": "docs/readme.md",
+        "type": "modified"
+      }
+    ]
+  },
+  "verdict": "applicable",
+  "reasons": [],
+  "at": "2026-09-28T14:39:31.980Z",
+  "note": "mechanical（零积分——适用性=追加判断，不改写旧记录，ADR-0032）",
+  "checksum": "d68020ed4f05e672f1ce7ee9516ce353345762574f49f5426d71f1e192b215b4"
+}

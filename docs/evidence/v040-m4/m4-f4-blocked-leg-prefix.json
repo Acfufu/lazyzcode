@@ -1,0 +1,17 @@
+{
+  "defect": "真引擎会话 metering-absent（WAL 账本只读恒拒 CANTOPEN 14）",
+  "runId": "m4-lazyzcode.a1.r1",
+  "sessionId": "sess_e0f8102e-2d2e-4584-9954-dff6c6cc308d",
+  "verdict": "pass",
+  "metering": {
+    "status": "absent",
+    "points": null,
+    "note": "逐会话读数：sess_e0f8102e-2d2e-4584-9954-dff6c6cc308d=缺席（不算零）（读 3 次）——缺用量不算零（ADR-0027 修正节）"
+  },
+  "validity": {
+    "status": "invalid",
+    "reason": "metering-absent",
+    "detail": "metering-absent: 子账本无用量行——义务不可满足（§8.1），但运行照常落档"
+  },
+  "at": "2026-09-28T04:57:44.135Z"
+}

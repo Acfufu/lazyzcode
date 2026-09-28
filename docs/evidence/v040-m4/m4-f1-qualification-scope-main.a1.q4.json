@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "kind": "qualification",
+  "id": "scope-main.a1.q4",
+  "slug": "scope-main",
+  "attempt": 1,
+  "seq": 4,
+  "dutyId": "review.verification-deps",
+  "baseRunId": "scope-main.a1.r1",
+  "scopeHash": "aa089fd750cb5e68a731a516b36d0244fdcede8ea8c1431be52df7b8415eea24",
+  "scope": {
+    "rules": [
+      {
+        "pattern": "src/**",
+        "class": "in-scope"
+      },
+      {
+        "pattern": "docs/**",
+        "class": "unrelated"
+      },
+      {
+        "pattern": "scripts/**",
+        "class": "in-scope"
+      }
+    ],
+    "sharedInputs": [
+      "package-lock.json"
+    ]
+  },
+  "identity": {
+    "rulesHash": "eede07b68501afa5d8299821f9212db94da65f265e42750875335b154ae9fe45",
+    "dutyTableVersion": 4,
+    "templateHash": "45b950d8ed31df501b6c2e112de11a3659491e2ad611c2bad4d7a53aabe21293",
+    "contractHash": "7342139ad2e46d6921ee07d22f1f53dcfb9f0787739fa75f491e86a00205b616",
+    "manifestHash": null,
+    "engine": null,
+    "env": "3f21f1d9ab13a6706fbf7a5e91c7227ad552df4869ec1ae61255f74c1880859f"
+  },
+  "suite": {
+    "file": "core/review-duties/review.verification-deps.qualify.json",
+    "suiteHash": "44af9183fb68df6f268a83d2da453a89a94815be16a03eecd9654ac37194dbe3",
+    "procedureVersion": 1
+  },
+  "granted": true,
+  "challenges": [
+    {
+      "id": "C1",
+      "axis": "in-scope",
+      "expect": "invalidate",
+      "ok": true,
+      "observed": "invalidate @src/util.js"
+    },
+    {
+      "id": "C2",
+      "axis": "canary-keep",
+      "expect": "keep",
+      "ok": true,
+      "observed": "keep @docs/readme.md"
+    },
+    {
+      "id": "C3",
+      "axis": "missed-dependency",
+      "expect": "invalidate",
+      "ok": true,
+      "observed": "invalidate @package-lock.json"
+    },
+    {
+      "id": "C4",
+      "axis": "unknown-new",
+      "expect": "invalidate",
+      "ok": true,
+      "observed": "invalidate @__scope_challenge__/unknown-new.txt"
+    },
+    {
+      "id": "C5",
+      "axis": "rename-delete",
+      "expect": "invalidate",
+      "ok": true,
+      "observed": "rename=invalidate/delete=invalidate @src/util.js"
+    },
+    {
+      "id": "C6",
+      "axis": "lockfile",
+      "expect": "invalidate",
+      "ok": true,
+      "observed": "invalidate @package-lock.json"
+    },
+    {
+      "id": "C7",
+      "axis": "check-script",
+      "expect": "invalidate",
+      "ok": true,
+      "observed": "invalidate @scripts/check.sh"
+    },
+    {
+      "id": "C8",
+      "axis": "env",
+      "expect": "invalidate",
+      "ok": true,
+      "observed": "structural-invalidate"
+    },
+    {
+      "id": "C9",
+      "axis": "contract",
+      "expect": "invalidate",
+      "ok": true,
+      "observed": "structural-invalidate"
+    },
+    {
+      "id": "C10",
+      "axis": "duty",
+      "expect": "invalidate",
+      "ok": true,
+      "observed": "structural-invalidate"
+    }
+  ],
+  "at": "2026-09-28T14:39:33.632Z",
+  "note": "mechanical（零积分——资格=机械对抗验证，无会话无消耗，拍板 10）",
+  "checksum": "2952abf4c7233cfba41190053bf76a0982d1d7d27b63786e9d6fd8c0df82ec19"
+}

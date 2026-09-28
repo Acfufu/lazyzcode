@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "kind": "applicability",
+  "id": "scope-reject.a1.p5",
+  "slug": "scope-reject",
+  "attempt": 1,
+  "seq": 5,
+  "dutyId": "review.verification-deps",
+  "baseRunId": "scope-reject.a1.r1",
+  "qualificationId": "scope-reject.a1.q1",
+  "target": {
+    "headSha": "172c8d56bbf348fc485f3097a35c8afee5bd933c",
+    "compositeFingerprint": "b83184603a9ffffbccd6fbec8469f2abae3c23026a082ba4b7f42613433681f8",
+    "cliVersion": null
+  },
+  "diff": {
+    "baseTreeHash": "99aa9807e98300b6fceb6e99fef76c9313b617b500ac2f3870f176d46b5de9d7",
+    "targetTreeHash": "99aa9807e98300b6fceb6e99fef76c9313b617b500ac2f3870f176d46b5de9d7",
+    "entries": []
+  },
+  "verdict": "fallback",
+  "reasons": [
+    "资格身份漂移：env（资格 3f21f1d9ab13… → 现行 18e741da4f32…）——回退重评（plan §5.4）"
+  ],
+  "at": "2026-09-28T14:39:32.378Z",
+  "note": "mechanical（零积分——适用性=追加判断，不改写旧记录，ADR-0032）",
+  "checksum": "6935ed469fc29968befb36f4d728e6335a70b2f81b1ff398cc3c6e068ff1bd31"
+}

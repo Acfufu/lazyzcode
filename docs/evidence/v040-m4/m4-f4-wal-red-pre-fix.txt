@@ -1,0 +1,38 @@
+✖ hostdb/WAL 静寂：-shm 不可创建时 -readonly 恒拒而 immutable 回退读出内容 (15.639083ms)
+✔ hostdb/WAL 非静寂守卫：-wal 有内容时不读旧快照（宁降级） (115.747875ms)
+✔ hostdb/既有行为：非 WAL 库与坏路径读面不变 (16.470917ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 184.616625
+
+✖ failing tests:
+
+test at test/hostdb-wal.contract.test.js:24:1
+✖ hostdb/WAL 静寂：-shm 不可创建时 -readonly 恒拒而 immutable 回退读出内容 (15.639083ms)
+  AssertionError [ERR_ASSERTION]: WAL 静寂回退未读出内容
+  + actual - expected
+  
+  + null
+  - [
+  -   {
+  -     n: 3
+  -   }
+  - ]
+  
+      at TestContext.<anonymous> (file:///private/tmp/m4-rd/test/hostdb-wal.contract.test.js:40:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: [ { n: 3 } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

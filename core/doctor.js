@@ -13,7 +13,7 @@ import { projectCheck } from "./project.js";
 import { loadMigrationState } from "./migrate.js";
 import { budgetView } from "./queue.js"; // M3 N9：drive 预算视图评审分项读数
 import { loadPolicyFile, DUTY_TABLE_VERSION } from "./policy.js"; // 0.4.0 M1：policy 家族巡逻（形状闸 fail-closed）+ M2 N5 版本漂移读数
-import { loadReviewFile } from "./review.js"; // 0.4.0 M2：review 运行族巡逻（形状闸 fail-closed，损坏=fail 级）
+import { loadReviewFile, loadScopeFile, auditClosedFindingsApplicability } from "./review.js"; // 0.4.0 M2：review 运行族巡逻 + M4：范围档巡逻与 stale 审计（fail 级同口径）
 import { loadFindingsFile, CLOSED_FINDING_STATUSES } from "./findings.js"; // 0.4.0 M3：发现账本巡逻（同 fail 级口径）
 // workers 残留三桶的形态/哨兵谓词单一源（core/drive.js；ADJ-39 同族纪律）。
 import { DRIVE_WORKERS_ROOT_DIRNAME, WORKERS_LOG_DIR_RE, WORKERS_RUN_DIR_RE, readWorkersSentinel } from "./drive.js";
@@ -712,6 +712,60 @@ function checkFindings(push, cwd) {
   );
 }
 
+// 评审范围档诊断（0.4.0 M4）：.lazyzcode/review-scope/ 家族健康巡逻 + stale 关闭读数——
+// 逐档 loadScopeFile 家法读（fail-closed），损坏逐个点名；家族缺席/空=skip。损坏=fail 级
+//（与 checkFindings 同口径：资格/适用性档是 gate 复用腿的放行依据，读不出即不可判）。
+// ok 行透出 granted/applicable 计数与活跃 goal 的关闭依据 stale 读数（gate findings 子句同源）。
+function checkReviewScope(push, cwd) {
+  const dir = join(cwd, ".lazyzcode", "review-scope");
+  let names;
+  try {
+    names = readdirSync(dir).filter((f) => f.endsWith(".json") && !f.startsWith("."));
+  } catch {
+    push("review-scope", "skip", "无评审范围档（review qualify/reuse 未用——0.4.0 M4 面未启用）");
+    return;
+  }
+  if (names.length === 0) {
+    push("review-scope", "skip", "评审范围档空");
+    return;
+  }
+  const bad = [];
+  const recs = [];
+  for (const f of names) {
+    try {
+      recs.push(loadScopeFile(join(dir, f)));
+    } catch (e) {
+      bad.push(`${f}：${String(e?.message ?? e).slice(0, 80)}`);
+    }
+  }
+  if (bad.length > 0) {
+    push(
+      "review-scope",
+      "fail",
+      `评审范围档 ${names.length} 件 · ⚠ 不可读 ${bad.length} 件：${bad.slice(0, 3).join("；")}${bad.length > 3 ? "…" : ""}` +
+        `——范围档是 gate 复用腿放行依据（fail 级）；备份后删除可重建读面`,
+    );
+    return;
+  }
+  const quals = recs.filter((r) => r.kind === "qualification");
+  const apps = recs.filter((r) => r.kind === "applicability");
+  let staleNote = "";
+  try {
+    const goal = readGoal(cwd);
+    if (goal) {
+      const audit = auditClosedFindingsApplicability(cwd, goal.slug);
+      staleNote = ` · 关闭依据 stale ${audit.stale.length}/${audit.checked}`;
+    }
+  } catch {
+    staleNote = " · 关闭依据审计不可读（fail-closed）";
+  }
+  push(
+    "review-scope",
+    "ok",
+    `评审范围档 ${names.length} 件（资格 ${quals.filter((q) => q.granted === true).length}/${quals.length} granted · 适用 ${apps.filter((a) => a.verdict === "applicable").length}/${apps.length} applicable）${staleNote} · 形状闸全过`,
+  );
+}
+
 // 契约授权诊断（0.3.0 M1，ADR-0024）：活跃 goal 绑契约时的授权态与漂移复核——ok=授权
 // 有效；warn=待批准/已撤回/磁盘契约漂移（gate 会拦，这里让原因提前可见）；skip=无 goal
 // 或未绑契约（legacy 人权门不受影响）。只读零写，warn/skip only 不翻退出码。
@@ -1317,6 +1371,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkPolicy(p, cwd),
     (p) => checkReview(p, cwd),
     (p) => checkFindings(p, cwd),
+    (p) => checkReviewScope(p, cwd),
     (p) => checkProjectManifest(p, cwd),
     (p) => checkMigratePreview(p, cwd),
     (p) => checkHostGit(p, cwd),

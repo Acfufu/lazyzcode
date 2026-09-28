@@ -32,7 +32,7 @@ import {
   judgeReceiptIdentity,
   judgeRequiredCiChecks,
 } from "./verify.js";
-import { listReviewRuns, dutyTemplateHash } from "./review.js"; // 0.4.0 M2 N5：评审运行族读面（call-time 用，ESM 环安全）
+import { listReviewRuns, dutyTemplateHash, listScopeRecords, loadScopeRecord, currentScopeIdentityAxes, auditClosedFindingsApplicability } from "./review.js"; // 0.4.0 M2 N5 评审运行族读面 + M4 N5 复用腿与关闭依据面（call-time 用，ESM 环安全）
 import { openBlockingFindings } from "./findings.js"; // 0.4.0 M3 N5：发现面子句数据面（findings.js 无反向依赖，无环）
 import { loadIntents } from "./delivery.js";
 import { stableStringify } from "./policy.js";
@@ -64,6 +64,59 @@ function verifyRawSeal(cwd, run) {
     return { ok: false, reason: `原始输出哈希不符（盘上 ${sha.slice(0, 8)}… ≠ 记录 ${String(run.raw.sha256).slice(0, 8)}…）——封存被篡改` };
   }
   return { ok: true };
+}
+
+// 复用腿判定（0.4.0 M4 N5，拍板 7）：base 运行内因全过（valid∧metered∧pass∧raw 封存）且仅
+// 候选漂移时，最新适用档可替代「候选三字段=现行」合取项——适用档 applicable ∧ 目标候选=现行 ∧
+// 其资格 granted 且结构身份（rulesHash/dutyTableVersion/模板/契约/清单/引擎）全现行。
+// 只读：读 review-scope 家族与既有事实，不写不 spawn；家族损坏 fail-closed 阻塞。
+function judgeReuseLeg(cwd, goal, baseRun, currentTpl, record) {
+  let apps;
+  try {
+    apps = listScopeRecords(cwd, { slug: goal.slug, attempt: goal.attempt, kind: "applicability" }).filter((a) => a.baseRunId === baseRun.runId);
+  } catch (e) {
+    return { ok: false, reasons: [`复用腿不可用（范围档家族不可读 fail-closed：${String(e?.message ?? e).slice(0, 100)}）`] };
+  }
+  const app = apps.at(-1) ?? null;
+  if (!app) {
+    return { ok: false, reasons: [`复用腿不可用：无在案适用档——对现行候选重跑（lzy review run）或先声明范围走资格挑战（lzy review qualify ${baseRun.runId} --scope <声明>）`] };
+  }
+  const reasons = [];
+  if (app.verdict !== "applicable") {
+    reasons.push(`复用腿不足：最新适用档 ${app.id} 判 fallback（${String((app.reasons ?? []).slice(0, 2).join("；")).slice(0, 160)}）——回退重评`);
+  }
+  const nowId = candidateIdentity(cwd);
+  if (app.target?.headSha !== nowId.headSha || app.target?.compositeFingerprint !== nowId.compositeFingerprint || app.target?.cliVersion !== nowId.cliVersion) {
+    reasons.push(`复用腿不足：适用档目标候选非现行（${app.id}）——重跑 lzy review reuse ${baseRun.runId}`);
+  }
+  let qual = null;
+  try {
+    qual = loadScopeRecord(cwd, app.qualificationId);
+  } catch {
+    qual = null;
+  }
+  if (!qual || qual.kind !== "qualification") {
+    reasons.push(`复用腿不足：资格档不可读（${app.qualificationId}）——fail-closed`);
+  } else {
+    if (qual.granted !== true) reasons.push(`复用腿不足：资格档为拒绝态（${qual.id}）`);
+    if (qual.baseRunId !== baseRun.runId) reasons.push(`复用腿不足：资格档绑定的 base 运行不符（${qual.baseRunId}）`);
+    if (qual.identity?.templateHash !== currentTpl) reasons.push(`复用腿不足：资格模板哈希非现行（职责定义已变）`);
+    if (qual.identity?.dutyTableVersion !== record.dutyTableVersion) reasons.push(`复用腿不足：资格规则版本非现行（dutyTable v${qual.identity?.dutyTableVersion ?? "?"} ≠ v${record.dutyTableVersion}）——supersede 重采纳后重走资格`);
+    const axes = currentScopeIdentityAxes(cwd, goal, baseRun.duty?.id);
+    for (const k of ["rulesHash", "contractHash", "manifestHash", "engine"]) {
+      if (String(qual.identity?.[k] ?? null) !== String(axes[k] ?? null)) {
+        reasons.push(`复用腿不足：资格身份漂移 ${k}（${String(qual.identity?.[k] ?? "null").slice(0, 12)}… → 现行 ${String(axes[k] ?? "null").slice(0, 12)}…）`);
+      }
+    }
+  }
+  if (reasons.length > 0) return { ok: false, reasons };
+  return {
+    ok: true,
+    reason:
+      `评审运行 ${baseRun.runId} 候选漂移由复用腿满足：适用档 ${app.id}（applicable · diff ${(app.diff?.entries ?? []).length} 项全分类）` +
+      `＋资格 ${app.qualificationId} granted 且身份现行——ADR-0032 追加判断不改写旧记录`,
+    basis: { reuse: { applicabilityId: app.id, baseRunId: baseRun.runId, qualificationId: app.qualificationId } },
+  };
 }
 
 // 交付事实核对（M1 面）：在途（acting/unknown）→阻塞「交付未收束」；done 意图逐个核对
@@ -240,13 +293,18 @@ export function evaluateGate(cwd, { goal: goalOverride } = {}) {
               runsInGeneration: runs.length,
             };
             const blockers = [];
+            let intrinsicFail = false;
+            let candidateDrift = false;
             if (last.validity?.status !== "valid") {
+              intrinsicFail = true;
               blockers.push(`运行无效（${last.validity?.reason ?? "?"}${last.validity?.detail ? `：${String(last.validity.detail).slice(0, 120)}` : ""}）——修复后重跑（lzy review run）`);
             } else {
               if (last.metering?.status !== "metered") {
+                intrinsicFail = true;
                 blockers.push(`计量非 metered（${last.metering?.status ?? "?"}）——缺用量不算零（ADR-0027 修正节），义务不可满足`);
               }
               if (last.result?.verdict !== "pass") {
+                intrinsicFail = true;
                 const blocking = (last.result?.findings ?? []).filter((f) => f.blocking === true || f.severity === "P0" || f.severity === "P1");
                 blockers.push(
                   `评审判 blocked（阻塞发现 ${blocking.length} 条：${blocking.slice(0, 3).map((f) => f.id).join("、") || "结构自相矛盾归一"}）` +
@@ -254,19 +312,35 @@ export function evaluateGate(cwd, { goal: goalOverride } = {}) {
                 );
               }
               const nowId = candidateIdentity(cwd);
-              if (
+              candidateDrift =
                 last.candidate?.headSha !== nowId.headSha ||
                 last.candidate?.compositeFingerprint !== nowId.compositeFingerprint ||
-                last.candidate?.cliVersion !== nowId.cliVersion
-              ) {
-                blockers.push(`候选漂移（运行时 head ${String(last.candidate?.headSha ?? "?").slice(0, 8)} ≠ 现行 ${String(nowId.headSha ?? "?").slice(0, 8)}）——对现行候选重跑`);
+                last.candidate?.cliVersion !== nowId.cliVersion;
+              if (candidateDrift) {
+                blockers.push(`候选漂移（运行时 head ${String(last.candidate?.headSha ?? "?").slice(0, 8)} ≠ 现行 ${String(nowId.headSha ?? "?").slice(0, 8)}）——对现行候选重跑或走复用腿`);
               }
               const rawOk = verifyRawSeal(cwd, last);
-              if (!rawOk.ok) blockers.push(rawOk.reason);
+              if (!rawOk.ok) {
+                intrinsicFail = true;
+                blockers.push(rawOk.reason);
+              }
             }
             if (blockers.length > 0) {
-              entry.state = "unsatisfied";
-              entry.reasons = blockers;
+              // M4 N5 复用腿（拍板 7）：内因全无且仅候选漂移时，在案 applicable 适用档可替代
+              // 候选现行合取项；复用不足则逐因并列（原七合取因＋复用不足因）。
+              if (!intrinsicFail && candidateDrift) {
+                const reuse = judgeReuseLeg(cwd, goal, last, currentTpl, record);
+                if (reuse.ok) {
+                  entry.reasons = [reuse.reason];
+                  entry.basis = { ...entry.basis, ...reuse.basis };
+                } else {
+                  entry.state = "unsatisfied";
+                  entry.reasons = [...blockers, ...reuse.reasons];
+                }
+              } else {
+                entry.state = "unsatisfied";
+                entry.reasons = blockers;
+              }
             } else {
               entry.reasons = [
                 `评审运行 ${last.runId} 满足七合取（metered ${last.metering.points} 分 · verdict=pass · 候选现行 · 原始输出哈希符）` +
@@ -336,21 +410,28 @@ export function evaluateGate(cwd, { goal: goalOverride } = {}) {
     });
   }
 
-  // ⑤ 发现面（N5，V06/V07）：未关闭阻塞发现（本 slug+别名链闭包）⇒ blocked——只有独立修复
-  // 复核或证伪可关闭；账本损坏 fail-closed（读不出即不可判=blocked，与 doctor checkFindings
-  // 同口径）。发现跨 reset/supersede/别名存续（账本在 loop/ 外、查询走别名闭包）。
+  // ⑤ 发现面（N5，V06/V07；M4 N5 增关闭依据适用性，plan §5.5）：未关闭阻塞发现（本 slug+
+  // 别名链闭包）⇒ blocked——只有独立修复复核或证伪可关闭；已关闭发现的关闭依据随候选核对
+  // （closure.recheckRunId 候选漂移且变更命中定位文件=stale，或依据不可核对=fail-closed），
+  // 处置=lzy finding reopen 后重走复核（曾关闭事实保留）。账本损坏 fail-closed。
   try {
     const openFindings = openBlockingFindings(cwd, goal.slug);
+    const audit = auditClosedFindingsApplicability(cwd, goal.slug);
+    const fReasons = openFindings.slice(0, 5).map(
+      (f) =>
+        `未关闭阻塞发现 ${f.fingerprint.slice(0, 8)}（${f.severity} · ${f.title} · 状态 ${f.status} · 首见 ${f.firstSeen.runId} · 累计 ${f.occurrences} 次${f.originSlug !== goal.slug ? ` · 源 ${f.originSlug}` : ""}）——修复后 lzy review recheck 独立复核，lzy finding show ${f.fingerprint.slice(0, 8)} 看详情`,
+    );
+    for (const s of audit.stale.slice(0, 5)) {
+      fReasons.push(
+        s.reason === "closure-basis-stale"
+          ? `已关闭发现 ${s.fingerprint.slice(0, 8)}（${s.severity} · ${s.title}）关闭依据失效：${s.detail}——lzy finding reopen ${s.fingerprint.slice(0, 8)} 后重走 review recheck → close（曾关闭事实保留）`
+          : `已关闭发现 ${s.fingerprint.slice(0, 8)}（${s.severity} · ${s.title}）关闭依据不可核对（fail-closed：${s.detail}）——人工核对后 reopen 重走复核`,
+      );
+    }
     clauses.findings =
-      openFindings.length === 0
-        ? { ok: true, reasons: ["发现面：无未关闭阻塞发现"] }
-        : {
-            ok: false,
-            reasons: openFindings.slice(0, 5).map(
-              (f) =>
-                `未关闭阻塞发现 ${f.fingerprint.slice(0, 8)}（${f.severity} · ${f.title} · 状态 ${f.status} · 首见 ${f.firstSeen.runId} · 累计 ${f.occurrences} 次${f.originSlug !== goal.slug ? ` · 源 ${f.originSlug}` : ""}）——修复后 lzy review recheck 独立复核，lzy finding show ${f.fingerprint.slice(0, 8)} 看详情`,
-            ),
-          };
+      fReasons.length === 0
+        ? { ok: true, reasons: [`发现面：无未关闭阻塞发现；已关闭 ${audit.checked} 条的关闭依据均适用（M4 stale 审计）`] }
+        : { ok: false, reasons: fReasons };
   } catch (e) {
     clauses.findings = { ok: false, reasons: [`发现账本不可读（fail-closed）：${String(e?.message ?? e).slice(0, 140)}`] };
   }

@@ -1390,19 +1390,25 @@ export function validateScopeDeclaration(decl) {
 
 function globToRegExp(pattern) {
   let re = "^";
-  for (let i = 0; i < pattern.length; i++) {
-    const c = pattern[i];
-    if (c === "*") {
-      if (pattern[i + 1] === "*") {
-        re += ".*";
-        i++;
+  let i = 0;
+  while (i < pattern.length) {
+    if (pattern[i] === "*" && pattern[i + 1] === "*") {
+      if (pattern[i + 2] === "/") {
+        re += "(?:.*/)?"; // `**/` 匹配零个或多个前导目录（根下文件如 package.json 必须可命中）
+        i += 3;
       } else {
-        re += "[^/]*";
+        re += ".*";
+        i += 2;
       }
-    } else if (c === "?") {
+    } else if (pattern[i] === "*") {
+      re += "[^/]*";
+      i++;
+    } else if (pattern[i] === "?") {
       re += "[^/]";
+      i++;
     } else {
-      re += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      re += pattern[i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      i++;
     }
   }
   return new RegExp(`${re}$`);
@@ -1568,6 +1574,10 @@ export function auditClosedFindingsApplicability(cwd, slug, deps = {}) {
       stale.push({ ...base, reason: "closure-basis-unavailable", detail: `复核运行档不可读：${String(e?.message ?? e).slice(0, 140)}` });
       continue;
     }
+    if (!run) {
+      stale.push({ ...base, reason: "closure-basis-unavailable", detail: `复核运行档不在案：${rid}——关闭依据无法随候选核对，fail-closed` });
+      continue;
+    }
     const same = run.candidate?.headSha === current.headSha && run.candidate?.compositeFingerprint === current.compositeFingerprint;
     if (same) {
       fresh++;
@@ -1678,6 +1688,18 @@ function manifestHashOf(cwd, goal) {
   } catch {
     return null;
   }
+}
+
+// 现行结构身份五轴（拍板 7 复用腿与 reuse 判定共用的单一事实源；gate 复用腿同源调用）。
+export function currentScopeIdentityAxes(cwd, goal, dutyId) {
+  return {
+    rulesHash: policyRulesHash(),
+    dutyTableVersion: DUTY_TABLE_VERSION,
+    templateHash: dutyTemplateHash(dutyId),
+    contractHash: goal?.contract?.contractHash ?? null,
+    manifestHash: manifestHashOf(cwd, goal),
+    engine: findEngine(),
+  };
 }
 
 // select：声明类规则序优先、路径字典序次之（拍板 3 select 钉死）。
@@ -1929,15 +1951,7 @@ export async function reuseReviewScope(cwd, { runId }, deps = {}) {
   if (qual.granted !== true) pre(`base 运行最新资格档为拒绝态（${qual.id}）——修正声明重走资格挑战，不得以拒资复用`);
   // 结构身份对表（资格时点五轴 vs 现行）：任一漂移⇒fallback 逐因（仍落档——回退重评是判断结果）
   const goal = readGoal(cwd);
-  const manifestHash = manifestHashOf(cwd, goal);
-  const current = {
-    rulesHash: policyRulesHash(),
-    dutyTableVersion: DUTY_TABLE_VERSION,
-    templateHash: dutyTemplateHash(qual.dutyId),
-    contractHash: goal?.contract?.contractHash ?? null,
-    manifestHash,
-    engine: findEngine(),
-  };
+  const current = currentScopeIdentityAxes(cwd, goal, qual.dutyId);
   const short = (v) => (typeof v === "string" && v.length > 12 ? `${v.slice(0, 12)}…` : JSON.stringify(v ?? null));
   const drift = [];
   for (const k of Object.keys(current)) {

@@ -17,7 +17,9 @@ import {
   resolveFindingsScope, listFindings, openBlockingFindings,
   FINDINGS_VERSION, DIAGNOSIS_REQUIRED_THRESHOLD,
 } from "../core/findings.js";
-import { runReview, preflightReview, BASELINE_DUTY_ID, REVIEW_VERSION, dutyTemplateHash } from "../core/review.js";
+import { runReview, preflightReview, BASELINE_DUTY_ID, REVIEW_VERSION, dutyTemplateHash, reserveRun, materializeCandidate, saveReviewRun } from "../core/review.js";
+import { candidateIdentity } from "../core/verify.js";
+import { createHash } from "node:crypto";
 import { evaluateGate } from "../core/gate.js";
 import { appendLedgerEntry, budgetView, reviewLedgerPoints } from "../core/queue.js";
 import { recordAuthorization } from "../core/contract.js";
@@ -33,6 +35,33 @@ const BLOCKED = (title = "授权撤回可绕过") => ({
   findings: [{ id: "f1", title, severity: "P1", blocking: true, location: "auth.js:12", evidence: "e", summary: "s" }],
   summary: "bad",
 });
+
+// M4 N5：真实复核运行档（valid∧pass∧recheck.requested，候选三字段=当时现行）——stale 审计
+// 要解析 closure.recheckRunId 的运行档与候选快照，合成 runId 不再构成「关闭→过」。
+function saveRealRecheckRun(d, slug = "fx", attempt = 1) {
+  reserveRun(d, slug, attempt); // 占 seq1（与 sighting 的合成 r1 茎对齐，保持序号语义）
+  const { seq, runId, runDir } = reserveRun(d, slug, attempt);
+  const cand = materializeCandidate(d, runDir);
+  writeFileSync(join(runDir, "raw.txt"), "recheck raw");
+  const rec = {
+    schemaVersion: REVIEW_VERSION, runId, slug, attempt, seq,
+    duty: { id: BASELINE_DUTY_ID }, dutyTableVersion: 4, templateHash: dutyTemplateHash(BASELINE_DUTY_ID),
+    inputPackageHash: null,
+    candidate: { ...candidateIdentity(d), clean: true },
+    snapshot: { treeHash: cand.treeHash },
+    startedAt: new Date().toISOString(), endedAt: new Date().toISOString(),
+    exit: { code: 0, signal: null }, sessionId: "sess-fx", engine: "/bin/true",
+    raw: { path: "raw.txt", sha256: createHash("sha256").update(readFileSync(join(runDir, "raw.txt"))).digest("hex"), bytes: 10 },
+    transcript: { path: "rollout/fx.jsonl", sha256: "c".repeat(64) },
+    budget: null, metering: { status: "metered", points: 1, note: null },
+    validity: { status: "valid", reason: null, detail: null },
+    result: { verdict: "pass", findings: [], summary: "recheck clean", normalization: null },
+    recheck: { requested: true, targets: [] },
+    containment: { phantomCount: 0, phantoms: [] },
+  };
+  saveReviewRun(d, rec);
+  return rec;
+}
 
 function fixture({ contractText = CONTRACT } = {}) {
   const d = mkdtempSync(join(tmpdir(), "lzy-rft-"));
@@ -175,11 +204,20 @@ describe("④门 findings 子句成对：open 拦/close 过/损坏 fail-closed",
       writeFileSync(goalPath, JSON.stringify(g));
       gate = evaluateGate(d);
       assert.equal(gate.clauses.findings.ok, false);
-      // 关闭→过
+      // 关闭→过（M4 起 closure 引用须可随候选核对：真实复核运行档+现行候选快照）
       requestResolve(d, "fx", fp, { at: at(0, 2) });
-      closeFinding(d, "fx", fp, { outcome: "falsified", basis: "原报证据与代码不符（误报）", recheck: { runId: "fx.a1.r2", valid: true, reportedFingerprints: [], isRecheck: true, at: "2026-09-28T23:00:00.000Z" } });
+      const recheckRun = saveRealRecheckRun(d);
+      closeFinding(d, "fx", fp, { outcome: "falsified", basis: "原报证据与代码不符（误报）", recheck: { runId: recheckRun.runId, valid: true, reportedFingerprints: [], isRecheck: true, at: recheckRun.endedAt } });
       gate = evaluateGate(d);
-      assert.equal(gate.clauses.findings.ok, true);
+      assert.equal(gate.clauses.findings.ok, true, gate.clauses.findings.reasons.join("\n"));
+      // M4 stale 腿：关闭依据候选漂移且变更命中定位文件 ⇒ findings 子句逐因阻塞
+      writeFileSync(join(d, "auth.js"), "export const drifted = true;\n");
+      const gc = spawnSync("git", ["add", "-A"], { cwd: d });
+      spawnSync("git", ["commit", "-qm", "drift"], { cwd: d });
+      void gc;
+      gate = evaluateGate(d);
+      assert.equal(gate.clauses.findings.ok, true === false || false, "stale 应阻塞");
+      assert.ok(gate.clauses.findings.reasons.some((r) => r.includes("关闭依据失效")), gate.clauses.findings.reasons.join("\n"));
       // 账本损坏→fail-closed
       const p = findingsPath(d, "fx");
       writeFileSync(p, "{not-json");

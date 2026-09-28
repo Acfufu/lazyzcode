@@ -32,7 +32,7 @@ import {
   judgeReceiptIdentity,
   judgeRequiredCiChecks,
 } from "./verify.js";
-import { listReviewRuns, dutyTemplateHash, listScopeRecords, loadScopeRecord, currentScopeIdentityAxes, auditClosedFindingsApplicability } from "./review.js"; // 0.4.0 M2 N5 评审运行族读面 + M4 N5 复用腿与关闭依据面（call-time 用，ESM 环安全）
+import { listReviewRuns, dutyTemplateHash, listScopeRecords, loadScopeRecord, currentScopeIdentityAxes, auditClosedFindingsApplicability, SCOPE_REUSE_LEG_AXES } from "./review.js"; // 0.4.0 M2 N5 评审运行族读面 + M4 N5 复用腿与关闭依据面 + M5 N2 复用腿轴集单一事实源（call-time 用，ESM 环安全）
 import { openBlockingFindings } from "./findings.js"; // 0.4.0 M3 N5：发现面子句数据面（findings.js 无反向依赖，无环）
 import { loadIntents } from "./delivery.js";
 import { stableStringify } from "./policy.js";
@@ -103,7 +103,7 @@ function judgeReuseLeg(cwd, goal, baseRun, currentTpl, record) {
     if (qual.identity?.templateHash !== currentTpl) reasons.push(`复用腿不足：资格模板哈希非现行（职责定义已变）`);
     if (qual.identity?.dutyTableVersion !== record.dutyTableVersion) reasons.push(`复用腿不足：资格规则版本非现行（dutyTable v${qual.identity?.dutyTableVersion ?? "?"} ≠ v${record.dutyTableVersion}）——supersede 重采纳后重走资格`);
     const axes = currentScopeIdentityAxes(cwd, goal, baseRun.duty?.id);
-    for (const k of ["rulesHash", "contractHash", "manifestHash", "engine"]) {
+    for (const k of SCOPE_REUSE_LEG_AXES) {
       if (String(qual.identity?.[k] ?? null) !== String(axes[k] ?? null)) {
         reasons.push(`复用腿不足：资格身份漂移 ${k}（${String(qual.identity?.[k] ?? "null").slice(0, 12)}… → 现行 ${String(axes[k] ?? "null").slice(0, 12)}…）`);
       }

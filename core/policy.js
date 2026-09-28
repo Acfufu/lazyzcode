@@ -118,9 +118,9 @@ export function computePolicyIdentity(cwd, goal) {
 export function deriveObligations(identity) {
   const obligations = [];
   const manifestRef = identity.manifestPresent ? `manifest:${identity.manifestHash.slice(0, 8)}` : "manifest:absent";
-  // 评审义务满足条件串（M4 N4 与 gate 复用合取同源措辞）：base 七合取或复用腿二选一满足。
+  // 评审义务满足条件串（M4 N4 与 gate 复用合取同源措辞；M5 N2 资格身份轴枚举补环境轴）：base 七合取或复用腿二选一满足。
   const REVIEW_SATISFACTION =
-    "同 (slug,attempt) 代次的受控评审运行在案：duty/dutyTableVersion/模板哈希与现行规则一致 ∧ validity=valid ∧ metering=metered ∧ verdict=pass ∧ 候选三字段=现行 ∧ 原始输出在场哈希相符（lzy review run）∨ 复用腿（M4，ADR-0032）：在案 applicable 适用档（base 运行过资格挑战 ∧ 资格身份（rulesHash/模板/契约/清单/引擎）全现行 ∧ 目标候选=现行 ∧ diff 分类完备）替代候选现行合取项；∧ 无未关闭阻塞发现 ∧ 关闭依据仍适用（发现账本 findings 子句，V06——关闭唯 resolve-request → review recheck → close 通道，stale 发现经 finding reopen 重走复核）";
+    "同 (slug,attempt) 代次的受控评审运行在案：duty/dutyTableVersion/模板哈希与现行规则一致 ∧ validity=valid ∧ metering=metered ∧ verdict=pass ∧ 候选三字段=现行 ∧ 原始输出在场哈希相符（lzy review run）∨ 复用腿（M4，ADR-0032）：在案 applicable 适用档（base 运行过资格挑战 ∧ 资格身份（rulesHash/模板/契约/清单/引擎/环境）全现行 ∧ 目标候选=现行 ∧ diff 分类完备）替代候选现行合取项；∧ 无未关闭阻塞发现 ∧ 关闭依据仍适用（发现账本 findings 子句，V06——关闭唯 resolve-request → review recheck → close 通道，stale 发现经 finding reopen 重走复核）";
   // ① 通用正确性评审（底线，§3.1 必选）：全部 v2 目标恒生成，无契约亦生成（拍板 7）。
   obligations.push({
     id: BASELINE_REVIEW_ID,

@@ -437,6 +437,33 @@ describe("⑤gate 复用合取真值表", () => {
       rmSync(d, { recursive: true, force: true });
     }
   });
+  test("⑧复用腿身份轴 env：资格后 env 漂移 ⇒ gate 复用腿不足并点名 env（M5 N2，改前红）", async () => {
+    const d = fixture();
+    try {
+      const goal = JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+      ensurePolicyRecord(d, goal);
+      const g2 = { ...goal, risk: "med", contract: { path: "contract.md", contractHash: HEX("1") }, subjects: ["../nonexistent-subject-for-fx"] };
+      writeFileSync(join(d, ".lazyzcode", "loop", "goal.json"), JSON.stringify(g2));
+      ensurePolicyRecord(d, g2, { expand: true, reason: "契约测试：endpoint B 注入推导专项职责" });
+      saveBaseRun(d, { candidate: { headSha: "f".repeat(40), compositeFingerprint: HEX("e"), cliVersion: "0.0.1", clean: true } });
+      const q = await qualifyReviewScope(d, { runId: "fx.a1.r1", scopeDecl: DECL }, { dutyEntry: DUTY_ENTRY });
+      const r1 = await reuseReviewScope(d, { runId: "fx.a1.r1" }, { dutyEntry: DUTY_ENTRY });
+      assert.equal(r1.verdict, "applicable");
+      // 篡改资格档 identity.env（重算校验和保持档可读——只漂移 env 轴；其余轴原样）
+      const qp = join(d, ".lazyzcode", "review-scope", `${q.record.id}.json`);
+      const parsed = JSON.parse(readFileSync(qp, "utf8"));
+      const { checksum: _c, ...rest } = parsed;
+      void _c;
+      rest.identity.env = HEX("e");
+      writeFileSync(qp, `${JSON.stringify({ ...rest, checksum: createHash("sha256").update(JSON.stringify(rest)).digest("hex") }, null, 2)}\n`);
+      const gate = gateFor(d, g2);
+      const ob = gate.obligations.find((o) => o.id === DECLARABLE);
+      assert.equal(ob.state, "unsatisfied", `env 漂移后复用腿应不足：${ob.reasons.join("|")}`);
+      assert.ok(ob.reasons.some((r) => r.includes("资格身份漂移") && r.includes("env")), `拒因须点名 env 轴：${ob.reasons.join("|")}`);
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("⑥closure-basis-stale 与 reopen 通道", () => {

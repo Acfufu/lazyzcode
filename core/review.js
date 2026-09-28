@@ -1721,7 +1721,7 @@ export function scopeEnvFingerprint() {
   return createHash("sha256").update(JSON.stringify({ platform: process.platform, arch: process.arch, node: process.version, tz: process.env.TZ ?? null })).digest("hex");
 }
 
-// 现行结构身份六轴（拍板 7 复用腿与 reuse 判定共用的单一事实源；gate 复用腿同源调用）。
+// 现行结构身份七轴（拍板 7 复用腿与 reuse 判定共用的单一事实源；gate 复用腿同源调用）。
 export function currentScopeIdentityAxes(cwd, goal, dutyId) {
   return {
     rulesHash: policyRulesHash(),
@@ -1733,6 +1733,11 @@ export function currentScopeIdentityAxes(cwd, goal, dutyId) {
     env: scopeEnvFingerprint(),
   };
 }
+
+// 复用腿逐轴对表的轴集（0.4.0 M5 N2 单一事实源）：gate 复用腿与资格身份七轴同源——
+// templateHash/dutyTableVersion 在 gate 侧有具名拒因故单列，余轴在此枚举（M4 曾漏 env，
+// M4 输入 9③；新增轴两侧同批改）。
+export const SCOPE_REUSE_LEG_AXES = ["rulesHash", "contractHash", "manifestHash", "engine", "env"];
 
 // select：声明类规则序优先、路径字典序次之（拍板 3 select 钉死）。
 function pickExistingByRules(baseMap, rules, cls) {
@@ -2002,7 +2007,7 @@ export async function qualifyReviewScope(cwd, { runId, scopeDecl }, deps = {}) {
 
 // ── 0.4.0 M4 N3：复用适用性判定（拍板 4/7/9）：base 运行+在案 granted 资格 ⇒ 当前候选
 // diff 分类完备性判定 → applicable/fallback 适用档（只追加；base 运行档与资格档字节零触碰）。
-// 结构轴漂移（rulesHash/dutyTableVersion/templateHash/contractHash/manifestHash/engine 任一）
+// 结构轴漂移（rulesHash/dutyTableVersion/templateHash/contractHash/manifestHash/engine/env 任一）
 // =资格身份失效⇒fallback 逐因（plan §5.4「资格版本变化回退重评」）；不 spawn 零积分。──
 
 export async function reuseReviewScope(cwd, { runId }, deps = {}) {
@@ -2032,7 +2037,7 @@ export async function reuseReviewScope(cwd, { runId }, deps = {}) {
   const qual = quals.at(-1) ?? null;
   if (!qual) pre(`base 运行无在案资格档——先 lzy review qualify ${runId} --scope <声明>（复用只授已过资格挑战的声明，ADR-0032）`);
   if (qual.granted !== true) pre(`base 运行最新资格档为拒绝态（${qual.id}）——修正声明重走资格挑战，不得以拒资复用`);
-  // 结构身份对表（资格时点五轴 vs 现行）：任一漂移⇒fallback 逐因（仍落档——回退重评是判断结果）
+  // 结构身份对表（资格时点七轴 vs 现行）：任一漂移⇒fallback 逐因（仍落档——回退重评是判断结果）
   const goal = readGoal(cwd);
   const current = currentScopeIdentityAxes(cwd, goal, qual.dutyId);
   const short = (v) => (typeof v === "string" && v.length > 12 ? `${v.slice(0, 12)}…` : JSON.stringify(v ?? null));

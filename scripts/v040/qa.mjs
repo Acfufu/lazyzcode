@@ -80,6 +80,9 @@ if (f.help === true || CASE === "help") {
   finding-lifecycle  发现生命周期全链（M3：替身确定性链 A-D + 真会话腿——注缺陷评审 1 +
                      recheck 收口 1，预注册 ≤12；A=阻塞/finish 必拒/两次无效/diagnose/关闭
                      B=证伪分支 C=reset/rename/supersede 存续 D=reassess 取消与拒删）
+  scope-qualification 评审范围资格与适用性全链（M4：替身评审腿+机械资格腿，零真会话——
+                     十轴资格对表/越界声明遗漏反例拒/修正重领/四拒逐因 fallback（锁文件·
+                     check 脚本·未知新文件·env）/字节不变/关闭依据失效拦与 reopen 重关）
 退出契约: 0=全部断言过 1=有断言败 2=用法错 3=blocked（缺能力/轨迹不可核验，不算 SKIP 通过）`);
   process.exit(0);
 }
@@ -599,6 +602,238 @@ async function capabilityMeterCase() {
   };
 }
 
+// ── case: scope-qualification（评审范围资格与适用性全链；goal v040-m4-scope-qualification#N8，§8.1 M4）──
+// 判据面（替身评审腿+机械资格腿混合）：专项职责替身绿运行作 base → 真随包套件 qualify 十轴对表
+// → reuse 无关变化 applicable → 越界声明（依赖制品划 unrelated）被遗漏反例点名拒 → 修正声明重领
+// → 锁文件/check 脚本/未知新文件/env 四拒逐因 fallback（独立夹具单路径改变）→ base 与资格档字节
+// 哈希不变 → 注阻塞发现→resolve→recheck→close→修复区再变化→gate 关闭依据失效拦→reopen→复核重关。
+// 全替身零真会话（机械资格腿不 spawn——拍板 10），CI 可跑。
+// 夹具卫生：声明档落夹具仓外（仓内自带文件会进候选 diff 判未知路径，污染逐轴读数）；四拒腿各自
+// 「提交式单路径改变 + git reset --hard 归位」，保证每腿 diff 只有该轴一条路径。
+const SQS_CONTRACT = "task: scope qa fixture\nendpoint: A\nscope: .\nrecipe: none\nbudget-ref: none\n\n- [A1] marker file works\n";
+const SQS_PLAN = "- [N1] add marker file\n- [F1] marker exists\naccepts: A1\n";
+const SQS_DUTY = "review.verification-deps";
+
+async function scopeQualificationCase() {
+  const assertions = [];
+  const push = (id, ok, expected, observed, evidence) => assertions.push({ id, ok: Boolean(ok), expected, observed: String(observed).slice(0, 600), evidence });
+  const CLI = join(REPO, "cli", "lzy.js");
+  const TRIGGER = join(REPO, "plugin", "hooks", "trigger.js");
+  const baseEnv = { ...process.env, LZY_ZCODE_ENGINE: "/nonexistent-lzy-suppressed" };
+  const caseDir = join(fixtureRoot, "scope-qualification");
+  rmSync(caseDir, { recursive: true, force: true }); // 幂等：本案例独占子目录
+  mkdirSync(caseDir, { recursive: true });
+  const stub = writeStubEngine(caseDir);
+  const sha256Of = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
+
+  function fixture(name) {
+    const home = mkdtempSync(join(tmpdir(), `lzy-qas-${name}-home-`));
+    const d = join(caseDir, name);
+    mkdirSync(d, { recursive: true });
+    const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
+    g(["init", "-q"]);
+    g(["config", "user.email", "t@l"]);
+    g(["config", "user.name", "t"]);
+    writeFileSync(join(d, ".gitignore"), ".lazyzcode/\nnode_modules/\n");
+    for (const sub of ["src", "docs", "shared", "scripts"]) mkdirSync(join(d, sub), { recursive: true });
+    writeFileSync(join(d, "src", "util.js"), "export const a=1;\n");
+    writeFileSync(join(d, "docs", "readme.md"), "# doc\n");
+    writeFileSync(join(d, "shared", "dep-config.json"), "{}\n");
+    writeFileSync(join(d, "package-lock.json"), "{}\n");
+    writeFileSync(join(d, "scripts", "check.sh"), "echo ok\n");
+    writeFileSync(join(d, "contract.md"), SQS_CONTRACT);
+    writeFileSync(join(d, "plan.md"), SQS_PLAN);
+    g(["add", "-A"]);
+    g(["commit", "-qm", "fixture"]);
+    const lzy = (args, extra = {}) => {
+      const r = spawnSync(process.execPath, [CLI, ...args], { cwd: d, encoding: "utf8", timeout: 600_000, env: { ...baseEnv, HOME: home, USERPROFILE: home, ...extra } });
+      return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+    };
+    const hook = (prompt) => {
+      const r = spawnSync(process.execPath, [TRIGGER], {
+        cwd: d, encoding: "utf8", timeout: 30_000,
+        input: JSON.stringify({ prompt, cwd: d, sessionId: "sess_qas" }),
+        env: { ...baseEnv, HOME: home, USERPROFILE: home },
+      });
+      return { exit: r.status, out: r.stdout ?? "" };
+    };
+    const readGoal = () => JSON.parse(readFileSync(join(d, ".lazyzcode", "loop", "goal.json"), "utf8"));
+    const reg = lzy(["loop", "register", name, "--title", "t", "--contract", "contract.md"]);
+    if (reg.exit !== 0) throw new Error(`register 失败：${reg.out}`);
+    const p1 = lzy(["loop", "plan", "plan.md"]);
+    if (p1.exit !== 1) throw new Error(`首采应拒（contractPending）：${p1.out}`);
+    const short = readGoal().contractPending.contractHash.slice(0, 8);
+    const ap = hook(`批准 ${short}`);
+    if (!ap.out.includes("Human approval recorded for contract")) throw new Error(`批准未记录：${ap.out}`);
+    const p2 = lzy(["loop", "plan", "plan.md"]);
+    if (p2.exit !== 0) throw new Error(`采纳失败：${p2.out}`);
+    const st = lzy(["loop", "start"]);
+    if (st.exit !== 0) throw new Error(`start 失败：${st.out}`);
+    // 推进到评审就绪（红半→提交→N1/F1）
+    if (lzy(["evidence", "red", "F1", "--evidence", "red: marker.txt absent on baseline tree"]).exit !== 0) throw new Error("红半失败");
+    writeFileSync(join(d, "marker.txt"), "marker\n");
+    g(["add", "-A"]);
+    g(["commit", "-qm", "add marker"]);
+    if (lzy(["step", "done", "N1", "--note", "add marker file"]).exit !== 0) throw new Error("N1 失败");
+    if (lzy(["step", "done", "F1", "--evidence", "green: marker.txt present in HEAD tree"]).exit !== 0) throw new Error("F1 失败");
+    return { d, lzy, g, slug: name };
+  }
+
+  const engineEnv = (leg, extra = {}) => ({ LZY_ZCODE_ENGINE: stub, LZY_STUB_LEG: leg, ...extra });
+  const runFile = (fx, stem) => join(fx.d, ".lazyzcode", "review", `${stem}.json`);
+  const lastStem = (fx) => readdirSync(join(fx.d, ".lazyzcode", "review")).filter((x) => x.endsWith(".json")).map((x) => x.slice(0, -".json".length)).sort((a, b) => Number(a.split(".r")[1]) - Number(b.split(".r")[1])).at(-1);
+  // 声明档落夹具仓外（仓内=候选树污染）；--scope 收绝对路径。
+  const writeDecl = (name, decl) => {
+    const p = join(caseDir, `${name}.decl.json`);
+    writeFileSync(p, JSON.stringify(decl));
+    return p;
+  };
+  // 资格档/适用档按 seq 数值序取末（文件名 p10 字典序在 p2 前，不能用字符串序）。
+  const lastScopeRec = (fx, kind) => {
+    const dir = join(fx.d, ".lazyzcode", "review-scope");
+    if (!existsSync(dir)) return null;
+    const re = new RegExp(`\\.${kind}(\\d+)\\.json$`);
+    const files = readdirSync(dir).filter((x) => re.test(x));
+    const last = files.sort((a, b) => Number(re.exec(a)[1]) - Number(re.exec(b)[1])).at(-1);
+    return last ? { file: join(dir, last), rec: JSON.parse(readFileSync(join(dir, last), "utf8")) } : null;
+  };
+  // 善声明：src=声明内 / docs=可保持 / scripts=声明内（check 脚本=本职责表面）/ 锁文件=共享输入。
+  // 刻意不声明 shared/**（缺声明判 unknown⇒invalidate，不构成遗漏反例——反例只在「划错类」时成立）。
+  const GOOD_DECL = {
+    dutyId: SQS_DUTY,
+    rules: [
+      { pattern: "src/**", class: "in-scope" },
+      { pattern: "docs/**", class: "unrelated" },
+      { pattern: "scripts/**", class: "in-scope" },
+    ],
+    sharedInputs: ["package-lock.json"],
+  };
+
+  // ① base 运行：专项职责替身绿
+  const fx = fixture("scope-main");
+  const run1 = fx.lzy(["review", "run", "--duty", SQS_DUTY, "--timeout-ms", "30000"], engineEnv("green", { LZY_STUB_DUTY: SQS_DUTY, LZY_STUB_LEDGER: "1" }));
+  const baseStem = `${fx.slug}.a1.r1`;
+  const rec1 = JSON.parse(readFileSync(runFile(fx, baseStem), "utf8"));
+  push("s1-base-run", run1.exit === 0 && rec1.validity.status === "valid" && rec1.duty.id === SQS_DUTY && rec1.metering.status === "metered",
+    "专项职责替身绿运行 valid metered pass", `exit=${run1.exit} duty=${rec1.duty?.id} ${rec1.validity?.status}/${rec1.result?.verdict}`);
+  const baseSha0 = sha256Of(runFile(fx, baseStem));
+
+  // ② 资格挑战：真随包套件（十轴；含 in-scope / canary-keep / missed-dependency 三类改变对表）
+  const q1 = fx.lzy(["review", "qualify", baseStem, "--scope", writeDecl("good", GOOD_DECL)]);
+  const q1rec = lastScopeRec(fx, "q");
+  const SQS_AXES = ["in-scope", "canary-keep", "missed-dependency", "unknown-new", "rename-delete", "lockfile", "check-script", "env", "contract", "duty"];
+  const axisOk = (rec, a) => (rec?.challenges ?? []).some((c) => c.axis === a && c.ok);
+  const qualSha0 = q1rec ? sha256Of(q1rec.file) : null;
+  push("s2-qualify-granted", q1.exit === 0 && q1rec?.rec.granted === true && SQS_AXES.every((a) => axisOk(q1rec.rec, a)),
+    "真随包套件十轴逐轴对表全过（含 in-scope/canary-keep/missed-dependency 三类改变）",
+    `exit=${q1.exit} granted=${q1rec?.rec.granted} 全过=${(q1rec?.rec.challenges ?? []).filter((c) => c.ok).length}/${(q1rec?.rec.challenges ?? []).length}`);
+
+  // ③ 复用：无关变化（docs 声明 unrelated）applicable；base 与资格档字节不变（只追加）
+  writeFileSync(join(fx.d, "docs", "readme.md"), "# doc\n# unrelated\n");
+  fx.g(["add", "-A"]);
+  fx.g(["commit", "-qm", "docs unrelated"]);
+  const u1 = fx.lzy(["review", "reuse", baseStem]);
+  const u1rec = lastScopeRec(fx, "p");
+  const u1paths = (u1rec?.rec.diff?.entries ?? []).map((e) => e.path);
+  push("s3-reuse-applicable", u1.exit === 0 && u1rec?.rec.verdict === "applicable" && u1paths.length === 1 && u1paths[0] === "docs/readme.md",
+    "无关变化复用 applicable（diff 恰为 docs/readme.md）", `exit=${u1.exit} verdict=${u1rec?.rec.verdict} entries=[${u1paths.join(",")}]`);
+  push("s3-byte-stable", baseSha0 === sha256Of(runFile(fx, baseStem)) && qualSha0 === sha256Of(q1rec.file),
+    "base 运行档与资格档字节哈希复用前后不变（只追加）", `base=${baseSha0.slice(0, 8)} qual=${qualSha0.slice(0, 8)}`);
+
+  // ④ 越界声明拒面：shared/**（依赖制品）划 unrelated ⇒ missed-dependency 取该命中为遗漏反例点名拒
+  const q2 = fx.lzy(["review", "qualify", baseStem, "--scope", writeDecl("overbroad", { ...GOOD_DECL, rules: [...GOOD_DECL.rules, { pattern: "shared/**", class: "unrelated" }] })]);
+  const q2rec = lastScopeRec(fx, "q");
+  const q2fail = (q2rec?.rec.challenges ?? []).filter((c) => !c.ok);
+  push("s4-qualify-overbroad-rejected", q2.exit === 1 && q2rec?.rec.granted === false && /REJECTED/.test(q2.out) &&
+    q2fail.some((c) => c.axis === "missed-dependency" && /shared\/dep-config\.json/.test(c.observed)),
+    "越界声明（依赖制品划 unrelated）⇒ 遗漏反例点名 shared/dep-config.json 拒（拒绝也落档）",
+    `exit=${q2.exit} granted=${q2rec?.rec.granted} 失败=[${q2fail.map((c) => `${c.axis}:${c.observed}`).join("; ")}]`);
+
+  // ⑤ 修正声明重领：拒绝非终态（同轴同夹具反向——shared/** 收回声明内即过）
+  const q3 = fx.lzy(["review", "qualify", baseStem, "--scope", writeDecl("corrected", { ...GOOD_DECL, rules: [...GOOD_DECL.rules, { pattern: "shared/**", class: "in-scope" }] })]);
+  const q3rec = lastScopeRec(fx, "q");
+  push("s5-qualify-corrected-granted", q3.exit === 0 && q3rec?.rec.granted === true,
+    "修正声明（shared/** 收回声明内）⇒ 重领 granted（拒绝非终态，拒绝档仍在案）",
+    `exit=${q3.exit} granted=${q3rec?.rec.granted} 档数=${readdirSync(join(fx.d, ".lazyzcode", "review-scope")).filter((x) => /\.q\d+\.json$/.test(x)).length}`);
+
+  // ⑥ 四拒（独立夹具）：逐腿=提交式单路径改变→reuse 逐因 fallback 点名该轴→reset 归位
+  const fxr = fixture("scope-reject");
+  const runR = fxr.lzy(["review", "run", "--duty", SQS_DUTY, "--timeout-ms", "30000"], engineEnv("green", { LZY_STUB_DUTY: SQS_DUTY, LZY_STUB_LEDGER: "1" }));
+  const baseR = `${fxr.slug}.a1.r1`;
+  const qR = fxr.lzy(["review", "qualify", baseR, "--scope", writeDecl("reject-good", GOOD_DECL)]);
+  const baseShaR = fxr.g(["rev-parse", "HEAD"]).stdout.trim();
+  push("s6-reject-fixture-ready", runR.exit === 0 && qR.exit === 0, "拒面夹具 base 运行 + 资格 granted", `run=${runR.exit} qualify=${qR.exit} head=${baseShaR.slice(0, 8)}`);
+  const rejectLegs = [
+    { id: "s6-reject-env", label: "环境轴漂移（TZ 变体，结构轴短路）", env: { TZ: "Asia/Tokyo" }, reason: /资格身份漂移：env/, path: null },
+    { id: "s6-reject-lockfile", label: "锁文件变化（声明共享输入）", mutate: ["package-lock.json", "{}\n{}\n"], reason: /声明内\/共享输入变化：package-lock\.json/, path: "package-lock.json" },
+    { id: "s6-reject-checkscript", label: "check 脚本变化（声明内）", mutate: ["scripts/check.sh", "echo changed\n"], reason: /声明内\/共享输入变化：scripts\/check\.sh/, path: "scripts/check.sh" },
+    { id: "s6-reject-unknown", label: "未知新文件（未匹配声明）", mutate: ["stranger.txt", "??\n"], reason: /未知路径：stranger\.txt/, path: "stranger.txt" },
+  ];
+  for (const leg of rejectLegs) {
+    if (leg.mutate) {
+      writeFileSync(join(fxr.d, ...leg.mutate[0].split("/")), leg.mutate[1]);
+      fxr.g(["add", "-A"]);
+      fxr.g(["commit", "-qm", `leg ${leg.id}`]);
+    }
+    const r = fxr.lzy(["review", "reuse", baseR], leg.env);
+    const pR = lastScopeRec(fxr, "p");
+    const paths = (pR?.rec.diff?.entries ?? []).map((e) => e.path);
+    const single = leg.path === null ? paths.length === 0 : paths.length === 1 && paths[0] === leg.path;
+    const named = (pR?.rec.reasons ?? []).some((x) => leg.reason.test(x));
+    push(leg.id, r.exit === 1 && pR?.rec.verdict === "fallback" && single && named,
+      `${leg.label} ⇒ fallback 逐因点名该轴（diff 单路径）`,
+      `exit=${r.exit} verdict=${pR?.rec.verdict} entries=[${paths.join(",")}] 逐因=${named} reasons=${(pR?.rec.reasons ?? []).length}`);
+    if (leg.mutate) fxr.g(["reset", "--hard", baseShaR]);
+  }
+
+  // ⑦ 关闭依据适用性全链：注阻塞发现→resolve→替身 recheck→close→修复区再变化→gate 拦→reopen→复核重关
+  const fx2 = fixture("scope-stale");
+  const runB = fx2.lzy(["review", "run", "--timeout-ms", "30000"], engineEnv("blocked", { LZY_STUB_LEDGER: "1", LZY_STUB_LOC: "marker.txt:1" }));
+  const recB = JSON.parse(readFileSync(runFile(fx2, `${fx2.slug}.a1.r1`), "utf8"));
+  push("s7-blocked-ledger", runB.exit === 1 && (recB.findingsLedger?.upserted ?? 0) === 1,
+    "替身阻塞运行落账 1 条发现", `exit=${runB.exit} upserted=${recB.findingsLedger?.upserted}`);
+  writeFileSync(join(fx2.d, "marker.txt"), "marker\nfixed\n");
+  fx2.g(["add", "-A"]);
+  fx2.g(["commit", "-qm", "fix"]);
+  if (fx2.lzy(["step", "done", "F1", "--evidence", "green rebind: marker.txt present in HEAD tree（fix 后未变面重录）"]).exit !== 0) throw new Error("F1 rebind 失败");
+  const fp8 = findingFingerprint8(fx2);
+  if (fx2.lzy(["finding", "resolve-request", fp8, "--note", "修复已提交"]).exit !== 0) throw new Error("resolve 失败");
+  const rc = fx2.lzy(["review", "recheck", "--timeout-ms", "30000"], engineEnv("green", { LZY_STUB_LEDGER: "1" }));
+  const rcStem = lastStem(fx2);
+  const closeR = fx2.lzy(["finding", "close", fp8, "--outcome", "fixed", "--basis", "复核不再报", "--recheck", rcStem]);
+  push("s7-close-after-recheck", closeR.exit === 0,
+    "复核不再报后关闭", `close=${closeR.exit} out=${closeR.out.split("\n")[0]}`);
+  // 修复区再变化 ⇒ gate findings 子句 closure-basis-stale 拦
+  writeFileSync(join(fx2.d, "marker.txt"), "marker\nfixed\ndrifted\n");
+  fx2.g(["add", "-A"]);
+  fx2.g(["commit", "-qm", "fix-area drift"]);
+  const gate1 = fx2.lzy(["gate", "explain"]);
+  push("s7-stale-gate-blocked", gate1.exit !== 0 && /关闭依据/.test(gate1.out),
+    "关闭依据候选漂移命中修复区 ⇒ gate 拦", `exit=${gate1.exit} hasStale=${/关闭依据/.test(gate1.out)}`);
+  // reopen → 重走复核 → 重关 → gate 翻过
+  const ro = fx2.lzy(["finding", "reopen", fp8, "--note", "closure-basis-stale"]);
+  const rc2 = fx2.lzy(["review", "recheck", "--timeout-ms", "30000"], engineEnv("green", { LZY_STUB_LEDGER: "1" }));
+  const rc2Stem = lastStem(fx2);
+  const close2 = fx2.lzy(["finding", "close", fp8, "--outcome", "fixed", "--basis", "重开复核不再报", "--recheck", rc2Stem]);
+  const gate2 = fx2.lzy(["gate", "explain"]);
+  push("s7-reopen-reclose-ok", ro.exit === 0 && close2.exit === 0 && gate2.exit === 0,
+    "reopen→复核重关→gate findings 翻过（曾关闭事实保留）", `ro=${ro.exit} close=${close2.exit} gate=${gate2.exit}`);
+
+  return {
+    blocked: null,
+    assertions,
+    probeBudget: { preregisteredSessions: 0, usedSessions: 0, note: "全替身+机械资格腿（qualify/reuse 不 spawn——拍板 10），零真会话" },
+  };
+}
+
+// 指纹前 8 位取面（活跃 goal 未关闭集首条——qa 夹具单发现场景）
+function findingFingerprint8(fx) {
+  const r = fx.lzy(["finding", "list"]);
+  const m = /\n\s+([0-9a-f]{8}) \[/.exec("\n" + r.out);
+  if (!m) throw new Error(`finding list 无指纹：${r.out}`);
+  return m[1];
+}
+
 // ── 执行 ───────────────────────────────────────────────────────────────────
 // ── case: gate-matrix（零会话统一门反例矩阵；goal v040-m1-gate#N9，§8.1 M1 出口）────
 // 判据面：同一「已批准契约 + 真实成功回执」的 v2 基态上逐个注入八体缺陷，逐体调 `lzy gate explain`
@@ -1041,12 +1276,13 @@ if (process.env.LZY_STUB_TAINT === "1") fs.writeFileSync(path.join(cwd, "a.txt")
 const BT = String.fromCharCode(96);
 const fence = (obj) => BT + BT + BT + "json\\n" + JSON.stringify(obj) + "\\n" + BT + BT + BT;
 let response = "";
+const STUB_DUTY = process.env.LZY_STUB_DUTY ?? "review.general-correctness";
 if (leg === "green") {
-  response = fence({ duty: "review.general-correctness", verdict: "pass", findings: [], summary: "替身绿例：候选树小而干净，未发现通用正确性缺陷" });
+  response = fence({ duty: STUB_DUTY, verdict: "pass", findings: [], summary: "替身绿例：候选树小而干净，未发现通用正确性缺陷" });
 } else if (leg === "blocked") {
   // M3 finding-lifecycle 替身阻塞腿：确定性阻塞发现（title/location 可经 env 注入变体）
   const finding = { id: "F-1", title: process.env.LZY_STUB_TITLE ?? "授权撤回缺陷：已撤销令牌仍可放行", severity: "P1", blocking: true, location: process.env.LZY_STUB_LOC ?? "auth.js:12", evidence: "auth.js 的放行分支未查询撤回账（替身复现体）", summary: "替身阻塞例：授权撤回检查缺席" };
-  response = fence({ duty: "review.general-correctness", verdict: "blocked", findings: [finding], summary: "替身阻塞例：授权撤回检查缺席" });
+  response = fence({ duty: STUB_DUTY, verdict: "blocked", findings: [finding], summary: "替身阻塞例：授权撤回检查缺席" });
 } else if (leg === "parsefail") {
   response = "评审完成，但本腿不产出机器可解析的围栏。";
 } else if (leg === "contradiction") {
@@ -1615,8 +1851,10 @@ if (CASE === "capability") {
   result = await reviewRuntimeCase();
 } else if (CASE === "finding-lifecycle") {
   result = await findingLifecycleCase();
+} else if (CASE === "scope-qualification") {
+  result = await scopeQualificationCase();
 } else {
-  die(`未知 --case：${CASE}（capability|capability-meter|gate-matrix|review-runtime|finding-lifecycle）`);
+  die(`未知 --case：${CASE}（capability|capability-meter|gate-matrix|review-runtime|finding-lifecycle|scope-qualification）`);
 }
 
 const assertions = result.assertions ?? [];

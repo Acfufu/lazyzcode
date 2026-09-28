@@ -1288,6 +1288,7 @@ function assertScopeShape(rec, p) {
     if (rec.identity.contractHash !== null && !HEX64.test(rec.identity.contractHash)) bad("identity.contractHash 须为 64 hex 或 null");
     if (rec.identity.manifestHash !== null && !HEX64.test(rec.identity.manifestHash)) bad("identity.manifestHash 须为 64 hex 或 null");
     if (rec.identity.engine !== null && (typeof rec.identity.engine !== "string" || !rec.identity.engine)) bad("identity.engine 须为非空字符串或 null");
+    if (rec.identity.env !== undefined && rec.identity.env !== null && !HEX64.test(rec.identity.env)) bad("identity.env 须为 64 hex 或 null（M4 环境轴；旧档缺键=读侧兼容）");
     if (!rec.suite || typeof rec.suite !== "object" || Array.isArray(rec.suite)) bad("suite 须为对象");
     if (typeof rec.suite.file !== "string" || !rec.suite.file) bad("suite.file 缺席或空");
     if (!HEX64.test(rec.suite.suiteHash ?? "")) bad("suite.suiteHash 须为 64 hex");
@@ -1432,6 +1433,15 @@ export function matchScopeRule(path, rules) {
   return null;
 }
 
+// 逐路径判定与归因（拍板 4）：sharedInput 与声明内/动态判 invalidate、显式 unrelated 判 keep、
+// 未匹配判 unknown。分类器与资格挑战选路共用此单一事实源（防「选路判定」与「复用判定」两套口径漂移）。
+export function classifyScopePath(path, declaration) {
+  if (declaration.sharedInputs.includes(path)) return { path, matched: "shared-input", decision: "invalidate" };
+  const rule = matchScopeRule(path, declaration.rules);
+  if (!rule) return { path, matched: "unmatched", decision: "unknown" };
+  return { path, matched: rule.class, decision: rule.class === "unrelated" ? "keep" : "invalidate", pattern: rule.pattern };
+}
+
 // ── 文件级快照与差异（分类器的数据面）：内容 sha256 复合 map——与 hashTree 同口径但产出
 // 逐文件 map（hashTree 只产聚合，不动既有值；快照树哈希的既有记录保持可读可比）。
 
@@ -1500,12 +1510,7 @@ export function classifyDiffEntries(entries, declaration) {
   const out = [];
   for (const e of entries) {
     const paths = e.type === "renamed" ? [e.from, e.path] : [e.path];
-    const classify = paths.map((p) => {
-      if (declaration.sharedInputs.includes(p)) return { path: p, matched: "shared-input", decision: "invalidate" };
-      const rule = matchScopeRule(p, declaration.rules);
-      if (!rule) return { path: p, matched: "unmatched", decision: "unknown" };
-      return { path: p, matched: rule.class, decision: rule.class === "unrelated" ? "keep" : "invalidate", pattern: rule.pattern };
-    });
+    const classify = paths.map((p) => classifyScopePath(p, declaration));
     const decision = classify.some((x) => x.decision === "invalidate")
       ? "invalidate"
       : classify.some((x) => x.decision === "unknown")
@@ -1700,7 +1705,13 @@ function manifestHashOf(cwd, goal) {
   }
 }
 
-// 现行结构身份五轴（拍板 7 复用腿与 reuse 判定共用的单一事实源；gate 复用腿同源调用）。
+// 环境指纹（结构轴 env）：平台/架构/Node/TZ 复合哈希——资格与复用时点环境一致性判据
+//（挑战 env 轴的复用时点对应物）。值原文不落盘。
+export function scopeEnvFingerprint() {
+  return createHash("sha256").update(JSON.stringify({ platform: process.platform, arch: process.arch, node: process.version, tz: process.env.TZ ?? null })).digest("hex");
+}
+
+// 现行结构身份六轴（拍板 7 复用腿与 reuse 判定共用的单一事实源；gate 复用腿同源调用）。
 export function currentScopeIdentityAxes(cwd, goal, dutyId) {
   return {
     rulesHash: policyRulesHash(),
@@ -1709,6 +1720,7 @@ export function currentScopeIdentityAxes(cwd, goal, dutyId) {
     contractHash: goal?.contract?.contractHash ?? null,
     manifestHash: manifestHashOf(cwd, goal),
     engine: findEngine(),
+    env: scopeEnvFingerprint(),
   };
 }
 
@@ -1724,17 +1736,22 @@ function pickExistingByRules(baseMap, rules, cls) {
   return null;
 }
 
-// select：套件 hint（单 glob 或 hints 数组，首匹配优先）对仓现存文件（声明作者不可控的
-// ground truth 位）。
-function pickExistingByHint(baseMap, hints) {
+// select：套件 hint（单 glob 或 hints 数组，hint 序优先、路径字典序次之）对仓现存文件（声明作者
+// 不可控的 ground truth 位）。返回全部命中（去重保序），供「遗漏反例」选路复用。
+function listExistingByHint(baseMap, hints) {
   const list = typeof hints === "string" ? [hints] : Array.isArray(hints) ? hints : [];
+  const out = [];
+  const seen = new Set();
   for (const h of list) {
     const re = globToRegExp(h);
     for (const p of Object.keys(baseMap).sort()) {
-      if (re.test(p)) return p;
+      if (!seen.has(p) && re.test(p)) {
+        seen.add(p);
+        out.push(p);
+      }
     }
   }
-  return null;
+  return out;
 }
 
 function mutateAppend(fx, rel) {
@@ -1778,7 +1795,17 @@ function runChallengeSuite({ candDir, baseMap, declaration, suite }) {
           return mk(observed, observed === c.expect, path);
         }
         if (c.axis === "missed-dependency" || c.axis === "check-script" || c.axis === "lockfile") {
-          let path = c.path ?? (c.axis === "lockfile" ? declaration.sharedInputs.find((s) => baseMap[s] !== undefined) : null) ?? pickExistingByHint(baseMap, c.hints ?? c.hint);
+          const matches = listExistingByHint(baseMap, c.hints ?? c.hint);
+          // missed-dependency=遗漏反例轴：hint 命中集里优先取「声明显式判 unrelated」者注入——越界
+          // 声明（把依赖制品划出范围）必被点名拒。无此类命中时回落首个命中：未匹配判 unknown⇒
+          // invalidate（保守回退语义），即「漏声明」不构成反例，只有「划错类」才是。
+          const counterexample = c.axis === "missed-dependency" ? matches.find((p) => classifyScopePath(p, declaration).decision === "keep") : undefined;
+          const path =
+            c.path ??
+            (c.axis === "lockfile" ? declaration.sharedInputs.find((s) => baseMap[s] !== undefined) : null) ??
+            counterexample ??
+            matches[0] ??
+            null;
           if (!path) {
             return mk(c.axis === "lockfile" ? "no-shared-input-file（声明的 sharedInputs 均不在仓内）" : "hint-no-match（套件 hint 对仓无现存文件——套件与仓不匹配）", false);
           }
@@ -1916,6 +1943,7 @@ export async function qualifyReviewScope(cwd, { runId, scopeDecl }, deps = {}) {
       contractHash: goal?.contract?.contractHash ?? null,
       manifestHash,
       engine: findEngine(),
+      env: scopeEnvFingerprint(),
     },
     suite: { file: suiteFileRel, suiteHash: challengeSuiteHash(suite), procedureVersion: suite.procedureVersion },
     granted,

@@ -32,3 +32,6 @@ pnpm-lock.yaml
 
 # npm 误装再生锁文件（本仓零依赖根包；2026-09-25 意外 npm install ai 事故后升 ignore，根锚定不涉 scripts/docs-preview/ 独立依赖）
 /package-lock.json
+
+# video-agent-kit 插件工件目录（外来插件运行产物，不入库；M4 拍板 12——finish 完整性闸门卫生）
+.video_agent/

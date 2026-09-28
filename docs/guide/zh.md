@@ -586,13 +586,15 @@ lzy loop budget init|spend|remaining  运行预算（墙钟+积分双硬顶；AD
 lzy loop status                 进度、下一步、证据新鲜度、tier/subjects/快照
 lzy policy show|explain         策略身份与义务集解释（0.4.0 M1；v1 目标显示「政策裁决不适用」）
 lzy gate explain                统一只读门逐义务解释+快照哈希（blocked 退出码非 0）
-lzy review run|list|show|recheck  受控独立评审运行器（0.4.0 M2/M3）：run=隔离 HOME+候选快照真实评审落档
-                                （0=pass 且有效/1=blocked·invalid/2=用法/3=前置不具备不 spawn）；
-                                list/show=只读枚举与逐字段面；recheck=独立复核+闭候选对账
-lzy finding list|show|resolve-request|close|diagnose|relink
-                                发现账本（0.4.0 M3）：未关闭阻塞发现拦 finish 且跨 reset/supersede/
+lzy review run|list|show|recheck|qualify|reuse  受控独立评审运行器+范围资格复用（0.4.0 M2/M3/M4）：run=隔离 HOME+候选快照
+                                真实评审落档（0=pass 且有效/1=blocked·invalid/2=用法/3=前置不具备不 spawn）；
+                                list/show=只读枚举与逐字段面；recheck=独立复核+闭候选对账；
+                                qualify=声明范围跑十轴对抗挑战；reuse=复用适用性逐路径分类
+lzy finding list|show|resolve-request|close|diagnose|relink|reopen
+                                发现账本（0.4.0 M3/M4）：未关闭阻塞发现拦 finish 且跨 reset/supersede/
                                 别名存续；关闭唯 resolve-request→recheck→close（basis 必填）；
-                                连续两次无效修复翻 diagnosis-required（diagnose 记根因后重置）
+                                连续两次无效修复翻 diagnosis-required（diagnose 记根因后重置）；
+                                reopen=关闭依据失效（closure-basis-stale）时的受控重入
 lzy policy reassess <义务id> --impact … --cancel-reason … --basis …
                                 额外义务独立复判取消（0.4.0 M3，ADR-0033）：baseline/推导仍含/
                                 未解决阻塞发现三拒面

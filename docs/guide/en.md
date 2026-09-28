@@ -749,9 +749,17 @@ lzy loop budget init|spend|remaining  drive budget (wall-clock + points double c
 lzy loop status                 progress, next step, evidence freshness, tier/subjects/snapshot
 lzy policy show|explain         policy identity & obligation set explainer (0.4.0 M1; v1 goals print "not applicable")
 lzy gate explain                unified read-only gate: per-obligation verdicts + snapshot hash (blocked exits non-zero)
-lzy review run|list|show        controlled independent review runner (0.4.0 M2): run = real review session on
-                                isolated HOME + candidate snapshot, verdict on record (0=pass&valid/1=blocked·invalid/
-                                2=usage/3=precondition, no spawn); list/show = read-only enumeration & field view
+lzy review run|list|show|recheck|qualify|reuse  controlled independent review runner + scope qualification/reuse (0.4.0 M2/M3/M4):
+                                run = real review session on isolated HOME + candidate snapshot, verdict on record
+                                (0=pass&valid/1=blocked·invalid/2=usage/3=precondition, no spawn);
+                                list/show = read-only enumeration & field view; recheck = independent re-verification
+                                + close-candidate reconciliation; qualify = declare scope & run the ten-axis
+                                adversarial suite; reuse = path-by-path reuse applicability
+lzy finding list|show|resolve-request|close|diagnose|relink|reopen
+                                findings ledger (0.4.0 M3/M4): unclosed blocking findings block finish and survive
+                                reset/supersede/rename; closure only via resolve-request → recheck → close (basis
+                                required); two consecutive invalid fixes flip diagnosis-required (diagnose resets);
+                                reopen = controlled re-entry when the closure basis went stale (closure-basis-stale)
 lzy loop verify                 evidence freshness audit (exit 1 = stale/unbound/no goal); per-tree head/dirty lines
 lzy step done <ID> [--note <t>] [--evidence <t>] [--evidence-file <f>]…
 lzy loop finish                 final gate: all done + fresh composite fingerprint + all {host}∪subjects trees clean; atomic archive

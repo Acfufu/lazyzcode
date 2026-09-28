@@ -58,7 +58,7 @@ zpigeon-ios `08ebd3ea`。
 
 | 仓 | base 运行 | 资格 | 复用（无关 / 声明内 / 未知） | 越界声明 | 字节不变 | 结论 |
 |---|---|---|---|---|---|---|
-| lazyzcode `54cb376` | valid · metered · pass（3.14 分） | granted 10/10 | applicable `docs/_config.yml` / fallback + 重评 valid metered pass（2.06 分）/ fallback 点名 | REJECTED（missed-dependency @`.claude-plugin/marketplace.json`） | base ✓ 资格档 ✓ | **齐备** |
+| lazyzcode `54cb376` | valid · metered · pass（3.14 分） | granted 10/10 | applicable `docs/_config.yml` / fallback + 重评 valid metered **blocked**（2.06 分：两条 P1=inputPaths 缺口实体，见 §5④）/ fallback 点名 | REJECTED（missed-dependency @`.claude-plugin/marketplace.json`） | base ✓ 资格档 ✓ | **齐备**（机制正反例齐备；重评 blocked 读数如实转录，实体处置见 §5④） |
 | openchamber `63bd5070c` | valid · metered · pass（6.85 分） | granted 10/10 | applicable `docs/.gitkeep` / fallback + 重评 valid metered pass（6.05 分）/ fallback 点名 | REJECTED（missed-dependency @`.openchamber/project.json`） | base ✓ 资格档 ✓ | **齐备** |
 | zpigeon-ios `08ebd3ea` | valid · metered · pass（0.88 分） | granted 10/10 | applicable `docs/adr/0001-…md` / fallback + 重评 valid metered pass（1.31 分）/ fallback 点名 | REJECTED 三轴（in-scope + missed-dependency + rename-delete @`ZPigeon/Assets.xcassets/AccentColor.colorset/Contents.json`） | base ✓ 资格档 ✓ | **齐备** |
 
@@ -80,6 +80,10 @@ zpigeon-ios `08ebd3ea`。
 | ① | 真会话恒 `metering-absent`（V08 不可达） | 引擎账本=WAL 库；干净关闭后 SQLite 移除 `-wal/-shm`，`sqlite3 -readonly` 恒拒（CANTOPEN 14）⇒ `queryHostDb` 返 null ⇒ metering absent（不算零）⇒ 运行 invalid。隔离夹具从未真跑引擎（两半只见 delete 日志模式桩库），故 M2 计量缝 CI 全绿而真实面全盲 | 修复前真会话：verdict=pass 但 validity=invalid(metering-absent)（`n10-meterseam/host-leg-blocked-run.json`）；契约测试 1 失败 | `immutable=1` 只读回退+非静寂守卫（`-wal` 有内容不回退，防读旧快照）；契约测试 3/3 通过 | 779d607 |
 | ② | 含相对符号链接仓资格挑战必拒（且 invalidate 轴假过） | 见 §4 | openchamber 真实读数（首跑 `invalidate @docs/.gitkeep`，在档于本报告 §4 与 `artifacts/v040/M4/openchamber/`） | 契约测试：相对链接目标串保字节 + 含链接仓可 granted（`test/review-scope.contract.test.js`）；红半=改前树上该测试失败（`n10-meterseam/red-symlink-pre-fix.txt`） | b71b037 |
 | ③ | 越界声明未被遗漏反例轴抓（N8 首跑暴露） | missed-dependency 轴按 hint 首命中选路，命中的是被声明的共享输入 ⇒ 越界 hole 未被注入 | qa 首跑：`s3-qualify-overbroad-rejected` 失败（exit=0 GRANTED） | 选路改「优先取声明显式判 unrelated 的 hint 命中」为遗漏反例（`classifyScopePath` 单一事实源）；十轴对表 + 越界点名拒 | 6322339 |
+| ④ | 自仓 check 声明 inputPaths 缺口（三仓 host 腿重评 blocked 的实体；收口自审 P2） | test-suite 漏 `scripts/`/`docs/`/CHANGELOG/README/LICENSE/CI 定义、help-smoke 漏 `core/`（cli/lzy.js 装载期静态导入全部核心模块）——「依赖遗漏→旧绿被复用」可复现路径（M1 期既有配置面，非 M4 新引入）；N12 报告初版曾把该 blocked 重评误记为 pass（收口自审 F-1 抓获，本节连同 §4/§6 如实转录） | 三仓 host 腿重评真会话 verdict=blocked·2×P1（`artifacts/v040/M4/lazyzcode/reuse-inscope-and-reeval.stdout.txt` + `summary.json` reeval 读数在案） | manifest inputPaths 补全（`lzy.project.json`：test-suite +scripts/docs/CHANGELOG/双语 README/LICENSE/.github/lzy.project.json；help-smoke +core/lzy.project.json）；check 回执对现行候选复验 | N11 收口修复批 |
+| ⑤ | closeFinding 把 recheck 运行 slug 绑死账本 slug（收口自审 P1；N6 修 M3 F-3 时自引入） | relink 改名后复核运行恒记现行 slug ⇒ 旧账发现 close 恒拒——改名目标的发现永不可关闭，gate findings 子句永久阻塞且修复指路不可执行 | 契约测试：relink 后以现行 slug 复核引用 close 恒拒（改前树红） | slug 轴改别名家族判（`findingsSlugFamily`：slug 别名闭包 ∪ 反向把闭包成员挂为别名的账）+改名后关闭回归用例（`test/review-findings.contract.test.js`） | N11 收口修复批 |
+
+同批小修（收口自审 P3×3）：guide 双语「CLI 参考」清单补 M4 命令（qualify/reuse/reopen 等，消除同文件两清单分叉）；`manifestHashOf` 注释与实现对齐（catch-all 归 null 的保守语义如实注明）；`core/review.js` rename-delete 轴死代码块删除。
 
 ## 6. 预算账（真实会话，超注如实记账）
 
@@ -89,8 +93,10 @@ zpigeon-ios `08ebd3ea`。
   zpigeon 2）；修复 ① ② 后复跑 4 次（openchamber 2 + zpigeon 2，host 腿读数不动）。
   超注成因=**两条真缺陷**（计量缝 WAL、挑战夹具符号链接）各需一轮复跑 + 一次超时探针；失败即数据，
   不掩盖（模板见 M0 报告 §5 口径）。
-- 计量读数（points，来自逐段 sessionId usage）：host base 3.14 / host 重评 2.06 / openchamber base
-  3.46（其余见 `artifacts/v040/M4/summary.json` 与 F4 证据）。
+- 计量读数（points，来自逐段 sessionId usage）：host base 3.14 / host 重评 2.06（verdict=blocked——
+  实体见 §5④，初版本节曾误记为 pass 且 openchamber 误记 3.46，收口自审 F-1 抓获后改正）/ openchamber
+  base 6.85 / openchamber 重评 6.05 / zpigeon base 0.88 / zpigeon 重评 1.31（其余见
+  `artifacts/v040/M4/summary.json` 与 F4 证据）。
 
 ## 7. 威胁边界（如实声明不冒充）
 
@@ -113,6 +119,13 @@ zpigeon-ios `08ebd3ea`。
 在收口提交随最终对照结论落（M3 先例），本阶段文档面已落：AGENTS §4 三行翻面、docs/decisions.md
 全表同步、CHANGELOG M4 条目、guide 双语（qualify/reuse/reopen 用法）。批量 close（拍板 11）不实现，
 逐条 close 可用——取舍如实记录于此。
+
+**收口自审轮（attempt 3 a3.r1；1800s 墙钟预算 3/3 内第 3 次）**：valid · metered · 16.20 分
+（sess_98b543a8）·verdict=**blocked**——六发现=2 P1 blocking（报告误记〔本节上文已改正，即 §5④
+的转录面〕+ closeFinding slug 绑死回归〔§5⑤〕）+1 P2（inputPaths 实体〔§5④〕）+3 P3（同批小修）。
+gate findings 子句正确拦截（机器门按设计挡下假收官面）；修复批落地后按条目细则 R4 重采 F1-F7——
+F7 重跑第 4/5 次真会话=**超注 2**（如实记账），两条 P1 经 resolve-request→recheck→close 通道闭环，
+recheck=修复后现行候选的新评审运行。终账随收口提交落。
 
 ## 9. M5 输入清单
 

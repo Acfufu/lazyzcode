@@ -4,7 +4,7 @@
 // 机械挑战不 spawn），CI 可跑。结构沿 review-findings.contract.test.js。
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync, readdirSync, readlinkSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -205,6 +205,27 @@ describe("②声明验形与分类器", () => {
 });
 
 describe("③qualify 双面", () => {
+  test("相对符号链接仓：挑战夹具保目标串（不得改写为绝对）⇒ 仍可 granted", async () => {
+    const d = fixture();
+    try {
+      // 真实仓常见形态（N10 缺陷 ② openchamber 实测）：根级相对链接 + 目录链接
+      writeFileSync(join(d, "AGENTS.md"), "# agents\n");
+      symlinkSync("AGENTS.md", join(d, "CLAUDE.md"));
+      symlinkSync("util.js", join(d, "src", "doc-link.md")); // 指向同目录 src 文件（appending 经链命中声明内）
+      commit(d, "symlinks");
+      saveBaseRun(d);
+      // 前提：物化候选保链接（git archive/tar 面）
+      assert.equal(readlinkSync(join(d, "CLAUDE.md")), "AGENTS.md");
+      const res = await qualifyReviewScope(d, { runId: "fx.a1.r1", scopeDecl: DECL }, { dutyEntry: DUTY_ENTRY });
+      assert.equal(res.granted, true, res.failed.map((c) => `${c.axis}:${c.observed}`).join("; "));
+      // 反向：canary-keep 轴须给出 keep（污染若在则恒 invalidate——缺陷 ② 的可用判据）
+      const canary = res.record.challenges.find((c) => c.axis === "canary-keep");
+      assert.equal(canary.ok, true, canary.observed);
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
   test("granted 面：真随包套件注入下逐轴全过", async () => {
     const d = fixture();
     try {

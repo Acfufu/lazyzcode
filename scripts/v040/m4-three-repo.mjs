@@ -193,7 +193,10 @@ function runRepo(name) {
   // 声明档落夹具外（仓内=候选污染）
   const declPath = join(WORK_DIR, `${name}.decl.json`);
   writeFileSync(declPath, JSON.stringify(decl));
-  const overbroad = { ...decl, rules: [...decl.rules, { pattern: "**/*.json", class: "unrelated" }] };
+  // 越界声明=把依赖制品（json 面）划 unrelated。规则序=首匹配，故须**前置**——追加在 in-scope
+  // 宽模式（如 ZPigeon/**、packages/**）之后会被其先命中而完全无效（N10 首跑 zpigeon 实测：
+  // 追加版 granted=true 未被点名拒，leg 记 PARTIAL）。
+  const overbroad = { ...decl, rules: [{ pattern: "**/*.json", class: "unrelated" }, ...decl.rules] };
   const overPath = join(WORK_DIR, `${name}.decl-overbroad.json`);
   writeFileSync(overPath, JSON.stringify(overbroad));
   say(`夹具就绪 files=${paths.length} tree=${leg.readings.fixtureTree.slice(0, 12)} inScope=${inScopeFile} unrelated=${unrelatedFile} shared=${shared}`);
@@ -291,8 +294,17 @@ for (const name of REPOS) {
   console.log(`\n== ${name} ==`);
   legs.push(runRepo(name));
 }
-const summary = { schemaVersion: 1, at: new Date().toISOString(), timeoutMs: TIMEOUT_MS, legs };
-writeFileSync(join(OUT_DIR, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
-console.log(`\n[m4-3r] 汇总：`);
+// 汇总合并：单仓重跑（--repos 子集）不抹掉其它仓的在案读数
+const summaryPath = join(OUT_DIR, "summary.json");
+let prior = null;
+try {
+  prior = JSON.parse(readFileSync(summaryPath, "utf8"));
+} catch {
+  prior = null;
+}
+const priorLegs = Array.isArray(prior?.legs) ? prior.legs.filter((l) => !legs.some((n) => n.repo === l.repo)) : [];
+const summary = { schemaVersion: 1, at: new Date().toISOString(), timeoutMs: TIMEOUT_MS, legs: [...legs, ...priorLegs] };
+writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
+console.log(`\n[m4-3r] 汇总（本次跑 ${legs.length} 腿，合并后 ${summary.legs.length} 腿）：`);
 for (const l of legs) console.log(`  ${l.repo}: ${l.blocked ? `BLOCKED（${l.blocked}）` : l.ok ? "OK（三腿与越界拒面齐备）" : "PARTIAL"}`);
 console.log(`  → ${join(OUT_DIR, "summary.json")}`);

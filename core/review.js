@@ -1778,7 +1778,11 @@ function runChallengeSuite({ candDir, baseMap, declaration, suite }) {
           return mk(v.verdict === "fallback" ? "structural-invalidate" : "structural-kept(管线失效)", v.verdict === "fallback");
         }
         const fx = join(tmp, `ch-${i}`);
-        cpSync(candDir, fx, { recursive: true });
+        // verbatimSymlinks：缺省 false 会把相对链接目标改写成**绝对**路径串，而 buildFileMap
+        // 记 `symlink:<target>` ⇒ 含相对符号链接的真实仓每个挑战都掺入伪「modified」未知路径
+        // 污染（期望 keep 的 canary 轴必拒、期望 invalidate 的轴假过）——实测 openchamber
+        // （CLAUDE.md -> AGENTS.md、.claude/skills/* -> ../../.agents/skills/*，N10 缺陷 ②）。
+        cpSync(candDir, fx, { recursive: true, verbatimSymlinks: true });
         const classify = () => {
           const cur = buildFileMap(fx);
           const diff = diffFileMaps(baseMap, cur);

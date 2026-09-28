@@ -4,7 +4,7 @@
 // 且**只在库静寂时回退**（-wal 有内容不得读旧快照，宁降级 null）。
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -21,26 +21,30 @@ function walDb(dir, rows = 3) {
   return db;
 }
 
-test("hostdb/WAL 静寂：侧车缺席态 -readonly 恒拒而 immutable 回退读出内容", { skip: !HAS_SQLITE3 && "sqlite3 缺席" }, () => {
+test("hostdb/WAL 静寂：-shm 不可创建时 -readonly 恒拒而 immutable 回退读出内容", { skip: !HAS_SQLITE3 && "sqlite3 缺席" }, () => {
   const d = mkdtempSync(join(tmpdir(), "lzy-hostdb-"));
+  const ro = join(d, "ro");
   try {
-    const db = walDb(d);
-    // 复刻引擎关闭后的实态（真会话账本实测）：WAL 库 + 两侧车缺席。sqlite3 CLI 自建的库关闭后
-    // 会留下 0 字节 -wal 与 -shm（此时 -readonly 可读），故须显式移除方能复现缺陷前提。
+    mkdirSync(ro);
+    const db = walDb(ro);
+    // 构造与真引擎态等价且**确定**的失败前提：WAL 库 + 侧车缺席 + 连接不能创建 -shm。
+    // （真引擎账本实测态=两侧车缺席；此处用只读目录把「-shm 不可创建」钉成确定性条件——
+    // 缺省 -readonly 试图创建 -shm，不可得即 SQLITE_CANTOPEN 14，正是真会话 metering-absent 的机制。）
     rmSync(`${db}-wal`, { force: true });
     rmSync(`${db}-shm`, { force: true });
-    // 直连面确证缺陷可复现：plain -readonly 拒（SQLITE_CANTOPEN 14——回退存在的理由）
-    const plain = spawnSync("sqlite3", ["-readonly", "-json", db, "SELECT count(*) AS n FROM usage;"], { encoding: "utf8", timeout: 10_000 });
-    assert.notEqual(plain.status, 0, "plain -readonly 在侧车缺席的 WAL 库上应被拒（SQLITE_CANTOPEN）");
-    // 被测面：回退后读出真实内容
-    const rows = queryHostDb(db, "SELECT count(*) AS n FROM usage;");
-    assert.deepEqual(rows, [{ n: 3 }], `WAL 静寂回退未读出内容：${JSON.stringify(rows)}`);
-    // 空结果集与「不可读」可辨（[] vs null）
-    assert.deepEqual(queryHostDb(db, "SELECT count(*) AS n FROM usage WHERE session_id='absent';"), [{ n: 0 }]);
+    chmodSync(ro, 0o555);
+    try {
+      const plain = spawnSync("sqlite3", ["-readonly", "-json", db, "SELECT count(*) AS n FROM usage;"], { encoding: "utf8", timeout: 10_000 });
+      assert.notEqual(plain.status, 0, "plain -readonly 在 -shm 不可创建时应被拒（SQLITE_CANTOPEN）");
+      // 被测面：immutable 回退读出真实内容
+      assert.deepEqual(queryHostDb(db, "SELECT count(*) AS n FROM usage;"), [{ n: 3 }], "WAL 静寂回退未读出内容");
+    } finally {
+      chmodSync(ro, 0o755);
+    }
+    // 空结果集与「不可读」可辨（[] vs null）；回退路径零写入（库文件字节数不变）
     assert.deepEqual(queryHostDb(db, "SELECT session_id FROM usage WHERE session_id='nope';"), []);
-    // 回退路径零写入：库文件字节数不变（immutable=1 语义）
     const before = statSync(db).size;
-    queryHostDb(db, "SELECT count(*) AS n FROM usage;");
+    assert.deepEqual(queryHostDb(db, "SELECT count(*) AS n FROM usage;"), [{ n: 3 }]);
     assert.equal(statSync(db).size, before);
   } finally {
     rmSync(d, { recursive: true, force: true });

@@ -1670,7 +1670,7 @@ async function findingLifecycleCase() {
   push("a6-resolve-denied", denied.exit === 1 && /diagnosis-required/.test(denied.out), "diagnosis-required 态 resolve 拒（exit 1）", `exit=${denied.exit} out=${denied.out.slice(0, 100)}`);
   const dg = A.lzy(["finding", "diagnose", fpA, "--root-cause", "公共放行函数未接撤回账（连续两轮同一缺陷）"]);
   push("a7-diagnose-reset", dg.exit === 0, "diagnose 记根因重置（exit 0）", `exit=${dg.exit}`);
-  writeFileSync(join(A.d, "auth.js"), "function authorize(token) {\n  if (revokedSet.has(token)) return { ok: false };\n  return { ok: true, token };\n}\n");
+  writeFileSync(join(A.d, "auth.js"), "const revokedSet = new Set();\n\nfunction authorize(token) {\n  if (revokedSet.has(token)) return { ok: false };\n  return { ok: true, token };\n}\n");
   A.g(["add", "-A"]);
   A.g(["commit", "-qm", "fix: revoke check"]);
   // F1 rebind（未变面重录——marker.txt 在 fix 提交后的 HEAD 树仍在场；finish 证据新鲜度要求）
@@ -1801,7 +1801,7 @@ async function findingLifecycleCase() {
   const R2 = readyGoal(fixture("real-close"));
   runStub(R2, "blocked");
   const fpR2 = fp8Of(R2);
-  writeFileSync(join(R2.d, "auth.js"), "function authorize(token) {\n  if (revokedSet.has(token)) return { ok: false };\n  return { ok: true, token };\n}\n");
+  writeFileSync(join(R2.d, "auth.js"), "const revokedSet = new Set();\n\nfunction authorize(token) {\n  if (revokedSet.has(token)) return { ok: false };\n  return { ok: true, token };\n}\n");
   R2.g(["add", "-A"]);
   R2.g(["commit", "-qm", "fix: revoke check"]);
   // F1 rebind（未变面重录——finish 证据新鲜度要求）

@@ -812,6 +812,15 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
   let pkgHash = null;
   let snapHash = null;
   let reserve = null; // N3 #11：锁内分配——预留成功前失败（锁忙/孤儿目录拒）无运行可落档
+  // 收口自审 r4（a4.r2 P1）作用域上提：spawned/sessionId/result 等被 catch 引用（锁忙判
+  // `!spawned`、interrupted 档取值），原声明在 try 块内 ⇒ catch 路径 ReferenceError——
+  // 锁忙前置拒（exit 3）与 F-7 落档语义整条不可达。声明上提到函数作用域（catch 可见）。
+  let spawned = false;
+  let run = null;
+  let sessionId = null;
+  let rawInfo = null;
+  let transcriptInfo = null;
+  let result = null;
   try {
     // N3 #11（M2 自审 F-5）写前缀单写者锁：reserve→输入包→候选快照→隔离→泄漏断言整段进
     // withLock——并发 review run 此前可交错序号/输入包（注释称单写者=loop 锁但代码未取）。
@@ -832,12 +841,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     if (!leak.ok) {
       failures.push(["leak", `输入包含在先运行标记：${leak.hits.map((h) => `${h.runId}/${h.kind}`).join("、")}（facts-only 违反，拍板 4）`]);
     }
-    let spawned = false;
-    let run = null;
-    let sessionId = null;
-    let rawInfo = null;
-    let transcriptInfo = null;
-    let result = null;
+
     const sessionMeta = []; // 逐会话（单次重跑=两会话）：{attempt, sessionId, transcript, rawText}
     if (failures.length === 0) {
       spawned = true;

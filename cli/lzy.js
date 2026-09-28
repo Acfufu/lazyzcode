@@ -1031,7 +1031,7 @@ function printHelp() {
   lzy review show <runId>                   逐字段+发现表+原始输出指针（只读）
   lzy review qualify <runId> --scope <声明JSON>
                                             评审范围资格挑战（0.4.0 M4，ADR-0032）：声明依赖范围+
-                                            五轴机械对抗验证；granted/拒绝双面落档
+                                            十轴机械对抗验证；granted/拒绝双面落档
                                             .lazyzcode/review-scope/；不 spawn 零积分；退出码：
                                             0=granted，1=拒绝（已落档），2=用法错，3=前置不具备
   lzy review reuse <runId>                  复用适用性判定（0.4.0 M4）：当前候选对 base 快照

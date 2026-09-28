@@ -17,7 +17,7 @@ import {
   resolveFindingsScope, listFindings, openBlockingFindings,
   FINDINGS_VERSION, DIAGNOSIS_REQUIRED_THRESHOLD,
 } from "../core/findings.js";
-import { runReview, preflightReview, BASELINE_DUTY_ID, REVIEW_VERSION, dutyTemplateHash, reserveRun, materializeCandidate, saveReviewRun } from "../core/review.js";
+import { runReview, preflightReview, BASELINE_DUTY_ID, REVIEW_VERSION, dutyTemplateHash, reserveRun, materializeCandidate, saveReviewRun, ReviewPreflightError } from "../core/review.js";
 import { candidateIdentity } from "../core/verify.js";
 import { createHash } from "node:crypto";
 import { evaluateGate } from "../core/gate.js";
@@ -344,4 +344,24 @@ describe("⑦评审预算执法（N9）：入账/分项/超限拒/无契约不�
       rmSync(d3, { recursive: true, force: true });
     }
   });
+});
+
+// ── 收口自审 r4（a4.r2 P1）锁忙作用域回归：catch 引用的 spawned 曾声明在 try 块内
+// ⇒ 锁忙路径 ReferenceError，exit 3 前置拒与 F-7 落档语义不可达。声明上提后，预置
+// 无主 .lock 必等满 LOCK_WAIT ⇒ LoopError ⇒ catch 转 ReviewPreflightError(review-busy)。
+test("锁忙前置拒：无主 .lock ⇒ review-busy 前置拒（非 ReferenceError）", async () => {
+  const d = fixture();
+  try {
+    mkdirSync(join(d, ".lazyzcode", "loop", ".lock"), { recursive: true }); // 无 owner.json=持锁者必等满 LOCK_WAIT 后 LoopError
+    let err = null;
+    try {
+      await runReview(d, { duty: BASELINE_DUTY_ID, timeoutMs: 30000, deps: { preflight: async () => ({ budget: null }) } });
+    } catch (e) {
+      err = e;
+    }
+    assert.ok(err instanceof ReviewPreflightError, `须为 ReviewPreflightError（前置型拒 exit 3），实得 ${String(err)}`);
+    assert.equal(err.reason, "review-busy");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
 });

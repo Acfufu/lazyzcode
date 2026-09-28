@@ -183,6 +183,34 @@ describe("③relink：闭包并集/环拒/穿越拒", () => {
       rmSync(d, { recursive: true, force: true });
     }
   });
+
+  test("relink 改名后旧账发现仍可经现行 slug 复核关闭（收口自审 a3.r1 F-2 回归）", () => {
+    const d = fixture();
+    try {
+      const disp = recordFindingSightings(d, "oldslug", { runId: "oldslug.a1.r1", attempt: 1, at: at(0, 0), findings: [SIGHT()] });
+      const fp = disp[0].fingerprint;
+      relinkFindings(d, "oldslug", "newslug", { at: at(0, 1) });
+      requestResolve(d, "oldslug", fp, { at: at(0, 2) });
+      // 复核运行恒记现行 slug（newslug）——旧账（oldslug）关闭须放行（严格相等曾恒拒）
+      closeFinding(d, "oldslug", fp, {
+        outcome: "fixed",
+        basis: "修复后现行 slug 复核不再报",
+        recheck: { runId: "newslug.a1.r2", valid: true, isRecheck: true, slug: "newslug", attempt: 1, dutyId: "review.general-correctness", reportedFingerprints: [], at: at(0, 3) },
+        at: at(0, 4),
+      });
+      assert.equal(loadFindingsFile(d, "oldslug").findings[fp].status, "closed-fixed");
+      // 家族外 slug 仍拒（家族判不放穿无关账）
+      recordFindingSightings(d, "oldslug", { runId: "oldslug.a2.r1", attempt: 2, at: at(1, 0), findings: [SIGHT()] });
+      assert.equal(loadFindingsFile(d, "oldslug").findings[fp].status, "open");
+      requestResolve(d, "oldslug", fp, { at: at(1, 1) });
+      assert.throws(
+        () => closeFinding(d, "oldslug", fp, { outcome: "fixed", basis: "x", recheck: { runId: "stranger.a1.r1", valid: true, isRecheck: true, slug: "stranger", attempt: 1, dutyId: "review.general-correctness", reportedFingerprints: [], at: at(1, 2) }, at: at(1, 3) }),
+        /别名家族/,
+      );
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("④门 findings 子句成对：open 拦/close 过/损坏 fail-closed", () => {

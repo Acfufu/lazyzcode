@@ -1695,7 +1695,9 @@ export function dutySuiteHash(dutyId) {
 }
 
 // 清单哈希取值（资格/复用的结构身份轴）：goal 缺席时以最小合成目标跑身份函数
-//（computePolicyIdentity 只读 manifest/contract 面）——不吞错，清单解析失败如实上抛由调用方定。
+//（computePolicyIdentity 只读 manifest/contract 面）。实现为 catch-all 归 null（收口自审
+// a3.r1 F-5 对齐注释）：解析失败不外抛——双失败=null==null 由 gate policyIdentity 子句的
+// manifestInvalid 兜底阻塞；单侧失败=身份漂移 ⇒ 复用判 fallback，保守方向。
 function manifestHashOf(cwd, goal) {
   try {
     const id = computePolicyIdentity(cwd, goal ?? { slug: "", attempt: 0, version: 2 });
@@ -1831,10 +1833,6 @@ function runChallengeSuite({ candDir, baseMap, declaration, suite }) {
           const dest = `${path}.scopechall-moved`;
           // rename 注入
           let obsRename;
-          {
-            const cur = buildFileMap(fx);
-            void cur;
-          }
           {
             // 单挑战内两注入各自独立判定：先 rename 后还原再 delete
             renameSyncSafe(join(fx, path), join(fx, dest));

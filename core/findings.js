@@ -8,6 +8,7 @@
 // diagnosis-required，diagnose 记录根因重置计数后方可再入关闭通道。relink 别名链（V06 别名变化）：
 // 查询面按 slug 的别名闭包并集读，别名只增不改——历史不改写。
 import { createHash } from "node:crypto";
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { loadFamilyFile, saveFamilyFile } from "./queue.js";
 
@@ -172,6 +173,33 @@ export function resolveFindingsScope(cwd, slug) {
   return out;
 }
 
+// ── 别名家族（双向闭包；closeFinding 的 recheck slug 轴用，收口自审 a3.r1 F-2）：
+// slug 自身+别名闭包 ∪ 把闭包成员挂为别名的账。relink 只在现行账记 aliases（旧账不知道新名），
+// 单向 closure 从旧账侧够不到现行 slug——反向扫描补齐。闭包内档损坏 fail-closed 抛出
+// （与 resolveFindingsScope 同口径）；家族外档读侧失败跳过（无成员关系可证，跳过=如实读）。──
+function findingsSlugFamily(cwd, slug) {
+  const family = new Set(resolveFindingsScope(cwd, slug));
+  let names = [];
+  try {
+    names = readdirSync(findingsDir(cwd));
+  } catch {
+    names = [];
+  }
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    const s = name.slice(0, -".json".length);
+    if (family.has(s)) continue;
+    let rec = null;
+    try {
+      rec = loadFindingsFile(cwd, s);
+    } catch {
+      continue;
+    }
+    if (rec && Array.isArray(rec.aliases) && rec.aliases.some((a) => family.has(a))) family.add(s);
+  }
+  return [...family];
+}
+
 // 跨作用域并集读：每条目带 originSlug；closed 是否含入由调用方定。
 export function listFindings(cwd, slug, { includeClosed = true } = {}) {
   const out = [];
@@ -308,8 +336,11 @@ export function closeFinding(cwd, slug, fingerprint, { outcome, basis, recheck, 
   if (!rec?.findings[fingerprint]) throw new FindingsError(`发现不在账：${slug} ${fingerprint.slice(0, 8)}`);
   const e = rec.findings[fingerprint];
   // M4 F-3：recheck 引用补绑目标代次——跨 slug/attempt 的在案 valid 运行不得冒充本发现复核。
-  if (recheck.slug !== null && recheck.slug !== undefined && recheck.slug !== slug) {
-    throw new FindingsError(`recheck 运行代次不符：run slug=${recheck.slug} ≠ 账本 ${slug}——close 只认同目标代次的独立复核`);
+  // 收口自审修正（a3.r1 F-2）：slug 轴按别名家族判（relink 改名后复核运行恒记现行 slug，
+  // 严格相等会把旧账发现的关闭通道永久堵死、gate 修复指路不可执行）——家族={slug 别名闭包}
+  // ∪{把闭包成员挂为别名的账}（findingsSlugFamily）。
+  if (recheck.slug !== null && recheck.slug !== undefined && !findingsSlugFamily(cwd, slug).includes(recheck.slug)) {
+    throw new FindingsError(`recheck 运行代次不符：run slug=${recheck.slug} ∉ 账本 ${slug} 的别名家族——close 只认同家族代次的独立复核`);
   }
   if (expectedAttempt != null && recheck.attempt !== null && recheck.attempt !== undefined && Number(recheck.attempt) !== Number(expectedAttempt)) {
     throw new FindingsError(`recheck 运行代次不符：attempt ${recheck.attempt} ≠ 目标 attempt ${expectedAttempt}——跨代次复核须重走（lzy review recheck）`);

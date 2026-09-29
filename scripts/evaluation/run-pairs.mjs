@@ -562,11 +562,12 @@ async function main() {
   const ctx = { batch: frozen, outDir, pkgBaselineCli: join(pkgBaseline, "cli", "lzy.js"), pkgCandidateCli: join(pkgCandidate, "cli", "lzy.js") };
   const journal = loadJournal(outDir);
   const doneKeys = new Set(journal.lines.map((l) => `${l.record?.seq ?? l.seq ?? ""}`)); // 信封重构后 seq 在 record 内（resume-skip 缺陷修复：曾读 l.seq=undefined 致整批重跑）
+  const forceSeqs = new Set(String(f["force-seq"] ?? "").split(",").map((x) => x.trim()).filter(Boolean)); // §9.1 失效配对整对重跑：--force-seq 1,2,3（旧行保留=尝试账）
   let executed = 0;
   const maxRuns = Number.isInteger(Number(f["max-runs"])) ? Number(f["max-runs"]) : Infinity;
   for (const cell of frozen.sequence) {
     if (executed >= maxRuns) break;
-    if (doneKeys.has(String(cell.seq))) continue;
+    if (doneKeys.has(String(cell.seq)) && !forceSeqs.has(String(cell.seq))) continue;
     if (typeof f.arm === "string" && cell.arm !== f.arm) continue;
     if (typeof f.repo === "string" && cell.repo !== f.repo) continue;
     console.log(`[run-pairs] ▶ seq=${cell.seq} ${cell.repo}/${cell.taskId} t${cell.trial} ${cell.arm}`);

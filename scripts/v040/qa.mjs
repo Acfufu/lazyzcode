@@ -1040,7 +1040,9 @@ async function gateMatrixCase() {
     );
   }
 
-  // 基态正判腿：唯一 unsatisfied 义务=评审底线（逐义务判定可达；其余义务/子句全 satisfied）
+  // 基态正判腿：unsatisfied 全为 review 型义务（底线恒在；M4 N4 职责翻面后夹具声明 check+ci
+  // ⇒ 推导 review.verification-deps 同列——M4 收口树 d4c5806 复现同败取证，N7 断言对齐职责表
+  // v4 基态义务集）；非 review 型义务与子句全 satisfied。
   const fxBase = fixture("base");
   const geBase = fxBase.lzy(["gate", "explain"]);
   const baseParsed = parseGate(geBase.out);
@@ -1050,13 +1052,14 @@ async function gateMatrixCase() {
   push(
     "GATE-base-review-only",
     geBase.exit !== 0 &&
-      baseUnsat.length === 1 &&
-      baseUnsat[0].id === "review.general-correctness" &&
+      baseUnsat.length >= 1 &&
+      baseUnsat.every((o) => o.type.startsWith("review")) && // 渲染面 baseline 带「·底线」后缀
+      baseUnsat.some((o) => o.id === "review.general-correctness") &&
       checkOb?.state === "satisfied" &&
       ciOb?.state === "satisfied" &&
       /三轴满足/.test(checkOb.reasons.join(" ")) &&
       baseParsed.clauses.filter((c) => !c.ok).length === 0,
-    "基态（真实成功回执全满足）：唯一 unsatisfied=评审底线；check/ci 义务 satisfied（三轴满足）且无失败子句",
+    "基态（真实成功回执全满足）：unsatisfied 全为 review 型义务（底线+推导专项）；check/ci 义务 satisfied（三轴满足）且无失败子句",
     `unsatisfied=[${baseUnsat.map((o) => o.id).join(",")}] check=${checkOb?.state} ci=${ciOb?.state} failedClauses=[${baseParsed.clauses.filter((c) => !c.ok).map((c) => c.name).join(",")}]`,
     "lzy gate explain 活体 stdout（base 行；逐义务判定可达的证明）",
   );
@@ -1522,13 +1525,13 @@ async function migrationRecoveryCase() {
   for (const phase of ["backup", "stage", "switch"]) {
     const rootP = join(caseDir, `legD-${phase}`);
     cpSync(fx0, rootP, { recursive: true, verbatimSymlinks: true });
-    const stateFirstShaP = existsSync(join(rootP, ".lazyzcode", "state.json")) ? sha256Of(join(rootP, ".lazyzcode", "state.json")) : null;
     const kill = await killApplyAtPhase(rootP, home0, phase);
+    const statePreRerunSha = existsSync(join(rootP, ".lazyzcode", "state.json")) ? sha256Of(join(rootP, ".lazyzcode", "state.json")) : null;
     const rerun = lzyC2(rootP);
     const jp = newestJournal(rootP);
     const lastPhase = jp ? JSON.parse(readFileSync(jp, "utf8").trim().split("\n").filter(Boolean).at(-1)).phase : null;
     const stateOk = existsSync(join(rootP, ".lazyzcode", "state.json")) && JSON.parse(readFileSync(join(rootP, ".lazyzcode", "state.json"), "utf8")).stateVersion === "0.4.0";
-    phaseResults.push({ phase, killed: kill.killed, killedAt: kill.lastPhase, rerunExit: rerun.exit, rerunOut: rerun.out.slice(0, 200), lastPhase, stateOk, stateFirstSha: stateFirstShaP, stateAfterSha: existsSync(join(rootP, ".lazyzcode", "state.json")) ? sha256Of(join(rootP, ".lazyzcode", "state.json")) : null });
+    phaseResults.push({ phase, killed: kill.killed, killedAt: kill.lastPhase, rerunExit: rerun.exit, rerunOut: rerun.out.slice(0, 200), lastPhase, stateOk, statePreRerunSha, stateAfterSha: existsSync(join(rootP, ".lazyzcode", "state.json")) ? sha256Of(join(rootP, ".lazyzcode", "state.json")) : null });
   }
   function lzyC2(root) {
     const r = spawnSync(process.execPath, [CLI040, "migrate", "apply", root], { cwd: root, encoding: "utf8", timeout: 300_000, env: { ...baseEnv, HOME: home0, USERPROFILE: home0 } });
@@ -1536,15 +1539,16 @@ async function migrationRecoveryCase() {
   }
   for (const x of phaseResults) {
     if (x.phase === "switch" && !x.killed && x.rerunExit === 0) {
-      // 赛完形态（提交点窗口亚毫秒）：重跑=幂等 no-op 且 state 字节不变——「提交点后不重放」活体等价面
+      // 赛完形态（提交点窗口亚毫秒，1ms 轮询物理难命中）：重跑=幂等 no-op 且 state 字节
+      // 重跑前后不变——「提交点后不重放」的活体等价面（N7 修正：比对基准=重跑前，非首次 run 前）
       x.racedNoop = x.rerunOut.includes("幂等 no-op") || x.rerunOut.includes("已按任务身份");
-      x.stateBytesUnchanged = x.stateFirstSha === x.stateAfterSha;
+      x.stateBytesUnchanged = x.statePreRerunSha != null && x.statePreRerunSha === x.stateAfterSha;
     }
   }
   const dOk = phaseResults.every((x) =>
     x.rerunExit === 0 && x.stateOk && (x.killed ? x.lastPhase === "done" : x.phase === "switch" && x.racedNoop && x.stateBytesUnchanged));
   push("MR10-phase-kill-recovery", dOk,
-    "backup/stage 活体 SIGKILL+重跑恢复（journal 收尾 done）；switch=击杀 ∨ 赛完-重跑幂等不重放（提交点窗口亚毫秒如实记录命中形态）",
+    "backup/stage 活体 SIGKILL+重跑恢复（journal 收尾 done）；switch=击杀 ∨ 赛完-重跑幂等且 state 重跑前后字节不变（提交点后不重放等价面）",
     JSON.stringify(phaseResults), "逐点 killedAt/journal 末相位/state 读数+重跑 stdout");
 
   // ── 腿 E：done 意图副作用不重放 ──

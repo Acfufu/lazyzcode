@@ -54,6 +54,7 @@
   "refreezeNote": "N9 开跑前重冻一次（批 0/36 未执行、零结果作废）：run-pairs 注入 LZY_ABLATE_HUMAN_GATE=1 受控消融（无人权门通道的 headless 评估语境，M0/M4 夹具同款）+提示词去契约引导（避免诱导伪造批准）；候选/基线包 sha 不变（f2622d1 冻结身份不动）",
   "harnessChanges": [
     "2026-09-29 N9 中（批已 2/36）：metering 读数补 harness 侧 immutable 直读回退（击杀非空 WAL 场景；观察面改动——包/序/环境身份不变，不触 R6 冻结）；seq1 旧行按写入口径保留（absent）",
-    "2026-09-29 N9 中（8 行/6 cell）：resume-skip 缺陷（信封重构后 doneKeys 读 l.seq=undefined ⇒ 第二批重跑 seq1/2）——skip 键改 record.seq+report 按 seq 取末行 supersede；journal append-only 双行保留如实入账"
+    "2026-09-29 N9 中（8 行/6 cell）：resume-skip 缺陷（信封重构后 doneKeys 读 l.seq=undefined ⇒ 第二批重跑 seq1/2）——skip 键改 record.seq+report 按 seq 取末行 supersede；journal append-only 双行保留如实入账",
+    "2026-09-29 N9 中（38 行/36 cell 全入账后）：oracle 判读仪面双缺陷实证（全批 oraclePassed=0 机械失效）——①evalOracle 未注入 $FIXTURE（密封判据 6/6 引用，bash 展开空串 cd /packages/web，批内 oracle-result.json 存证）②expect 人读判据句（exit code 0 AND … contains M）被当字面子串；修复=env 注入+oracleExpectMarkers 结构化解析（锚 exit code 0 者 markers 提取，其余保字面兼容）+oracleJudge=2 代次标记+--rejudge-oracle 存量重判通道（仅判读腿，agent 会话不重跑）；连带③runCell r2 作用域 ReferenceError（seq35 infra 行实证）改 resumeFailNote 闭包带出+归因注记移终态归因后（seq23/30 腿1注记误挂 ok 行）；④runCell 起始整 runDir 复位（force-seq 重跑污染上叠，先例=seq1/2 重跑在残留仓叠加——两行连带列入重跑）。全部仪面/观察面：候选包/序/环境身份不变不触 R6。失效重跑清单=6 对 12 seq（17/32、36/21、31/18、15/19、25/20、34/35）+污染行 1/2 共 14 seq"
   ]
 }

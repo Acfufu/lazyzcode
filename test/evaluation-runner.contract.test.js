@@ -128,6 +128,40 @@ describe("④oracle 子进程（判据命令在夹具内执行，实现方不读
       rmSync(d, { recursive: true, force: true });
     }
   });
+
+  // N9 仪面缺陷红绿（goal v040-m5-eval-release）：①$FIXTURE 未注入（密封判据全部引用
+  // $FIXTURE 指向物化仓，旧实现 spawn 无 env ⇒ bash 展开空串 `cd /packages/web`——批内
+  // oracle-result.json 存证）②「exit code 0 AND … contains M」结构化判据句被当字面子串
+  // （prose 永不在输出中原样出现 ⇒ 全批 oracle 恒 false）。
+  test("FIXTURE 注入物化仓；结构化 expect（exit code 0 + contains 标记）机械解析", () => {
+    const d = mkdtempSync(join(tmpdir(), "lzy-orc2-"));
+    try {
+      const oracleFx = join(d, "oracle-fixture.json");
+      writeFileSync(
+        oracleFx,
+        JSON.stringify({
+          task: "t",
+          checks: [
+            { id: "fixture-injection", kind: "cli", command: `test "$(cd "$FIXTURE" && pwd -P)" = "$(pwd -P)" || { echo "FIXTURE-WRONG:[$FIXTURE]"; exit 9; }\necho FIXTURE-MARKER-OK`, expect: "exit code 0 AND stdout contains FIXTURE-MARKER-OK" },
+            { id: "structured-bare-marker", kind: "cli", command: "echo HELLO-MARKER-88", expect: "exit code 0 AND stdout contains HELLO-MARKER-88" },
+            { id: "structured-quoted-marker", kind: "cli", command: 'echo "build: TEST SUCCEEDED-XYZ"', expect: 'exit code 0 AND build log contains "TEST SUCCEEDED-XYZ" AND prose conditions' },
+            { id: "structured-fail-when-marker-absent", kind: "cli", command: "echo nothing-relevant", expect: "exit code 0 AND stdout contains ABSENT-MARKER-99" },
+          ],
+        }),
+      );
+      const out = join(d, "r.json");
+      const x = spawnSync(process.execPath, [RP, "--eval-oracle", oracleFx, "--eval-cwd", d, "--eval-out", out], { encoding: "utf8", timeout: 60_000 });
+      const r = JSON.parse(readFileSync(out, "utf8"));
+      const byId = Object.fromEntries(r.checks.map((c) => [c.id, c]));
+      assert.equal(byId["fixture-injection"].ok, true, JSON.stringify(byId["fixture-injection"]));
+      assert.equal(byId["structured-bare-marker"].ok, true, JSON.stringify(byId["structured-bare-marker"]));
+      assert.equal(byId["structured-quoted-marker"].ok, true, JSON.stringify(byId["structured-quoted-marker"]));
+      assert.equal(byId["structured-fail-when-marker-absent"].ok, false, "标记缺席必须仍判 fail");
+      assert.equal(x.status, 1, "含失败 check 的 oracle 整体 exit 1");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("⑤预飞拒矩阵（fail-closed）", () => {

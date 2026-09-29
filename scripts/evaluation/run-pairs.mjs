@@ -5,6 +5,8 @@
 // 用法（§8.1 合同）：
 //   node scripts/evaluation/run-pairs.mjs --manifest scripts/evaluation/manifests/m0-freeze-index.json \
 //     --baseline <0.3.1.tgz> --candidate <候选.tgz> --out <证据根> [--max-runs N] [--arm old|new] [--repo <名>]
+//   [--force-seq 1,2,…]（§9.1 失效配对整对重跑：旧行保留=尝试账，report 按 seq 取末行 supersede）
+//   [--rejudge-oracle <证据根>]（仪面修复后存量判读腿重跑：agent 会话不重跑，supersede 行入账）
 // 单调用语义：预飞 → batch manifest 冻结（seed 交错序）→ 执行未完成 cells（跨会话 resume 安全）
 // → 全齐时 integrity report（§9.2 判据；不满足=「尚无质量收益证据」如实输出，不产晋级材料）。
 // exit 0=进展或完成 · 1=失败 · 3=blocked（fail-closed 预飞/完整性拒）。
@@ -120,18 +122,33 @@ export function qualityGate(runs, { keyCounterexampleIds = [] } = {}) {
 }
 
 // ── oracle 子进程（内部模式）──────────────────────────────────────────
+// N9 仪面缺陷修复（2026-09-29，批内 36 run oracle 全零实证）：①密封判据命令引用 $FIXTURE
+// 指向物化仓 ⇒ spawn 须注入 env（cwd 已是 repoDir，无注入时 bash 展开空串 `cd /packages/web`）；
+// ②expect 为人读判据句——锚定「exit code 0」者按结构化解析（exit 0 + contains 标记逐个在
+// 输出在场，标记=引号串或裸大写 token），其余（契约测试字面形态）保持字面子串语义。判定
+// 主承载仍是判据命令自身退出码（探针脚本内部断言失败即非零、成功标记仅末尾打印）。
+export function oracleExpectMarkers(expect) {
+  const markers = [];
+  const re = /contains\s+(?:"([^"]+)"|([A-Z][A-Z0-9_-]*(?:\s+[A-Z][A-Z0-9_-]+)*))/g;
+  let m;
+  while ((m = re.exec(expect)) != null) markers.push(m[1] ?? m[2]);
+  return markers;
+}
+
 function evalOracle(oraclePath, repoDir, outPath) {
   const oracle = JSON.parse(readFileSync(oraclePath, "utf8"));
   const checks = (oracle.checks ?? []).map((c) => {
     let run;
     try {
-      run = spawnSync("bash", ["-lc", String(c.command ?? "")], { cwd: repoDir, encoding: "utf8", timeout: ORACLE_TIMEOUT_MS });
+      run = spawnSync("bash", ["-lc", String(c.command ?? "")], { cwd: repoDir, encoding: "utf8", timeout: ORACLE_TIMEOUT_MS, env: { ...process.env, FIXTURE: repoDir } });
     } catch (e) {
       run = { status: null, stdout: "", stderr: String(e?.message ?? e) };
     }
     const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
     const expect = c.expect == null ? null : String(c.expect);
-    const ok = run.status === 0 && (expect == null || expect === "" || output.includes(expect));
+    const structured = expect != null && expect.trim().startsWith("exit code 0");
+    const markers = structured ? oracleExpectMarkers(expect) : null;
+    const ok = run.status === 0 && (structured ? markers.every((mk) => output.includes(mk)) : expect == null || expect === "" || output.includes(expect));
     return { id: c.id, kind: c.kind ?? null, ok, exit: run.status, outputSample: output.slice(0, 400) };
   });
   const result = {
@@ -344,6 +361,7 @@ async function runCell(cell, ctx) {
   const rec = { ...cell, runDir, startedAt: started, sessionId: null, points: null, metering: "absent", exit: null, timedOut: false, resumed: false, goalDone: false, oraclePassed: null, oraclePath: null, status: "infra", note: null };
   try {
     const rd = batch.repos[cell.repo];
+    rmSync(runDir, { recursive: true, force: true }); // N9 修复：force-seq 重跑复用同 runDir 必须整目录复位（repo/home/oracle-result 全新）——先例缺陷=seq1/2 重跑在残留仓上叠加（materializeRepo 原为 tar 覆盖语义）
     materializeRepo(batch.srcDirs[cell.repo], rd.snapshotCommit, repoDir);
     if (rd.siblingDependency) {
       const sibDest = join(runDir, basename(rd.siblingDependency.repo));
@@ -360,6 +378,7 @@ async function runCell(cell, ctx) {
     const resumeLeg = cell.trial === TRIALS_PER_TASK; // 每任务 trial 3=中断恢复腿（两臂同触发）
     const prompt = buildPrompt({ repoDir, briefPath, cliPath, pointsCap: pointsCap ?? "未设", wallMin: Math.round(wallMs / 60000) });
     let r;
+    let resumeFailNote = null; // N9 仪面缺陷修复：resume 注记原在 killed 块外引用块内 const r2 ⇒ ReferenceError（seq35 实证）——改经闭包变量带出
     const evalEnv = { LZY_ABLATE_HUMAN_GATE: "1" }; // 受控消融（#25）：无人权门通道的 headless 评估语境（M0/M4 夹具同款）
     if (resumeLeg) {
       r = await spawnHeadless({ prompt, mode: "yolo", timeoutMs: wallMs, cwd: repoDir, home, extraEnv: evalEnv, deps: { run: runWithInterrupt({ repoDir, home, timeoutMs: wallMs }) } });
@@ -377,7 +396,7 @@ async function runCell(cell, ctx) {
         rec.raw = (r2.stdout ?? "").slice(-4000);
         if (!r2.ok && !r2.sessionId) {
           rec.status = "resume-failed";
-          rec.failNote = `resume r2 失败：${String(r2.error ?? "").slice(0, 180)}`;
+          resumeFailNote = `resume 腿 r2 无会话返回：${String(r2.error ?? r2.stderr ?? "unknown").slice(0, 160)}`;
         }
       } else {
         rec.sessionId = sid;
@@ -393,9 +412,7 @@ async function runCell(cell, ctx) {
       rec.timedOut = Boolean(r.timedOut);
       rec.raw = (r.stdout ?? "").slice(-4000);
     }
-    // 非_ok 态归因注记（infra/429/内容杀流 vs 任务性失败——§9.1 分标记；引擎错误尾注 200 字符）
-    if (rec.status !== "ok" && r && r.error) rec.failNote = String(r.error).slice(0, 200);
-    if (rec.status === "resume-failed") rec.failNote = `resume 腿 r2 无会话返回：${String(r2?.error ?? r2?.stderr ?? "unknown").slice(0, 160)}`;
+    // 非_ok 态归因注记在终态归因后统一落（见 runCell 尾部）——resume 专注记经 resumeFailNote 带出
     if (rec.sessionId) {
       const db = join(home, ".zcode", "cli", "db", "db.sqlite");
       let pts = querySessionPoints(rec.sessionId, { dbPath: db });
@@ -433,7 +450,13 @@ async function runCell(cell, ctx) {
     } else {
       rec.oracleError = (ov.stderr ?? "").slice(0, 200);
     }
+    rec.oracleJudge = 2; // N9 仪面修复后判定器代次（v2=FIXTURE 注入+结构化 expect；--rejudge-oracle 以此去重）
     if (rec.status === "infra" || rec.status === "ok") rec.status = rec.timedOut ? "timeout" : rec.exit === 0 ? "ok" : "nonzero-exit";
+    // 非_ok 态归因注记（infra/429/内容杀流 vs 任务性失败——§9.1 分标记；引擎错误尾注 200 字符）。
+    // 终态归因后统一落：resume 专注记优先；终态 ok 不留腿1注记（seq23/30 曾把腿1击杀注记
+    // 误挂到恢复成功的 ok 记录上）。
+    if (resumeFailNote) rec.failNote = resumeFailNote;
+    else if (rec.status !== "ok" && r && r.error) rec.failNote = String(r.error).slice(0, 200);
     void index;
   } catch (e) {
     rec.status = "infra";
@@ -525,11 +548,58 @@ async function main() {
   if (f.help === true) {
     console.log("用法: run-pairs.mjs --manifest <m0-freeze-index.json> --baseline <0.3.1.tgz> --candidate <候选.tgz> --out <证据根> [--max-runs N] [--arm old|new] [--repo <名>] [--phase preflight|report]");
     console.log("  内部模式: --eval-oracle <oracle.json> --eval-cwd <repo> --eval-out <result.json>");
+    console.log("  重判模式: --rejudge-oracle <证据根>（对 journal 末行无 oracleJudge=v2 的记录仅重跑密封 oracle 判读腿——不重跑 agent 会话；supersede 行入账后重生成 report）");
     process.exit(0);
   }
   if (typeof f["eval-oracle"] === "string") {
     evalOracle(resolve(f["eval-oracle"]), resolve(f["eval-cwd"]), resolve(f["eval-out"]));
     return;
+  }
+  if (typeof f["rejudge-oracle"] === "string") {
+    // N9 仪面缺陷修复的存量重判通道（2026-09-29）：旧 judge 无 $FIXTURE 注入且 expect 按字面
+    // 解析 ⇒ 全批 oracle 判读机械失效；agent 会话与物化 repo 不受影响 ⇒ 仅重跑判读腿。
+    const outDir = resolve(f["rejudge-oracle"]);
+    const batchPath = join(outDir, "batch.json");
+    if (!existsSync(batchPath)) {
+      console.error(`[run-pairs] BLOCKED：重判模式缺 batch.json：${batchPath}`);
+      process.exit(3);
+    }
+    const batch = JSON.parse(readFileSync(batchPath, "utf8"));
+    const bySeqLatest = new Map();
+    for (const l of loadJournal(outDir).lines) if (l.record?.seq != null) bySeqLatest.set(l.record.seq, l.record);
+    let rejudged = 0;
+    for (const rec of bySeqLatest.values()) {
+      if (rec.oracleJudge === 2) continue; // 已是 v2 判定器产物（force-seq 重跑行）——不重复烧判读
+      const repoDir = join(rec.runDir, "repo");
+      if (!existsSync(repoDir)) continue;
+      const oracleOut = join(rec.runDir, "oracle-result.json");
+      const ov = spawnSync(process.execPath, [fileURLToPath(import.meta.url), "--eval-oracle", join(batch.sealedRoot, rec.taskId, "oracle.json"), "--eval-cwd", repoDir, "--eval-out", oracleOut], { encoding: "utf8", timeout: ORACLE_TIMEOUT_MS + 30_000 });
+      const updated = { ...rec };
+      if (existsSync(oracleOut)) {
+        const oj = JSON.parse(readFileSync(oracleOut, "utf8"));
+        updated.oraclePassed = oj.passed;
+        updated.oracleChecks = `${oj.checksPassed}/${oj.checksTotal}`;
+        updated.oraclePath = "oracle-result.json";
+        delete updated.oracleError;
+      } else {
+        updated.oracleError = (ov.stderr ?? "").slice(0, 200);
+      }
+      updated.oracleJudge = 2;
+      updated.rejudgedAt = new Date().toISOString();
+      appendJournal(outDir, updated);
+      rejudged += 1;
+      console.log(`[run-pairs] ↻ rejudge seq=${rec.seq} ${rec.repo}/${rec.taskId} ${rec.arm} oracle=${updated.oraclePassed ?? "-"} (${updated.oracleChecks ?? "-"})`);
+    }
+    const after = loadJournal(outDir).lines;
+    const latest = new Map();
+    for (const l of after) if (l.record?.seq != null) latest.set(l.record.seq, l.record);
+    const rep = writeReport(outDir, batch, [...latest.values()]);
+    if (rep.refused) {
+      console.error(`[run-pairs] BLOCKED：完整性门拒（${JSON.stringify(rep.integrity)}）`);
+      process.exit(3);
+    }
+    console.log(`[run-pairs] rejudge ${rejudged} runs；report：${rep.report.conclusion}`);
+    process.exit(0);
   }
   const pf = preflight(f);
   if (pf.blocked) {

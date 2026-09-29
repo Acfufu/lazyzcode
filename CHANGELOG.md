@@ -3,10 +3,28 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
-## [Unreleased]
+## [0.4.0] - 2026-09-30
 
 ### Added
 
+- **Paired policy evaluation harness** (0.4.0 M5, goal `v040-m5-eval-release`): `scripts/evaluation/run-pairs.mjs`
+  executes the pre-registered paired evaluation (three subject repos × 2 tasks × 3 trials × baseline/candidate
+  arms, seed-derived deterministic interleave frozen into a batch manifest). Each cell materializes the sealed
+  snapshot into an isolated fixture, drives a real headless engine session with the arm's own CLI under an
+  isolated HOME subledger, injects the pre-registered SIGKILL interruption on trial 3 with an explicit `--resume`
+  leg, and judges the delivered repo with the sealed oracle in a mechanical subprocess. `--force-seq` reruns an
+  invalidated pair (old rows kept as the attempt ledger; the report supersedes per seq); `--rejudge-oracle`
+  re-runs only the judging leg after an instrument fix (records carry an `oracleJudge` generation mark).
+  The journal is a sha256-chained append-only ledger and the report refuses to regenerate when the chain or
+  package identities break (exit 3). Batch `m5eval-20260929013548` result and the §9.2 quality-gate reading:
+  `docs/reviews/v040-policy-evaluation.md` (honest conclusion: no evidence of quality benefit — gate not met).
+- **Migration apply** (0.4.0 M5): `lzy migrate apply` executes the two-phase migration preview end to end —
+  backup → stage → verify → atomic switch with a phase-tagged journal that makes reruns idempotent after a kill
+  at any phase; `STATE_VERSION` steps to `0.4.0` (older states stay readable). In-flight goals migrate to
+  `drafts` with authorization NONE (a human re-adopts them); byte-budgeted external intents are preserved and
+  act side effects are never replayed.
+- **Docs link checker + CI job** (0.4.0 M5): `scripts/check-docs-links.mjs` (zero-dependency) validates relative
+  links and same-page anchors across `docs/**`, wired into `lzy.project.json` check and a dedicated CI docs job.
 - **Review scope qualification & reuse** (0.4.0 M4, goal `v040-m4-scope-qualification`; ADR-0032):
   a review duty's scope can now be *declared* and adversarially challenged, and a later candidate that
   provably does not touch the duty may reuse the earlier review instead of paying for a new session.
@@ -66,6 +84,18 @@ versioning is SemVer.
   accepts any positive dutyTableVersion) and block with the drift reason instead of a shape error. doctor checks
   the review family with fail-level corruption reporting (stricter than policy's warn by design — review records
   are release evidence).
+- **Policy identity + unified read-only gate** (0.4.0 M1, goal `v040-m1-gate`): the repo policy (duty table,
+  thresholds, obligation templates) is content-addressed into a policy identity that the four gate entry points
+  (finish / queue dispatch / delivery begin / review adoption) evaluate through one read-only explainer
+  (`lzy gate explain` prints the per-clause conjunction and what would satisfy it); v1 records stay readable.
+- **Materialization containment + symlink-faithful copies** (0.4.0 M5): review-scope fixture materialization
+  realpath-contains every injected write (out-of-scope or dangling-link targets yield a clean observed-failure
+  row, nothing touched outside the fixture); migration backups and installer deployment copy symlinks verbatim
+  (`verbatimSymlinks`), byte-faithful by policy.
+- **Structural axis drift is real** (0.4.0 M5): the review qualify structural-axis branch now injects true
+  identity mutations (env fingerprint / contract hash / duty-table version) per axis and reports a per-axis
+  verdict instead of asserting a constant; the gate reuse leg gains the env axis with the axis list sourced from
+  one shared constant.
 
 ## [0.3.1] - 2026-09-26
 

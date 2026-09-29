@@ -359,6 +359,41 @@ identity with a phase journal for crash recovery; `lzy migrate status` is the
 read-only face. A live lease/process refuses migration; a corrupt or unknown-version
 goal.json stops before any write; update/sync never migrate automatically (ADR-0029).
 
+From 0.4.0 the state version stamps `0.4.0`; older states stay readable, and
+`apply` is phase-journaled end to end — a kill during backup/stage/switch is resumed
+idempotently by rerunning the same command (backup and act side effects are never
+replayed).
+
+## Policy evaluation (0.4.0 M5)
+
+0.4.0 ships a paired evaluation harness (`scripts/evaluation/run-pairs.mjs`) that
+measures a candidate against the published baseline on sealed tasks from real
+repositories: baseline/candidate arms, three trials per task, a pre-registered
+interruption+resume leg, and an independent sealed oracle that judges the delivered
+repo. The 0.4.0 batch report — including the honest quality-gate reading (not met;
+no evidence of quality benefit) and its threat boundaries — lives at
+[`docs/reviews/v040-policy-evaluation.md`](../reviews/v040-policy-evaluation.md).
+Evaluation informs adoption decisions; it is never wired to any automatic gate.
+
+## Writing scope declarations that qualify (0.4.0)
+
+`lzy review qualify` challenges a review-scope declaration against ten axes; these
+patterns keep a declaration grantable instead of refused:
+
+- Declare artifacts by **role, not only by path** — a dependency artifact you omit
+  must be genuinely unrelated to the duty, otherwise name it `canary-keep`.
+- Cover **new files the duty's fix would plausibly create** (`unknown-new` axis):
+  declare the pattern (directory or suffix), not one exact filename.
+- If a file was renamed or deleted since the base run, say so (`rename-delete`);
+  silence reads as an undeclared change and blocks reuse.
+- Lockfiles and generated check scripts are always classified — declare them
+  explicitly when the duty may touch them (`lockfile` / `check-script` axes).
+- Environment-sensitive surfaces (config read at run time, TZ/locale-dependent
+  output) belong in the declaration: the reuse leg re-checks the environment
+  fingerprint and refuses on drift it cannot attribute (`env` axis).
+- When in doubt, declare narrowly and let `lzy review reuse` print the per-reason
+  fallback — a refused path names exactly what was missing.
+
 ## Goal loop commands
 
 ```

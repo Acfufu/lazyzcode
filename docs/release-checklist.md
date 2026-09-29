@@ -488,6 +488,28 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - 0.2.0 三件套活体（scratch `C:\scratch020`，SYSTEM exec + `set "LOCALAPPDATA=…"` 引号形态）：**lease 互斥**（acquire fence 1 → 二次 acquire 拒「另一运行时持租（fence 1，至 …）」带僵尸恢复指路）· **fence 写拒**（活跃租约期 `--fence 9` 写 → 「写拒：fence 9 非现行（现行 1）——你已被接管，立即停手不写」）· **drive 门链**（executing 目标上 `lzy loop drive` → 凭据缺席拒带恢复文本；doctor `drive` 行四段齐「凭据缺席（headless 调用会停在认证门） · 活跃租约 fence=1 · 预算未初始化 · v020vm 可入 drive（risk=low）」）；lease 释放 ✔、scratch 清除 ✔。
 - 探针引号雷补记（host 侧驱动教训）：`set VAR=value && cmd` 会把**尾随空格**并进值（`LZY_ABLATE_HUMAN_GATE` 变 `"1 "` 消融判据不中、`LZY_ZCODE_ENGINE` 路径带空格失效）——SYSTEM exec 驱动一律 `set "VAR=value"` 引号形态（0.1.0 配方的静默变体，历次被引号形态掩盖）。
 
+## 执行记录（0.4.0，策略工程化五里程碑 + 配对评估——机械件已备，publish 留用户）
+
+### 内容与定位
+
+- **minor 面**：0.4.0 = 策略工程化弧 M0–M5——M0 能力探针（隔离/轨迹可核验/canary 零泄露/子账本计量/SIGKILL+resume）/ M1 策略身份+统一只读门（ADR-0031 前置）/ M2 受控独立评审运行器（ADR-0031）/ M3 发现账本+recheck 关闭通道+reassess（ADR-0033）/ M4 评审范围资格+复用（ADR-0032，duty table v4）/ M5 迁移恢复实弹+run-pairs 正式配对评估（18 对 36 真运行）。规划入口 `docs/plan-v040-engineering-policy.md`；评估报告 `docs/reviews/v040-policy-evaluation.md`；各步报告 `docs/spikes/v040-m5-report.md`（N13 落档）。
+- **评估结论（如实，R6 双身份）**：§9.2 质量门不满足=尚无质量收益证据，不宣称通过；评估绑候选包 sha `be03b258…`（f2622d1 冻结，N8），本发布包差异=版本元数据+文档（机制代码零改动）——评估负结论不阻断发布，采纳拍板归维护者。
+
+### Runbook（按序）
+
+1. **push main**：M0–M5 全弧提交 + 定版提交随行（定版提交带 `Goal: v040-m5-eval-release#N11` 尾注）。
+2. **CI 四腿绿 + docs job 绿**（判决=gh run view conclusion）→ **tag v0.4.0 最后切**。
+3. **GitHub Release**（notes 三节：Highlights / Coverage boundary / Upgrade）。
+4. **publish（用户 2FA）**：载荷=tag 树 `npm pack` tarball，`npm publish <tarball>`。
+5. **发后核验**：registry `latest=0.4.0`；shasum 与 dry-run 逐字一致；隔离 prefix 冒烟；真机 `lzy update` 0.3.1→0.4.0 全链；doctor `payload-ver` 双 ✔。
+6. AGENTS §2 发布收官同步（M5 行+压缩）随 N13。
+
+### 执行记录（2026-09-30，定版树实跑）
+
+- **版本五处**：`package.json` / `plugin/.zcode-plugin/plugin.json` / `.claude-plugin/marketplace.json`（version 0.4.0 + ref→v0.4.0）/ `docs/_layouts/home.html` softwareVersion 0.4.0 / `docs/sitemap.xml` 三页 lastmod→2026-09-30（首页+guide 双语——guide 本弧有 migration/evaluation/scope-declaration 实质改动；developers 未动）；CHANGELOG `[Unreleased]`→`[0.4.0] - 2026-09-30`（归位 M1–M4 四条+新增 M1 紧凑条与 M5 三条 Added、三条 Changed）。
+- **发布前验证**（定版树实跑）：`npm test` **739/739**（基线 717+新增 22）；`provenance-ready` exit 0（三体 0.4.0 + ref 联锁 v0.4.0）；`npm publish --dry-run` **69 文件 / 1.4 MB / shasum `48afd0512fbe44df1990410c3df6ee646a1f77ab`**；敏感串双级扫描：载荷清单层 0 命中、改动面内容层 `sess_`/`/Users/` 0 命中；`scripts/check-docs-links.mjs` exit 0（102 文件——0.4.0 新增 docs job 同一面）。
+- **publish/tag/Pages 留用户**（本 goal 不含直发，N11 范围=release-ready 机械件）。
+
 ## 执行记录（0.3.0，agent-first 六里程碑——机械件已备，publish 留用户）
 
 ### 内容与定位

@@ -7,4 +7,4 @@
   D2c-未知路径 fallback: reuse.exit=1 verdict=fallback 因点名未知=1
   D3c-复用腿实拦: gate.exit=1 裁决=BLOCKED（快照 复用不足因=true 点名声明依赖=true
   D1b-命令族: qualify.exit=2 规范用法名=true reuse.exit=2 规范用法名=true reopen.exit=1 未知子命令=false
-  → /tmp/f2-obs.json
+  → /tmp/f2-obs2.json

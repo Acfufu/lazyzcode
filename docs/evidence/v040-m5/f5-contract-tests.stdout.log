@@ -1,24 +1,24 @@
 ▶ ①交错序确定性（seed 派生，无 RNG 可重放）
-  ✔ 同 seed 双调逐字节等序；36 项覆盖 3 仓×2 任务×3 trial×2 臂；seq 1..36 (0.60875ms)
-✔ ①交错序确定性（seed 派生，无 RNG 可重放） (0.917084ms)
+  ✔ 同 seed 双调逐字节等序；36 项覆盖 3 仓×2 任务×3 trial×2 臂；seq 1..36 (1.066417ms)
+✔ ①交错序确定性（seed 派生，无 RNG 可重放） (1.385625ms)
 ▶ ②journal sha 链与完整性拒
-  ✔ 好链通过；删行/改行/插行必拒（V14 删一条结果 report 必拒） (0.289125ms)
-  ✔ appendJournal 落盘后 loadJournal 可验；篡改盘面后 verify 拒 (0.934417ms)
-✔ ②journal sha 链与完整性拒 (1.285625ms)
+  ✔ 好链通过；删行/改行/插行必拒（V14 删一条结果 report 必拒） (0.346584ms)
+  ✔ appendJournal 落盘后 loadJournal 可验；篡改盘面后 verify 拒 (0.838375ms)
+✔ ②journal sha 链与完整性拒 (1.250541ms)
 ▶ ③质量门语义（§9.2）
-  ✔ 全绿且严格改善 ⇒ met；新臂错误完成 ⇒ 拒；打平 ⇒ 尚无证据；2/3 不足 ⇒ 拒 (0.233708ms)
-✔ ③质量门语义（§9.2） (0.277291ms)
+  ✔ 全绿且严格改善 ⇒ met；新臂错误完成 ⇒ 拒；打平 ⇒ 尚无证据；2/3 不足 ⇒ 拒 (0.238709ms)
+✔ ③质量门语义（§9.2） (0.282875ms)
 ▶ ④oracle 子进程（判据命令在夹具内执行，实现方不读内容）
-  ✔ 全过 exit 0；含失败 exit 1；result JSON 逐 check 记录 (4663.032458ms)
-  ✔ FIXTURE 注入物化仓；结构化 expect（exit code 0 + contains 标记）机械解析 (3337.5745ms)
-✔ ④oracle 子进程（判据命令在夹具内执行，实现方不读内容） (8000.738792ms)
+  ✔ 全过 exit 0；含失败 exit 1；result JSON 逐 check 记录 (4814.121917ms)
+  ✔ FIXTURE 注入物化仓；结构化 expect（exit code 0 + contains 标记）机械解析 (3514.156375ms)
+✔ ④oracle 子进程（判据命令在夹具内执行，实现方不读内容） (8328.4125ms)
 ▶ ⑤预飞拒矩阵（fail-closed）
-  ✔ 基态：包/sealed/task sha/授权齐备 ⇒ 预飞通过并冻结 36 序 (16.312791ms)
-  ✔ 拒面：包缺席/sealed sha 不符/task 文件 sha 不符/缺冻结提交/授权缺席 (12.059083ms)
-✔ ⑤预飞拒矩阵（fail-closed） (28.482666ms)
+  ✔ 基态：包/sealed/task sha/授权齐备 ⇒ 预飞通过并冻结 36 序 (16.126625ms)
+  ✔ 拒面：包缺席/sealed sha 不符/task 文件 sha 不符/缺冻结提交/授权缺席 (14.255ms)
+✔ ⑤预飞拒矩阵（fail-closed） (30.497875ms)
 ▶ ⑥report 完整性拒（包/环境/journal 三面）
-  ✔ 链断拒；包字节改拒；齐备时输出 §9.2 结论行 (1.736917ms)
-✔ ⑥report 完整性拒（包/环境/journal 三面） (1.786125ms)
+  ✔ 链断拒；包字节改拒；齐备时输出 §9.2 结论行 (1.867125ms)
+✔ ⑥report 完整性拒（包/环境/journal 三面） (1.915ms)
 ℹ tests 9
 ℹ suites 6
 ℹ pass 9
@@ -26,4 +26,4 @@
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 8070.972167
+ℹ duration_ms 8402.391375

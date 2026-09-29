@@ -1,15 +1,11 @@
-== F8 发布打包终验读数 · 2026-09-29T21:23:19.916Z ==
-package.json version: 0.4.0
-plugin.json version: 0.4.0
-marketplace version: 0.4.0 · ref: v0.4.0
-home.html softwareVersion: 0.4.0
-sitemap lastmod 2026-09-30 页数: 3
-五处一致=0.4.0/v0.4.0: true
-CHANGELOG [0.4.0] 定版节在场: true
-release-checklist 0.4.0 记录节在场: true
-✔ package.json：版本三方一致 + MIT + 零依赖 + files 排除 .mimosa + bin shebang (1.297333ms)
-✔ git 跟踪文件不含 .mimosa 残留 (5.242792ms)
-✔ CI 骨架在场且声明零依赖测试命令 (0.37725ms)
+== F8 发布打包终验读数 · 2026-09-29T22:55:34.821Z ==
+package.json version: 0.4.0 · plugin.json: 0.4.0 · marketplace: 0.4.0 ref: v0.4.0
+home softwareVersion: 0.4.0 · sitemap 2026-09-30 页数: 3
+五处一致: true
+CHANGELOG [0.4.0] 节: true · checklist 0.4.0 记录节: true
+✔ package.json：版本三方一致 + MIT + 零依赖 + files 排除 .mimosa + bin shebang (0.8945ms)
+✔ git 跟踪文件不含 .mimosa 残留 (6.798084ms)
+✔ CI 骨架在场且声明零依赖测试命令 (0.570667ms)
 ℹ tests 3
 ℹ suites 0
 ℹ pass 3
@@ -17,7 +13,7 @@ release-checklist 0.4.0 记录节在场: true
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 39.693166
+ℹ duration_ms 41.184417
 [provenance-ready] ✔ repository.url → github.com/acfufu/lazyzcode（原值 git+https://github.com/acfufu/lazyzcode.git）
 [provenance-ready] ✔ name = lazyzcode
 [provenance-ready] ✔ 版本三体一致 = 0.4.0（package.json · plugin/.zcode-plugin/plugin.json · .claude-plugin/marketplace.json plugins[].version）

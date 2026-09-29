@@ -1,6 +1,6 @@
-== F6 正式配对账终验读数 · 2026-09-29T21:22:34.359Z ==
+== F6 正式配对账终验读数 · 2026-09-29T22:55:34.797Z ==
 batchId: m5eval-20260929013548
-integrity: {"journalChain":true,"journalEntries":74,"packagesMatch":true,"envMatch":true} （journalChain PASS= true · journalEntries= 74 ）
+integrity: {"journalChain":true,"journalEntries":74,"packagesMatch":true,"envMatch":true}
 totals: {"runs":36,"oraclePassed":24,"goalDone":18,"falseCompletionsNew":0,"pointsByArm":{"old":170.82884280000002,"new":98.43461239999999}}
 qualityGate.met: false
   门拒因: lazyzcode/lazyzcode/task-1：新臂正确交付 0/3（每任务须 ≥2/3）

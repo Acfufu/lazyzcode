@@ -1452,11 +1452,21 @@ async function migrationRecoveryCase() {
   const broken = JSON.parse(readFileSync(goalB2Path, "utf8"));
   delete broken.policy;
   writeFileSync(goalB2Path, `${JSON.stringify(broken, null, 2)}\n`);
-  const gateB2 = lzyB(["gate", "explain"]);
-  push("MR7-broken-v2-failclosed", gateB2.exit !== 0 && /策略记录缺席|策略身份/.test(gateB2.out) && !/政策裁决不适用/.test(gateB2.out),
+  // F9 自审 P1 修复（a2.r4 F-1）：原实现误用 lzyB（cwd=健康腿 B）——「残缺 v2 拒」断言在
+  // 健康夹具上空转恒真（/策略身份/ 反命中成功行「策略身份有效」）。改专设 runner 指向 fxB2，
+  // 断言钉 fail-closed 拒面族（缺席/不可读/身份漂移）且排除 legacy 回落与「有效」行。
+  const lzyB2 = (args) => {
+    const r = spawnSync(process.execPath, [CLI040, ...args], { cwd: fxB2, encoding: "utf8", timeout: 180_000, env: { ...baseEnv, HOME: homeB, USERPROFILE: homeB } });
+    return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  };
+  const gateB2 = lzyB2(["gate", "explain"]);
+  // 拒面两层：载入层（core/loop.js fail-closed，实测主力）+ 门层 policyIdentity 族
+  const v2Rejected = /缺策略身份字段或形状损坏|策略记录缺席|策略记录不可读|策略输入身份漂移/.test(gateB2.out);
+  const healthyIdentity = /策略身份有效/.test(gateB2.out);
+  push("MR7-broken-v2-failclosed", gateB2.exit !== 0 && v2Rejected && !healthyIdentity && !/政策裁决不适用/.test(gateB2.out),
     "残缺 v2（缺策略身份）fail-closed：拒绝走 v2 拒面而非回落 v1 延续（V13 新任务缺策略不能走 legacy）",
-    `exit=${gateB2.exit} v2rej=${/策略记录缺席|策略身份/.test(gateB2.out)} legacyFallback=${/政策裁决不适用/.test(gateB2.out)}`,
-    "gate explain 活体 stdout（残缺 v2 goal）");
+    `exit=${gateB2.exit} v2rej=${v2Rejected} healthyIdentity=${healthyIdentity} legacyFallback=${/政策裁决不适用/.test(gateB2.out)}`,
+    "gate explain 活体 stdout（残缺 v2 goal，cwd=腿 B2 残缺副本；拒面=载入层 fail-closed）");
 
   // ── 腿 C：显式迁移全径（副本上 apply；字节保留+manifest 双读）──
   const fxC = join(caseDir, "legC-migrate");

@@ -375,7 +375,10 @@ async function runCell(cell, ctx) {
         rec.exit = r2.exitCode;
         rec.timedOut = Boolean(r2.timedOut);
         rec.raw = (r2.stdout ?? "").slice(-4000);
-        if (!r2.ok && !r2.sessionId) rec.status = "resume-failed";
+        if (!r2.ok && !r2.sessionId) {
+          rec.status = "resume-failed";
+          rec.failNote = `resume r2 失败：${String(r2.error ?? "").slice(0, 180)}`;
+        }
       } else {
         rec.sessionId = sid;
         rec.exit = r.exitCode;
@@ -390,6 +393,9 @@ async function runCell(cell, ctx) {
       rec.timedOut = Boolean(r.timedOut);
       rec.raw = (r.stdout ?? "").slice(-4000);
     }
+    // 非_ok 态归因注记（infra/429/内容杀流 vs 任务性失败——§9.1 分标记；引擎错误尾注 200 字符）
+    if (rec.status !== "ok" && r && r.error) rec.failNote = String(r.error).slice(0, 200);
+    if (rec.status === "resume-failed") rec.failNote = `resume 腿 r2 无会话返回：${String(r2?.error ?? r2?.stderr ?? "unknown").slice(0, 160)}`;
     if (rec.sessionId) {
       const db = join(home, ".zcode", "cli", "db", "db.sqlite");
       let pts = querySessionPoints(rec.sessionId, { dbPath: db });

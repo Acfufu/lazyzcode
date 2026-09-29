@@ -555,7 +555,7 @@ async function main() {
   const pkgCandidate = extractPackage(frozen.packages.candidate.path, join(outDir, "pkg-candidate"));
   const ctx = { batch: frozen, outDir, pkgBaselineCli: join(pkgBaseline, "cli", "lzy.js"), pkgCandidateCli: join(pkgCandidate, "cli", "lzy.js") };
   const journal = loadJournal(outDir);
-  const doneKeys = new Set(journal.lines.map((l) => `${l.seq}`));
+  const doneKeys = new Set(journal.lines.map((l) => `${l.record?.seq ?? l.seq ?? ""}`)); // 信封重构后 seq 在 record 内（resume-skip 缺陷修复：曾读 l.seq=undefined 致整批重跑）
   let executed = 0;
   const maxRuns = Number.isInteger(Number(f["max-runs"])) ? Number(f["max-runs"]) : Infinity;
   for (const cell of frozen.sequence) {
@@ -571,7 +571,14 @@ async function main() {
   }
   const after = loadJournal(outDir).lines;
   if (after.length >= frozen.sequence.length && f.phase !== "run-only") {
-    const rep = writeReport(outDir, frozen, after.map((l) => l.record).filter(Boolean));
+    // 同 cell 多行（resume-skip 缺陷期重复执行）按 seq 取末行=supersede（append-only 链不动，
+    // 双行保留如实入账；harnessChanges 记录缺陷与处置）
+    const bySeqLatest = new Map();
+    for (const l of after) {
+      const rec = l.record;
+      if (rec?.seq != null) bySeqLatest.set(rec.seq, rec);
+    }
+    const rep = writeReport(outDir, frozen, [...bySeqLatest.values()]);
     if (rep.refused) {
       console.error(`[run-pairs] BLOCKED：完整性门拒（${JSON.stringify(rep.integrity)}）——删改结果/换环境后 report 必拒（V14）`);
       process.exit(3);

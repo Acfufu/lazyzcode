@@ -40,7 +40,9 @@ export class MigrateError extends Error {}
 // 已死（ESRCH）=在途可转换（僵尸租约同 lzy loop lease reclaim 语义）。
 
 export const MIGRATION_STATE_SCHEMA_VERSION = 1;
-export const STATE_VERSION = "0.3.0";
+// state.json 最后写=提交点的代际标记（决策 #36）——随 CLI 代际升版；loadMigrationState 只验
+// 字符串型不钉值（0.4.0 M5 N5 升 0.4.0，读侧跨代兼容）。
+export const STATE_VERSION = "0.4.0";
 
 const MIG_DIR = (root) => join(root, ".lazyzcode", "migration");
 const STATE_PATH = (root) => join(root, ".lazyzcode", "state.json");

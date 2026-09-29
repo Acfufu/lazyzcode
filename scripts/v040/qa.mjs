@@ -1240,6 +1240,335 @@ async function gateMatrixCase() {
 const QAR_CONTRACT = "task: review qa fixture\nendpoint: A\nscope: .\nrecipe: none\nbudget-ref: none\n\n- [A1] marker file works\n";
 const QAR_PLAN = "- [N1] add marker file\n- [F1] marker exists\naccepts: A1\n";
 
+
+// ── 0.4.0 M5 N5：migration-recovery（§8.1 用例一）────────────────────────────
+// 用冻结 0.3.1 树（tag v0.3.1 git archive→npm pack）建在途态（goal executing+queue 项+
+// budget+done 交付意图），0.4.0 工作树 CLI 三分支（续旧 v1 延续/新注册 v2 策略身份+残缺 v2
+// fail-closed/显式 migrate apply）+backup/stage/switch 三相位 SIGKILL 注入重跑恢复+done
+// 意图副作用计数不重放。真 CLI 子进程全链；0.3.1 臂离线（假 gh=LZY_GH_BIN、bare 远端）。
+function migrationFakeGh() {
+  return `#!/usr/bin/env node
+const fs = require("node:fs");
+const p = process.env.FAKE_GH_STATE;
+const args = process.argv.slice(2);
+const st = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : { calls: 0, merged: false };
+st.calls += 1;
+fs.writeFileSync(p, JSON.stringify(st));
+const head = process.env.FAKE_GH_HEAD || "";
+if (args[0] === "pr" && args[1] === "list") { console.log("[]"); process.exit(0); }
+if (args[0] === "pr" && args[1] === "create") { console.log("https://fake/pr/1"); process.exit(0); }
+if (args[0] === "pr" && args[1] === "merge") { st.merged = true; fs.writeFileSync(p, JSON.stringify(st)); process.exit(0); }
+if (args[0] === "pr" && args[1] === "view") {
+  console.log(JSON.stringify({ state: st.merged ? "MERGED" : "OPEN", headRefOid: head, baseRefName: "main", number: 1, url: "https://fake/pr/1", mergeCommit: st.merged ? { oid: "b".repeat(40) } : null }));
+  process.exit(0);
+}
+if (args[0] === "api" && String(args[1] ?? "").includes("check-runs")) { console.log(JSON.stringify([{ name: "ci", status: "COMPLETED", conclusion: "SUCCESS" }])); process.exit(0); }
+console.error("fake-gh 未匹配: " + args.join(" "));
+process.exit(1);
+`;
+}
+
+async function migrationRecoveryCase() {
+  const assertions = [];
+  const push = (id, ok, expected, observed, evidence) => assertions.push({ id, ok: Boolean(ok), expected, observed: String(observed).slice(0, 600), evidence });
+  const CLI040 = join(REPO, "cli", "lzy.js");
+  const TRIGGER040 = join(REPO, "plugin", "hooks", "trigger.js");
+  const baseEnv = { ...process.env, LZY_ABLATE_HUMAN_GATE: "1" };
+  const caseDir = join(fixtureRoot, "migration-recovery");
+  rmSync(caseDir, { recursive: true, force: true });
+  mkdirSync(caseDir, { recursive: true });
+  const sha256Of = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
+
+  // ── 0.3.1 冻结树物化 + npm pack（离线）──
+  const rel030 = join(caseDir, "rel030");
+  mkdirSync(rel030, { recursive: true });
+  const arch = spawnSync("bash", ["-c", `git archive v0.3.1 | tar -x -C '${rel030}'`], { cwd: REPO, encoding: "utf8" });
+  if (arch.status !== 0) return { blocked: `v0.3.1 树物化失败：${arch.stderr ?? arch.stdout}`, assertions };
+  const CLI030 = join(rel030, "cli", "lzy.js");
+  const TRIGGER030 = join(rel030, "plugin", "hooks", "trigger.js");
+  const ver030 = JSON.parse(readFileSync(join(rel030, "package.json"), "utf8")).version;
+  spawnSync("npm", ["pack", rel030, "--pack-destination", caseDir], { encoding: "utf8", shell: process.platform === "win32", timeout: 120_000 });
+  const tarball = readdirSync(caseDir).find((x) => /^lazyzcode-0\.3\.1.*\.tgz$/.test(x)) ?? null;
+  const packSha = tarball ? sha256Of(join(caseDir, tarball)) : null;
+  push("MR1-frozen031-pack", ver030 === "0.3.1" && packSha != null,
+    "冻结 0.3.1 树物化+离线 npm pack（tarball sha256 入账）",
+    `version=${ver030} tarball=${tarball ?? "缺席"} sha=${(packSha ?? "").slice(0, 16)}…`,
+    "git archive v0.3.1（tag 94a46df）→ npm pack；rel030/package.json 读数");
+
+  // ── 0.3.1 建在途态（真 CLI 全链）──
+  const home0 = mkdtempSync(join(tmpdir(), "lzy-qmr-home-"));
+  const fx0 = join(caseDir, "migrate-base");
+  mkdirSync(fx0, { recursive: true });
+  const g0 = (args) => spawnSync("git", args, { cwd: fx0, encoding: "utf8" });
+  g0(["init", "-q"]);
+  g0(["config", "user.email", "t@l"]);
+  g0(["config", "user.name", "t"]);
+  writeFileSync(join(fx0, ".gitignore"), ".lazyzcode/\nnode_modules/\n");
+  writeFileSync(join(fx0, "a.txt"), "a\n");
+  writeFileSync(join(fx0, "contract.md"), "task: mrg legacy\nendpoint: A\nscope: .\nrecipe: none\n\n- [A1] marker works\n");
+  writeFileSync(join(fx0, "plan.md"), "- [N1] add marker\n- [F1] marker exists\naccepts: A1\n");
+  writeFileSync(join(fx0, "cb.md"), "task: 交付B legacy\nendpoint: B\nscope: .\nrecipe: none\nrepo: Acfufu/mrg-fx\nbase: main\nbranch: legacy-delivery\npr-title: legacy merge\npr-body: body.md\n\n- [A1] merged\n");
+  writeFileSync(join(fx0, "body.md"), "pr body\n");
+  g0(["add", "-A"]);
+  g0(["commit", "-qm", "fixture"]);
+  g0(["remote", "add", "origin", join(caseDir, "origin.git")]);
+  spawnSync("git", ["init", "-q", "--bare", join(caseDir, "origin.git")]);
+  g0(["checkout", "-q", "-b", "legacy-delivery"]);
+  writeFileSync(join(fx0, "delivery-marker.txt"), "delivery\n");
+  g0(["add", "-A"]);
+  g0(["commit", "-qm", "delivery head"]);
+  g0(["checkout", "-q", "main"]);
+  const lzy030 = (args, extra = {}) => {
+    const r = spawnSync(process.execPath, [CLI030, ...args], { cwd: fx0, encoding: "utf8", timeout: 180_000, env: { ...baseEnv, HOME: home0, USERPROFILE: home0, ...extra } });
+    return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  };
+  const hook030 = (prompt) => {
+    const r = spawnSync(process.execPath, [TRIGGER030], { cwd: fx0, encoding: "utf8", timeout: 60_000, input: JSON.stringify({ prompt, cwd: fx0, sessionId: "sess_qmr" }), env: { ...baseEnv, HOME: home0, USERPROFILE: home0 } });
+    return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  };
+  const goalPath0 = join(fx0, ".lazyzcode", "loop", "goal.json");
+  const readGoal0 = () => JSON.parse(readFileSync(goalPath0, "utf8"));
+  let prepFail = null;
+  // 相位 bulk（MR10 用）：备份族大文件拖慢 backup/validate、巨型 snapshot 拖慢 stage——
+  // 小夹具上 apply 毫秒级跑完，1ms 轮询物理错过（r1 实测 killedAt=done）。
+  const bulkDir = join(fx0, ".lazyzcode", "evidence", "bulk");
+  mkdirSync(bulkDir, { recursive: true });
+  for (let i = 0; i < 1200; i += 1) writeFileSync(join(bulkDir, `bulk-${String(i).padStart(4, "0")}.bin`), Buffer.alloc(16 * 1024, (i % 251)));
+  const snapDir = join(fx0, ".lazyzcode", "loop", "snapshots");
+  mkdirSync(snapDir, { recursive: true });
+  writeFileSync(join(snapDir, "bulk.md"), "# bulk\n" + "- [Fb] line\n".repeat(120_000));
+  try {
+    if (lzy030(["loop", "register", "mrg", "--title", "legacy in-flight", "--contract", "contract.md"]).exit !== 0) throw new Error("030 register");
+    const p1 = lzy030(["loop", "plan", "plan.md"]);
+    if (readGoal0().contractPending) {
+      const short = readGoal0().contractPending.contractHash.slice(0, 8);
+      if (!hook030(`批准 ${short}`).out.includes("Human approval recorded")) throw new Error("030 批准");
+      if (lzy030(["loop", "plan", "plan.md"]).exit !== 0) throw new Error("030 采纳");
+    } else if (p1.exit !== 0) throw new Error("030 首采");
+    if (lzy030(["loop", "start"]).exit !== 0) throw new Error("030 start");
+    writeFileSync(join(fx0, "marker.txt"), "marker\n");
+    g0(["add", "-A"]);
+    g0(["commit", "-qm", "marker"]);
+    if (lzy030(["step", "done", "N1", "--note", "legacy step"]).exit !== 0) throw new Error("030 N1");
+    if (lzy030(["queue", "add", "legacy item", "--contract", "contract.md", "--plan", "plan.md"]).exit !== 0) throw new Error("030 queue add");
+    if (lzy030(["queue", "budget", "--points", "500", "--note", "fixture"]).exit !== 0) throw new Error("030 budget");
+    const req = lzy030(["delivery", "request", "B", "--contract", "cb.md"]);
+    if (req.exit !== 0) throw new Error(`030 delivery request：${req.out.split("\n")[0]}`);
+    const ghState = join(caseDir, "fake-gh-state.json");
+    const ghBin = join(caseDir, "fake-gh.cjs");
+    writeFileSync(ghBin, migrationFakeGh(), { mode: 0o755 });
+    const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: fx0, encoding: "utf8" }).stdout.trim();
+    const ghEnv = { LZY_GH_BIN: ghBin, FAKE_GH_STATE: ghState, FAKE_GH_HEAD: head };
+    const act = lzy030(["delivery", "act", "B", "--repo", "Acfufu/mrg-fx", "--branch", "legacy-delivery", "--base", "main", "--head", head, "--pr-title", "legacy merge", "--pr-body-file", "body.md"], ghEnv);
+    if (act.exit !== 0) {
+      const pend = readFileSync(join(fx0, ".lazyzcode", "delivery", "contracts.json"), "utf8");
+      void pend;
+      throw new Error(`030 delivery act：${act.out.split("\n")[0]}`);
+    }
+  } catch (e) {
+    prepFail = String(e?.message ?? e).slice(0, 300);
+  }
+  const goal0 = prepFail ? null : readGoal0();
+  const intentsPath = join(fx0, ".lazyzcode", "delivery", "intents.json");
+  const intents0 = existsSync(intentsPath) ? JSON.parse(readFileSync(intentsPath, "utf8")) : null;
+  const ghRead = existsSync(join(caseDir, "fake-gh-state.json")) ? JSON.parse(readFileSync(join(caseDir, "fake-gh-state.json"), "utf8")) : { calls: 0 };
+  push("MR2-legacy-inflight", prepFail == null && goal0?.status === "executing" && goal0?.version === 1,
+    "0.3.1 真 CLI 建在途 goal（v1·executing·N1 done）", prepFail ?? `status=${goal0?.status} version=${goal0?.version}`, "goal.json 活体读数");
+  const queuePath = join(fx0, ".lazyzcode", "queue", "queue.json");
+  const queue0 = existsSync(queuePath) ? JSON.parse(readFileSync(queuePath, "utf8")) : null;
+  const budgetPath = join(fx0, ".lazyzcode", "budget", "ledger.json");
+  const budgetInQueue = queue0?.budget != null && Number(queue0.budget.pointsLimit ?? queue0.budget.points ?? 0) > 0;
+  push("MR3-legacy-queue-budget", queue0?.items?.length === 1 && (existsSync(budgetPath) || budgetInQueue),
+    "0.3.1 建队列项+预算入账（loop 外家族：queue budget 段或 budget/ledger.json）",
+    `items=${queue0?.items?.length ?? 0} budgetSection=${JSON.stringify(queue0?.budget ?? null)?.slice(0, 120)} ledger=${existsSync(budgetPath)}`, "queue.json/budget 读数");
+  const intentDone = (intents0?.intents ?? []).find((it) => it.endpoint === "B");
+  push("MR4-legacy-done-intent", intentDone?.status === "done" && ghRead.calls > 0,
+    "0.3.1 delivery act B 真链成功：意图 done+假 gh 计数>0（外部动作已发生）",
+    `status=${intentDone?.status ?? "缺席"} ghCalls=${ghRead.calls}`, "intents.json+fake-gh-state.json 读数");
+
+  // ── 腿 A：续旧任务（0.4.0 CLI 读/裁旧 v1 goal——政策裁决不适用且字节零触碰）──
+  const fxA = join(caseDir, "legA-continue");
+  cpSync(fx0, fxA, { recursive: true, verbatimSymlinks: true });
+  const goalA0 = sha256Of(join(fxA, ".lazyzcode", "loop", "goal.json"));
+  const lzyA = (args) => {
+    const r = spawnSync(process.execPath, [CLI040, ...args], { cwd: fxA, encoding: "utf8", timeout: 180_000, env: { ...baseEnv, HOME: home0, USERPROFILE: home0 } });
+    return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  };
+  const stA = lzyA(["loop", "status"]);
+  const gateA = lzyA(["gate", "explain"]);
+  const goalA1 = sha256Of(join(fxA, ".lazyzcode", "loop", "goal.json"));
+  push("MR5-continue-legacy-v1", stA.exit === 0 && gateA.exit === 0 && /政策裁决不适用（v1 旧规则延续）/.test(gateA.out) && goalA1 === goalA0,
+    "0.4.0 续旧任务：status 可读+gate v1 延续裁决行+goal.json 字节不变（V13 旧规则带版本标记延续）",
+    `status=${stA.exit} gate=${gateA.exit} v1line=${/政策裁决不适用/.test(gateA.out)} bytesUnchanged=${goalA1 === goalA0}`,
+    "lzy loop status/gate explain 活体 stdout+goal.json sha 前后对表");
+
+  // ── 腿 B：新注册 v2+残缺 v2 fail-closed ──
+  const homeB = mkdtempSync(join(tmpdir(), "lzy-qmr-homeB-"));
+  const fxB = join(caseDir, "legB-newreg");
+  mkdirSync(fxB, { recursive: true });
+  const gB = (args) => spawnSync("git", args, { cwd: fxB, encoding: "utf8" });
+  gB(["init", "-q"]);
+  gB(["config", "user.email", "t@l"]);
+  gB(["config", "user.name", "t"]);
+  writeFileSync(join(fxB, ".gitignore"), ".lazyzcode/\n");
+  writeFileSync(join(fxB, "contract.md"), "task: mrg new\nendpoint: A\nscope: .\nrecipe: none\n\n- [A1] x\n");
+  writeFileSync(join(fxB, "plan.md"), "- [N1] x\n- [F1] y\naccepts: A1\n");
+  gB(["add", "-A"]);
+  gB(["commit", "-qm", "fixture"]);
+  const lzyB = (args) => {
+    const r = spawnSync(process.execPath, [CLI040, ...args], { cwd: fxB, encoding: "utf8", timeout: 180_000, env: { ...baseEnv, HOME: homeB, USERPROFILE: homeB } });
+    return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  };
+  const hookB = (prompt) => {
+    const r = spawnSync(process.execPath, [TRIGGER040], { cwd: fxB, encoding: "utf8", timeout: 60_000, input: JSON.stringify({ prompt, cwd: fxB, sessionId: "sess_qmrB" }), env: { ...baseEnv, HOME: homeB, USERPROFILE: homeB } });
+    return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  };
+  let newRegOk = false;
+  let newRegRead = "";
+  try {
+    if (lzyB(["loop", "register", "mrgn", "--title", "new v2", "--contract", "contract.md"]).exit !== 0) throw new Error("register");
+    if (lzyB(["loop", "plan", "plan.md"]).exit !== 0) {
+      const gp = join(fxB, ".lazyzcode", "loop", "goal.json");
+      const short = JSON.parse(readFileSync(gp, "utf8")).contractPending?.contractHash?.slice(0, 8);
+      if (!short || !hookB(`批准 ${short}`).out.includes("Human approval recorded")) throw new Error("批准");
+      if (lzyB(["loop", "plan", "plan.md"]).exit !== 0) throw new Error("采纳");
+    }
+    if (lzyB(["loop", "start"]).exit !== 0) throw new Error("start");
+    newRegOk = true;
+  } catch (e) {
+    newRegRead = String(e?.message ?? e).slice(0, 200);
+  }
+  const goalB = newRegOk ? JSON.parse(readFileSync(join(fxB, ".lazyzcode", "loop", "goal.json"), "utf8")) : null;
+  const polFiles = newRegOk ? (existsSync(join(fxB, ".lazyzcode", "policy")) ? readdirSync(join(fxB, ".lazyzcode", "policy")).filter((f) => f.endsWith(".json")) : []) : [];
+  push("MR6-new-reg-v2-identity", newRegOk && goalB?.version === 2 && goalB?.policy?.schemaVersion === 1 && polFiles.length > 0,
+    "0.4.0 新注册=v2 格式带策略身份+策略记录在场", newRegRead || `version=${goalB?.version} policy=${JSON.stringify(goalB?.policy ?? null)} polFiles=${polFiles.length}`,
+    "goal.json+policy/ 家族读数");
+  const fxB2 = join(caseDir, "legB2-broken-v2");
+  cpSync(fxB, fxB2, { recursive: true, verbatimSymlinks: true });
+  const goalB2Path = join(fxB2, ".lazyzcode", "loop", "goal.json");
+  const broken = JSON.parse(readFileSync(goalB2Path, "utf8"));
+  delete broken.policy;
+  writeFileSync(goalB2Path, `${JSON.stringify(broken, null, 2)}\n`);
+  const gateB2 = lzyB(["gate", "explain"]);
+  push("MR7-broken-v2-failclosed", gateB2.exit !== 0 && /策略记录缺席|策略身份/.test(gateB2.out) && !/政策裁决不适用/.test(gateB2.out),
+    "残缺 v2（缺策略身份）fail-closed：拒绝走 v2 拒面而非回落 v1 延续（V13 新任务缺策略不能走 legacy）",
+    `exit=${gateB2.exit} v2rej=${/策略记录缺席|策略身份/.test(gateB2.out)} legacyFallback=${/政策裁决不适用/.test(gateB2.out)}`,
+    "gate explain 活体 stdout（残缺 v2 goal）");
+
+  // ── 腿 C：显式迁移全径（副本上 apply；字节保留+manifest 双读）──
+  const fxC = join(caseDir, "legC-migrate");
+  cpSync(fx0, fxC, { recursive: true, verbatimSymlinks: true });
+  // 字节保留面=基线在场者（0.3.1 预算存 queue 段时 ledger 缺席——如实按在场面断言）
+  const byteFaces = ["delivery/intents.json", "budget/ledger.json", "queue/queue.json"]
+    .filter((rel) => existsSync(join(fxC, ".lazyzcode", rel)))
+    .map((rel) => ({ rel, pre: sha256Of(join(fxC, ".lazyzcode", rel)) }));
+  const lzyC = (args) => {
+    const r = spawnSync(process.execPath, [CLI040, ...args], { cwd: fxC, encoding: "utf8", timeout: 300_000, env: { ...baseEnv, HOME: home0, USERPROFILE: home0 } });
+    return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  };
+  const mig = lzyC(["migrate", "apply", fxC]);
+  const stateC = existsSync(join(fxC, ".lazyzcode", "state.json")) ? JSON.parse(readFileSync(join(fxC, ".lazyzcode", "state.json"), "utf8")) : null;
+  const draftC = join(fxC, ".lazyzcode", "drafts", "mrg.draft-contract.md");
+  const bytesKept = byteFaces.map((x) => ({ rel: x.rel, kept: sha256Of(join(fxC, ".lazyzcode", x.rel)) === x.pre }));
+  let manifestOk = false;
+  if (stateC?.lastRunId) {
+    const manifest = JSON.parse(readFileSync(join(fxC, ".lazyzcode", "migration", "backup", stateC.lastRunId, "manifest.json"), "utf8"));
+    manifestOk = manifest.files.length > 0 && manifest.files.every((m) => sha256Of(join(fxC, ".lazyzcode", "migration", "backup", stateC.lastRunId, m.rel)) === m.sha256);
+  }
+  push("MR8-migrate-apply-full", mig.exit === 0 && stateC?.stateVersion === "0.4.0" && existsSync(draftC) && /authorization: NONE/.test(readFileSync(draftC, "utf8")),
+    "显式迁移全径：state 写入（stateVersion=0.4.0）+草案 authorization NONE", `exit=${mig.exit} stateVersion=${stateC?.stateVersion ?? "缺席"} draft=${existsSync(draftC)}`,
+    "lzy migrate apply 活体 stdout+state.json/drafts 读数");
+  push("MR9-migrate-bytes-preserved", bytesKept.length >= 2 && bytesKept.every((x) => x.kept) && manifestOk,
+    "迁移保字节：intents/预算/队列三族 sha256 前后不变+备份 manifest 逐文件双读一致",
+    JSON.stringify(bytesKept), "manifest.json+逐族 sha256 对表");
+
+  // ── 腿 D：backup/stage/switch 三相位 SIGKILL 注入 → 重跑恢复 ──
+  const jdirOf = (root) => join(root, ".lazyzcode", "migration", "journal");
+  const newestJournal = (root) => {
+    const jd = jdirOf(root);
+    if (!existsSync(jd)) return null;
+    const jf = readdirSync(jd).filter((f) => f.endsWith(".jsonl")).sort().at(-1);
+    return jf ? join(jd, jf) : null;
+  };
+  const killApplyAtPhase = (root, home, phase, timeoutMs = 90_000) =>
+    new Promise((res) => {
+      const child = spawn(process.execPath, [CLI040, "migrate", "apply", root], { cwd: root, env: { ...baseEnv, HOME: home, USERPROFILE: home }, stdio: "ignore" });
+      const started = Date.now();
+      const timer = setInterval(() => {
+        let lastPhase = null;
+        const jp = newestJournal(root);
+        try {
+          if (jp) {
+            const lines = readFileSync(jp, "utf8").trim().split("\n").filter(Boolean);
+            lastPhase = lines.length ? JSON.parse(lines.at(-1)).phase : null;
+          }
+        } catch {}
+        const stateIn = existsSync(join(root, ".lazyzcode", "state.json"));
+        // switch=提交点（state 最后写）：窗口亚毫秒，物理上常赛完——触发面=相位命中 ∨（switch 点∧state 在场∧done 未记）
+        const hit = lastPhase === phase || (phase === "switch" && stateIn && lastPhase !== "done");
+        if (hit) {
+          clearInterval(timer);
+          try { child.kill("SIGKILL"); } catch {}
+          res({ killed: true, lastPhase });
+          return;
+        }
+        if (child.exitCode !== null || child.signalCode != null || Date.now() - started > timeoutMs) {
+          clearInterval(timer);
+          res({ killed: false, lastPhase, exited: child.exitCode !== null || child.signalCode != null });
+        }
+      }, 1);
+    });
+  const phaseResults = [];
+  for (const phase of ["backup", "stage", "switch"]) {
+    const rootP = join(caseDir, `legD-${phase}`);
+    cpSync(fx0, rootP, { recursive: true, verbatimSymlinks: true });
+    const stateFirstShaP = existsSync(join(rootP, ".lazyzcode", "state.json")) ? sha256Of(join(rootP, ".lazyzcode", "state.json")) : null;
+    const kill = await killApplyAtPhase(rootP, home0, phase);
+    const rerun = lzyC2(rootP);
+    const jp = newestJournal(rootP);
+    const lastPhase = jp ? JSON.parse(readFileSync(jp, "utf8").trim().split("\n").filter(Boolean).at(-1)).phase : null;
+    const stateOk = existsSync(join(rootP, ".lazyzcode", "state.json")) && JSON.parse(readFileSync(join(rootP, ".lazyzcode", "state.json"), "utf8")).stateVersion === "0.4.0";
+    phaseResults.push({ phase, killed: kill.killed, killedAt: kill.lastPhase, rerunExit: rerun.exit, rerunOut: rerun.out.slice(0, 200), lastPhase, stateOk, stateFirstSha: stateFirstShaP, stateAfterSha: existsSync(join(rootP, ".lazyzcode", "state.json")) ? sha256Of(join(rootP, ".lazyzcode", "state.json")) : null });
+  }
+  function lzyC2(root) {
+    const r = spawnSync(process.execPath, [CLI040, "migrate", "apply", root], { cwd: root, encoding: "utf8", timeout: 300_000, env: { ...baseEnv, HOME: home0, USERPROFILE: home0 } });
+    return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  }
+  for (const x of phaseResults) {
+    if (x.phase === "switch" && !x.killed && x.rerunExit === 0) {
+      // 赛完形态（提交点窗口亚毫秒）：重跑=幂等 no-op 且 state 字节不变——「提交点后不重放」活体等价面
+      x.racedNoop = x.rerunOut.includes("幂等 no-op") || x.rerunOut.includes("已按任务身份");
+      x.stateBytesUnchanged = x.stateFirstSha === x.stateAfterSha;
+    }
+  }
+  const dOk = phaseResults.every((x) =>
+    x.rerunExit === 0 && x.stateOk && (x.killed ? x.lastPhase === "done" : x.phase === "switch" && x.racedNoop && x.stateBytesUnchanged));
+  push("MR10-phase-kill-recovery", dOk,
+    "backup/stage 活体 SIGKILL+重跑恢复（journal 收尾 done）；switch=击杀 ∨ 赛完-重跑幂等不重放（提交点窗口亚毫秒如实记录命中形态）",
+    JSON.stringify(phaseResults), "逐点 killedAt/journal 末相位/state 读数+重跑 stdout");
+
+  // ── 腿 E：done 意图副作用不重放 ──
+  const fxE = join(caseDir, "legE-noreplay");
+  cpSync(fx0, fxE, { recursive: true, verbatimSymlinks: true });
+  const ghStateBefore = JSON.parse(readFileSync(join(caseDir, "fake-gh-state.json"), "utf8")).calls;
+  const intentsE0 = sha256Of(join(fxE, ".lazyzcode", "delivery", "intents.json"));
+  const rE = spawnSync(process.execPath, [CLI040, "delivery", "act", "B", "--repo", "Acfufu/mrg-fx", "--branch", "legacy-delivery", "--base", "main", "--head", spawnSync("git", ["rev-parse", "HEAD"], { cwd: fxE, encoding: "utf8" }).stdout.trim(), "--pr-title", "again", "--pr-body-file", "body.md"], {
+    cwd: fxE, encoding: "utf8", timeout: 180_000, env: { ...baseEnv, HOME: home0, USERPROFILE: home0, LZY_GH_BIN: join(caseDir, "fake-gh.cjs"), FAKE_GH_STATE: join(caseDir, "fake-gh-state.json"), FAKE_GH_HEAD: spawnSync("git", ["rev-parse", "HEAD"], { cwd: fxE, encoding: "utf8" }).stdout.trim() },
+  });
+  const ghStateAfter = JSON.parse(readFileSync(join(caseDir, "fake-gh-state.json"), "utf8")).calls;
+  const intentsE1 = sha256Of(join(fxE, ".lazyzcode", "delivery", "intents.json"));
+  push("MR11-done-intent-no-replay", rE.status !== 0 && ghStateAfter === ghStateBefore && intentsE1 === intentsE0,
+    "done 意图再 act=拒且假 gh 计数零增、意图账本字节不变（已发生动作不重放）",
+    `exit=${rE.status} ghCalls ${ghStateBefore}→${ghStateAfter} intentsUnchanged=${intentsE1 === intentsE0}`,
+    "lzy delivery act 活体+fake-gh-state/intents sha 对表");
+
+  return {
+    blocked: null,
+    assertions,
+    probeBudget: { preregisteredSessions: 0, usedSessions: 0, note: "全真 CLI 子进程+假 gh 外发替身+本地 bare 远端，零模型会话（0.3.1 臂无评审机器）" },
+  };
+}
+
 function writeStubEngine(dir) {
   const p = join(dir, "stub-engine.cjs");
   writeFileSync(
@@ -1853,8 +2182,10 @@ if (CASE === "capability") {
   result = await findingLifecycleCase();
 } else if (CASE === "scope-qualification") {
   result = await scopeQualificationCase();
+} else if (CASE === "migration-recovery") {
+  result = await migrationRecoveryCase();
 } else {
-  die(`未知 --case：${CASE}（capability|capability-meter|gate-matrix|review-runtime|finding-lifecycle|scope-qualification）`);
+  die(`未知 --case：${CASE}（capability|capability-meter|gate-matrix|review-runtime|finding-lifecycle|scope-qualification|migration-recovery）`);
 }
 
 const assertions = result.assertions ?? [];

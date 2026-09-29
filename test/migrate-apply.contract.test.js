@@ -98,7 +98,7 @@ test("迁移 apply：在途→草案 authorization NONE+state 版本入口+journ
   assert.match(draft, /planHash=a{64}/);
   const state = JSON.parse(readFileSync(join(lz, "state.json"), "utf8"));
   assert.equal(state.schemaVersion, 1);
-  assert.equal(state.stateVersion, "0.3.0");
+  assert.equal(state.stateVersion, "0.4.0");
   assert.equal(state.tasks["old-goal"].planHash, "a".repeat(64));
   assert.match(state.tasks["old-goal"].draftFile, /drafts\/old-goal\.draft-contract\.md$/);
   const jdir = join(lz, "migration", "journal");
@@ -153,7 +153,7 @@ test("迁移 apply：executing 僵尸租约（租约在场但持有进程已死�
   const r = lzyAt(["migrate", "apply", d], d, HOME);
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /迁移 apply 完成/);
-  assert.equal(JSON.parse(readFileSync(join(lz, "state.json"), "utf8")).stateVersion, "0.3.0");
+  assert.equal(JSON.parse(readFileSync(join(lz, "state.json"), "utf8")).stateVersion, "0.4.0");
 });
 
 test("迁移 apply：活体 lease 拒（写前停止，零副作用）", () => {
@@ -229,9 +229,9 @@ test("迁移 apply：崩溃恢复——草案已写 state 缺位重跑补齐且�
   assert.match(r.out, /未收尾 run/);
   assert.equal(sha256(join(lz, "drafts", "old-goal.draft-contract.md")), draftHash, "恢复重跑覆盖了既有草案");
   const state = JSON.parse(readFileSync(join(lz, "state.json"), "utf8"));
-  assert.equal(state.stateVersion, "0.3.0");
+  assert.equal(state.stateVersion, "0.4.0");
   const r2 = lzyAt(["migrate", "status", d], d, HOME);
-  assert.match(r2.out, /stateVersion=0\.3\.0/);
+  assert.match(r2.out, /stateVersion=0\.4\.0/);
 });
 
 test("doctor migrate 行：版本入口读数与缺位提示（纯信息面）", () => {
@@ -244,7 +244,7 @@ test("doctor migrate 行：版本入口读数与缺位提示（纯信息面）",
   assert.equal(lzyAt(["migrate", "apply", d], d, HOME).code, 0);
   r = lzyAt(["doctor"], d, HOME);
   line = r.out.split("\n").find((l) => l.includes("migrate"));
-  assert.match(line, /stateVersion=0\.3\.0/);
+  assert.match(line, /stateVersion=0\.4\.0/);
 });
 
 test("迁移 preview：零写回回归维持（M1 契约测试同面复跑）", () => {
@@ -293,4 +293,58 @@ test("迁移 apply：备份族含符号链接保真（M5 N4）", () => {
   const backedLink = join(lz, "migration", "backup", state.lastRunId, "loop", "snapshots", "link.md");
   assert.ok(lstatSync(backedLink).isSymbolicLink(), "备份副本须保留链接本身（改前=目标内容的常规文件复制）");
   assert.equal(readlinkSync(backedLink), "../goal.json");
+});
+
+// ── 0.4.0 M5 N5：相位注入恢复矩阵——kill 点态用「跑全径后裁剪 journal+删后续产物」复刻
+//（=该相位 journal 刚落盘即被杀的盘面近似；活体 SIGKILL 注入在 qa.mjs --case
+// migration-recovery 的真子进程上做）。──
+function truncateJournal(lz, keepLines) {
+  const jdir = join(lz, "migration", "journal");
+  const jf = readdirSync(jdir).find((f) => f.endsWith(".jsonl"));
+  const lines = readFileSync(join(jdir, jf), "utf8").trim().split("\n");
+  writeFileSync(join(jdir, jf), `${lines.slice(0, keepLines).join("\n")}\n`);
+  return jf;
+}
+
+test("相位注入：backup 后终止 → 重跑补齐且未收尾 run 显形（M5 N5）", () => {
+  const { d, HOME, lz } = legacyRoot({ status: "executing" });
+  assert.equal(lzyAt(["migrate", "apply", d], d, HOME).code, 0);
+  rmSync(join(lz, "state.json"));
+  rmSync(join(lz, "drafts", "old-goal.draft-contract.md"));
+  truncateJournal(lz, 2); // start+backup=备份刚写完即死（草案尚未暂存——重跑新生成，字节稳定语义属 stage 形态）
+  const r = lzyAt(["migrate", "apply", d], d, HOME);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /未收尾 run/);
+  const state = JSON.parse(readFileSync(join(lz, "state.json"), "utf8"));
+  assert.equal(state.stateVersion, "0.4.0");
+  assert.match(readFileSync(join(lz, "drafts", "old-goal.draft-contract.md"), "utf8"), /authorization: NONE/);
+  const jdir = join(lz, "migration", "journal");
+  const newest = readdirSync(jdir).filter((f) => f.endsWith(".jsonl")).sort().at(-1); // 续跑=新 runId 新文件（数字前缀字典序=时序）
+  const lines = readFileSync(join(jdir, newest), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.equal(lines.at(-1).phase, "done", "续跑收尾 done");
+  assert.equal(lines[0].phase, "start");
+});
+
+test("相位注入：stage 后终止（草案在场 state 缺位）→ 重跑不覆盖草案补齐 state（M5 N5）", () => {
+  const { d, HOME, lz } = legacyRoot({ status: "planning" });
+  assert.equal(lzyAt(["migrate", "apply", d], d, HOME).code, 0);
+  const draftFirst = readFileSync(join(lz, "drafts", "old-goal.draft-contract.md"), "utf8");
+  rmSync(join(lz, "state.json"));
+  truncateJournal(lz, 3); // start+backup+stage=暂存刚写完即死
+  const r = lzyAt(["migrate", "apply", d], d, HOME);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(readFileSync(join(lz, "drafts", "old-goal.draft-contract.md"), "utf8"), draftFirst, "已暂存草案被重写漂移");
+  const state = JSON.parse(readFileSync(join(lz, "state.json"), "utf8"));
+  assert.equal(state.stateVersion, "0.4.0");
+});
+
+test("相位注入：switch 后终止（state 在场 journal 缺 done）→ 重跑幂等不重放（M5 N5）", () => {
+  const { d, HOME, lz } = legacyRoot({ status: "executing" });
+  assert.equal(lzyAt(["migrate", "apply", d], d, HOME).code, 0);
+  const stateFirst = readFileSync(join(lz, "state.json"), "utf8");
+  truncateJournal(lz, 5); // start..switch=提交点刚写完 done 未记即死
+  const r = lzyAt(["migrate", "apply", d], d, HOME);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /幂等 no-op|已按任务身份/);
+  assert.equal(readFileSync(join(lz, "state.json"), "utf8"), stateFirst, "提交点后被重写");
 });

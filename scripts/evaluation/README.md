@@ -1,7 +1,8 @@
 # scripts/evaluation/ — M0 冻结清单与评估执行家法
 
 0.4.0 M0（goal v040-m0-capability）起立。本目录承载评估面工具：冻结清单格式、
-（M5）配对执行 `run-pairs.mjs`、独立判定与归因报告。**本目录不是产品授权写者**
+配对执行 `run-pairs.mjs`（M5 已落地；用法见 `--help`：预飞→batch 冻结→按 seed 交错序
+执行→完整性 report）、独立判定与归因报告。**本目录不是产品授权写者**
 （docs/plan-v040-engineering-policy.md §7 模块表）——清单记录事实与判据身份，
 不构成任何 goal 的完成权威。
 

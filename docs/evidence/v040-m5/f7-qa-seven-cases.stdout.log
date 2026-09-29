@@ -1,0 +1,143 @@
+=== case capability ===
+[v040-qa] case=capability passed=true
+  ✔ ISO-A1 isolation-a：会话完成且必要事实标记入答（必要事实可访问）｜observed: ok=true factInResponse=true exit=0 timedOut=false
+  ✔ ISO-A2 转录落隔离 HOME 且真实 HOME 无同 sessionId 转录（HOME 隔离判据，KU#1）｜observed: isolated=true realHome=false sid=sess_ac4c1847-1456-475e-b1d0-4aac0c73668f
+  ✔ ISO-A3 轨迹可核验：转录含 file_path 工具读取记录且必要事实文件被读取｜observed: toolReads=true factsRead=true
+  ✔ ISO-A4 isolation-a：cap-b 路 canary 不入 prompt/轨迹/输出（首轮结论隔离）｜observed: []
+  ✔ ISO-B1 isolation-b：会话完成且必要事实标记入答（必要事实可访问）｜observed: ok=true factInResponse=true exit=0 timedOut=false
+  ✔ ISO-B2 转录落隔离 HOME 且真实 HOME 无同 sessionId 转录（HOME 隔离判据，KU#1）｜observed: isolated=true realHome=false sid=sess_daed758d-09cc-4f1d-a8cf-2bbcf6ea66e0
+  ✔ ISO-B3 轨迹可核验：转录含 file_path 工具读取记录且必要事实文件被读取｜observed: toolReads=true factsRead=true
+  ✔ ISO-B4 isolation-b：cap-a 路 canary 不入 prompt/轨迹/输出（首轮结论隔离）｜observed: []
+  ✔ NEG-1 负对照：canary 显式写入 prompt ⇒ 检测器必须命中（毒化输入不可逃逸检测）｜observed: [{"surface":"prompt","tokenHits":1}]
+  ✔ MET-1 计量归因：两个完成会话逐 sessionId 在其账本落点（隔离 HOME 子账本）积分非零｜observed: isolation-a:priced:0.04280788 isolation-b:priced:0.042281
+  ✔ MET-2 不双计：同 sessionId 二次读数恒等｜observed: isolation-a:true isolation-b:true
+  ✔ FIND-1 发现项（非失败）：宿主账本对隔离 HOME 会话结构性零行——querySessionPoints 钉死宿主 billingDbPath，隔离与宿主侧归因互斥；M2 执行器须按子账本路径计量或产品面参数化｜observed: isolation-a:hostAbsent=true isolation-b:hostAbsent=true
+  ✔ KILL-1 可观测启动事件：隔离 HOME 转录文件在场后才击杀｜observed: startObservedAt=2026-09-29T21:23:11.077Z
+  ✔ KILL-2 击杀读回诚实：SIGKILL 在途击杀；子账本只反映击杀前已完成请求（absent=纯在途假零形态／partial=已完成行如实入账），在途消耗按 killed-inflight 显式申报、不得渲染为零消耗｜observed: signal=SIGKILL killedReadback={"absent":false,"unpriced":[],"points":0.020231,"db":"/tmp/f7-fx/home-k/.zcode/cli/db/db.sqlite"}
+  ✔ KILL-3 重启只续评：--resume 同 sessionId 续跑完成且消耗并入同 sessionId 计量｜observed: ok=true sameSid=true points=0.04209808
+  ✔ KILL-4 重启不产权状：夹具与证据根前后差集中零 PASS/attestation 形态新文件｜observed: diff 干净
+  result-capability.json → /tmp/f7-out/result-capability.json
+=== case capability EXIT=0 ===
+=== case capability-meter ===
+[v040-qa] capability-meter 需 --prev-result <先前 capability result.json>
+=== case capability-meter EXIT=2 ===
+=== case gate-matrix ===
+[queue] 派发 q1（qam-item）tx=t-20260929T212331-pykswuq goal=gmatrix
+[queue] goal gmatrix 仍 executing——同 goal 续跑（不重复注册）
+[queue] q1 未竟（统一门阻塞（done 记录不免核，gate b2ae3b69）：[义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席））——消耗已结算，item 回 ready 待续
+[v040-qa] case=gate-matrix passed=true
+  ✔ GATE-b1-failed-but-reusable 失败但可复用的回执（适用≠成功，V03） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜exit.code==3（非 0）——失败回执可复用仅构成适用性事实，不满足成功义务（V03）
+  ✔ GATE-b2-contract-mutated 错契约（契约盘上漂移=新哈希=新授权请求） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜[a.contract-unmutated] 契约已变（盘上 5fd42193cc…≠绑定 445bd9c20f…）——新哈希=新授权请求
+  ✔ GATE-b3-candidate-moved 错候选（回执后候选前移） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜候选已前移（回执 head=d8257fd7 ≠ 现行 efff47a5）——对现行候选重验
+  ✔ GATE-b4-ci-missing-item CI 漏项（必需集合不全，V10） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜必需检查「ci / test (24, windows-latest)」missing：必需检查无读数（缺项）——不能拿别的绿项顶替
+  ✔ GATE-b5-authorization-withdrawn 授权撤回（撤回在案即无效，V02） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜[b.authorized] 契约授权已被用户撤回（撤回于 2026-09-29T21:23:26.291Z，短码 445bd9c2）
+  ✔ GATE-b6-review-absent 评审缺席（M1 恒在场：诚实阻塞，不伪造完成） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✔ GATE-b7-contract-file-absent v2 目标契约缺席（绑定在案而文件读不到=拒，不猜补） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜[a.contract-readable] 契约文件不可读或结构非法——契约文件不可读（ENOENT）：/private/tmp/f7-fx/gate-matrix/b7-contract-file-absent/contract.md
+  ✔ GATE-b8-acceptance-mapping-missing 契约在案但验收映射缺项（F 项未覆盖 A2） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜验收覆盖缺口：契约验收项 A2 无任何 F 项 accepts 引用
+  ✔ GATE-base-review-only 基态（真实成功回执全满足）：unsatisfied 全为 review 型义务（底线+推导专项）；check/ci 义务 satisfied（三轴满足）且无失败子句｜observed: unsatisfied=[review.general-correctness,review.verification-deps] check=satisfied ci=satisfied failedClauses=[]
+  ✔ ENTRY-finish 缺必需评审的已批准契约 v2 目标：loop finish 退出码非 0、报文含统一门阻塞+评审义务、状态不置 done｜observed: exit=1 status=executing｜[义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✔ ENTRY-dispatch-done done 旧记录不免核：queue dispatch 条目非 completed、回 ready、tx killed 且成因含统一门｜observed: item=ready tx=killed｜统一门阻塞（done 记录不免核，gate b2ae3b69）：[义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✔ ENTRY-reconcile-done done 追认前过门：reconcile verdict 字面含阻塞原因、条目保持未决（不追认）、tx 留可 reconcile 集｜observed: item=ready tx=open｜blocked（统一门：[义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席））
+  ✔ ENTRY-act-v2 缺必需评审的 v2 目标：delivery act 被统一门拒（错误面），外发替身计数 0、意图零落账｜observed: err=外发前置统一门（ep B）阻塞（gate 00190607）：
+  - [义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  - [义务 review.verification-deps] 评审无在案运行——lzy  calls=0 intents=0
+  ✔ ENTRY-done-gate-explain done 记录的 gate explain 仍 BLOCKED（done 不免核读面；v1 旧记录则逐字「政策裁决不适用」）｜observed: exit=1 first=统一门 · 目标 gmatrix（v2 · tier light · done） · 裁决 BLOCKED（快照 05138661…）
+  ✔ ENTRY-no-contract-review 无契约 v2 目标不豁免评审义务（诚实阻塞；不存在「无契约→免评审」旁路）｜observed: exit=1 reviewReason=true
+  result-gate-matrix.json → /tmp/f7-out/result-gate-matrix.json
+=== case gate-matrix EXIT=0 ===
+=== case review-runtime ===
+[v040-qa] light 绿例：points=0.2281226 wallMs=83760 runId=green-light.a1.r1
+[v040-qa] heavy 绿例：points=0.29941452 wallMs=136667 runId=green-heavy.a1.r1
+[v040-qa] case=review-runtime passed=true
+  ✔ r1 exit 1 且判因 candidate-moved（后台改候选）｜observed: exit=1 out=评审运行 r1-candidate-race.a1.r1 · review.general-correctness · invalid（candidate-moved） · 计量 absent
+  ✔ r2 exit 1 且判因 parse-fail（无围栏）｜observed: exit=1 out=评审运行 r2-parse-fail.a1.r1 · review.general-correctness · invalid（parse-fail） · 计量 absent
+  ✔ r3 exit 1 且判因 timeout（小墙钟 SIGKILL）｜observed: exit=1 out=评审运行 r3-timeout.a1.r1 · review.general-correctness · invalid（timeout） · 计量 absent
+  ✔ r4 exit 1 且判因 metering-absent（替身不写子账本）｜observed: exit=1 out=评审运行 r4-metering-absent.a1.r1 · review.general-correctness · invalid（metering-absent） · 计量 absent
+  ✔ r5a exit 3 且报文带撤回与恢复指路｜observed: exit=3 out=前置不具备（不 spawn、不消耗、不落档）：契约 8848e2fe 授权已撤回（2026-09-29T21:23:43.844Z）——恢复：用户重发「批准 8848e2fe」原话后重跑（批准记录只由真实用户消息经 UPS 钩子写入）
+  ✔ r5b 零 spawn（不落档不消耗）｜observed: 族内档数=0
+  ✔ r6 伪导入不充当运行：gate 仍 blocked（原始输出封存缺席）｜observed: exit=1 rev=unsatisfied
+  ✔ r6b list 面在场（伪造档过容器闸后按内容判）｜observed: exit=0
+  ✔ r7 exit 1 且判因 contamination（快照树变化）｜observed: exit=1 out=评审运行 r7-contamination.a1.r1 · review.general-correctness · invalid（contamination） · 计量 metered 0.11899999999999998 分
+  ✔ r8 pass∧blocking 并存按 blocked 判（归一化注记），exit 1 不可改判｜observed: exit=1 out=评审运行 r8-contradiction.a1.r1 · review.general-correctness · valid · 计量 metered 0.11899999999999998 分
+  ✔ light-run 真实会话产出 valid metered pass（exit 0）｜observed: exit=0 validity=valid verdict=pass reason= 评审运行 green-light.a1.r1 · review.general-correctness · valid · 计量 metered 0.2281226 分
+  ✔ light-show review show 逐字段面｜observed: exit=0
+  ✔ light-gate gate 评审义务翻 satisfied → 裁决 PASS｜observed: exit=0 verdict=PASS（快照
+  ✔ light-finish finish 过门落终验 attestation｜observed: exit=0 att=1 out=✔✔ 目标完成：green-light — t
+  ✔ light-metering 子账本 metered>0 ∧ 双读不累加 ∧ 宿主零行（M0 发现一收口面）｜observed: points=0.2281226/0.2281226 hostAbsent=true
+  ✔ light-isolation input 包零在先运行标记（facts-only）｜observed: leak=false
+  ✔ heavy-run 真实会话产出 valid metered pass（exit 0）｜observed: exit=0 validity=valid verdict=pass reason= 评审运行 green-heavy.a1.r1 · review.general-correctness · valid · 计量 metered 0.29941452 分
+  ✔ heavy-show review show 逐字段面｜observed: exit=0
+  ✔ heavy-gate gate 评审义务翻 satisfied → 裁决 PASS｜observed: exit=0 verdict=PASS（快照
+  ✔ heavy-finish finish 过门落终验 attestation｜observed: exit=0 att=1 out=✔✔ 目标完成：green-heavy — t
+  ✔ heavy-metering 子账本 metered>0 ∧ 双读不累加 ∧ 宿主零行（M0 发现一收口面）｜observed: points=0.29941452/0.29941452 hostAbsent=true
+  ✔ heavy-isolation input 包零在先运行标记（facts-only）｜observed: leak=false
+  result-review-runtime.json → /tmp/f7-out/result-review-runtime.json
+=== case review-runtime EXIT=0 ===
+=== case finding-lifecycle ===
+[v040-qa] finding-lifecycle 真会话腿：2 次（预注册 12 内）
+[v040-qa] case=finding-lifecycle passed=true
+  ✔ a1-blocked-run 替身阻塞运行 valid 落档且阻塞发现入账（exit 1）｜observed: exit=1 validity=valid upserted=1
+  ✔ a2-finish-denied review 义务已满足而未关闭阻塞发现 ⇒ finish 必拒（报文点名 findings）｜observed: finExit=1 gateHasFindings=true out=[lzy] 统一门阻塞（政策层，gate 6fb5d7c4）：|  - [findings] 未关闭阻塞发现 c7199fc1（P1 · 授权撤回缺陷：已撤销令牌仍可放行 · 状态 open · 首见 fl-chain-a.a1.r1 · 累计 1 次）——修复后 lzy rev
+  ✔ a3-resolve resolve-request 0｜observed: exit=0
+  ✔ a4-invalid-fix-1 recheck 仍报=无效修复 1（回 open）｜observed: invalidFixCount=1 status=open
+  ✔ a5-diagnosis-required 两次无效修复 ⇒ diagnosis-required｜observed: status=diagnosis-required count=2
+  ✔ a6-resolve-denied diagnosis-required 态 resolve 拒（exit 1）｜observed: exit=1 out=[lzy] diagnosis-required：连续 2 次无效修复——先 lzy finding diagnose c7199fc1 记录根因，方可再入关闭通道
+
+  ✔ a7-diagnose-reset diagnose 记根因重置（exit 0）｜observed: exit=0
+  ✔ a8-recheck-candidates recheck 绿 ⇒ 闭候选 1 条（报文指路 close）｜observed: exit=0 cands=1
+  ✔ a9-close-fixed close fixed 0｜observed: exit=0
+  ✔ a10-gate-finish 发现全闭 ⇒ gate PASS ⇒ finish 过门落 attestation｜observed: gate=PASS（快照 finExit=0 att=1
+  ✔ b1-falsified 证伪分支 close falsified（替身腿，fixture 标记）｜observed: exit=0 status=closed-falsified
+  ✔ c1-survives-reset reset 后同 slug 发现链存续（未关闭 1）｜observed: out=发现账本 fl-chain-c（含别名链）1 条 · 未关闭 1：|  c7199fc1 [open] P1 授权撤回缺陷：已撤销令牌仍可放行（auth.js:12）· 累计 1 · 首见 fl-chain-c.a1.r1
+  ✔ c2-survives-rename relink 后别名链并集可读且 gate 仍拦｜observed: list=true gateHas=true
+  ✔ c3-survives-supersede supersede attempt2 后发现链存续｜observed: supExit=0 attempt=2 list=true
+  ✔ d1-reassess-baseline-denied baseline 义务取消拒（exit 1）｜observed: exit=1
+  ✔ d2-reassess-derived-denied 现行推导仍含=取消拒｜observed: exit=1
+  ✔ d3-reassess-cancel 额外义务取消活体（义务集不再列 delivery.audit）｜observed: exit=0 showStill=false
+  ✔ r1-real-run 真实会话 valid metered（对注缺陷夹具；verdict 如实）｜observed: validity=valid verdict=blocked points=0.30519928 wallMs=175754
+  ✔ r2-real-recheck 真实 recheck 绿 ⇒ 闭候选 1（原发现不再报）｜observed: exit=0 verdict=pass cands=1 wallMs=120186
+  ✔ r2-real-close-finish 真实全链收口：close→gate→finish attestation｜observed: close=0 fin=0 att=1
+  result-finding-lifecycle.json → /tmp/f7-out/result-finding-lifecycle.json
+=== case finding-lifecycle EXIT=0 ===
+=== case scope-qualification ===
+[v040-qa] case=scope-qualification passed=true
+  ✔ s1-base-run 专项职责替身绿运行 valid metered pass｜observed: exit=0 duty=review.verification-deps valid/pass
+  ✔ s2-qualify-granted 真随包套件十轴逐轴对表全过（含 in-scope/canary-keep/missed-dependency 三类改变）｜observed: exit=0 granted=true 全过=10/10
+  ✔ s3-reuse-applicable 无关变化复用 applicable（diff 恰为 docs/readme.md）｜observed: exit=0 verdict=applicable entries=[docs/readme.md]
+  ✔ s3-byte-stable base 运行档与资格档字节哈希复用前后不变（只追加）｜observed: base=f9777e16 qual=434a3be6
+  ✔ s4-qualify-overbroad-rejected 越界声明（依赖制品划 unrelated）⇒ 遗漏反例点名 shared/dep-config.json 拒（拒绝也落档）｜observed: exit=1 granted=false 失败=[missed-dependency:keep @shared/dep-config.json]
+  ✔ s5-qualify-corrected-granted 修正声明（shared/** 收回声明内）⇒ 重领 granted（拒绝非终态，拒绝档仍在案）｜observed: exit=0 granted=true 档数=3
+  ✔ s6-reject-fixture-ready 拒面夹具 base 运行 + 资格 granted｜observed: run=0 qualify=0 head=58814ca5
+  ✔ s6-reject-env 环境轴漂移（TZ 变体，结构轴短路） ⇒ fallback 逐因点名该轴（diff 单路径）｜observed: exit=1 verdict=fallback entries=[] 逐因=true reasons=1
+  ✔ s6-reject-lockfile 锁文件变化（声明共享输入） ⇒ fallback 逐因点名该轴（diff 单路径）｜observed: exit=1 verdict=fallback entries=[package-lock.json] 逐因=true reasons=1
+  ✔ s6-reject-checkscript check 脚本变化（声明内） ⇒ fallback 逐因点名该轴（diff 单路径）｜observed: exit=1 verdict=fallback entries=[scripts/check.sh] 逐因=true reasons=1
+  ✔ s6-reject-unknown 未知新文件（未匹配声明） ⇒ fallback 逐因点名该轴（diff 单路径）｜observed: exit=1 verdict=fallback entries=[stranger.txt] 逐因=true reasons=1
+  ✔ s7-blocked-ledger 替身阻塞运行落账 1 条发现｜observed: exit=1 upserted=1
+  ✔ s7-close-after-recheck 复核不再报后关闭｜observed: close=0 out=发现已关闭：3f4525cd → closed-fixed（recheck scope-stale.a1.r2 · 依据 复核不再报）
+  ✔ s7-stale-gate-blocked 关闭依据候选漂移命中修复区 ⇒ gate 拦｜observed: exit=1 hasStale=true
+  ✔ s7-reopen-reclose-ok reopen→复核重关→gate findings 翻过（曾关闭事实保留）｜observed: ro=0 close=0 gate=0
+  result-scope-qualification.json → /tmp/f7-out/result-scope-qualification.json
+=== case scope-qualification EXIT=0 ===
+=== case migration-recovery ===
+[v040-qa] case=migration-recovery passed=true
+  ✔ MR1-frozen031-pack 冻结 0.3.1 树物化+离线 npm pack（tarball sha256 入账）｜observed: version=0.3.1 tarball=lazyzcode-0.3.1.tgz sha=569e1e106a7cc14a…
+  ✔ MR2-legacy-inflight 0.3.1 真 CLI 建在途 goal（v1·executing·N1 done）｜observed: status=executing version=1
+  ✔ MR3-legacy-queue-budget 0.3.1 建队列项+预算入账（loop 外家族：queue budget 段或 budget/ledger.json）｜observed: items=1 budgetSection={"pointsLimit":500,"wallLimitMs":null,"notes":[{"at":"2026-09-29T21:32:31.984Z","note":"fixture"}]} ledger=false
+  ✔ MR4-legacy-done-intent 0.3.1 delivery act B 真链成功：意图 done+假 gh 计数>0（外部动作已发生）｜observed: status=done ghCalls=8
+  ✔ MR5-continue-legacy-v1 0.4.0 续旧任务：status 可读+gate v1 延续裁决行+goal.json 字节不变（V13 旧规则带版本标记延续）｜observed: status=0 gate=0 v1line=true bytesUnchanged=true
+  ✔ MR6-new-reg-v2-identity 0.4.0 新注册=v2 格式带策略身份+策略记录在场｜observed: version=2 policy={"schemaVersion":1} polFiles=1
+  ✔ MR7-broken-v2-failclosed 残缺 v2（缺策略身份）fail-closed：拒绝走 v2 拒面而非回落 v1 延续（V13 新任务缺策略不能走 legacy）｜observed: exit=1 v2rej=true legacyFallback=false
+  ✔ MR8-migrate-apply-full 显式迁移全径：state 写入（stateVersion=0.4.0）+草案 authorization NONE｜observed: exit=0 stateVersion=0.4.0 draft=true
+  ✔ MR9-migrate-bytes-preserved 迁移保字节：intents/预算/队列三族 sha256 前后不变+备份 manifest 逐文件双读一致｜observed: [{"rel":"delivery/intents.json","kept":true},{"rel":"queue/queue.json","kept":true}]
+  ✔ MR10-phase-kill-recovery backup/stage 活体 SIGKILL+重跑恢复（journal 收尾 done）；switch=击杀 ∨ 赛完-重跑幂等且 state 重跑前后字节不变（提交点后不重放等价面）｜observed: [{"phase":"backup","killed":true,"killedAt":"backup","rerunExit":0,"rerunOut":"迁移 apply 完成（run 1790717554645-pid41344）：备份 1203 文件 → /tmp/f7-fx/migration-recovery/legD-backup/.lazyzcode/migration/backup/1790717554645-pid41344\n· 检测到未收尾 run 1790717554362-pid41343.jsonl（最后相位 backup）","lastPhase":"done","stateOk":true,"statePreRerunSha":null,"stateAfterSha":"a9f3660ce917d0e6ca0d8acbc890c3ae0436dcf6a2efe2eb90ca1c219155dd34"},{"phase":"stage","killed":true,"killedAt":"stage","rerunExit":0,"rerunOut":"迁移 apply 完成（run 1790717555309-pid41346）：备份 1203 文件 → /tmp/f7-fx/migration-recovery/legD-stage/.lazyz
+  ✔ MR11-done-intent-no-replay done 意图再 act=拒且假 gh 计数零增、意图账本字节不变（已发生动作不重放）｜observed: exit=1 ghCalls 8→8 intentsUnchanged=true
+  result-migration-recovery.json → /tmp/f7-out/result-migration-recovery.json
+=== case migration-recovery EXIT=0 ===
+[v040-qa] case=capability-meter passed=true
+  ✔ MET-M1 计量归因：隔离腿完成会话在其账本落点（子账本）逐 sessionId 积分非零｜observed: isolation-a:priced:0.04051276 isolation-b:priced:0.04623476
+  ✔ MET-M2 不双计：同 sessionId 二次读数恒等｜observed: isolation-a:true isolation-b:true
+  ✔ MET-M3 续跑计量：被杀会话 --resume 续跑的消耗并入同 sessionId（子账本非零）｜observed: kill-resume:resumed=true:priced:0.04250096
+  ✔ FIND-M1 发现项（非失败）：宿主账本对隔离 HOME 会话结构性零行——M2 执行器须按子账本路径计量或产品面参数化 querySessionPoints｜observed: isolation-a:hostAbsent=true isolation-b:hostAbsent=true kill-resume:hostAbsent=true
+  result-capability-meter.json → /tmp/f7-out/result-capability-meter.json
+
+=== 补录：capability 重跑（供 prev-result）EXIT=0 · capability-meter EXIT=0 ===

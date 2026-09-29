@@ -1,0 +1,11 @@
+[m4-harness] root=/Users/acfufu/Codehub/lazyzcode source=- observations=8
+  D1a-专项运行: run.exit=0 在案=true duty=review.verification-deps valid/metered/pass
+  D3a-现行基线与回执: verify.exit=0 baseline.exit=0
+  D2a-资格落档: qualify.exit=0 家族目录=在场 granted=true 挑战=10/10
+  D2b-适用档落档: reuse.exit=0 verdict=applicable 因=0 绑资格档=m4h.a1.q1
+  D3b-复用链满足: gate.exit=0 裁决=PASS（快照 复用字样=true 适用档=m4h.a1.p1 被引
+  D2c-未知路径 fallback: reuse.exit=1 verdict=fallback 因点名未知=1
+  D3c-复用腿实拦: gate.exit=1 裁决=BLOCKED（快照 复用不足因=true 点名声明依赖=true
+  D1b-命令族: D9-注入缺失判据
+  → /tmp/f2-obs-mutant.json
+[m4-harness] 结构失败（exit 1）：判据观察缺位或不可解析：D9-注入缺失判据（观察 JSON 已落盘；内容判读归 comparator）

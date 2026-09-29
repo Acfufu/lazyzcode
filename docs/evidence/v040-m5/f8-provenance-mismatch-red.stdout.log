@@ -1,0 +1,2 @@
+[provenance-ready] ✖ 版本三体不一致：package.json=0.4.9 · plugin/.zcode-plugin/plugin.json=0.4.0 · .claude-plugin/marketplace.json plugins[].version=0.4.0
+[provenance-ready] ✖ marketplace source.ref 与版本脱钩：ref=v0.4.0 · version=0.4.9（应为 v0.4.9 或提交 sha——发布 step 11 须同批 bump）

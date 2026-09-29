@@ -1,0 +1,2 @@
+[run-pairs] ↻ rejudge seq=15 zpigeon-ios/zpigeon-ios/task-2 old oracle=true (1/1)
+[run-pairs] BLOCKED：完整性门拒（{"journalChain":false,"journalEntries":74,"packagesMatch":true,"envMatch":true}）

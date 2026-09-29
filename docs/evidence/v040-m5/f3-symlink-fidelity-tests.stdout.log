@@ -1,0 +1,18 @@
+✔ 迁移 apply：幂等重跑 no-op（不重复草案/不新增备份/state 不变） (85.101833ms)
+✔ 迁移 apply：备份族含符号链接保真（M5 N4） (47.321041ms)
+✔ deployFiles：仓 plugin/ 树与部署缓存逐文件 sha256 对表（点残渣不部署） (43.635791ms)
+✔ deployFiles 链接保真：srcDir 夹具含相对符号链接 ⇒ 部署副本保留链接本身（M5 N4） (27.834208ms)
+▶ ③qualify 双面
+  ✔ 相对符号链接仓：挑战夹具保目标串（不得改写为绝对）⇒ 仍可 granted (120.08875ms)
+✔ ③qualify 双面 (120.471958ms)
+▶ ⑯注入写 containment（M5 N4）
+  ✔ 夹具外符号链接逃逸被拒+外部文件零触碰；悬空链接 clean 失败不崩溃 (102.176791ms)
+✔ ⑯注入写 containment（M5 N4） (102.2725ms)
+ℹ tests 6
+ℹ suites 2
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 272.179875

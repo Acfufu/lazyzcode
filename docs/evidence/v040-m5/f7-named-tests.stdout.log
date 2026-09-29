@@ -1,0 +1,50 @@
+✔ 全绿判读：回执 kind=ci 绑 {repo, sha, checks}，记录 sha=现行 HEAD (718.337375ms)
+✔ 非 success 判读：非零退出+点名结论 (838.438875ms)
+✔ 远端无此提交：如实「无 CI 结果」，不冒充现行绿 (1275.738292ms)
+✔ gh 缺席：blocked 原文+恢复指路+非零退出（跨平台成立） (260.823042ms)
+✔ 非现行对照：候选前进后记录 sha≠现行 HEAD，读面如实标注 (638.132417ms)
+✔ origin 非 GitHub：拒并指路 --repo（不猜） (222.993958ms)
+✔ ①head 漂移拒（V09）：意图要求 HEAD，远端 headRefOid 不符→refused+重建候选指路 (229.37875ms)
+✔ ②base 漂移拒与 PR CLOSED 拒 (439.512834ms)
+✔ ③merge 超时=unknown→readback 见 MERGED→done(observed, closedBy=readback) 且 merge 调用恰一次（不盲目重发，V10） (199.122791ms)
+✔ ④readback 幂等：done 后复验仍 done 且刷新 mergeCiState 注记 (193.75675ms)
+✔ ⑤readback open→intended re-arm（unknown 态恢复，合并未发生） (201.609709ms)
+✔ ⑥push 确定性拒绝=failed（同身份可重试）；push 超时=unknown (391.00075ms)
+✔ ①无授权 act B 拒且零外部调用（零 gh/零 push——授权门在任何外部动作之前） (221.48ms)
+✔ ②仅 B 授权（C 未绑定）拒合并——自动发布链前置（V09） (207.336542ms)
+✔ ③C 绑定但未批准同拒；B∧C 双批准后全链 done（mergeSha=读回权威+CI 绿+attempts 枚举） (223.845584ms)
+✔ ④done 恒拒再执行（防重复交付，V10）——零新调用 (215.36325ms)
+✔ ⑤撤回 B 后 act 拒（后到者赢）——撤回对下一受控动作生效（V02 交付面） (185.037292ms)
+✔ ⑥消融缝 LZY_ABLATE_HUMAN_GATE=1：无授权放行至假链 done+ablated 戳如实记账 (202.022042ms)
+✔ ⑦request 绑定面：contractPending 三字段落位+beginAct 门过即清 pending（拍板 2） (199.570833ms)
+✔ ⑧status 读面：契约×授权×意图三面投影 (194.643041ms)
+✔ ⑨授权账本形状回归：approval 记录侧写（slug+hash 绑定） (178.019833ms)
+✔ ⑩follow-up 合并流：head1 done 后以新 head2 act=开新意图（旧意图永存），同 head2 重 act=done 恒拒 (208.587709ms)
+✔ ⑪前链已合并+新 HEAD：read-back-authority 须核对 headRefOid==意图 HEAD，否则 create 新 PR（d5 缺陷回归钉） (185.78925ms)
+✔ ⑧状态矩阵：done∧bound 可 act（同尝试绑定档）；done 未绑照拒；planning 照拒（文案区分三态） (186.789875ms)
+✔ ⑨done 未绑照拒；planning 照拒（同一谓词两态文案在场） (362.732791ms)
+✔ ⑩origin 穿线：beginAct 携 origin→意图记录在场+delivery status 投影可见；畸形 origin 写入前拒 (445.609542ms)
+✔ ⑩0.4.0 M1 N8 v2 阻断：act B 过授权门后被统一门拒（零外部调用、零意图落账） (222.072666ms)
+[queue] 派发 q1（ugate-item）tx=t-20260929T213250-w87fqjx goal=ugateq
+[queue] goal ugateq 仍 executing——同 goal 续跑（不重复注册）
+[queue] q1 未竟（统一门阻塞（done 记录不免核，gate c6c1e59f）：[义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席））——消耗已结算，item 回 ready 待续
+[queue] 派发 q1（ugate-item）tx=t-20260929T213250-w87illl goal=ugateq
+[queue] goal ugateq 仍 executing——同 goal 续跑（不重复注册）
+[queue] q1 完成（endpoint A）：墙钟 0 段 · 积分 0
+[queue] q1 队列确认完毕，槽位已腾
+[queue] 无 ready 项（全部终态或未就绪）
+✔ 基态+反例族 ②③④⑤⑥⑦：同一已批准契约夹具注入-恢复，原因逐体对应 (2486.93075ms)
+✔ 反例①：失败但可复用的回执不满足成功义务（V03——适用≠成功） (318.707541ms)
+✔ 反例⑧：无契约 v2 目标不豁免评审义务（拍板 7——不存在「无契约→免评审」旁路） (158.759417ms)
+✔ 真 CLI 面：finish 过统一门（v2 拒且非零）；gate explain 退出码契约与 v1 裁决行逐字 (844.606084ms)
+✔ 缝 queue 1182：done 旧记录不免核——v2 blocked 回 ready；v1 对照半照常 completed (305.563417ms)
+✔ 缝 reconcile 853-858：done 追认前过门——v2 不追认（条目保持未决+trace 原因）；v1 对照半 settled (283.9835ms)
+✔ 缝 delivery beginAct：v2 阻塞不落 acting 且 contractPending 不动；v1 对照半外发放行 (286.981ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4748.063791

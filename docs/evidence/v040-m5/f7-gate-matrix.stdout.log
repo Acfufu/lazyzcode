@@ -1,0 +1,22 @@
+[queue] 派发 q1（qam-item）tx=t-20260929T210933-bpaq0ut goal=gmatrix
+[queue] goal gmatrix 仍 executing——同 goal 续跑（不重复注册）
+[queue] q1 未竟（统一门阻塞（done 记录不免核，gate 470dec32）：[义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席））——消耗已结算，item 回 ready 待续
+[v040-qa] case=gate-matrix passed=true
+  ✔ GATE-b1-failed-but-reusable 失败但可复用的回执（适用≠成功，V03） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜exit.code==3（非 0）——失败回执可复用仅构成适用性事实，不满足成功义务（V03）
+  ✔ GATE-b2-contract-mutated 错契约（契约盘上漂移=新哈希=新授权请求） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜[a.contract-unmutated] 契约已变（盘上 5fd42193cc…≠绑定 445bd9c20f…）——新哈希=新授权请求
+  ✔ GATE-b3-candidate-moved 错候选（回执后候选前移） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜候选已前移（回执 head=010f98de ≠ 现行 e963bbe7）——对现行候选重验
+  ✔ GATE-b4-ci-missing-item CI 漏项（必需集合不全，V10） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜必需检查「ci / test (24, windows-latest)」missing：必需检查无读数（缺项）——不能拿别的绿项顶替
+  ✔ GATE-b5-authorization-withdrawn 授权撤回（撤回在案即无效，V02） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜[b.authorized] 契约授权已被用户撤回（撤回于 2026-09-29T21:09:27.878Z，短码 445bd9c2）
+  ✔ GATE-b6-review-absent 评审缺席（M1 恒在场：诚实阻塞，不伪造完成） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✔ GATE-b7-contract-file-absent v2 目标契约缺席（绑定在案而文件读不到=拒，不猜补） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜[a.contract-readable] 契约文件不可读或结构非法——契约文件不可读（ENOENT）：/private/tmp/f-fixture2/gate-matrix/b7-contract-file-absent/contract.md
+  ✔ GATE-b8-acceptance-mapping-missing 契约在案但验收映射缺项（F 项未覆盖 A2） ⇒ gate explain 退出码非 0 且原因逐体对应｜observed: exit=1 matched=true｜验收覆盖缺口：契约验收项 A2 无任何 F 项 accepts 引用
+  ✔ GATE-base-review-only 基态（真实成功回执全满足）：unsatisfied 全为 review 型义务（底线+推导专项）；check/ci 义务 satisfied（三轴满足）且无失败子句｜observed: unsatisfied=[review.general-correctness,review.verification-deps] check=satisfied ci=satisfied failedClauses=[]
+  ✔ ENTRY-finish 缺必需评审的已批准契约 v2 目标：loop finish 退出码非 0、报文含统一门阻塞+评审义务、状态不置 done｜observed: exit=1 status=executing｜[义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✔ ENTRY-dispatch-done done 旧记录不免核：queue dispatch 条目非 completed、回 ready、tx killed 且成因含统一门｜observed: item=ready tx=killed｜统一门阻塞（done 记录不免核，gate 470dec32）：[义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✔ ENTRY-reconcile-done done 追认前过门：reconcile verdict 字面含阻塞原因、条目保持未决（不追认）、tx 留可 reconcile 集｜observed: item=ready tx=open｜blocked（统一门：[义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席））
+  ✔ ENTRY-act-v2 缺必需评审的 v2 目标：delivery act 被统一门拒（错误面），外发替身计数 0、意图零落账｜observed: err=外发前置统一门（ep B）阻塞（gate bb9a987f）：
+  - [义务 review.general-correctness] 评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  - [义务 review.verification-deps] 评审无在案运行——lzy  calls=0 intents=0
+  ✔ ENTRY-done-gate-explain done 记录的 gate explain 仍 BLOCKED（done 不免核读面；v1 旧记录则逐字「政策裁决不适用」）｜observed: exit=1 first=统一门 · 目标 gmatrix（v2 · tier light · done） · 裁决 BLOCKED（快照 672b3987…）
+  ✔ ENTRY-no-contract-review 无契约 v2 目标不豁免评审义务（诚实阻塞；不存在「无契约→免评审」旁路）｜observed: exit=1 reviewReason=true
+  result-gate-matrix.json → /tmp/f-out2/result-gate-matrix.json

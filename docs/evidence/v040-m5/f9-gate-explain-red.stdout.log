@@ -1,0 +1,20 @@
+== F9 红面 · lzy gate explain（评审义务未满足态）· 2026-09-29T21:37:24Z ==
+统一门 · 目标 v040-m5-eval-release（v2 · tier heavy · executing） · 裁决 BLOCKED（快照 92c88450…）
+  ✔ contractAndAuth：无契约 v2 目标——契约门不适用（评审义务照常生成，拍板 7）
+  ✔ acceptanceCoverage：无契约——验收映射由计划 F 面承载（n.a.）
+  ✔ policyIdentity：策略身份有效（fe5bca9d… · dutyTable v4）
+  ✔ findings：发现面：无未关闭阻塞发现；已关闭 0 条的关闭依据均适用（M4 stale 审计）
+  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证
+  ✘ 义务 review.general-correctness（review·底线）＝ unsatisfied
+      评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✘ 义务 review.verification-deps（review）＝ unsatisfied
+      评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✘ 义务 check.docs-links（check）＝ unsatisfied · 回执 r-20260928T235017-jzb4wmm
+      exit.code==0（真实执行零退出）
+      候选已前移（回执 head=ef7a8ad5 ≠ 现行 51a91cdb）——对现行候选重验
+  ✘ 义务 check.help-smoke（check）＝ unsatisfied
+      检查「help-smoke」无在案回执——lzy verify run help-smoke 取真实回执
+  ✘ 义务 check.test-suite（check）＝ unsatisfied
+      检查「test-suite」无在案回执——lzy verify run test-suite 取真实回执
+阻塞 6 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。
+EXIT=1

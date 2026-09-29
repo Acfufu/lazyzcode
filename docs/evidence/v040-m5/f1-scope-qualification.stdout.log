@@ -1,0 +1,17 @@
+[v040-qa] case=scope-qualification passed=true
+  ✔ s1-base-run 专项职责替身绿运行 valid metered pass｜observed: exit=0 duty=review.verification-deps valid/pass
+  ✔ s2-qualify-granted 真随包套件十轴逐轴对表全过（含 in-scope/canary-keep/missed-dependency 三类改变）｜observed: exit=0 granted=true 全过=10/10
+  ✔ s3-reuse-applicable 无关变化复用 applicable（diff 恰为 docs/readme.md）｜observed: exit=0 verdict=applicable entries=[docs/readme.md]
+  ✔ s3-byte-stable base 运行档与资格档字节哈希复用前后不变（只追加）｜observed: base=96630c1e qual=1b19a893
+  ✔ s4-qualify-overbroad-rejected 越界声明（依赖制品划 unrelated）⇒ 遗漏反例点名 shared/dep-config.json 拒（拒绝也落档）｜observed: exit=1 granted=false 失败=[missed-dependency:keep @shared/dep-config.json]
+  ✔ s5-qualify-corrected-granted 修正声明（shared/** 收回声明内）⇒ 重领 granted（拒绝非终态，拒绝档仍在案）｜observed: exit=0 granted=true 档数=3
+  ✔ s6-reject-fixture-ready 拒面夹具 base 运行 + 资格 granted｜observed: run=0 qualify=0 head=a223d0e0
+  ✔ s6-reject-env 环境轴漂移（TZ 变体，结构轴短路） ⇒ fallback 逐因点名该轴（diff 单路径）｜observed: exit=1 verdict=fallback entries=[] 逐因=true reasons=1
+  ✔ s6-reject-lockfile 锁文件变化（声明共享输入） ⇒ fallback 逐因点名该轴（diff 单路径）｜observed: exit=1 verdict=fallback entries=[package-lock.json] 逐因=true reasons=1
+  ✔ s6-reject-checkscript check 脚本变化（声明内） ⇒ fallback 逐因点名该轴（diff 单路径）｜observed: exit=1 verdict=fallback entries=[scripts/check.sh] 逐因=true reasons=1
+  ✔ s6-reject-unknown 未知新文件（未匹配声明） ⇒ fallback 逐因点名该轴（diff 单路径）｜observed: exit=1 verdict=fallback entries=[stranger.txt] 逐因=true reasons=1
+  ✔ s7-blocked-ledger 替身阻塞运行落账 1 条发现｜observed: exit=1 upserted=1
+  ✔ s7-close-after-recheck 复核不再报后关闭｜observed: close=0 out=发现已关闭：3f4525cd → closed-fixed（recheck scope-stale.a1.r2 · 依据 复核不再报）
+  ✔ s7-stale-gate-blocked 关闭依据候选漂移命中修复区 ⇒ gate 拦｜observed: exit=1 hasStale=true
+  ✔ s7-reopen-reclose-ok reopen→复核重关→gate findings 翻过（曾关闭事实保留）｜observed: ro=0 close=0 gate=0
+  result-scope-qualification.json → /tmp/f-out/result-scope-qualification.json

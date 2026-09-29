@@ -1,0 +1,50 @@
+# F1 终验探针 · 2026-09-29T21:15:43.717Z · DECLARABLE=review.external-side-effects
+
+== 腿1 lzy review qualify（十轴 granted 面）==
+$ lzy review qualify fx.a1.r1 --scope scope.json  → exit 0
+资格挑战 fx.a1.q1 · review.external-side-effects · base fx.a1.r1 · GRANTED（资格在案）
+  声明 scopeHash 266b12cce9fb… · 规则 2 条 · 共享输入 1 项
+  结构身份 rulesHash eede07b68501… · dutyTableVersion 4 · 模板 41d09fe377ea…
+  套件 core/review-duties/review.external-side-effects.qualify.json（procedureVersion 1 · sha256 063569861aa3…）
+    ✔ C1（in-scope · 期望 invalidate）→ invalidate @src/util.js
+    ✔ C2（canary-keep · 期望 keep）→ keep @docs/readme.md
+    ✔ C3（missed-dependency · 期望 invalidate）→ invalidate @package-lock.json
+    ✔ C4（unknown-new · 期望 invalidate）→ invalidate @__scope_challenge__/unknown-new.txt
+    ✔ C5（rename-delete · 期望 invalidate）→ rename=invalidate/delete=invalidate @src/util.js
+    ✔ C6（lockfile · 期望 invalidate）→ invalidate @package-lock.json
+    ✔ C7（check-script · 期望 invalidate）→ invalidate @scripts/check.sh
+    ✔ C8（env · 期望 invalidate）→ invalidate
+    ✔ C9（contract · 期望 invalidate）→ invalidate
+    ✔ C10（duty · 期望 invalidate）→ invalidate
+  档 /private/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/f1-fx-nXmOwB/.lazyzcode/review-scope/fx.a1.q1.json · 零积分（mechanical）
+
+[判定] granted 面成立=true
+$ lzy review reuse fx.a1.r1  → exit 0（适用档在案前置）
+适用性判定 fx.a1.p1 · review.external-side-effects · base fx.a1.r1 · 资格 fx.a1.q1 · APPLICABLE（旧结果仍适用）
+
+== 腿2 lzy gate explain（资格后 env 漂移·复用腿不足拒因行）==
+$ lzy gate explain  → exit 1
+统一门 · 目标 fx（v2 · tier light · executing） · 裁决 BLOCKED（快照 ba58db3d…）
+  ✘ contractAndAuth：[b.authorized] 契约 contract.md（短码 4fbc93ab）等待人类批准（UPS exact-hash）
+      [d.subjects-within-scope] 写入范围越界——../nonexistent-subject-for-fx 不在任何 scope 条目内（scope：.）
+  ✘ acceptanceCoverage：验收覆盖缺口：契约验收项 A1 无任何 F 项 accepts 引用
+  ✔ policyIdentity：策略身份有效（9221792b… · dutyTable v4）
+  ✔ findings：发现面：无未关闭阻塞发现；已关闭 0 条的关闭依据均适用（M4 stale 审计）
+  ✔ existingGates：步骤/F 证据/comparator/净树/竞态门由 finish 既有门执法——本门只引用不重复取证
+  ✘ 义务 review.general-correctness（review·底线）＝ unsatisfied
+      评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✘ 义务 review.external-side-effects（review）＝ unsatisfied · 回执 fx.a1.r1
+      候选漂移（运行时 head ffffffff ≠ 现行 f7330c70）——对现行候选重跑或走复用腿
+      复用腿不足：资格身份漂移 env（3f79bb7b435b… → 现行 3f21f1d9ab13…）
+  ✘ 义务 review.state-recovery（review）＝ unsatisfied
+      评审无在案运行——lzy review run 取真实评审（同代次同规则版本的运行缺席）
+  ✔ 义务 delivery.audit（delivery-audit）＝ satisfied
+      无在案交付意图——无可核对事实，首外发由 delivery 面既有门执法
+阻塞 7 条——政策层不放行（接线面 finish/queue/delivery 据此拒绝）；逐条如上。评审义务满足面=M2 受控评审。
+
+[判定] 义务行=✘ 义务 review.external-side-effects（review）＝ unsatisfied · 回执 fx.a1.r1
+[判定] 拒因行=候选漂移（运行时 head ffffffff ≠ 现行 f7330c70）——对现行候选重跑或走复用腿
+[判定] 拒因行=复用腿不足：资格身份漂移 env（3f79bb7b435b… → 现行 3f21f1d9ab13…）
+[判定] F1 腿2 PASS（复用腿不足拒因行点名 env——资格身份漂移 env 轴）
+
+F1 探针两腿全过。

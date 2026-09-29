@@ -1,0 +1,14 @@
+== F6 正式配对账终验读数 · 2026-09-29T21:22:34.359Z ==
+batchId: m5eval-20260929013548
+integrity: {"journalChain":true,"journalEntries":74,"packagesMatch":true,"envMatch":true} （journalChain PASS= true · journalEntries= 74 ）
+totals: {"runs":36,"oraclePassed":24,"goalDone":18,"falseCompletionsNew":0,"pointsByArm":{"old":170.82884280000002,"new":98.43461239999999}}
+qualityGate.met: false
+  门拒因: lazyzcode/lazyzcode/task-1：新臂正确交付 0/3（每任务须 ≥2/3）
+  门拒因: lazyzcode/lazyzcode/task-2：新臂正确交付 0/3（每任务须 ≥2/3）
+conclusion: 尚无质量收益证据（§9.2 不满足——不宣称通过，不产晋级材料）
+对账: 18/18 对齐 · 旧臂 oracle 过 12/18 · 新臂 12/18
+oracle 判定齐: true · 判定器 v2 全批: true
+哈希索引: report.json 97f3f4c98793ed45e76d8e27d96150f1d028c96ce48054c425de8c85e2978435
+哈希索引: journal.jsonl 365fea9bbedf63098b58f771f2d95bbe8607a50d4f89ec125367367b3efe23b2
+哈希索引: batch.json 574827e27faf4838c1d9955449d42376572e8ac62ba1ec517aac548c683eb1ed
+R1 判决：三仓腿齐备（36/36 尝试入账含标记重跑 · 完整性门 PASS · oracle 判定齐）∨ 阻塞行=无

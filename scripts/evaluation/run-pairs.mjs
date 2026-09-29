@@ -391,9 +391,28 @@ async function runCell(cell, ctx) {
       rec.raw = (r.stdout ?? "").slice(-4000);
     }
     if (rec.sessionId) {
-      const pts = querySessionPoints(rec.sessionId, { dbPath: join(home, ".zcode", "cli", "db", "db.sqlite") });
+      const db = join(home, ".zcode", "cli", "db", "db.sqlite");
+      let pts = querySessionPoints(rec.sessionId, { dbPath: db });
+      let mode = "metered";
+      if (pts?.absent) {
+        // 击杀/超时留非空 WAL ⇒ hostdb 守卫拒 immutable 回退（宁 null，M4 缺陷①语义）——
+        // 评估账面改用 harness 侧 immutable 直读（已落盘行=击杀前已完成请求，M0 KILL-2 先例；
+        // 如实标 metered-immutable，可能与引擎最终结算有差——账面注记）。
+        const sql = `SELECT m.session_id AS sid, m.model_id AS model, m.started_at/3600000 AS h, SUM(m.input_tokens) AS it, SUM(m.cache_read_input_tokens) AS crt, SUM(m.output_tokens) AS ot FROM model_usage m WHERE m.session_id = '${rec.sessionId}' AND m.status = 'completed' GROUP BY sid, model, h`;
+        const rr = spawnSync("sqlite3", [`file:${db}?immutable=1`, "-json", sql], { encoding: "utf8", timeout: 30_000 });
+        if (rr.status === 0 && rr.stdout?.trim()) {
+          try {
+            const rows = JSON.parse(rr.stdout);
+            const compute = (await import("../../core/cost.js")).computePoints;
+            pts = { absent: false, unpriced: [], points: compute(rows) };
+            mode = "metered-immutable";
+          } catch {
+            pts = { absent: true, unpriced: [], points: 0 };
+          }
+        }
+      }
       rec.points = pts?.absent ? null : pts.points;
-      rec.metering = pts?.absent ? "absent" : "metered";
+      rec.metering = pts?.absent ? "absent" : mode;
       if (pointsCap != null && rec.points != null && rec.points > pointsCap) rec.status = "budget-stopped";
     }
     const goalP = join(repoDir, ".lazyzcode", "loop", "goal.json");

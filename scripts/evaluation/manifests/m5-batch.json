@@ -51,5 +51,8 @@
     "seed": 20260927
   },
   "freezeDiscipline": "R6：冻结后任何机制代码改动（含执行/报告期缺陷修复）⇒ 候选重冻结=新 batchId，旧批转开发资料或如实阻塞转录；F6/F8 绑最终候选 sha",
-  "refreezeNote": "N9 开跑前重冻一次（批 0/36 未执行、零结果作废）：run-pairs 注入 LZY_ABLATE_HUMAN_GATE=1 受控消融（无人权门通道的 headless 评估语境，M0/M4 夹具同款）+提示词去契约引导（避免诱导伪造批准）；候选/基线包 sha 不变（f2622d1 冻结身份不动）"
+  "refreezeNote": "N9 开跑前重冻一次（批 0/36 未执行、零结果作废）：run-pairs 注入 LZY_ABLATE_HUMAN_GATE=1 受控消融（无人权门通道的 headless 评估语境，M0/M4 夹具同款）+提示词去契约引导（避免诱导伪造批准）；候选/基线包 sha 不变（f2622d1 冻结身份不动）",
+  "harnessChanges": [
+    "2026-09-29 N9 中（批已 2/36）：metering 读数补 harness 侧 immutable 直读回退（击杀非空 WAL 场景；观察面改动——包/序/环境身份不变，不触 R6 冻结）；seq1 旧行按写入口径保留（absent）"
+  ]
 }

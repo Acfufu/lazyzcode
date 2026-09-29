@@ -281,8 +281,8 @@ function buildPrompt({ repoDir, briefPath, cliPath, pointsCap, wallMin }) {
   return [
     `你是任务执行代理，在仓库 ${repoDir} 完成一个开发任务。`,
     `任务需求全文见：${briefPath}（只含需求，不含验收判据——不要寻找或猜测额外判据）。`,
-    `使用本仓的目标循环纪律工具完成全链：${cliPath} loop register … → plan → start → 按步骤实施并取证（step done）→ finish。`,
-    `lzy 一律用绝对路径 ${cliPath} 调用。契约文件建议写 repo 根 contract.md（endpoint A）。tier 自行判断。`,
+    `使用本仓的目标循环纪律工具完成全链：${cliPath} loop register … → plan（--review 附一行自评）→ start → 按步骤实施并取证（step done，证据=真实表面读数）→ finish。`,
+    `lzy 一律用绝对路径 ${cliPath} 调用。不要创建需求契约（无人权门通道，直用 planHash 门）；tier 自行判断。`, 
     `预算：本 run 上限 ${pointsCap} 积分 / ${wallMin} 分钟墙钟。到限即收尾并如实报告未完成项，不伪报完成。`,
   ].join("\n");
 }
@@ -360,15 +360,16 @@ async function runCell(cell, ctx) {
     const resumeLeg = cell.trial === TRIALS_PER_TASK; // 每任务 trial 3=中断恢复腿（两臂同触发）
     const prompt = buildPrompt({ repoDir, briefPath, cliPath, pointsCap: pointsCap ?? "未设", wallMin: Math.round(wallMs / 60000) });
     let r;
+    const evalEnv = { LZY_ABLATE_HUMAN_GATE: "1" }; // 受控消融（#25）：无人权门通道的 headless 评估语境（M0/M4 夹具同款）
     if (resumeLeg) {
-      r = await spawnHeadless({ prompt, mode: "yolo", timeoutMs: wallMs, cwd: repoDir, home, deps: { run: runWithInterrupt({ repoDir, home, timeoutMs: wallMs }) } });
+      r = await spawnHeadless({ prompt, mode: "yolo", timeoutMs: wallMs, cwd: repoDir, home, extraEnv: evalEnv, deps: { run: runWithInterrupt({ repoDir, home, timeoutMs: wallMs }) } });
       // headless 基字段不透传 killedForResume/sessionId（失败分支只回 base+error）——恢复腿
       // 以 signal 面+转录 sid 判定中断发生（转录文件名含 sessionId，M0 发现一实证形态）。
       const sid = r.sessionId ?? findRolloutSid(home);
       const killed = r.signal === "SIGKILL" && !r.timedOut && sid != null;
       if (killed) {
         const elapsed = r.durationMs ?? 0;
-        const r2 = await spawnHeadless({ prompt: "你被中断过。以 lzy loop 状态为准继续收尾本任务（不重启新目标）：完成未竟步骤并 finish；到限如实报告。", resume: sid, mode: "yolo", timeoutMs: Math.max(60_000, wallMs - elapsed), cwd: repoDir, home });
+        const r2 = await spawnHeadless({ prompt: "你被中断过。以 lzy loop 状态为准继续收尾本任务（不重启新目标）：完成未竟步骤并 finish；到限如实报告。", resume: sid, mode: "yolo", timeoutMs: Math.max(60_000, wallMs - elapsed), cwd: repoDir, home, extraEnv: evalEnv });
         rec.resumed = true;
         rec.sessionId = r2.sessionId ?? sid;
         rec.exit = r2.exitCode;
@@ -383,7 +384,7 @@ async function runCell(cell, ctx) {
         rec.raw = (r.stdout ?? "").slice(-4000);
       }
     } else {
-      r = await spawnHeadless({ prompt, mode: "yolo", timeoutMs: wallMs, cwd: repoDir, home });
+      r = await spawnHeadless({ prompt, mode: "yolo", timeoutMs: wallMs, cwd: repoDir, home, extraEnv: evalEnv });
       rec.sessionId = r.sessionId ?? null;
       rec.exit = r.exitCode;
       rec.timedOut = Boolean(r.timedOut);

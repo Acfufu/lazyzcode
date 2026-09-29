@@ -3,12 +3,20 @@
   "title": "0.4.0 M5 正式配对批次冻结（goal v040-m5-eval-release N8）",
   "frozenAt": "2026-09-29T01:34:00+08:00",
   "freezeHead": "f2622d196d5565677405132f0a96a69b973488e5",
-  "batchId": "m5eval-20260929013347",
+  "batchId": "m5eval-20260929013548",
   "evidenceRoot": "artifacts/v040/M5/eval/frozen（batch.json=机器冻结批：36 runs 交错序·包/环境/预算/授权身份；本文件为仓内指针）",
-  "batchJsonSha256": "772233459398dbcaf6c8080531e655af30dc4f76379ab3a4e7e83c3107666c88",
+  "batchJsonSha256": "574827e27faf4838c1d9955449d42376572e8ac62ba1ec517aac548c683eb1ed",
   "packages": {
-    "baseline": { "file": "artifacts/v040/M5/eval/baseline-lazyzcode-0.3.1-gitarchive.tgz", "sha256": "569e1e106a7cc14ada97fe89c6585e0cefcdbdf610af4094d6068f4e477754a7", "provenance": "git archive v0.3.1（tag 94a46df）→ npm pack 离线；sha 与 qa migration-recovery MR1 读数互证" },
-    "candidate": { "file": "artifacts/v040/M5/eval/candidate-worktree-f2622d1.tgz", "sha256": "be03b2585342868a2856b69cb91e0588f9c82945ad3b2bfb3ffc83a234d51863", "provenance": "工作树 f2622d1（N1–N7 全落后）npm pack；package.json version 尚为 0.3.1（0.4.0 bump 在 N11——R6 双身份：评估绑本 sha，发布包差异=版本元数据+文档）" }
+    "baseline": {
+      "file": "artifacts/v040/M5/eval/baseline-lazyzcode-0.3.1-gitarchive.tgz",
+      "sha256": "569e1e106a7cc14ada97fe89c6585e0cefcdbdf610af4094d6068f4e477754a7",
+      "provenance": "git archive v0.3.1（tag 94a46df）→ npm pack 离线；sha 与 qa migration-recovery MR1 读数互证"
+    },
+    "candidate": {
+      "file": "artifacts/v040/M5/eval/candidate-worktree-f2622d1.tgz",
+      "sha256": "be03b2585342868a2856b69cb91e0588f9c82945ad3b2bfb3ffc83a234d51863",
+      "provenance": "工作树 f2622d1（N1–N7 全落后）npm pack；package.json version 尚为 0.3.1（0.4.0 bump 在 N11——R6 双身份：评估绑本 sha，发布包差异=版本元数据+文档）"
+    }
   },
   "baselineCanary": {
     "verdict": "兼容（0.3.1 CLI 全链驱动现行引擎：register/plan/start/step 全 0；finish exit 1=评审义务门如实拦截）",
@@ -23,8 +31,25 @@
     "openchamber": "2026-09-29 复核：scheduled workflow 有 run（conclusion skipped/stale）——仍非必需检查 CI，deliveryCap=local-verified-only 维持（M0 口径延续，差异如实录）",
     "zpigeon-ios": "none（gh run list 空）· deliveryCap=local-verified-only"
   },
-  "zpigeonDrift": { "frozenHead": "08ebd3ea", "observedHead20260929": "78699fc", "frozenCommitReachable": true, "disposition": "任务物化仍锚冻结 sha 08ebd3ea（重锚=评估集作废重封存）；漂移如实落档" },
-  "budgets": { "perRun": { "wallMsPerRun": 1800000, "pointsPerRun": 400, "source": "M0 清单原值（batch manifest 只可调低）" }, "batchCheckpointPoints": 2000, "checkpointRule": "R2：整批累计达 2000 积分即暂停派发、对账呈用户，续跑=用户显式增额指令" },
-  "runOrder": { "rule": "seed 派生确定性交错序（m0-freeze-index.json runOrder）；执行前整批冻结进 frozen/batch.json", "seed": 20260927 },
-  "freezeDiscipline": "R6：冻结后任何机制代码改动（含执行/报告期缺陷修复）⇒ 候选重冻结=新 batchId，旧批转开发资料或如实阻塞转录；F6/F8 绑最终候选 sha"
+  "zpigeonDrift": {
+    "frozenHead": "08ebd3ea",
+    "observedHead20260929": "78699fc",
+    "frozenCommitReachable": true,
+    "disposition": "任务物化仍锚冻结 sha 08ebd3ea（重锚=评估集作废重封存）；漂移如实落档"
+  },
+  "budgets": {
+    "perRun": {
+      "wallMsPerRun": 1800000,
+      "pointsPerRun": 400,
+      "source": "M0 清单原值（batch manifest 只可调低）"
+    },
+    "batchCheckpointPoints": 2000,
+    "checkpointRule": "R2：整批累计达 2000 积分即暂停派发、对账呈用户，续跑=用户显式增额指令"
+  },
+  "runOrder": {
+    "rule": "seed 派生确定性交错序（m0-freeze-index.json runOrder）；执行前整批冻结进 frozen/batch.json",
+    "seed": 20260927
+  },
+  "freezeDiscipline": "R6：冻结后任何机制代码改动（含执行/报告期缺陷修复）⇒ 候选重冻结=新 batchId，旧批转开发资料或如实阻塞转录；F6/F8 绑最终候选 sha",
+  "refreezeNote": "N9 开跑前重冻一次（批 0/36 未执行、零结果作废）：run-pairs 注入 LZY_ABLATE_HUMAN_GATE=1 受控消融（无人权门通道的 headless 评估语境，M0/M4 夹具同款）+提示词去契约引导（避免诱导伪造批准）；候选/基线包 sha 不变（f2622d1 冻结身份不动）"
 }

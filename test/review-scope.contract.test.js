@@ -644,6 +644,37 @@ describe("⑮结构轴真漂移注入（M5 N1）", () => {
   });
 });
 
+// ── 0.4.0 M5 N4（M4 输入 8）：注入写 containment——仓库物化后的符号链接被注入路径命中时
+// 不越界写/不崩溃；外部文件字节零触碰。──
+describe("⑯注入写 containment（M5 N4）", () => {
+  test("夹具外符号链接逃逸被拒+外部文件零触碰；悬空链接 clean 失败不崩溃", async () => {
+    const d = fixture();
+    const outside = mkdtempSync(join(tmpdir(), "lzy-outside-"));
+    const victim = join(outside, "victim.txt");
+    writeFileSync(victim, "original\n");
+    try {
+      // src 下唯一文件=逃逸符号链接（in-scope 轴必命中）；docs 下悬空链接排 readme 前（canary 轴必命中）
+      rmSync(join(d, "src", "util.js"));
+      symlinkSync(victim, join(d, "src", "escape.js"));
+      symlinkSync(join(d, "docs", "ghost.md"), join(d, "docs", "dangle.md"));
+      commit(d, "links");
+      saveBaseRun(d);
+      const res = await qualifyReviewScope(d, { runId: "fx.a1.r1", scopeDecl: DECL }, { dutyEntry: DUTY_ENTRY, suite: SUITE });
+      assert.equal(res.granted, false, "两注入腿被 containment 拒 ⇒ granted=false");
+      const c1 = res.record.challenges.find((c) => c.axis === "in-scope");
+      assert.equal(c1.ok, false, "in-scope 注入应被拒");
+      assert.match(c1.observed, /注入落点越界/, `拒因须点名越界：${c1.observed}`);
+      const c2 = res.record.challenges.find((c) => c.axis === "canary-keep");
+      assert.equal(c2.ok, false, "canary 注入应被拒");
+      assert.match(c2.observed, /注入落点不可解析/, `拒因须点名悬空：${c2.observed}`);
+      assert.equal(readFileSync(victim, "utf8"), "original\n", "夹具外文件必须字节零触碰（改前会被追加标记）");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
 // CLI 用例辅助：声明文件落盘
 function writeTmpDecl(d) {
   const p = join(d, "decl.json");

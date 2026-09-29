@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, statSync, symlinkSync, readlinkSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -281,4 +281,16 @@ test("迁移 apply：slug 缺失形态幂等收敛（兜底同值回归钉）", 
   assert.equal(r2.code, 0, r2.out);
   assert.match(r2.out, /幂等 no-op/);
   assert.equal(readdirSync(join(lz, "migration", "backup")).length, backups1, "幂等重跑新增备份 run");
+});
+
+// ── 0.4.0 M5 N4（M4 输入 2）：备份族符号链接保真——verbatimSymlinks（preserve 保字节，
+// 决策 #36）。改前 cpSync 缺省把链接改写为目标内容复制（lstat 非 symlink ⇒ 红）。──
+test("迁移 apply：备份族含符号链接保真（M5 N4）", () => {
+  const { d, HOME, lz } = legacyRoot({});
+  symlinkSync("../goal.json", join(lz, "loop", "snapshots", "link.md"));
+  assert.equal(lzyAt(["migrate", "apply", d], d, HOME).code, 0);
+  const state = JSON.parse(readFileSync(join(lz, "state.json"), "utf8"));
+  const backedLink = join(lz, "migration", "backup", state.lastRunId, "loop", "snapshots", "link.md");
+  assert.ok(lstatSync(backedLink).isSymbolicLink(), "备份副本须保留链接本身（改前=目标内容的常规文件复制）");
+  assert.equal(readlinkSync(backedLink), "../goal.json");
 });

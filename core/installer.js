@@ -148,15 +148,16 @@ function assertInsidePluginsRoot(dest) {
   }
 }
 
-export function deployFiles(manifest) {
+export function deployFiles(manifest, { srcDir = repoPluginDir() } = {}) {
   const dest = installPathFor(manifest);
   const parent = dirname(dest);
   mkdirSync(parent, { recursive: true });
   const tmp = join(parent, `.${basename(dest)}.${process.pid}.${Date.now()}.tmp`);
   try {
-    cpSync(repoPluginDir(), tmp, {
+    cpSync(srcDir, tmp, {
       recursive: true,
-      filter: (src) => !isDotResidue(relative(repoPluginDir(), src)),
+      verbatimSymlinks: true, // 载荷链接保真（0.4.0 M5 N4，M4 输入 2——缺省把相对链接改写为绝对路径串，跨机部署即断链）；srcDir 注入缝=契约测试夹具用
+      filter: (src) => !isDotResidue(relative(srcDir, src)),
     });
     rmSync(dest, { recursive: true, force: true });
     renameSync(tmp, dest);

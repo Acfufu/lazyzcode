@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
@@ -118,4 +118,37 @@ test("pack dry-run：文件清单白名单对表+外带 grep 三连", () => {
     const body = readFileSync(join(ROOT, norm), "utf8");
     assert.ok(!body.includes("sess_"), `会话标识随包：${norm}`);
   }
+});
+
+// ── 0.4.0 M5 N4（M4 输入 2）：deployFiles 链接保真——verbatimSymlinks + srcDir 注入缝
+//（真仓 plugin/ 树不可为测试污染；夹具 src 经注入进部署路径）。改前=第二参缺席且缺省改写
+// 链接 ⇒ 红两半。──
+test("deployFiles 链接保真：srcDir 夹具含相对符号链接 ⇒ 部署副本保留链接本身（M5 N4）", async () => {
+  const HOME = mkdtempSync(join(tmpdir(), "lzy-payload-link-home-"));
+  const src = mkdtempSync(join(tmpdir(), "lzy-payload-src-"));
+  mkdirSync(join(src, "sub"), { recursive: true });
+  writeFileSync(join(src, "seed.txt"), "real\n");
+  symlinkSync("../seed.txt", join(src, "sub", "link.json"));
+  const probe = join(HOME, "probe.mjs");
+  writeFileSync(
+    probe,
+    `import { readRepoManifest, deployFiles } from ${JSON.stringify(pathToFileURL(join(ROOT, "core", "installer.js")).href)};
+import { lstatSync, readlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+const dest = await deployFiles(readRepoManifest(), { srcDir: ${JSON.stringify(src)} });
+const p = join(dest, "sub", "link.json");
+writeFileSync(process.argv[2], JSON.stringify({ dest, isLink: lstatSync(p).isSymbolicLink(), target: readlinkSync(p) }));
+`,
+  );
+  const outFile = join(HOME, "deployed-link.json");
+  const r = spawnSync(process.execPath, [probe, outFile], {
+    encoding: "utf8",
+    timeout: 60_000,
+    env: { ...process.env, HOME, USERPROFILE: HOME },
+  });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const { dest, isLink, target } = JSON.parse(readFileSync(outFile, "utf8"));
+  assert.ok(dest.includes(join("cache", "lazyzcode-local", "lazyzcode")), `落点异常：${dest}`);
+  assert.ok(isLink, "部署副本须保留符号链接本身（改前=目标内容的常规文件复制）");
+  assert.equal(target, "../seed.txt");
 });

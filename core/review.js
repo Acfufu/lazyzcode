@@ -5,9 +5,9 @@
 // 记录携带 attempt/dutyTableVersion/templateHash 三字段=统一门代次锚与规则一致性谓词的数据面
 //（拍板 6）；dutyTableVersion 不在此钉现行值——旧规则版本的记录须保持可读，一致性由 gate 判。
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, cpSync, rmSync, writeFileSync, openSync, closeSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, cpSync, rmSync, statSync, writeFileSync, openSync, closeSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, sep, dirname } from "node:path";
+import { join, resolve, sep, dirname, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawnSync } from "node:child_process";
 import { loadFamilyFile, saveFamilyFile, budgetView, appendLedgerEntry, reviewLedgerPoints } from "./queue.js";
@@ -1769,9 +1769,32 @@ function listExistingByHint(baseMap, hints) {
   return out;
 }
 
+// 注入写 containment（0.4.0 M5 N4，M4 输入 8）：仓库物化后的符号链接被注入路径命中时不再
+// 越界写/崩溃——悬空=realpath 抛、指向夹具外=拒、目录/非常规文件=拒，各出 clean 失败对象由
+// 调用面落 mk(...)（夹具外字节零触碰）。旧实现直 join+readFileSync/writeFileSync：悬空链接
+// ENOENT 直抛、外指链接把标记写进夹具外目标。
 function mutateAppend(fx, rel) {
   const p = join(fx, rel);
+  let fxReal;
+  let real;
+  try {
+    fxReal = realpathSync(fx); // 夹具根先归一：tmpdir 在 macOS 经 /var→/private/var 链接，两侧不同归一会把整仓误判越界
+    real = realpathSync(p);
+  } catch {
+    return { ok: false, reason: `注入落点不可解析（悬空链接或缺席）：${rel}` };
+  }
+  if (real !== fxReal && !real.startsWith(fxReal + sep)) {
+    return { ok: false, reason: `注入落点越界（符号链接逃逸夹具）：${rel}` };
+  }
+  let st;
+  try {
+    st = statSync(p);
+  } catch {
+    return { ok: false, reason: `注入落点不可 stat：${rel}` };
+  }
+  if (!st.isFile()) return { ok: false, reason: `注入落点非常规文件：${rel}` };
   writeFileSync(p, Buffer.concat([readFileSync(p), Buffer.from("\n// scope-challenge\n")]));
+  return { ok: true };
 }
 
 // 结构轴挑战（env/contract/duty）：真身份漂移注入（0.4.0 M5 N1，M4 输入 7）——三轴各构造
@@ -1842,7 +1865,8 @@ function runChallengeSuite({ candDir, baseMap, declaration, suite, identityAxes 
           const cls = c.axis === "in-scope" ? "in-scope" : "unrelated";
           const path = c.path ?? pickExistingByRules(baseMap, declaration.rules, cls);
           if (!path) return mk(cls === "in-scope" ? "no-in-scope-file（声明未覆盖任何现存文件——空洞范围）" : "no-unrelated-file（canary 无处安放——过窄声明）", false);
-          mutateAppend(fx, path);
+          const inj1 = mutateAppend(fx, path);
+          if (!inj1.ok) return mk(inj1.reason, false, path);
           const observed = classify();
           return mk(observed, observed === c.expect, path);
         }
@@ -1862,14 +1886,18 @@ function runChallengeSuite({ candDir, baseMap, declaration, suite, identityAxes 
             return mk(c.axis === "lockfile" ? "no-shared-input-file（声明的 sharedInputs 均不在仓内）" : "hint-no-match（套件 hint 对仓无现存文件——套件与仓不匹配）", false);
           }
           if (baseMap[path] === undefined) return mk("path-not-in-snapshot（套件指定路径不在候选快照内）", false);
-          mutateAppend(fx, path);
+          const inj2 = mutateAppend(fx, path);
+          if (!inj2.ok) return mk(inj2.reason, false, path);
           const observed = classify();
           return mk(observed, observed === c.expect, path);
         }
         if (c.axis === "unknown-new") {
           const path = c.path ?? "__scope_challenge__/unknown-new.txt";
-          mkdirSync(dirname(join(fx, path)), { recursive: true });
-          writeFileSync(join(fx, path), "scope challenge: unknown new file\n");
+          const dest = join(fx, path);
+          const relDest = relative(fx, resolve(dest)); // 新建文件无 realpath 可核——词法 containment（套件 path 逃逸拒绝）
+          if (relDest.startsWith("..") || isAbsolute(relDest)) return mk(`注入落点越界（套件 path 逃逸夹具）：${path}`, false, path);
+          mkdirSync(dirname(dest), { recursive: true });
+          writeFileSync(dest, "scope challenge: unknown new file\n");
           const observed = classify();
           return mk(observed, observed === c.expect, path);
         }

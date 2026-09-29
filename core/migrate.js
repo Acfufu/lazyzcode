@@ -450,7 +450,7 @@ function runPhases(root, cls, state, warnings, unfinished) {
     if (!existsSync(src)) continue;
     const dst = join(backupDir, rel);
     mkdirSync(join(dst, ".."), { recursive: true });
-    cpSync(src, dst, { recursive: true });
+    cpSync(src, dst, { recursive: true, verbatimSymlinks: true }); // preserve 保字节（决策 #36；M5 N4——缺省把相对链接改写为绝对路径串，链接族不再保真）
     for (const f of (existsSync(dst) && statSync(dst).isDirectory() ? listFilesRecursive(dst) : [dst])) {
       manifest.push({ rel: f.slice(backupDir.length + 1), sha256: sha256File(f), bytes: statSync(f).size });
     }

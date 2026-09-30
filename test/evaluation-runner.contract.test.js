@@ -13,6 +13,11 @@ import { createHash } from "node:crypto";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const RP = join(ROOT, "scripts", "evaluation", "run-pairs.mjs");
 
+// CI/无宿主引擎环境守卫（0.4.0 发布 CI 修复）：本文件契约测试全替身面，不依赖宿主引擎
+// 在位——engineCandidates 的 LZY_ZCODE_ENGINE env 整体替换语义（评审 R3-9 预留测试面），
+// 缺省注入现进程可执行文件让 findEngine 恒有解（⑤预飞基态/拒面次序不再被宿主环境劫持）。
+process.env.LZY_ZCODE_ENGINE = process.env.LZY_ZCODE_ENGINE ?? process.execPath;
+
 const { deriveSequence, chainSha, verifyJournalChain, qualityGate, preflight, appendJournal, loadJournal, writeReport } = await import(
   `file://${RP}`
 );

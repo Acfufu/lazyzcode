@@ -88,7 +88,7 @@ function stubSpawn({ response = FENCE(PASS), during = null, timedOut = false, ex
     };
   };
 }
-const deps = (extra = {}) => ({ preflight: preflightStub, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), ...extra });
+const deps = (extra = {}) => ({ preflight: preflightStub, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), ...extra }); // detectAuth 缺省替身（CI 发布修复）：宿主 provider env 缺席时 runReview 的 no-auth 短路会让 stub 语义测试失真；显式注入者照常覆盖
 
 function recordPayload(d, { attempt = 1, seq = 1, overrides = {} } = {}) {
   return {

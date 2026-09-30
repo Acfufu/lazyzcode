@@ -919,7 +919,11 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       } else {
         // 允许前缀（拍板 4）：候选快照/运行目录/隔离 home/**引擎自身前缀**（provider 配置目录+
         // 引擎安装目录+node 可执行目录——引擎自身运行所需读取不构成隔离破口）。
-        const enginePrefixes = [dirname(findEngine() ?? "/nonexistent"), dirname(process.execPath)];
+        // 引擎缺席守卫（发布 CI 修复）：dirname("/nonexistent")="/" 会把允许前缀坍缩成文件
+        // 系统根 ⇒ 隔离读取轨迹断言整体中和（CI 实锤 /etc/passwd 判内）——引擎缺席即不注入该前缀。
+        const eng = findEngine();
+        const enginePrefixes = eng ? [dirname(eng)] : [];
+        enginePrefixes.push(dirname(process.execPath));
         for (const key of ["ZCODE_BUILTIN_PROVIDER_CONFIG_FILE", "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"]) {
           if (process.env[key]) enginePrefixes.push(dirname(process.env[key]));
         }

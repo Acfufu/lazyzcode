@@ -5,6 +5,13 @@ versioning is SemVer.
 
 ## [0.4.0] - 2026-09-30
 
+### Fixed
+
+- **Isolation read-track assertion survives engine-less hosts** (found by the release CI run): the
+  review runner's allowed-prefix list folded `dirname("/nonexistent")` (i.e. `/`) into the engine
+  prefix when no engine is installed, silently allowing every read on such hosts; the engine prefix
+  is now injected only when an engine actually exists.
+
 ### Added
 
 - **Paired policy evaluation harness** (0.4.0 M5, goal `v040-m5-eval-release`): `scripts/evaluation/run-pairs.mjs`

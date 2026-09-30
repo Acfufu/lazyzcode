@@ -13,7 +13,7 @@
 - **已发布**：npm `lazyzcode` **0.3.0**（registry latest；升级见 README）。
 - **0.3.0 agent-first 弧发布收官（09-26）**：M0 能力基线、M1 项目与授权、M2 三仓 A 试点、M3 队列与累计预算、M4 有限 B/C 交付、M5 迁移与发布收口（决策 #32–#36 → docs/spikes/）。
 - 历史里程碑、消融账本与双审报告索引 → docs/history.md。
-- **0.3.1 收口收官（09-26，done 16/16·对照 4/4）**：R0.1–R0.4 落地（da7dbbe·658/658）→ docs/plan-v031-closeout.md。0.4.0 → docs/plan-v040-engineering-policy.md；**M0–M4 收官（09-27/28/29，对照 4/4·5/5·6/6·8/8·7/7）**：能力探针/策略身份+统一门/评审运行器/发现账本+recheck+reassess/评审范围资格+职责表 v4（ADR-0032·自审 P1×3 生命周期闭合·717/717，细节见 history）；**M5 收官（09-30，goal v040-m5-eval-release）**：迁移恢复实弹（STATE_VERSION 0.4.0）+run-pairs 正式配对评估（三仓 36 真运行·oracle 判定器 v2·质量门不满足=尚无收益证据如实不宣称通过）+0.4.0 定版 release-ready（739/739）；评估报告 docs/reviews/v040-policy-evaluation.md。
+- **0.3.1 收口收官（09-26，done 16/16·对照 4/4）**：R0.1–R0.4 落地（da7dbbe·658/658）→ docs/plan-v031-closeout.md。0.4.0 → docs/plan-v040-engineering-policy.md；**M0–M4 收官（09-27/28/29，对照 4/4·5/5·6/6·8/8·7/7）**：能力探针/策略身份+统一门/评审运行器/发现账本+recheck+reassess/评审范围资格+职责表 v4（ADR-0032·自审 P1×3 生命周期闭合·717/717，细节见 history）；**M5 收官（09-30，goal v040-m5-eval-release）**：迁移恢复实弹（STATE_VERSION 0.4.0）+run-pairs 配对评估（36 真运行·门不满足=尚无收益证据·**采纳暂缓 #42**）+0.4.0 定版 release-ready（739/739）；报告 docs/reviews/v040-policy-evaluation.md。
 - 发布机械件按 docs/release-checklist.md；评审报告库 → docs/reviews/。
 
 ## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19；引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔3.12.x 代 0.16.5→3.14.0 代 0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕，设计前必读）；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组（插件记录字段逐字相同），lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**——0.1.2 期 engine-3140-sync 即因只锚版本而漏检，代价是 0.16.9 宿主上 status/doctor 的 `enabled` 行 fail 级误报翻退出码
@@ -49,6 +49,7 @@
 | #39 | 受控独立评审 | lzy 发起独立会话、绑定候选与预算；阻塞发现须独立复核关闭；能力探针前置（ADR-0031，2026-09-26；M0-M4 已实施） |
 | #40 | 评审复用 | 按职责授范围资格并对抗验证；未知重评（ADR-0032，2026-09-26；M4 已实施：qualify/reuse/reopen+gate 复用腿+关闭依据适用性） |
 | #41 | 义务复判 | 额外要求可独立复判取消，契约与分级底线不变（ADR-0033，2026-09-26；M3/M4 已实施） |
+| #42 | 采纳暂缓 | 0.4.0 照常发布；默认切换/宣称押后 0.5.0 重评（ADR-0034） |
 
 其余 #1-#24 全表 → docs/decisions.md。
 
@@ -79,7 +80,7 @@ docs/
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
   spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
-  adr/0001..0033-*.md         ← 架构决策原文（现行摘要见 §4、全表见 decisions.md）；0031=受控独立评审（M0-M3 已实施）、0032=评审范围复用（M4）、0033=策略义务复判（M3 已实施）
+  adr/0001..0034-*.md         ← 架构决策原文（现行摘要见 §4、全表见 decisions.md）；0031=受控独立评审（M0-M3 已实施）、0032=评审范围复用（M4）、0033=义务复判、0034=采纳暂缓（M5）
   reviews/ release-checklist.md  ← 评审报告/处置记录（2026-09-06/07/08）+ 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist（2026-09-13）
   diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
 plugin/ core/ cli/ test/ .github/  ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）+ 契约测试（node:test 零依赖）+ CI 骨架

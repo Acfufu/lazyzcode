@@ -28,7 +28,7 @@
 
 | # | 项 | 终拍结论 |
 |---|---|---|
-| B1 | H3R 高危步门去留 | **维持休眠 A 态，复验不排期、触发器化**。升格 B 前置 = 网格复验误停归零（根解半已落地：v024-debt-bundle#N1 分段+词元序列匹配；词法绕过族已收口 v024-fix-round#N6/N7；复验未跑）。触发器 = ① 用户点名升格 B；② 首例无人值守高危误操作真实事故（届时复验+升格一起议）。理据：复验结论唯一消费者是升格拍板，无升格需求则复验无人消费——「结果只作拍板输入」纪律下不跑。决策 #30 / ADR-0022 增补节 |
+| B1 | H3R 高危步门去留 | **维持休眠 A 态，复验不排期、触发器化**。升格前置=网格复验误停归零（根解半已落地：v024-debt-bundle#N1 分段+词元序列匹配；词法绕过族已收口 v024-fix-round#N6/N7；复验未跑）。触发器 = ① 用户点名升格 B；② 首例无人值守高危误操作真实事故（届时复验+升格一起议）。理据：复验结论唯一消费者是升格拍板，无升格需求则复验无人消费——「结果只作拍板输入」纪律下不跑。决策 #30 / ADR-0022 增补节 |
 | B2 | fast 形态判据①（写型双工人灰带） | **灰带按实测归档、不再主动投入**。实测读数入档：f1 0.63×（无收益区）/ h3 1.12×（灰带）；计价反证已强（双工 turns ≈ 串行 2×，即便速度坐实也不翻案）。既定拍板不变：`--workers` 保留主线实验形态、LIGHT only、不默认化（决策 #31 / ADR-0026）。触发器 = 引擎出现 `--model` 旗标 / 计价模型改按会话或墙钟计费时复评一次 |
 
 ---
@@ -40,7 +40,7 @@
 | S1 | 债 K：engine `--json` usage 摘要作第二计量源的对账 | 真实低延迟计量需求出现（M4 交付面以 CI 轮询为主面，未需亚段计量） | v030-m3-report:86；v030-m5-closeout-report §7 |
 | S2 | 债 M4-1：CI flake 根因（push-to-main 腿三次偶发零就绪） | 复发（readiness 原因明细已随 5dfcc83 落地，自诊断面在案；观察窗零复现） | v030-m4-delivery-report:92 |
 | S3 | 债 M4-2：d5 账本纠错路径产品化 | 第二例发生或用户点名（correction attempt 留痕路径已足） | v030-m4-delivery-report:92 |
-| S4 | §⑫-五：npm publish provenance 迁移（2FA 人闸 vs sigstore trusted publishing） | npm 生态签名成为分发事实标准，或下游渠道对 provenance 提出要求 | artifacts/gap-roadmap §⑫-五 |
+| S4 | §⑫-五：npm provenance（publish 包来源证明，sigstore trusted publishing）迁移（2FA 人闸 vs 自动证明） | npm 生态签名成为分发事实标准，或下游渠道对 provenance 提出要求 | artifacts/gap-roadmap §⑫-五 |
 | S5 | §⑫-八：evidence-scope 应用面指纹第二轴（绿证据可选绑声明子域，默认关） | 原节升格条件触发 | artifacts/gap-roadmap §⑫-八 |
 | S6 | §⑯：水位警戒线按订阅档位智能调 | 引擎某代本地暴露订阅档位/配额（升「池位百分比」口径） | artifacts/gap-roadmap §⑯ |
 | S7 | 非 git 降级形态④（全 `--surface` 外部面 + LIGHT-only + 无 attestation） | 先拍板前置问题「非 git 宿主的 finish 是否该存在」（与 LOOP_COMPLETE 机器证明语义冲突）；现行 = 入口硬拒（`core/loop.js:387-393`，ADR-0019） | artifacts/gap-roadmap §⑫-二 修法候选④ |

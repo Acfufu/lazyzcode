@@ -37,8 +37,8 @@
 | #27 | UPS 人权门 | 批准绑定 exact-hash（L2）；--force 不越过；0.3.0 起契约 goal 批准对象=contractHash（ADR-0024） |
 | #28 | runtime kernel | lease/fencing/budget 三件一体 + risk 机器面 |
 | #29 | 推进信号 | 状态集口径（done∪头树∪绿节点∪登记数；不含脏树）；单源 core/progress.js |
-| #30 | H3R | 原型休眠、执法点前移三级、去留=短期 A |
-| #31 | fast 形态 | --workers 波编排保留主线、LIGHT only、不默认化 |
+| #30 | H3R | 原型休眠、执法点前移三级、去留=短期 A、复验触发器化（10-01） |
+| #31 | fast 形态 | --workers 波编排保留主线、LIGHT only、不默认化、判据①灰带归档（10-01） |
 | #32 | 积分预算执法 | 近似限制语义（逐请求完成检测+停止下一次派发+在途超额如实记账） |
 | #33 | M1 契约授权 | 批准对象=contractHash、撤回=UPS 短码、契约内重规划免人权门、无契约 goal 保持现行门 |
 | #34 | M3 队列与累计预算 | 家族在 loop/ 外（reset 不清）；预算绑定 (slug, contractHash) 不另铸授权 id；近似限制记账=逐段计量+三类「不算零」+seq 基人工恢复（ADR-0027） |
@@ -75,14 +75,14 @@
 AGENTS.md                    ← 本文件：单一事实入口（宪法）
 docs/
   research-*.md              ← 调研底稿（报告的事实来源）
-  history.md decisions.md    ← 历史里程碑档案 / 决策速查全表（0.3.0 知识路由自 AGENTS 迁出）
+  history.md decisions.md debts.md    ← 历史里程碑档案 / 决策速查全表 / 挂帐单源账本（0.3.0 知识路由自 AGENTS 迁出）
   reports/                   ← 报告中心（index.html + full/pm/dev 三份 HTML）+ 逆向源码复核记录
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
-  spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算，已全部完成）
-  adr/0001..0034-*.md         ← 架构决策原文（现行摘要见 §4、全表见 decisions.md）；0031=受控独立评审（M0-M3 已实施）、0032=评审范围复用（M4）、0033=义务复判、0034=采纳暂缓（M5）
-  reviews/ release-checklist.md  ← 评审报告/处置记录（2026-09-06/07/08）+ 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist（2026-09-13）
-  diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH，2026-09-07 起）
+  spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算）
+  adr/0001..0034-*.md         ← 架构决策原文（现行摘要见 §4、全表见 decisions.md）；0031=受控独立评审、0032=评审范围复用、0033=义务复判、0034=采纳暂缓
+  reviews/ release-checklist.md  ← 评审报告/处置记录 + 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist
+  diagnostics/               ← 运行环境诊断记录（钩子 spawn env / shell PATH）
 plugin/ core/ cli/ test/ .github/  ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）+ 契约测试（node:test 零依赖）+ CI 骨架
 scripts/docs-preview/        ← 文档站本地预览与校验工具链（dev-only 独立依赖，根包零依赖）
 README.md（英）+ README.zh-CN.md（中）LICENSE CHANGELOG.md  ← 开源门面（lazycodex 同构双语说明）

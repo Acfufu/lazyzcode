@@ -292,7 +292,7 @@ test("迁移 apply：备份族含符号链接保真（M5 N4）", () => {
   const state = JSON.parse(readFileSync(join(lz, "state.json"), "utf8"));
   const backedLink = join(lz, "migration", "backup", state.lastRunId, "loop", "snapshots", "link.md");
   assert.ok(lstatSync(backedLink).isSymbolicLink(), "备份副本须保留链接本身（改前=目标内容的常规文件复制）");
-  assert.equal(readlinkSync(backedLink), "../goal.json");
+  assert.equal(readlinkSync(backedLink).replace(/\\/g, "/"), "../goal.json"); // win32 内核返回反斜杠形态，归一后比对（链接保真=平台中性意图）
 });
 
 // ── 0.4.0 M5 N5：相位注入恢复矩阵——kill 点态用「跑全径后裁剪 journal+删后续产物」复刻

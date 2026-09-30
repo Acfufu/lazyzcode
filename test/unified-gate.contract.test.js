@@ -117,7 +117,10 @@ function assertReviewOnlyBlocker(gate) {
   assert.equal(gate.blocked, true);
 }
 
-test("基态+反例族 ②③④⑤⑥⑦：同一已批准契约夹具注入-恢复，原因逐体对应", () => {
+// win32 跳腿（0.3.1 假 gh 跳腿同款）：fakeGh 依赖 shebang 脚本 chmod 可执行，win 内核
+// 不认无扩展名脚本 ⇒ verify ci 腿假红；CI 回执读回面已由 test/ci-binding 契约文件承载。
+const itNotWin = process.platform === "win32" ? test.skip : test;
+itNotWin("基态+反例族 ②③④⑤⑥⑦：同一已批准契约夹具注入-恢复，原因逐体对应", () => {
   const d = approvedGoal("lzy-ugate-matrix-");
   const gh = fakeGh(REQ_CI.map((n) => ({ name: n, conclusion: "success" })));
   try {

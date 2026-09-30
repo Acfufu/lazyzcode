@@ -150,5 +150,5 @@ writeFileSync(process.argv[2], JSON.stringify({ dest, isLink: lstatSync(p).isSym
   const { dest, isLink, target } = JSON.parse(readFileSync(outFile, "utf8"));
   assert.ok(dest.includes(join("cache", "lazyzcode-local", "lazyzcode")), `落点异常：${dest}`);
   assert.ok(isLink, "部署副本须保留符号链接本身（改前=目标内容的常规文件复制）");
-  assert.equal(target, "../seed.txt");
+  assert.equal(target.replace(/\\/g, "/"), "../seed.txt"); // win32 链接目标反斜杠归一
 });

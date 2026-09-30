@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, basename } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   BASELINE_DUTY_ID,
@@ -53,6 +53,7 @@ function fixture({ dirty = false, attempt = 1 } = {}) {
   g(["init", "-q"]);
   g(["config", "user.email", "t@t"]);
   g(["config", "user.name", "t"]);
+  g(["config", "core.autocrlf", "false"]); // win runner 幽灵 M 家族守卫：夹具仓行尾确定性
   writeFileSync(join(d, "a.txt"), "hello\n");
   writeFileSync(join(d, "contract.md"), CONTRACT);
   mkdirSync(join(d, ".lazyzcode", "loop"), { recursive: true });
@@ -250,7 +251,8 @@ test("⑤解析失败/超时/转录缺席/轨迹越界：逐因 invalid 且 raw 
   rmSync(d3, { recursive: true, force: true });
 
   const d4 = fixture();
-  const r4 = await runReview(d4, { deps: deps({ spawnHeadless: stubSpawn({ readOutside: "/etc/passwd" }) }) });
+  const outsidePath = process.platform === "win32" ? join(process.env.SystemRoot ?? "C:\\Windows", "win.ini") : "/etc/passwd"; // 界外路径须平台原生且真实存在（不存在=幻影不判 breach）
+  const r4 = await runReview(d4, { deps: deps({ spawnHeadless: stubSpawn({ readOutside: outsidePath }) }) });
   assert.equal(r4.record.validity.reason, "isolation-breach");
   assert.match(r4.record.validity.detail, /越界/);
   rmSync(d4, { recursive: true, force: true });
@@ -408,7 +410,7 @@ test("⑨输入包/隔离原语：facts-only 汇总+快照确定性+轨迹断言
     // 轨迹断言：/var→/private/var realpath 归一（macOS tmpdir 陷阱）；不存在路径=幻影不判 breach
     const inside = assertReadsContained(JSON.stringify({ file_path: join(res.runDir, "input.json") }) + "\n", [res.runDir]);
     assert.equal(inside.ok, true, "界内路径过（realpath 归一后）");
-    const outsideReal = join(d, "..", `outside-${basename(d)}`);
+    const outsideReal = join(dirname(d), basename(d) + "-outside.txt"); // 平台原生绝对路径（windows 盘符形态不以 / 开头——生产 walk 只认 / 开头读面为 unix 引擎锚定语义），须存在且在 res.runDir 界外
     writeFileSync(outsideReal, "x\n");
     try {
       const outside = assertReadsContained(JSON.stringify({ cwd: outsideReal }) + "\n", [res.runDir]);

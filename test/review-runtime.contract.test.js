@@ -228,7 +228,24 @@ test("⑤解析失败/超时/转录缺席/轨迹越界：逐因 invalid 且 raw 
 
   const d3 = fixture();
   const r3 = await runReview(d3, { deps: deps({ spawnHeadless: stubSpawn({ withTranscript: false }) }) });
-  assert.equal(r3.record.validity.reason, "isolation-breach");
+  let rolloutDiag = "readdir:ENORECURSE";
+  try {
+    const base = join(d3, ".lazyzcode", "review");
+    const stack = [base];
+    const hits = [];
+    while (stack.length) {
+      const cur = stack.pop();
+      for (const e of readdirSync(cur, { withFileTypes: true })) {
+        const p2 = join(cur, e.name);
+        if (e.isDirectory()) stack.push(p2);
+        else if (e.name.includes("rollout") || e.name.includes("model-io")) hits.push(p2.slice(base.length));
+      }
+    }
+    rolloutDiag = hits.join(",") || "(rollout/model-io 零文件)";
+  } catch (e) {
+    rolloutDiag = "diag:" + (e?.code ?? e?.message);
+  }
+  assert.equal(r3.record.validity.reason, "isolation-breach", `d3 validity=${JSON.stringify(r3.record.validity)} runTree=[${rolloutDiag}]`);
   assert.match(r3.record.validity.detail, /隔离未证/);
   rmSync(d3, { recursive: true, force: true });
 

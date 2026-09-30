@@ -93,7 +93,7 @@ test("pack dry-run：文件清单白名单对表+外带 grep 三连", () => {
   const r = spawnSync("npm", ["pack", "--dry-run", "--json"], {
     cwd: ROOT,
     encoding: "utf8",
-    timeout: 120_000,
+    timeout: 300_000, // registry 延迟波动面（发布日 120s 三连瞬态实测）——放宽防抽签
     shell: process.platform === "win32",
   });
   assert.equal(r.status, 0, r.stdout + r.stderr);

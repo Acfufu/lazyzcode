@@ -538,7 +538,9 @@ export function assertReadsContained(transcriptText, allowedPrefixes) {
   const phantoms = [];
   const visit = (v, key, line) => {
     if (typeof v === "string") {
-      if (key && /path|file|dir|cwd/i.test(key) && v.startsWith("/")) {
+      // 绝对路径双形态（发布 CI win32 实锤）：unix / 前缀 + windows 盘符前缀——只认 / 前缀
+      // 时盘符路径整体逃离读取轨迹面（win 宿主上隔离断言失效）。
+      if (key && /path|file|dir|cwd/i.test(key) && (v.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(v))) {
         if (!existsSync(v)) {
           phantoms.push({ path: v.slice(0, 200), line });
         } else if (!contained(v)) {

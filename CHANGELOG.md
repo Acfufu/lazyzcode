@@ -7,10 +7,12 @@ versioning is SemVer.
 
 ### Fixed
 
-- **Isolation read-track assertion survives engine-less hosts** (found by the release CI run): the
-  review runner's allowed-prefix list folded `dirname("/nonexistent")` (i.e. `/`) into the engine
-  prefix when no engine is installed, silently allowing every read on such hosts; the engine prefix
-  is now injected only when an engine actually exists.
+- **Isolation read-track assertion survives engine-less and Windows hosts** (found by the release
+  CI run): the review runner's allowed-prefix list folded `dirname("/nonexistent")` (i.e. `/`) into
+  the engine prefix when no engine is installed, silently allowing every read on such hosts — the
+  engine prefix is now injected only when an engine actually exists; and the transcript walk only
+  recognized `/`-prefixed paths, so Windows drive-letter paths escaped the read track entirely —
+  both absolute forms are now tracked.
 
 ### Added
 

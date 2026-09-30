@@ -510,6 +510,12 @@ plugin payload). From older versions: manual two-step (`npm i -g lazyzcode
 - **发布前验证**（定版树实跑）：`npm test` **739/739**（基线 717+新增 22）；`provenance-ready` exit 0（三体 0.4.0 + ref 联锁 v0.4.0）；`npm publish --dry-run` **69 文件 / 1.4 MB / shasum `48afd0512fbe44df1990410c3df6ee646a1f77ab`**；敏感串双级扫描：载荷清单层 0 命中、改动面内容层 `sess_`/`/Users/` 0 命中；`scripts/check-docs-links.mjs` exit 0（102 文件——0.4.0 新增 docs job 同一面）。
 - **publish/tag/Pages 留用户**（本 goal 不含直发，N11 范围=release-ready 机械件）。
 
+### 发后核验（2026-09-30，publish 用户 2FA，全过）
+
+- **registry 直证**：CDN 传播窗 ≈40s 后 `dist-tags.latest=0.4.0`；**registry tarball 与定版 tag 树打包 shasum 三方逐字一致**（本地 8f823e52… = registry 拉回字节 sha256 8f823e52…；registry dist.shasum 04941ce0=npm 内部 sha1-base64 口径，字节比对为准）；`engines>=22`、`bin.lzy=cli/lzy.js` 无误。
+- **隔离 prefix 冒烟 ✔**：`npm i -g lazyzcode@0.4.0 --prefix /tmp/lzy-smoke-040 --prefer-online` 首试即成 → `lzy 0.4.0（插件载荷 0.3.0 与 CLI 不同——跑 lzy sync）` → sync 后 `0.4.0（插件载荷同版本）· 引擎 0.16.9`；scratch 夹具 loop register→planning 面活体（非 git 宿主拒行如实先现、git init+首提交后过）；doctor EXIT=0：payload 0.4.0 / files 25 文件逐字 / enabled hooks:6 / **payload-ver 21 版本目录 · CLI 0.4.0 一致**。
+- **发布链一笔（本弧特有）**：CI 首过四腿打五轮修复（0.4.0 测试面此前只在宿主实弹——两枚产品级隔离面缺陷随 CI 显形并红绿修入 core/review.js + CHANGELOG Fixed 节；win32 宿主依赖四族守卫），tag 切于 8e496d9（CI 全绿后）；评估专报/M5 报告/release-checklist 三处身份注记齐（评估绑候选包 be03b258，发布包差异=版本元数据+文档+CI 修复面）。
+
 ## 执行记录（0.3.0，agent-first 六里程碑——机械件已备，publish 留用户）
 
 ### 内容与定位

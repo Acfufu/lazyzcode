@@ -309,7 +309,7 @@ test("⑦计量三分类与前置：metered 过/absent invalid/unpriced invalid�
   await assert.rejects(() => runReview(d5, { deps: { detectAuth: () => ({ oauth: true, envAuth: false, ok: true }) } }), (e) => {
     return e instanceof ReviewPreflightError && e.reason === "no-auth" && e.message.includes("OAuth");
   });
-  const okRun = await runReview(d5, { deps: { detectAuth: () => ({ ok: true, envAuth: true }), spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }) } });
+  const okRun = await runReview(d5, { deps: { detectAuth: () => ({ ok: true, envAuth: true }), spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), sqliteProbe: () => ({ ok: true }) } }); // sqliteProbe 显式补（win 跑者无 sqlite3 CLI——metering-capability 真前置会短路本腿）
   assert.equal(okRun.exitHint, 0);
   recordAuthorization(d5, { kind: "withdrawal", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-27T01:00:00.000Z" });
   await assert.rejects(() => runReview(d5, { deps: { detectAuth: () => ({ ok: true, envAuth: true }) } }), (e) => {

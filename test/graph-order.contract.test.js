@@ -74,3 +74,15 @@ test("validateDeps 单源回归：悬空/自指/成环三例报错文案逐字�
   assert.throws(() => validateDeps([{ id: "N1", deps: ["N1"] }]), /依赖边自指：N1 依赖自己/);
   assert.throws(() => validateDeps([{ id: "N1", deps: ["N2"] }, { id: "N2", deps: ["N1"] }]), /计划依赖成环：N1 → N2 → N1/);
 });
+
+test("深链 6000 节迭代求解不爆栈（评审 r4 F-3：显式栈沿 R5-A 先例；递归实现在此必 RangeError）", () => {
+  const N = 6000;
+  // 链 L1←L2←…←LN（deps 指向链头方向：Li deps [L(i-1)]）
+  const items = Array.from({ length: N }, (_, i) => ({ id: `L${i + 1}`, deps: i === 0 ? [] : [`L${i}`] }));
+  const depth = criticalDepthMap(items);
+  assert.equal(depth.get("L1"), N, "链头解锁链长=全链");
+  assert.equal(depth.get(`L${N}`), 1);
+  const layers = topoLayers(items);
+  assert.equal(layers.length, N, "6000 节链=6000 层");
+  assert.deepEqual(criticalPath(items), items.map((x) => x.id), "头先自然序=计划序");
+});

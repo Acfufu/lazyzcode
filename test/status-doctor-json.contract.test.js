@@ -30,7 +30,9 @@ function assertJsonContract(parsed, command) {
 
 test("status --json：合法 JSON+契约形状（schemaVersion/command/ok/checks）", () => {
   const p = runJson(["status", "--json"]);
-  assert.equal(p.status, 0, `status --json 退出 0（实得 ${p.status}）：${p.stderr?.slice(0, 200)}`);
+  // 退出码与宿主安装态相关（洁净 CI 容器无插件=fail 级合法）——本契约只断言输出形状，
+  // 不断言退出码（阻塞发现 2d1ef623：硬断言 0 使 CI 洁净环境必败）。
+  assert.ok(p.status === 0 || p.status === 1, `status 退出码 0/1（实得 ${p.status}）：${p.stderr?.slice(0, 200)}`);
   const parsed = JSON.parse(p.stdout); // 非法 JSON 直接抛=契约失败
   assertJsonContract(parsed, "status");
 });

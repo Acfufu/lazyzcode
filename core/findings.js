@@ -342,7 +342,7 @@ export function contestFinding(cwd, slug, fingerprint, { groundsPath, note, at }
 // （决策 #44；指向本指纹）——同职责同代次校验沿 closeFinding 家法；时序须晚于异议声明。
 // upheld=true 须复核不再报该指纹（与 close 同判）；upheld=false 须复核仍报（驳回的实证）。
 // 驳回后 status 回 open（contest 记录保留=最新异议在案，历史只追加）。
-export function adjudicateContest(cwd, slug, fingerprint, { upheld, basis, recheck, at } = {}) {
+export function adjudicateContest(cwd, slug, fingerprint, { upheld, basis, recheck, at, expectedAttempt } = {}) {
   assertSlug(slug);
   if (typeof upheld !== "boolean") {
     throw new FindingsError("adjudicate 须带 --upheld|--rejected（异议成立=发现证伪 / 驳回=维持 open）");
@@ -376,6 +376,10 @@ export function adjudicateContest(cwd, slug, fingerprint, { upheld, basis, reche
   }
   if (recheck.slug !== null && recheck.slug !== undefined && !findingsSlugFamily(cwd, slug).includes(recheck.slug)) {
     throw new FindingsError(`recheck 运行代次不符：run slug=${recheck.slug} ∉ 账本 ${slug} 的别名家族`);
+  }
+  // 同代次校验沿 closeFinding（M4 F-3）：跨 attempt 的复核不得裁决本代次异议。
+  if (expectedAttempt != null && recheck.attempt !== null && recheck.attempt !== undefined && Number(recheck.attempt) !== Number(expectedAttempt)) {
+    throw new FindingsError(`recheck 运行代次不符：attempt ${recheck.attempt} ≠ 目标 attempt ${expectedAttempt}——跨代次复判须重走（lzy review recheck --contested）`);
   }
   const expectedDuty = typeof e.duty === "string" && e.duty ? e.duty : BASELINE_DUTY_ID_LOCAL;
   if (typeof recheck.dutyId === "string" && recheck.dutyId && recheck.dutyId !== expectedDuty) {

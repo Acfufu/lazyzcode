@@ -108,7 +108,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms", "outcome", "basis", "recheck", "root-cause", "from", "to", "impact", "cancel-reason", "obligation", "fingerprint", "scope", "contested", "grounds", "upheld"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms", "outcome", "basis", "recheck", "root-cause", "from", "to", "impact", "cancel-reason", "obligation", "fingerprint", "scope", "contested", "grounds"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -630,7 +630,7 @@ async function cmdLoop(args) {
       return;
     }
     default:
-      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/supersede/attempts/start/subject/tier/risk/claim/status/list/history/cost/verify/finish/export/abandon/reset/handoff/lease/budget/drive）`);
+      throw new LoopError(`未知 loop 子命令：${sub}（register/plan/supersede/attempts/start/subject/tier/risk/claim/status/graph/list/history/cost/verify/finish/export/abandon/reset/handoff/lease/budget/drive）`);
   }
 }
 
@@ -1911,7 +1911,12 @@ async function cmdReview(args) {
         ` · ${r.result ? r.result.verdict : "—"} · 计量 ${r.metering.status}${r.metering.status === "metered" ? ` ${r.metering.points} 分` : ""}`,
     );
     const cands = r.findingsLedger?.closureCandidates;
-    if (Array.isArray(cands)) {
+    const contestedMark = typeof r.recheck?.contestedOf === "string" ? r.recheck.contestedOf : null;
+    if (contestedMark) {
+      // 异议复判 run 的出口=adjudicate 裁决（close 通道只认 resolve-requested 态，状态机会拒
+      // ——阻塞发现 58aaa19b F-5）；contestedMark 与旗标变量 contestedOf 分名（重声明曾炸全 CLI）。
+      console.log(`  异议复判：${contestedMark.slice(0, 8)} —— lzy finding adjudicate ${contestedMark.slice(0, 8)} --upheld|--rejected --basis … --recheck ${r.runId}`);
+    } else if (Array.isArray(cands)) {
       if (cands.length === 0) {
         console.log("  闭候选 0 条——无效修复翻面已由账本状态机记账（invalid-fix/diagnosis-required）");
       } else {
@@ -2276,10 +2281,16 @@ async function cmdFinding(args) {
         console.log(`  复判通道：lzy review recheck --contested ${r.fingerprint.slice(0, 8)} → lzy finding adjudicate ${r.fingerprint.slice(0, 8)} --upheld|--rejected --basis … --recheck <复核runId>`);
         return;
       }
-      // adjudicate：recheck 引用校验在此层（读运行档）， contestedOf 标记校验下沉 core
+      // adjudicate：recheck 引用校验在此层（读运行档）， contestedOf 标记校验下沉 core。
+      // --upheld/--rejected=互斥裸旗标（用法串字面；取值旗标形态曾致「--rejected 恒用法错」
+      // 阻塞发现 58aaa19b）。
       const runId = f.recheck;
       if (typeof runId !== "string" || !runId.trim()) return usage("adjudicate 须带 --recheck <runId>（--contested 产出的复核运行）");
-      if (typeof f.upheld !== "string" || !["upheld", "rejected"].includes(f.upheld)) return usage("adjudicate 须带 --upheld|--rejected（异议成立=发现证伪关闭 / 驳回=维持 open）");
+      const upheldFlag = f.upheld === true;
+      const rejectedFlag = f.rejected === true;
+      if (upheldFlag === rejectedFlag) {
+        return usage("adjudicate 须恰带 --upheld 或 --rejected 其一（异议成立=发现证伪关闭 / 驳回=维持 open；两旗标互斥不得同给）");
+      }
       if (typeof f.basis !== "string" || !f.basis.trim()) return usage("adjudicate 须带 --basis（复判依据必填）");
       const run = listReviewRuns(cwd, {}).find((x) => x.runId === runId);
       if (!run) {
@@ -2293,7 +2304,7 @@ async function cmdFinding(args) {
         .filter((x) => x.blocking === true || x.severity === "P0" || x.severity === "P1")
         .map((x) => findingFingerprint({ severity: x.severity, title: x.title, location: x.location }));
       const r = adjudicateContest(cwd, hit.originSlug, hit.fingerprint, {
-        upheld: f.upheld === "upheld",
+        upheld: upheldFlag,
         basis: f.basis,
         expectedAttempt: goalAttempt,
         recheck: {

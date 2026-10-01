@@ -85,7 +85,8 @@ export function claimableSteps(goal, isClaimFresh) {
 // 前提：items 已过 validateDeps（采纳门保证无环）——有环输入未定义（不防御，保持纯）。
 
 // 关键深度：该步解锁的最长链步数（含自身；沿「依赖它的边」向上量——链头最深、叶最浅，
-// 分派序=深度降序即链头先行）。memo 单次求解。
+// 分派序=深度降序即链头先行）。显式栈迭代求解（对抗审查 R5-A 先例：递归在 ~5000 节深链
+// 上爆调用栈——评审 r4 F-3 同族风险回归，graph.js 全函数迭代化）。
 export function criticalDepthMap(items) {
   const dependents = new Map(); // depId → [依赖它的步 id]
   for (const it of items) {
@@ -95,14 +96,27 @@ export function criticalDepthMap(items) {
     }
   }
   const depth = new Map();
-  const visit = (id) => {
-    if (depth.has(id)) return depth.get(id);
-    depth.set(id, 0); // 环哨兵：前提无环，0 仅防恶意输入死递归
-    const d = 1 + Math.max(0, ...(dependents.get(id) ?? []).map(visit));
-    depth.set(id, d);
-    return d;
-  };
-  for (const it of items) visit(it.id);
+  for (const it of items) {
+    if (depth.has(it.id)) continue;
+    const stack = [{ id: it.id, i: 0 }];
+    depth.set(it.id, 0); // 环哨兵：前提无环，0 仅防恶意输入死循环
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1];
+      const outs = dependents.get(top.id) ?? [];
+      if (top.i < outs.length) {
+        const nxt = outs[top.i];
+        top.i += 1;
+        if (!depth.has(nxt)) {
+          depth.set(nxt, 0);
+          stack.push({ id: nxt, i: 0 });
+        }
+      } else {
+        stack.pop();
+        const d = 1 + Math.max(0, ...(dependents.get(top.id) ?? []).map((x) => depth.get(x) ?? 0));
+        depth.set(top.id, d);
+      }
+    }
+  }
   return depth;
 }
 
@@ -135,18 +149,32 @@ function dependentsOf(items, id) {
 }
 
 // 拓扑分层：层 0=无依赖步，层 i=deps 全在更浅层。返回逐层 id 数组（层内保持计划序）。
+// 显式栈迭代（深链爆栈先例同 criticalDepthMap）。
 export function topoLayers(items) {
   const byId = new Map(items.map((it) => [it.id, it]));
   const layerOf = new Map();
-  const visit = (id) => {
-    if (layerOf.has(id)) return layerOf.get(id);
-    layerOf.set(id, 0); // 环哨兵同 criticalDepthMap
-    const it = byId.get(id);
-    const l = it?.deps?.length ? 1 + Math.max(...it.deps.map(visit)) : 0;
-    layerOf.set(id, l);
-    return l;
-  };
-  for (const it of items) visit(it.id);
+  for (const it of items) {
+    if (layerOf.has(it.id)) continue;
+    const stack = [{ id: it.id, i: 0 }];
+    layerOf.set(it.id, 0); // 环哨兵同 criticalDepthMap
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1];
+      const deps = byId.get(top.id)?.deps ?? [];
+      if (top.i < deps.length) {
+        const dep = deps[top.i];
+        top.i += 1;
+        if (!layerOf.has(dep)) {
+          layerOf.set(dep, 0);
+          stack.push({ id: dep, i: 0 });
+        }
+      } else {
+        stack.pop();
+        const ds = byId.get(top.id)?.deps ?? [];
+        const l = ds.length ? 1 + Math.max(...ds.map((d) => layerOf.get(d) ?? 0)) : 0;
+        layerOf.set(top.id, l);
+      }
+    }
+  }
   const layers = [];
   for (const it of items) {
     const l = layerOf.get(it.id) ?? 0;

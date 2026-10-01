@@ -121,3 +121,9 @@ _Avoid_: 自动发布（只描述 C 面一半）、交付独立队列项（同�
 **候选（candidate）**：交付 A 的被测对象=工人变更整合后的本地可合并分支态（HEAD+复合指纹绑定）；无远端 CI 时如实标注「CI 缺席」，不冒充已合并。_Avoid_: 主干（未合入）、产物（泛化）
 **版本入口（state entry）**：`.lazyzcode/state.json` 的树级状态版本戳（schemaVersion+stateVersion+逐任务迁移记录；apply 最后写=提交点）——未知版本或损坏=迁移写前 fail-closed，reset 不清（0.3.0 M5，ADR-0029）。_Avoid_: 包版本（另一物）、schema 工具（泛化）
 **迁移日志（migration journal）**：`migration/journal/<runId>.jsonl` 的逐相位追加账（start/backup/stage/validate/switch/done）——崩溃重跑探测未收尾 run、按任务身份（slug+planHash）幂等续跑不覆盖源的依据（0.3.0 M5）。_Avoid_: attempt 世系（另一层）、操作日志（泛化）
+
+**执行图（execution graph）**：goal 计划步经 deps 边构成的调度图——单源图核心的权威对象（健全性+就绪集+顺序语义；计划采纳门对悬空引用与环 fail-closed）；与失效 DAG 分立两物（执行图管「怎么跑」，失效 DAG 管「证明了什么」），图视图在观察层同读两图（决策 #43 / ADR-0036，2026-10-01）。_Avoid_: 失效 DAG（另一物）、依赖清单（无图语义）
+
+**异议（contested-request）**：实现者对未关闭发现的书面异议声明（不改代码）——区别于声称修复的 resolve-request；由复判会话（contestedOf 标记）裁 closed-falsified 或维持 open，发现对话的账本化形态（决策 #44，2026-10-01）。_Avoid_: 修复声称（resolve-request 另一物）、评审投票
+
+**文书协议（document protocol）**：节点间通信的终局形态——跨节点协作只经带状态机的语义文书（计划/findings/review 运行档/handoff/claim），自由消息永不入门；后续「给 lzy 加消息层」提案须先推翻 ADR-0035（决策 #45，2026-10-01）。_Avoid_: 消息总线、事件流

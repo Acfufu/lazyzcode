@@ -538,12 +538,12 @@ test("doctor drive 行：活跃租约显 fence 值+预算计数（真引擎机�
 });
 
 // ── ⑧ CLI 接线面 ────────────────────────────────────────────────────────────
-test("CLI 面：枚举串含 drive（22 项）；help 含 drive 行与 handoff 行；无 goal 恢复式报错原文", () => {
+test("CLI 面：枚举串含 drive 与 graph（23 项）；help 含 drive 行与 handoff 行；无 goal 恢复式报错原文", () => {
   const d = repo("lzy-drive-cli-");
   try {
     const r = lzy(["loop", "bogus"], d);
     assert.match(r.out, /未知 loop 子命令：bogus（[^）]*\bdrive\b[^）]*）/);
-    assert.equal(r.out.split("drive）")[0].split("（")[1].split("/").length, 22, "枚举串恰 22 项");
+    assert.equal(r.out.split("drive）")[0].split("（")[1].split("/").length, 23, "枚举串恰 23 项（graph 子命令入列，评审 r4 F-6）");
     const h = lzy(["help"], d);
     assert.match(h.out, /lzy loop drive \[--wall-ms N\]/);
     assert.match(h.out, /lzy loop handoff --snapshot/);

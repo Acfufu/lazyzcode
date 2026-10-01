@@ -23,6 +23,7 @@ import {
   formatHistory,
   formatRepoList,
   formatStatus,
+  formatGraph,
   handoffGoal,
   bindDeliveryContract,
   fingerprintSubjects,
@@ -507,6 +508,10 @@ async function cmdLoop(args) {
       return;
     case "status":
       console.log(formatStatus(cwd, git));
+      return;
+    case "graph":
+      // 双图只读视图（决策 #46，goal orch-discipline#N6）：执行图×失效 DAG 证据现行性。
+      console.log(formatGraph(cwd, git));
       return;
     case "list":
       // 只读跨仓诊断（never-throw 读面）：扫锚目录一级子目录的循环状态。
@@ -1037,6 +1042,8 @@ function printHelp() {
   lzy loop claim [<id>] [--release]         步级认领（决策 #21）：占步互斥 48h；无参列出可
                                             认领集（同目标多工人挑步）；done 自动释放
   lzy loop status                           查看进度与下一步
+  lzy loop graph                            双图只读视图（决策 #46）：执行图（拓扑层/关键
+                                            路径/可并行集/阻塞链）×失效 DAG 证据现行性
   lzy policy show|explain                   策略身份与义务集解释面（0.4.0 M1）：策略身份/评审
                                             运行器面/逐条义务（源·适用理由·满足条件）；v1 目标
                                             显示「政策裁决不适用（v1 旧规则延续）」

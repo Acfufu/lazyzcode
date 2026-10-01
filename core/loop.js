@@ -33,7 +33,7 @@ import {
 } from "./dag.js";
 import { evaluateGate } from "./gate.js"; // 0.4.0 M1 N5①：finishLoop 统一政策门（call-time 用，ESM 环安全）
 import { ensurePolicyRecord } from "./policy.js"; // 0.4.0 M1 N8：采纳落策略身份档（call-time 用，ESM 环安全）
-import { validateDeps, blockedBy, claimableSteps } from "./graph.js"; // 执行图单源核心（决策 #43/ADR-0036）：deps 语义唯一权威（校验+就绪谓词+拓扑/关键路径）
+import { validateDeps, blockedBy, claimableSteps, topoLayers, criticalPath } from "./graph.js"; // 执行图单源核心（决策 #43/ADR-0036）：deps 语义唯一权威（校验+就绪谓词+拓扑/关键路径）
 
 export const GOAL_VERSION = 2; // 0.4.0 M1 N6：1→2（v1=legacy 延续，readGoal 分流；v2 恒带策略身份）
 // v2 goal.policy.schemaVersion 盖章值——与 core/policy.js POLICY_VERSION 同一数值（家族
@@ -2671,6 +2671,54 @@ export function scanSessionFlags(cwd) {
     }
   }
   return { claims, stuck, expired, future };
+}
+
+// 双图只读视图（决策 #46，2026-10-01 grill；goal orch-discipline#N6）：执行图（deps 调度
+// 图：拓扑层/关键路径/可并行集/阻塞链，单源 graph.js）×失效 DAG（证据失效边账本：
+// 证据现行性，verifyEvidence 同源谓词）——「跑的过程与做的证据」在观察层同图（ADR-0036；
+// 存储层两图分立）。只读不执法：verifyEvidence 抛账本分歧时视图降级为告警行不炸全图
+// （执法面在 verify/finish，视图如实转述）。
+export function formatGraph(cwd, git) {
+  const goal = readGoal(cwd);
+  if (!goal) throw new LoopError(noGoalMessage(cwd));
+  const lines = [];
+  const done = goal.steps.filter((s) => s.status === "done").length;
+  lines.push(`lzy loop graph — ${goal.slug}（${goal.status} · attempt ${goal.attempt ?? 1} · ${done}/${goal.steps.length} 步）`);
+  // ── 执行图（剩余工作域，与 waveSplit 分派域同口径）──
+  const remaining = goal.steps.filter((s) => s.status !== "done");
+  lines.push("执行图（deps 调度图 · 决策 #43 / ADR-0036）：");
+  if (remaining.length === 0) {
+    lines.push("  拓扑层：（无剩余步——全部 done）");
+  } else {
+    const layers = topoLayers(remaining);
+    lines.push(`  拓扑层：${layers.map((l, i) => `L${i} = ${l.join(" ")}`).join(" | ")}`);
+    const path = criticalPath(remaining);
+    lines.push(`  关键路径：${path.join(" → ")}（链长 ${path.length}）`);
+    const claimable = claimableSteps(goal, isClaimFresh).map((s) => s.id);
+    lines.push(`  可并行集（无阻塞无在场认领）：${claimable.length ? claimable.join(", ") : "（空）"}`);
+    const blocked = remaining
+      .map((s) => ({ s, undone: blockedBy(s, goal) }))
+      .filter((x) => x.undone.length > 0);
+    if (blocked.length === 0) {
+      lines.push("  阻塞链：（无阻塞步）");
+    } else {
+      for (const { s, undone } of blocked) {
+        lines.push(`  阻塞链：${s.id} ← 依赖未完成 ${undone.join(" ")}`);
+      }
+    }
+  }
+  // ── 失效 DAG（证据现行性；F 项已完成的时效面）──
+  lines.push("失效 DAG（证据失效边账本 · ADR-0014）：");
+  try {
+    const { fresh, stale, unbound } = verifyEvidence(cwd, git);
+    lines.push(`  证据现行性：新鲜 ${fresh.length} · 过期 ${stale.length} · 未绑定 ${unbound.length}`);
+    for (const s of fresh) lines.push(`    ✔ ${s.id} 新鲜`);
+    for (const s of stale) lines.push(`    ✘ ${s.id} 过期（树已变——重取证 rebind）`);
+    for (const s of unbound) lines.push(`    ? ${s.id} 未绑定（指纹缺席/外部面）`);
+  } catch (err) {
+    lines.push(`  证据现行性：不可判（${String(err?.message ?? err).split("。")[0]}）——执法面在 verify/finish，此处只读转述`);
+  }
+  return lines.join("\n");
 }
 
 export function formatStatus(cwd, git) {

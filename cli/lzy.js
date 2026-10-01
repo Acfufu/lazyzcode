@@ -171,20 +171,44 @@ function parseArgs(args) {
   return { _, f };
 }
 
-async function cmdStatus() {
+// 观察面 JSON 契约版本（决策 #46，2026-10-01 grill；版本纪律借 OmO mass-ulw 协议——思想借用，
+// SUL-1.0 代码红线不涉）：schemaVersion 只增不改（新字段可选；缺席字段不置 null）；
+// 未知字段消费者必须忽略；形状由 test/status-doctor-json.contract.test.js 契约承载。
+const STATUS_DOCTOR_JSON_VERSION = 1;
+
+function renderChecksJson(command, { checks, ok }) {
+  return {
+    schemaVersion: STATUS_DOCTOR_JSON_VERSION,
+    command,
+    ok,
+    checks: checks.map((c) => ({ name: c.name, state: c.state, detail: c.detail })),
+  };
+}
+
+async function cmdStatus(args = []) {
+  const { f } = parseArgs(args);
   const { checks, ok } = await collectStatus();
-  console.log("lzy status");
-  for (const c of checks) {
-    console.log(`  ${ICON[c.state]} ${c.name.padEnd(12)} ${c.detail}`);
+  if (f.json === true) {
+    console.log(JSON.stringify(renderChecksJson("status", { checks, ok }), null, 2));
+  } else {
+    console.log("lzy status");
+    for (const c of checks) {
+      console.log(`  ${ICON[c.state]} ${c.name.padEnd(12)} ${c.detail}`);
+    }
   }
   process.exitCode = ok ? 0 : 1;
 }
 
-async function cmdDoctor() {
+async function cmdDoctor(args = []) {
+  const { f } = parseArgs(args);
   const { checks, ok } = await collectDoctor();
-  console.log("lzy doctor（本地诊断，零遥测）");
-  for (const c of checks) {
-    console.log(`  ${ICON[c.state]} ${c.name.padEnd(12)} ${c.detail}`);
+  if (f.json === true) {
+    console.log(JSON.stringify(renderChecksJson("doctor", { checks, ok }), null, 2));
+  } else {
+    console.log("lzy doctor（本地诊断，零遥测）");
+    for (const c of checks) {
+      console.log(`  ${ICON[c.state]} ${c.name.padEnd(12)} ${c.detail}`);
+    }
   }
   process.exitCode = ok ? 0 : 1;
 }
@@ -973,8 +997,10 @@ function printHelp() {
   lzy sync         重新部署仓库 plugin/ 载荷（热重载；新会话生效）；--watch 持续监听
   lzy update       一键升级：npm 拉 latest 包，再由新装路径的全新子进程执行 sync
                     （已是最新则免装；npm 缺席/中途失败均给手动两步指路）
-  lzy status       检查引擎/安装/启用/装载/目标循环状态（只读；退出码 0=无 fail 级检查，warn/skip 不影响）
-  lzy doctor       深度本地诊断：status 全套 + hook 语法自检/node 下限/lzy 解析/状态卫生/限流体检
+  lzy status [--json]    检查引擎/安装/启用/装载/目标循环状态（只读；退出码 0=无 fail 级检查，
+                          warn/skip 不影响）；--json=机器契约（schemaVersion 1，只增不改）
+  lzy doctor [--json]    深度本地诊断：status 全套 + hook 语法自检/node 下限/lzy 解析/状态卫生/限流体检
+                          （--json 同 status 契约）
   lzy uninstall    卸载插件（优先官方 plugins uninstall）
 
 目标循环（状态在工作区 .lazyzcode/）：
@@ -2319,9 +2345,9 @@ async function main() {
       }
       return cmdUpdate();
     case "status":
-      return cmdStatus();
+      return cmdStatus(args.slice(1));
     case "doctor":
-      return cmdDoctor();
+      return cmdDoctor(args.slice(1));
     case "uninstall":
       return cmdUninstall();
     case "loop":

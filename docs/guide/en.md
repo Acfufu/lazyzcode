@@ -54,6 +54,12 @@ lzy status   # quick check; exit code 0 = no fail-level findings
 lzy doctor   # deep local diagnostics (zero telemetry)
 ```
 
+Both commands accept `--json`: a machine-readable contract output (`schemaVersion`
+starts at 1 — the version discipline is **additive-only**: new fields are optional,
+absent fields are never emitted as null, and consumers must ignore unknown fields;
+the shape is pinned by a contract test) for scripts and external observers — no
+text scraping required.
+
 Inside a fresh ZCode session, type `zw` at the start of a prompt — the
 orchestration bootstrap should arrive, and the model's first line should read
 `**ZW** engaged — LIGHT tier` (or HEAVY).

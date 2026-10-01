@@ -33,6 +33,7 @@ import {
 } from "./dag.js";
 import { evaluateGate } from "./gate.js"; // 0.4.0 M1 N5①：finishLoop 统一政策门（call-time 用，ESM 环安全）
 import { ensurePolicyRecord } from "./policy.js"; // 0.4.0 M1 N8：采纳落策略身份档（call-time 用，ESM 环安全）
+import { validateDeps, blockedBy, claimableSteps } from "./graph.js"; // 执行图单源核心（决策 #43/ADR-0036）：deps 语义唯一权威（校验+就绪谓词+拓扑/关键路径）
 
 export const GOAL_VERSION = 2; // 0.4.0 M1 N6：1→2（v1=legacy 延续，readGoal 分流；v2 恒带策略身份）
 // v2 goal.policy.schemaVersion 盖章值——与 core/policy.js POLICY_VERSION 同一数值（家族
@@ -674,59 +675,10 @@ function parsePlanItems(body) {
   return items;
 }
 
-// 依赖边校验：引用存在、不自指、无环（三色 DFS；显式栈迭代——递归在 ~5000 节深链上
-// 爆调用栈误拒合法计划，对抗审查 R5-A 实测）。环路径封顶展示，防千节环刷出巨幅报错。
-const CYCLE_PATH_CAP = 8;
-
-function capCyclePath(path) {
-  if (path.length <= CYCLE_PATH_CAP) return path.join(" → ");
-  return `${path.slice(0, CYCLE_PATH_CAP).join(" → ")} → …（共 ${path.length} 节）`;
-}
-
-function validateDeps(items) {
-  const byId = new Map(items.map((it) => [it.id, it]));
-  for (const it of items) {
-    for (const dep of it.deps) {
-      if (dep === it.id) throw new LoopError(`依赖边自指：${it.id} 依赖自己`);
-      if (!byId.has(dep)) {
-        throw new LoopError(
-          `依赖边引用不存在的条目：${it.id} → ${dep}（现有：${items.map((x) => x.id).join(" ")}）`,
-        );
-      }
-    }
-  }
-  const WHITE = 0;
-  const GRAY = 1;
-  const BLACK = 2;
-  const state = new Map(items.map((it) => [it.id, WHITE]));
-  for (const start of items) {
-    if (state.get(start.id) !== WHITE) continue;
-    const stack = [{ id: start.id, i: 0 }];
-    state.set(start.id, GRAY);
-    while (stack.length > 0) {
-      const top = stack[stack.length - 1];
-      const deps = byId.get(top.id).deps;
-      if (top.i < deps.length) {
-        const dep = deps[top.i];
-        top.i += 1;
-        const st = state.get(dep);
-        if (st === GRAY) {
-          const from = stack.findIndex((f) => f.id === dep);
-          throw new LoopError(
-            `计划依赖成环：${capCyclePath([...stack.slice(from).map((f) => f.id), dep])}`,
-          );
-        }
-        if (st === WHITE) {
-          state.set(dep, GRAY);
-          stack.push({ id: dep, i: 0 });
-        }
-      } else {
-        stack.pop();
-        state.set(top.id, BLACK);
-      }
-    }
-  }
-}
+// 依赖边校验 validateDeps（引用存在/不自指/无环三色 DFS；环路径封顶展示）已迁
+// core/graph.js 单源（决策 #43 / ADR-0036 执行图调度器）：deps 语义唯一权威=graph.js
+// （校验+就绪谓词+拓扑/关键路径同源），报错文案逐字不变（契约测试
+// plan-gate.contract.test.js 三例背书）。
 
 // 评审判决解析：优先认 VERDICT: 记号（plan-reviewer 契约）——命中即采信，忽略评审正文里的普通用词
 // （如 PASS 附言写着 revise 某行，不再误拒，评审 R2-3）；无记号回退关键词扫描保持兼容。
@@ -1775,14 +1727,8 @@ function claimTimeAnomaly(step) {
   return Number.isFinite(t) && t > Date.now() ? at : null;
 }
 
-// 无阻塞谓词：deps 全 done（无 deps=恒无阻塞）。返回未完成依赖 id 列表（空=可认领）。
-// 容忍旧 goal.json 无 deps 字段（additive 字段，hooks 同款容忍读法）。
-function blockedBy(step, goal) {
-  const deps = Array.isArray(step.deps) ? step.deps : [];
-  if (deps.length === 0) return [];
-  const byId = new Map(goal.steps.map((s) => [s.id, s]));
-  return deps.filter((d) => byId.get(d)?.status !== "done");
-}
+// 无阻塞谓词 blockedBy 与可认领集 claimableSteps 已迁 core/graph.js 单源（决策 #43 /
+// ADR-0036 执行图调度器；isClaimFresh 参数化注入——认领新鲜度语义留本模块）。
 
 export function claimStep(cwd, id, { release = false } = {}) {
   requireGoalPreLock(cwd);
@@ -1819,13 +1765,6 @@ export function claimStep(cwd, id, { release = false } = {}) {
   });
 }
 
-// 可认领集：未 done、无在场认领、无阻塞。无参 claim 与 status 读面共用。
-function claimableSteps(goal) {
-  return goal.steps.filter(
-    (s) => s.status !== "done" && !isClaimFresh(s) && blockedBy(s, goal).length === 0,
-  );
-}
-
 // 无参 claim 的读面（CLI 直调；只读但要求 executing——planning 态认领没有语义）。
 export function formatClaimList(cwd) {
   const goal = readGoal(cwd);
@@ -1833,7 +1772,7 @@ export function formatClaimList(cwd) {
   if (goal.status !== "executing") {
     throw new LoopError(`目标 ${goal.slug} 当前状态 ${goal.status}，步级认领仅 executing 态有语义`);
   }
-  const claimable = claimableSteps(goal);
+  const claimable = claimableSteps(goal, isClaimFresh);
   if (claimable.length === 0) {
     return "可认领集为空（全部步骤已收口、已被认领或被依赖阻塞；释放用 lzy loop claim <id> --release）";
   }
@@ -2824,7 +2763,7 @@ export function formatStatus(cwd, git) {
     } else {
       lines.push("  认领 0（资格制：无人会被拉回；参与会话发「zw 继续」即认领接管）");
     }
-    const claimable = claimableSteps(goal);
+    const claimable = claimableSteps(goal, isClaimFresh);
     if (claimable.length > 0) {
       lines.push(
         `  可认领 ${claimable.length}：${claimable.map((s) => s.id).join(" ")}（lzy loop claim <id> 占步，多工人互斥 48h）`,

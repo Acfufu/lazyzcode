@@ -34,6 +34,7 @@ import {
   readGoal,
   withLock,
 } from "./loop.js";
+import { claimableSteps, criticalDepthMap } from "./graph.js"; // 执行图单源核心（决策 #43/ADR-0036）：就绪集谓词+关键深度（N3 波分派序）
 import { loadProjectManifest } from "./project.js";
 import { runCheck } from "./verify.js";
 import {
@@ -677,21 +678,17 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
 // 全体过期——首波即全锚）。一波=一段（maxSegments 计波）；墙钟累计=本波 max（并发不
 // sum）；预算/租约/风险门与单工人完全同源。收束因扩充 merge-conflict。N=1 永不进此径。
 
-function blockedByLocal(step, goal) {
-  const deps = Array.isArray(step.deps) ? step.deps : [];
-  if (deps.length === 0) return [];
-  const byId = new Map(goal.steps.map((s) => [s.id, s]));
-  return deps.filter((d) => byId.get(d)?.status !== "done");
-}
-
-function waveSplit(goal, n) {
-  // 可认领集（未 done/认领未新鲜/依赖已满足）轮转均分，余数给首工人。deps 阻塞的步
-  // 不入本波分派（claim 门兜底双保险）。
-  const pool = (goal.steps ?? []).filter(
-    (s) => s.status !== "done" && !isClaimFresh(s) && blockedByLocal(s, goal).length === 0,
-  );
+export function waveSplit(goal, n) {
+  // 可认领集吃 graph.js 单源（决策 #43/ADR-0036：blockedByLocal 手抄副本已删，ADJ-39
+  // 「一个谓词多处复制必漂移」）。deps 阻塞的步不入本波分派（claim 门兜底双保险）。
+  const pool = claimableSteps(goal, isClaimFresh);
+  // 关键路径优先（决策 #43 执法点③）：关键深度降序派发——深链头步先行，浅叶垫尾；
+  // 并列保持计划序（sort 稳定）。等深池与旧轮转均分逐字段同（N=1/缺省永不进此径，
+  // ADR-0026 车道边界不变；深度=步到叶最长链步数，graph.js criticalDepthMap 单源）。
+  const depth = criticalDepthMap(goal.steps ?? []);
+  const ordered = [...pool].sort((a, b) => (depth.get(b.id) ?? 0) - (depth.get(a.id) ?? 0));
   const groups = Array.from({ length: n }, () => []);
-  pool.forEach((s, i) => groups[i % n].push(s.id));
+  ordered.forEach((s, i) => groups[i % n].push(s.id));
   return groups;
 }
 

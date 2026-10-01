@@ -11,7 +11,7 @@ import { join, resolve, sep, dirname, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawnSync } from "node:child_process";
 import { loadFamilyFile, saveFamilyFile, budgetView, appendLedgerEntry, reviewLedgerPoints } from "./queue.js";
-import { recordFindingSightings, openBlockingFindings, listFindings, loadFindingsFile, CLOSED_FINDING_STATUSES, findingFingerprint } from "./findings.js"; // 0.4.0 M3：运行落账接线（findings.js 不反向依赖本模块，无环）；M-orch contestedOf 复判读账
+import { recordFindingSightings, openBlockingFindings, listFindings, CLOSED_FINDING_STATUSES, findingFingerprint } from "./findings.js"; // 0.4.0 M3：运行落账接线（findings.js 不反向依赖本模块，无环）；M-orch contestedOf 复判读账
 import { candidateIdentity, listReceipts } from "./verify.js";
 import { loadPolicyRecord, computePolicyIdentity, DUTY_TABLE_VERSION, policyRulesHash, stableStringify } from "./policy.js";
 import { withLock, LoopError, readGoal } from "./loop.js"; // N3 #11：写前缀单写者锁（call-time 用，ESM 环安全——loop→gate→review 已有环先例）
@@ -836,8 +836,12 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
   // 且 contested 态；抛 preflight 型拒 exit 3 不消耗 reserve），contestedFacts 传入锁内打包。
   let contestedFacts = null;
   if (contestedOf !== null) {
-    const frec = loadFindingsFile(cwd, goal.slug);
-    const fe = frec?.findings[contestedOf];
+    // 别名闭包读（阻塞发现 55c34e6b，r8 复核）：发现账可能挂旧 slug（relink 改名后）——
+    // 精确 loadFindingsFile 会把改名前账本的 contested 判「不在账」=永久无法裁决。
+    // listFindings 走 findingsSlugFamily 闭包并集，originSlug 随行。
+    const fe = listFindings(cwd, goal.slug, { includeClosed: true }).find(
+      (x) => x.fingerprint === contestedOf,
+    );
     if (!fe || fe.status !== "contested" || !fe.contest) {
       throw new ReviewPreflightError(
         `contestedOf ${contestedOf.slice(0, 8)} 不是该目标在账 contested 发现（现 ${fe ? fe.status : "不在账"}）——复判针对异议在案态`,
@@ -846,6 +850,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     }
     contestedFacts = {
       fingerprint: contestedOf,
+      originSlug: fe.originSlug,
       severity: fe.severity,
       title: fe.title,
       location: fe.location,

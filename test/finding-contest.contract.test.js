@@ -19,6 +19,7 @@ import {
   FINDINGS_VERSION,
   FINDING_STATUSES,
   assertFindingsShape,
+  relinkFindings,
 } from "../core/findings.js";
 import { saveFamilyFile } from "../core/queue.js";
 
@@ -177,4 +178,16 @@ test("contested 阻塞在场：openBlockingFindings 含 contested（异议不解
 test("FINDING_STATUSES 含 contested 且 FINDINGS_VERSION 保持 1（additive 不 bump）", () => {
   assert.ok(FINDING_STATUSES.includes("contested"));
   assert.equal(FINDINGS_VERSION, 1);
+});
+
+test("别名闭包：relink 改名后旧 slug 账上的 contested 发现对现行 slug 可读（阻塞发现 55c34e6b 修复面）", () => {
+  const { cwd, fp, grounds } = fixture();
+  contestFinding(cwd, "demo", fp, { groundsPath: grounds, at: "2026-10-01T08:00:00.000Z" });
+  // 改名：demo → demo2（relink 后查询按 demo2 也须并集读到旧账条目）
+  relinkFindings(cwd, "demo", "demo2");
+  const rows = listFindings(cwd, "demo2", { includeClosed: true });
+  const hit = rows.find((x) => x.fingerprint === fp);
+  assert.ok(hit, "改名后经闭包读可见");
+  assert.equal(hit.status, "contested");
+  assert.equal(hit.originSlug, "demo", "originSlug 随行（close/adjudicate 落旧账）");
 });

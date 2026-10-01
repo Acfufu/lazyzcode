@@ -11,7 +11,7 @@ import { join, resolve, sep, dirname, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawnSync } from "node:child_process";
 import { loadFamilyFile, saveFamilyFile, budgetView, appendLedgerEntry, reviewLedgerPoints } from "./queue.js";
-import { recordFindingSightings, openBlockingFindings, listFindings, CLOSED_FINDING_STATUSES, findingFingerprint } from "./findings.js"; // 0.4.0 M3：运行落账接线（findings.js 不反向依赖本模块，无环）
+import { recordFindingSightings, openBlockingFindings, listFindings, loadFindingsFile, CLOSED_FINDING_STATUSES, findingFingerprint } from "./findings.js"; // 0.4.0 M3：运行落账接线（findings.js 不反向依赖本模块，无环）；M-orch contestedOf 复判读账
 import { candidateIdentity, listReceipts } from "./verify.js";
 import { loadPolicyRecord, computePolicyIdentity, DUTY_TABLE_VERSION, policyRulesHash, stableStringify } from "./policy.js";
 import { withLock, LoopError, readGoal } from "./loop.js"; // N3 #11：写前缀单写者锁（call-time 用，ESM 环安全——loop→gate→review 已有环先例）
@@ -232,6 +232,11 @@ export function assertRunShape(rec, p) {
     if (Array.isArray(rec.recheck.targets)) {
       for (const t of rec.recheck.targets) if (!HEX64.test(t)) bad("recheck.targets 须为 64 hex 指纹");
     }
+    // 异议复判标记（决策 #44，2026-10-01）：contestedOf=被复判发现指纹（64 hex）或 null；
+    // 旧档缺键=undefined 放行（requested 同款读侧兼容）。
+    if (rec.recheck.contestedOf !== undefined && rec.recheck.contestedOf !== null && !HEX64.test(rec.recheck.contestedOf)) {
+      bad("recheck.contestedOf 须为 64 hex 或 null");
+    }
   }
   if (rec.findingsLedger !== undefined && rec.findingsLedger !== null) {
     if (typeof rec.findingsLedger !== "object" || Array.isArray(rec.findingsLedger)) bad("findingsLedger 须为对象或 null");
@@ -342,7 +347,7 @@ function readCappedText(p, cap) {
 // facts-only 输入包（拍板 4 唯一定义）：契约文本、项目清单、AGENTS.md 项目规则、目标步骤与
 // F 证据文本、回执摘要、策略义务集、候选身份。写 <runDir>/input.json（0600）并算
 // inputPackageHash。多 subject 拒已前移至 runReview 前置（N3 #7——在预留前以 preflight 型拒）。
-export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID, now = new Date() } = {}) {
+export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID, now = new Date(), contested = null } = {}) {
   if (!goal || goal.version !== 2) throw new ReviewError(`评审输入包须 v2 目标（得到 version=${goal?.version ?? null}）`);
   const readOptional = (p, cap) => {
     try {
@@ -404,6 +409,14 @@ export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID
     if (e.included === false) disclosure.push(`非文本附件未注入内容：${e.file}（引用面在场）`);
   }
   if (!agentsRules) disclosure.push("AGENTS.md 缺席——项目规则面未注入");
+  // 异议复判输入（决策 #44）：被复判发现摘要+异议书全文注入（复判者须看到它在判什么）；
+  // 其余评审结论仍不注入——facts-only 不破（异议书是实现者文书非他轮评审结论）。
+  let contestedReview = null;
+  if (contested && typeof contested.groundsPath === "string") {
+    const grounds = readOptional(resolve(cwd, contested.groundsPath), AGENTS_CAP);
+    if (!grounds) disclosure.push(`异议书不可读：${contested.groundsPath}——复判输入缺异议书（如实披露）`);
+    contestedReview = { ...contested, groundsIncluded: grounds !== null, ...(grounds ? { grounds } : {}) };
+  }
   const facts = {
     duty: { id: dutyId, templateHash: dutyTemplateHash(dutyId) },
     goal: {
@@ -434,6 +447,7 @@ export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID
     evidence,
     receipts,
     policy,
+    contestedReview,
     disclosure,
     candidate: candidateIdentity(cwd),
     generatedAt: now.toISOString(),
@@ -777,12 +791,20 @@ const RETRY_SUFFIX_REASON = (reason) =>
 // 评审运行主入口（拍板 11：deps 注入面=spawnHeadless/detectAuth/querySessionPoints/preflight——
 // CI 无凭据零真引擎可跑）。返回 { record, exitHint }；前置不具备抛 ReviewPreflightError
 //（不 spawn 不落档）；运行后任何失败分类照常落档（失败运行不可改判，F2 判据）。
-export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, recheckOf = null, deps = {} } = {}) {
+export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, recheckOf = null, contestedOf = null, deps = {} } = {}) {
   // recheck 标记（N2/V06）：recheckOf=null=常规运行；true=复核在案全部未关闭发现；
   // 指纹数组=定向复核。仅作运行档标记与闭候选对账开关，不改变运行本身（同职责新独立会话）。
+  // contestedOf（决策 #44，2026-10-01）：异议复判标记——非 null 时隐含对该指纹的定向复核
+  // （recheckOf 缺省时自动收敛为 [contestedOf]），运行档 recheck.contestedOf 落标，输入包
+  // 附加 contestedReview 块（发现摘要+异议书全文——复判者须看到它在判什么；其余评审结论
+  // 仍不注入，facts-only 不破）。
   if (recheckOf !== null && recheckOf !== true && !(Array.isArray(recheckOf) && recheckOf.every((x) => typeof x === "string" && /^[0-9a-f]{64}$/.test(x)))) {
     throw new ReviewPreflightError("recheckOf 非法：须为 null | true | 64hex 指纹数组", { reason: "duty-unknown" });
   }
+  if (contestedOf !== null && !/^[0-9a-f]{64}$/.test(contestedOf)) {
+    throw new ReviewPreflightError("contestedOf 非法：须为 null | 64 hex 指纹", { reason: "duty-unknown" });
+  }
+  if (contestedOf !== null && recheckOf === null) recheckOf = [contestedOf];
   if (!DUTY_TABLE.some((d) => d.id === duty)) {
     throw new ReviewPreflightError(`职责不在表：${duty}（现行职责表：${DUTY_TABLE.map((d) => d.id).join("、")}）`, { reason: "duty-unknown" });
   }
@@ -810,6 +832,29 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       { reason: "candidate-dirty" },
     );
   }
+  // 异议复判输入面（决策 #44）：被复判发现摘要+异议书定位入包——锁外前置核读（发现须在账
+  // 且 contested 态；抛 preflight 型拒 exit 3 不消耗 reserve），contestedFacts 传入锁内打包。
+  let contestedFacts = null;
+  if (contestedOf !== null) {
+    const frec = loadFindingsFile(cwd, goal.slug);
+    const fe = frec?.findings[contestedOf];
+    if (!fe || fe.status !== "contested" || !fe.contest) {
+      throw new ReviewPreflightError(
+        `contestedOf ${contestedOf.slice(0, 8)} 不是该目标在账 contested 发现（现 ${fe ? fe.status : "不在账"}）——复判针对异议在案态`,
+        { reason: "duty-unknown" },
+      );
+    }
+    contestedFacts = {
+      fingerprint: contestedOf,
+      severity: fe.severity,
+      title: fe.title,
+      location: fe.location,
+      contestAt: fe.contest.at,
+      groundsPath: fe.contest.groundsPath,
+      groundsSha256: fe.contest.groundsSha256,
+      ...(fe.contest.note ? { contestNote: fe.contest.note } : {}),
+    };
+  }
   const failures = []; // [reason, detail] 按优先序；validity.reason=首因、detail=全列
   let pkgHash = null;
   let snapHash = null;
@@ -829,7 +874,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     // spawn 本体不进锁（引擎时长超 LOCK_WAIT 预算）；锁忙=LoopError→preflight 型拒（exit 3 不落档）。
     const prepared = await withLock(cwd, () => {
       const rs = reserveRun(cwd, goal.slug, goal.attempt);
-      const pkg = buildInputPackage(cwd, goal, rs.runDir, { dutyId: duty, now: startedAt });
+      const pkg = buildInputPackage(cwd, goal, rs.runDir, { dutyId: duty, now: startedAt, contested: contestedFacts });
       const snap = materializeCandidate(cwd, rs.runDir);
       const iso = prepareIsolation(rs.runDir);
       const priors = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).filter((r) => r.seq < rs.seq);
@@ -1051,7 +1096,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       metering,
       validity,
       result,
-      recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null } : null,
+      recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
     };
     const out = await finishRun(cwd, reserve, record);
@@ -1107,7 +1152,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       metering: { status: "absent", points: null, note: "运行器异常——无计量可读（不算零）" },
       validity: { status: "invalid", reason: "interrupted", detail: `运行器异常：${String(err?.message ?? err).slice(0, 200)}` },
       result: null,
-      recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null } : null,
+      recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: null,
     };
     try {

@@ -8,14 +8,15 @@
 // diagnosis-required，diagnose 记录根因重置计数后方可再入关闭通道。relink 别名链（V06 别名变化）：
 // 查询面按 slug 的别名闭包并集读，别名只增不改——历史不改写。
 import { createHash } from "node:crypto";
-import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { loadFamilyFile, saveFamilyFile } from "./queue.js";
 
 export const FINDINGS_VERSION = 1;
 export const FINDING_STATUSES = [
   "open",
   "resolve-requested",
+  "contested",
   "closed-fixed",
   "closed-falsified",
   "diagnosis-required",
@@ -91,6 +92,11 @@ function assertFindingEntry(fp, e, p) {
   if (!Number.isInteger(e.invalidFixCount) || e.invalidFixCount < 0) bad("invalidFixCount 须为 ≥0 整数");
   if (e.resolveRequest !== null && (typeof e.resolveRequest !== "object" || Array.isArray(e.resolveRequest))) {
     bad("resolveRequest 须为对象或 null");
+  }
+  // 异议原语（决策 #44，2026-10-01 grill）：contested 态的异议记录（{at,groundsPath,
+  // groundsSha256,note?}）——旧账无此键=读侧兼容（duty 键同款范式，:102）。
+  if (e.contest !== undefined && e.contest !== null && (typeof e.contest !== "object" || Array.isArray(e.contest))) {
+    bad("contest 须为对象或 null");
   }
   if (e.closure !== null && (typeof e.closure !== "object" || Array.isArray(e.closure))) {
     bad("closure 须为对象或 null");
@@ -216,7 +222,7 @@ export function listFindings(cwd, slug, { includeClosed = true } = {}) {
 }
 
 // 统一门 findings 子句（N5）的数据面：未关闭=非 closed 终态（open/resolve-requested/
-// diagnosis-required 都是「阻塞在场」）。
+// contested/diagnosis-required 都是「阻塞在场」——异议不解除阻塞，只换对话通道）。
 export function openBlockingFindings(cwd, slug) {
   return listFindings(cwd, slug, { includeClosed: false });
 }
@@ -251,6 +257,7 @@ export function recordFindingSightings(cwd, slug, { runId, attempt, at, dutyId, 
         occurrences: 1,
         invalidFixCount: 0,
         resolveRequest: null,
+        contest: null,
         closure: null,
         diagnosis: null,
         history: [],
@@ -267,6 +274,7 @@ export function recordFindingSightings(cwd, slug, { runId, attempt, at, dutyId, 
       e.closure = null;
       e.invalidFixCount = 0;
       e.resolveRequest = null;
+      e.contest = null;
       appendHistory(e, { at, kind: "regression", runId, attempt });
       disposition.push({ fingerprint: fp, severity, title, action: "regression", status: e.status });
       continue;
@@ -290,6 +298,109 @@ export function recordFindingSightings(cwd, slug, { runId, attempt, at, dutyId, 
   }
   saveFindingsFile(cwd, rec);
   return disposition;
+}
+
+// contest（异议原语，决策 #44，2026-10-01 grill 四象限拍板）：唯一入态 open→contested。
+// 语义=实现者声明「此发现不应成立」并附书面异议书（grounds 文件 sha256 入档），**不改代码、
+// 非修复声称**——区别于 resolve-request（声称修复）。堵语义洞：closed-falsified 终态旧仅自
+// resolve-requested 可达，异议被迫先假装声称修复污染审计面。contested 是「阻塞在场」态
+// （未关闭、统一门照拦）；被新评审运行再 sighting 时走 seen 分支状态保持。FINDINGS_VERSION
+// 保持 1（additive 不 bump——contest 键旧账读侧兼容）。
+export function contestFinding(cwd, slug, fingerprint, { groundsPath, note, at } = {}) {
+  assertSlug(slug);
+  if (typeof groundsPath !== "string" || !groundsPath.trim()) {
+    throw new FindingsError("contest 须带 --grounds <文件>（书面异议书必填——无异议书的 contested=空口宣称，不允许）");
+  }
+  const abs = resolve(cwd, groundsPath.trim());
+  let buf;
+  try {
+    buf = readFileSync(abs);
+  } catch (err) {
+    throw new FindingsError(`异议书不可读（${err?.code ?? err?.message ?? err}）：${abs}`);
+  }
+  const rec = loadFindingsFile(cwd, slug);
+  if (!rec?.findings[fingerprint]) throw new FindingsError(`发现不在账：${slug} ${fingerprint.slice(0, 8)}`);
+  const e = rec.findings[fingerprint];
+  if (e.status !== "open") {
+    throw new FindingsError(`状态机拒绝：${e.status} 态不受理 contest（仅 open 态可提异议——修复声称走 resolve-request，关闭态走 reopen）`);
+  }
+  const stamp = at ?? new Date().toISOString();
+  e.status = "contested";
+  e.contest = {
+    at: stamp,
+    groundsPath: abs,
+    groundsSha256: createHash("sha256").update(buf).digest("hex"),
+    ...(note ? { note } : {}),
+  };
+  appendHistory(e, { at: stamp, kind: "contested", note: note ?? `异议书 ${abs}（sha256 ${e.contest.groundsSha256.slice(0, 12)}…）` });
+  saveFindingsFile(cwd, rec);
+  return { fingerprint, status: e.status, contest: e.contest };
+}
+
+// adjudicate（异议复判，决策 #44）：唯一出态 contested → closed-falsified（异议成立=发现
+// 被证伪）| open（异议驳回=维持）。复判引用=review recheck 运行档且带 contestedOf 标记
+// （决策 #44；指向本指纹）——同职责同代次校验沿 closeFinding 家法；时序须晚于异议声明。
+// upheld=true 须复核不再报该指纹（与 close 同判）；upheld=false 须复核仍报（驳回的实证）。
+// 驳回后 status 回 open（contest 记录保留=最新异议在案，历史只追加）。
+export function adjudicateContest(cwd, slug, fingerprint, { upheld, basis, recheck, at } = {}) {
+  assertSlug(slug);
+  if (typeof upheld !== "boolean") {
+    throw new FindingsError("adjudicate 须带 --upheld|--rejected（异议成立=发现证伪 / 驳回=维持 open）");
+  }
+  if (typeof basis !== "string" || !basis.trim()) {
+    throw new FindingsError("adjudicate 须带 --basis（复判依据必填）");
+  }
+  if (!recheck || typeof recheck !== "object" || typeof recheck.runId !== "string" || !recheck.runId) {
+    throw new FindingsError("adjudicate 须带 recheck 运行引用（{runId,valid,slug,attempt,dutyId,reportedFingerprints,contestedOf}）");
+  }
+  if (recheck.valid !== true) {
+    throw new FindingsError(`recheck 运行非 valid，不能作复判依据：${recheck.runId}`);
+  }
+  if (recheck.isRecheck !== true) {
+    throw new FindingsError(`recheck 引用非复核运行：${recheck.runId}（须 lzy review recheck 产出）`);
+  }
+  if (recheck.contestedOf !== fingerprint) {
+    throw new FindingsError(`recheck 运行非本发现异议复判：contestedOf=${recheck.contestedOf ?? "null"} ≠ ${fingerprint.slice(0, 8)}（须 lzy review recheck --contested ${fingerprint.slice(0, 8)} 产出）`);
+  }
+  if (!Array.isArray(recheck.reportedFingerprints)) {
+    throw new FindingsError("recheck 引用缺 reportedFingerprints 数组（fail-closed——无法核对「仍报」面）");
+  }
+  const rec = loadFindingsFile(cwd, slug);
+  if (!rec?.findings[fingerprint]) throw new FindingsError(`发现不在账：${slug} ${fingerprint.slice(0, 8)}`);
+  const e = rec.findings[fingerprint];
+  if (e.status !== "contested") {
+    throw new FindingsError(`状态机拒绝：${e.status} 态不受理 adjudicate（仅 contested 态）`);
+  }
+  if (!e.contest) {
+    throw new FindingsError("contested 态缺 contest 记录（账本形状与状态不自洽）——先备份再人工核对");
+  }
+  if (recheck.slug !== null && recheck.slug !== undefined && !findingsSlugFamily(cwd, slug).includes(recheck.slug)) {
+    throw new FindingsError(`recheck 运行代次不符：run slug=${recheck.slug} ∉ 账本 ${slug} 的别名家族`);
+  }
+  const expectedDuty = typeof e.duty === "string" && e.duty ? e.duty : BASELINE_DUTY_ID_LOCAL;
+  if (typeof recheck.dutyId === "string" && recheck.dutyId && recheck.dutyId !== expectedDuty) {
+    throw new FindingsError(`recheck 运行职责不符：${recheck.dutyId} ≠ 发现来源职责 ${expectedDuty}（同职责复核——异议复判依赖原发现职责模板）`);
+  }
+  if (typeof recheck.at === "string" && recheck.at <= e.contest.at) {
+    throw new FindingsError(`recheck 运行时序不符：不晚于异议声明（${e.contest.at}）——复判须发生在异议之后`);
+  }
+  const stamp = at ?? new Date().toISOString();
+  if (upheld) {
+    if (recheck.reportedFingerprints.includes(fingerprint)) {
+      throw new FindingsError(`复判运行仍报该发现（${recheck.runId}）——异议不能裁成立（发现仍被独立复核证实在场）`);
+    }
+    e.status = "closed-falsified";
+    e.closure = { outcome: "falsified", basis: basis.trim(), recheckRunId: recheck.runId, at: stamp, contested: true };
+    appendHistory(e, { at: stamp, kind: "contest-upheld", runId: recheck.runId, note: basis.trim() });
+  } else {
+    if (!recheck.reportedFingerprints.includes(fingerprint)) {
+      throw new FindingsError(`复判运行不再报该发现（${recheck.runId}）——异议不能裁驳回（发现已被独立复核证伪，应 --upheld）`);
+    }
+    e.status = "open";
+    appendHistory(e, { at: stamp, kind: "contest-rejected", runId: recheck.runId, note: basis.trim() });
+  }
+  saveFindingsFile(cwd, rec);
+  return { fingerprint, status: e.status, closure: e.closure ?? null };
 }
 
 // resolve-request（声称修复）：唯一入态 open→resolve-requested；diagnosis-required 态拒绝（V12）。

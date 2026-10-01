@@ -73,7 +73,7 @@ import {
 import { recordComparatorAttestation } from "../core/attest.js";
 import { computePolicyIdentity, loadPolicyRecord, identityStableHash, deriveObligations, REVIEW_RUNNER_FACE, reassessObligation } from "../core/policy.js"; // 0.4.0 M1 N7 解释面 + M3 N8 reassess 面
 import { ReviewPreflightError, ReviewError, listReviewRuns, runReview, qualifyReviewScope, reuseReviewScope, BASELINE_DUTY_ID } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面 + M4 N2/N3 资格与复用
-import { listFindings, requestResolve, closeFinding, diagnoseFinding, relinkFindings, reopenFinding, findingFingerprint, CLOSED_FINDING_STATUSES, DIAGNOSIS_REQUIRED_THRESHOLD, openBlockingFindings } from "../core/findings.js"; // 0.4.0 M3 N6/N7 发现账本 CLI 面 + M4 N3 reopen
+import { listFindings, requestResolve, closeFinding, diagnoseFinding, relinkFindings, reopenFinding, contestFinding, adjudicateContest, findingFingerprint, CLOSED_FINDING_STATUSES, DIAGNOSIS_REQUIRED_THRESHOLD, openBlockingFindings } from "../core/findings.js"; // 0.4.0 M3 N6/N7 发现账本 CLI 面 + M4 N3 reopen + M-orch 异议原语（决策 #44）
 import { evaluateGate } from "../core/gate.js";
 import { findEngine, pluginsRoot, repoPluginDir, userCliLogDir } from "../core/paths.js";
 import { collectRateLimitStats, bandAdvisory } from "../core/ratelimit.js";
@@ -107,7 +107,7 @@ const ICON = { ok: "✔", fail: "✖", warn: "⚠", skip: "➖" };
 // 只有值旗标白名单内的才吃下一个参数（评审 R2-8：--force plan.md 不再把路径吞成值）；
 // `=` 形式的 true/false 归一为布尔（评审 R2-8：--force=true 不再被当成字符串判 false）；
 // MULTI_FLAGS 可重复出现追加成数组（--evidence-file a --evidence-file b）。
-const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms", "outcome", "basis", "recheck", "root-cause", "from", "to", "impact", "cancel-reason", "obligation", "fingerprint", "scope"]);
+const VALUE_FLAGS = new Set(["title", "review", "note", "evidence", "evidence-file", "root", "tier", "surface", "reason", "goal", "file", "harness", "fence", "ttl-ms", "wall-ms", "ms", "points", "risk", "max-segments", "mode", "snapshot", "workers", "contract", "accepts", "of", "sha", "repo", "plan", "endpoint", "deps", "goal-slug", "item", "branch", "head", "base", "pr-title", "pr-body-file", "pr", "expect-marker", "content-url", "plan-review", "delivery-b", "delivery-c", "origin-item", "duty", "timeout-ms", "outcome", "basis", "recheck", "root-cause", "from", "to", "impact", "cancel-reason", "obligation", "fingerprint", "scope", "contested", "grounds", "upheld"]);
 const MULTI_FLAGS = new Set(["evidence-file"]);
 
 function parseArgs(args) {
@@ -1023,10 +1023,12 @@ function printHelp() {
                                             真实评审会话产出结构化判决并落档 .lazyzcode/review/；
                                             退出码：0=pass 且有效，1=blocked/invalid（已落档，
                                             失败不可改判），2=用法错，3=前置不具备（不 spawn 不消耗）
-  lzy review recheck [--fingerprint <前8>] [--duty <id>]
+  lzy review recheck [--fingerprint <前8>] [--contested <前8>] [--duty <id>]
                                             独立复核运行（0.4.0 M3）：同职责新会话 facts-only
                                             重跑，对账产出闭候选读数（关闭仍须 finding close
-                                            显式落账）；退出码同 run
+                                            显式落账）；--contested=异议复判（决策 #44：
+                                            运行档 contestedOf 标记+输入包含异议书，供
+                                            finding adjudicate 裁决）；退出码同 run
   lzy review list [--goal <slug>]           在案评审运行枚举（只读；家族损坏 fail-closed 非 0）
   lzy review show <runId>                   逐字段+发现表+原始输出指针（只读）
   lzy review qualify <runId> --scope <声明JSON>
@@ -1054,6 +1056,12 @@ function printHelp() {
   lzy finding reopen <指纹前8> [--note …]   关闭依据失效后重开（0.4.0 M4：closure-basis-stale
                                             处置）：closed→resolve-requested，closure 历史
                                             保留；重开后走 recheck→close 重新取证关闭
+  lzy finding contest <指纹前8> --grounds <文件> [--note …]
+                                            异议（决策 #44）：open→contested，书面异议书
+                                            sha256 入档（不改代码、非修复声称；阻塞照在场）
+  lzy finding adjudicate <指纹前8> --upheld|--rejected --basis … --recheck <runId>
+                                            异议复判：contested→closed-falsified|open
+                                            （recheck 须 review recheck --contested 产出）
   lzy finding relink --from <旧slug> --to <新slug>
                                             别名链登记（目标改名后同链可读；查环拒绝）
   lzy loop list [--root <目录>]             跨仓清单（只读）：扫锚目录一级子目录各仓的循环
@@ -1808,7 +1816,30 @@ async function cmdReview(args) {
       return;
     }
     let recheckOf = true; // 缺省=复核在案全部未关闭发现
-    if (typeof f.fingerprint === "string") {
+    let contestedOf = null; // --contested <fp8>：异议复判（决策 #44）——标记落运行档+输入包含异议书
+    if (typeof f.contested === "string") {
+      let open = [];
+      try {
+        open = openBlockingFindings(cwd, goal.slug);
+      } catch (err) {
+        console.error(`[lzy] ${err?.message ?? err}`);
+        process.exitCode = 1;
+        return;
+      }
+      const hits = open.filter((x) => x.fingerprint.startsWith(f.contested.toLowerCase()) && x.status === "contested");
+      if (hits.length === 0) {
+        console.error(`用法错：--contested ${f.contested} 不在 contested 态发现集（lzy finding list 看在案集；先 lzy finding contest <指纹前8> --grounds <文件>）`);
+        process.exitCode = 2;
+        return;
+      }
+      if (hits.length > 1) {
+        console.error(`用法错：--contested 前缀歧义：${hits.length} 条命中（补长前缀）`);
+        process.exitCode = 2;
+        return;
+      }
+      contestedOf = hits[0].fingerprint;
+      recheckOf = [contestedOf];
+    } else if (typeof f.fingerprint === "string") {
       let open = [];
       try {
         open = openBlockingFindings(cwd, goal.slug);
@@ -1832,7 +1863,7 @@ async function cmdReview(args) {
     }
     let res;
     try {
-      res = await runReview(cwd, { duty: f.duty, timeoutMs: f["timeout-ms"] != null ? Number(f["timeout-ms"]) : undefined, recheckOf });
+      res = await runReview(cwd, { duty: f.duty, timeoutMs: f["timeout-ms"] != null ? Number(f["timeout-ms"]) : undefined, recheckOf, contestedOf });
     } catch (err) {
       if (err instanceof ReviewPreflightError) {
         console.error(`前置不具备（不 spawn、不消耗、不落档）：${err.message}`);
@@ -2026,7 +2057,7 @@ async function cmdFinding(args) {
   const cwd = process.cwd();
   const usage = (msg) => {
     console.error(`用法错：${msg}`);
-    console.error("用法：lzy finding list|show <指纹前8>|resolve-request <指纹前8> [--note …]|close <指纹前8> --outcome fixed|falsified --basis … --recheck <runId>|diagnose <指纹前8> --root-cause …|reopen <指纹前8> [--note …]|relink --from <旧slug> --to <新slug>");
+    console.error("用法：lzy finding list|show <指纹前8>|resolve-request <指纹前8> [--note …]|close <指纹前8> --outcome fixed|falsified --basis … --recheck <runId>|diagnose <指纹前8> --root-cause …|reopen <指纹前8> [--note …]|contest <指纹前8> --grounds <文件> [--note …]|adjudicate <指纹前8> --upheld|--rejected --basis … --recheck <runId>|relink --from <旧slug> --to <新slug>");
     process.exitCode = 2;
   };
   const scopeSlug = typeof f.goal === "string" ? f.goal : readGoal(cwd)?.slug ?? null;
@@ -2181,6 +2212,75 @@ async function cmdFinding(args) {
       return;
     } catch (err) {
       console.error(`[lzy] ${err?.message ?? err}`); // 状态机/校验拒绝=语义拒（exit 1）
+      process.exitCode = 1;
+      return;
+    }
+  }
+  if (sub === "contest" || sub === "adjudicate") {
+    // 异议原语（决策 #44，2026-10-01 grill）：contest=open→contested（书面异议书 sha256 入档，
+    // 不改代码非修复声称）；adjudicate=contested→closed-falsified|open（复判裁决，recheck 须带
+    // contestedOf 标记=--contested 产出的复核运行）。退出码契约同状态变更族：1=语义拒。
+    if (!scopeSlug) return usage("状态变更须有活跃目标（slug 取自 goal）或显式 --goal");
+    let rows;
+    try {
+      rows = listFindings(cwd, scopeSlug, { includeClosed: true });
+    } catch (err) {
+      console.error(`[lzy] ${err?.message ?? err}`);
+      process.exitCode = 1;
+      return;
+    }
+    const { hit, err: fpErr } = resolveFp(rows);
+    if (fpErr) {
+      console.error(`[lzy] ${fpErr}`);
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      if (sub === "contest") {
+        if (typeof f.grounds !== "string" || !f.grounds.trim()) return usage("contest 须带 --grounds <文件>（书面异议书必填）");
+        const r = contestFinding(cwd, hit.originSlug, hit.fingerprint, { groundsPath: f.grounds, note: f.note });
+        console.log(`异议已入账：${r.fingerprint.slice(0, 8)} → ${r.status}（异议书 ${r.contest.groundsPath} · sha256 ${r.contest.groundsSha256.slice(0, 12)}…）`);
+        console.log(`  复判通道：lzy review recheck --contested ${r.fingerprint.slice(0, 8)} → lzy finding adjudicate ${r.fingerprint.slice(0, 8)} --upheld|--rejected --basis … --recheck <复核runId>`);
+        return;
+      }
+      // adjudicate：recheck 引用校验在此层（读运行档）， contestedOf 标记校验下沉 core
+      const runId = f.recheck;
+      if (typeof runId !== "string" || !runId.trim()) return usage("adjudicate 须带 --recheck <runId>（--contested 产出的复核运行）");
+      if (typeof f.upheld !== "string" || !["upheld", "rejected"].includes(f.upheld)) return usage("adjudicate 须带 --upheld|--rejected（异议成立=发现证伪关闭 / 驳回=维持 open）");
+      if (typeof f.basis !== "string" || !f.basis.trim()) return usage("adjudicate 须带 --basis（复判依据必填）");
+      const run = listReviewRuns(cwd, {}).find((x) => x.runId === runId);
+      if (!run) {
+        console.error(`[lzy] recheck 运行档不存在：${runId}（lzy review list 看在案集）`);
+        process.exitCode = 1;
+        return;
+      }
+      const isRecheck = run.recheck?.requested === true;
+      const goalAttempt = readGoal(cwd)?.attempt ?? null;
+      const blockingFps = (run.result?.findings ?? [])
+        .filter((x) => x.blocking === true || x.severity === "P0" || x.severity === "P1")
+        .map((x) => findingFingerprint({ severity: x.severity, title: x.title, location: x.location }));
+      const r = adjudicateContest(cwd, hit.originSlug, hit.fingerprint, {
+        upheld: f.upheld === "upheld",
+        basis: f.basis,
+        expectedAttempt: goalAttempt,
+        recheck: {
+          runId,
+          valid: run.validity?.status === "valid",
+          slug: run.slug ?? null,
+          attempt: run.attempt ?? null,
+          dutyId: run.duty?.id ?? null,
+          reportedFingerprints: blockingFps,
+          isRecheck,
+          contestedOf: run.recheck?.contestedOf ?? null,
+          at: run.endedAt,
+        },
+      });
+      console.log(r.status === "closed-falsified"
+        ? `异议成立：${r.fingerprint.slice(0, 8)} → closed-falsified（复判 ${runId} · 依据 ${r.closure.basis}）`
+        : `异议驳回：${r.fingerprint.slice(0, 8)} → open（复判 ${runId} 仍报该发现——继续修复通道或再 contest 须新异议书）`);
+      return;
+    } catch (err) {
+      console.error(`[lzy] ${err?.message ?? err}`);
       process.exitCode = 1;
       return;
     }

@@ -50,10 +50,10 @@
 | #40 | 评审复用 | 按职责授范围资格并对抗验证；未知重评；qualify/reuse/reopen+gate 复用腿（ADR-0032，已实施） |
 | #41 | 义务复判 | 额外要求可独立复判取消，契约与分级底线不变（ADR-0033，已实施） |
 | #42 | 采纳暂缓 | 0.4.0 照常发布；默认切换/宣称押后 0.5.0 重评（ADR-0034） |
-| #43 | 宿主底座与执行图 | 编排基础设施归宿主、lzy 只补纪律；执行图=单源核心+三执法点（deps 门单源化/就绪集单源/关键路径分派）；claim 互斥不变（ADR-0036） |
-| #44 | 异议原语 | findings 加 open→contested 边：书面异议→复判（contestedOf）裁 falsified/维持；facts-only 不破 |
+| #43 | 宿主底座与执行图 | 编排归宿主、lzy 补纪律；执行图=单源核心+三执法点（deps 门/就绪集/关键路径）；claim 互斥不变（ADR-0036，已实施） |
+| #44 | 异议原语 | findings 加 open→contested 边：书面异议→复判（contestedOf）裁 falsified/维持；facts-only 不破（已实施） |
 | #45 | 文书协议终局 | 节点间通信=带状态机语义文书（计划/findings/review 档/handoff/claim），自由消息永不入门（ADR-0035） |
-| #46 | 观察面契约 | status/doctor --json（schemaVersion 只增不改）+ loop graph 双图视图；watch/HTTP/wire 协议不做 |
+| #46 | 观察面契约 | status/doctor --json（schemaVersion 只增不改）+loop graph 双图视图；watch/HTTP/wire 不做（已实施） |
 
 其余 #1-#24 全表 → docs/decisions.md。
 

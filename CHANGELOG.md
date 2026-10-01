@@ -3,6 +3,35 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **Execution graph single source** (decisions #43 / ADR-0036, goal `orch-discipline`): new
+  `core/graph.js` is the sole authority for deps semantics — `validateDeps` (verbatim move from
+  `loop.js`, error strings pinned by the existing plan-gate contract tests) plus the
+  claim-ready predicates (`blockedBy` / `claimableSteps`, freshness injected by the caller) and
+  ordering semantics (topological layers, critical path, critical-depth map). `drive.js`'s
+  hand-copied predicate is deleted (ADJ-39), and `--workers` wave dispatch now orders the
+  claimable pool by critical depth (longest unblocking chain first; stable sort keeps
+  plan order on ties, so equal-depth pools dispatch exactly as before). Claim mutual
+  exclusion (48h) is unchanged — the scheduler owns readiness and order, claims own ownership.
+- **Contest primitive** (decision #44): `lzy finding contest <fp8> --grounds <file>` moves an
+  open finding to `contested` (written grounds, sha256 recorded; no code change — distinct
+  from a fix claim), and `lzy finding adjudicate` resolves it via a dedicated recheck
+  (`lzy review recheck --contested <fp8>` stamps `contestedOf` on the run record and injects
+  the finding summary + grounds into the facts-only input package): upheld → `closed-falsified`,
+  rejected → back to `open`. Blocked findings stay blocking while contested; the ledger
+  version stays 1 (old records without the key read fine).
+- **Observation-plane JSON contract** (decision #46): `lzy status --json` and
+  `lzy doctor --json` emit a machine-readable contract (`schemaVersion` 1 — additive-only,
+  absent fields never null, consumers must ignore unknown fields), pinned by a contract test;
+  the human-readable text output is unchanged.
+- **`lzy loop graph` dual-graph view** (decision #46): one read-only view joining the execution
+  graph (topological layers, critical path, claimable set, blocked chains) with the invalidation
+  DAG's evidence currency (fresh/stale/unbound from the same predicate `verify` enforces).
+  Read-only by design — ledger divergence degrades to a warning line instead of failing the view.
+
 ## [0.4.0] - 2026-09-30
 
 ### Fixed

@@ -679,7 +679,7 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
 // sum）；预算/租约/风险门与单工人完全同源。收束因扩充 merge-conflict。N=1 永不进此径。
 
 export function waveSplit(goal, n) {
-  // 可认领集吃 graph.js 单源（决策 #43/ADR-0036：blockedByLocal 手抄副本已删，ADJ-39
+  // 可认领集吃 graph.js 单源（决策 #43/ADR-0036：本地手抄副本已删，ADJ-39
   // 「一个谓词多处复制必漂移」）。deps 阻塞的步不入本波分派（claim 门兜底双保险）。
   const pool = claimableSteps(goal, isClaimFresh);
   // 关键路径优先（决策 #43 执法点③）：关键深度降序派发——深链头步先行，浅叶垫尾；

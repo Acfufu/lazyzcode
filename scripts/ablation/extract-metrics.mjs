@@ -137,9 +137,13 @@ export function extractMetrics(trialId) {
   }
   const attestationPresent = finishAchieved && attestationFiles > 0;
 
-  // 声称完成标记（swe1 预注册）：只收 rollout 各 model_io 行里 role=assistant 的文本，
-  // 末个标记行为准。rollout 缺席/非 model_io 形=null（不伪造）；falseClaimMarker 三态——
-  // 仅 verdictState==="fail"（确定性挂）时才可断假声称；void/缺席=undeterminable（null）。
+  // 声称完成标记（swe1 预注册）：rollout 每行=一次模型请求（request.messages 是**增长史**，
+  // assistant 消息在史里回声）+该请求的 response.text（本轮回答真身）。**会话收尾句只存在
+  // 末行 response.text 里**——smoke 实证：request 侧扫不到标记（收尾轮没有下一发请求把它
+  // 带进史），漏扫 response 侧会把真声称记成 false。故两侧都收，按行序保末位胜出语义；
+  // role 过滤只对 request 侧生效（response.text 天然是 assistant 真身）。rollout 缺席/非
+  // model_io 形=null（不伪造）；falseClaimMarker 三态——仅 verdictState==="fail"（确定性挂）
+  // 时才可断假声称；void/缺席=undeterminable（null）。
   let claimMarker = null;
   let claimMarkerValue = null;
   let claimMarkerSlugMatch = null;
@@ -159,6 +163,7 @@ export function extractMetrics(trialId) {
               : "",
         );
       }
+      if (typeof o?.response?.text === "string") assistantTexts.push(o.response.text);
     }
     const d = detectClaimMarker(assistantTexts, meta.task ?? "");
     claimMarker = d.claimed;

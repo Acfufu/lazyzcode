@@ -1,0 +1,8 @@
+{
+  "run": "2024-05-01T10:00:00Z",
+  "results": [
+    { "test": "auth/login", "durationMs": 120.5 },
+    { "test": "auth/logout", "durationMs": 40.25 },
+    { "test": "db/migrate", "durationMs": 900 }
+  ]
+}

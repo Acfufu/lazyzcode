@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -u
-set -u
 
 ROOT="$(pwd)"
 TMP="$(mktemp -d)"

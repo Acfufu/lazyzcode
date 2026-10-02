@@ -1,0 +1,7 @@
+{
+  "run": "2024-05-03T08:30:00Z",
+  "results": [
+    { "test": "auth/login", "durationMs": 79.5 },
+    { "test": "cache/warm", "durationMs": 12.75 }
+  ]
+}

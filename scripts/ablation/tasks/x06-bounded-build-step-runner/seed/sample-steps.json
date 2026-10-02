@@ -1,0 +1,4 @@
+[
+  { "name": "greet", "command": "echo hello", "timeoutMs": 2000 },
+  { "name": "linger", "command": "sleep 30", "timeoutMs": 1000 }
+]

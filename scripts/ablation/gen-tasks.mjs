@@ -211,9 +211,12 @@ export function validateTask(task) {
   if (!runner) problems.push("no visible check script found (check.mjs/check.py/check.sh)");
   const srcFiles = seedPaths.filter((p) => p !== runner?.path);
   if (srcFiles.length === 0) problems.push("seed has no source file besides the check");
-  // 安全护栏：hidden 脚本禁网络/破坏性前缀
+  // 安全护栏：hidden 脚本禁网络/破坏性前缀。nc 用词边界（裸 "nc " 子串会误伤 "async"
+  // ——smoke 期 20 次重试大头即此，模型写 JS 检查必带 async）；再排反斜杠前缀（bash
+  // $'...\nc...' 转义序列的 "\nc" 会误配——x08 实录）。
   const hid = String(task.hidden_checks_bash);
-  for (const bad of ["rm -rf /", "rm -rf ~", "curl ", "wget ", "nc ", "sudo ", "pip install", "npm install"]) {
+  if (/(?<!\\)\bnc\b/.test(hid)) problems.push("hidden_checks_bash contains forbidden token: nc");
+  for (const bad of ["rm -rf /", "rm -rf ~", "curl ", "wget ", "sudo ", "pip install", "npm install"]) {
     if (hid.includes(bad)) problems.push(`hidden_checks_bash contains forbidden token: ${bad.trim()}`);
   }
   // 术语扫描（brief + seed 可见面）+ 扫描器阳性对照

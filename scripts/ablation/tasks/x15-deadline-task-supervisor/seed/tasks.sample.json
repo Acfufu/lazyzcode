@@ -1,0 +1,17 @@
+{
+  "defaultTimeoutMs": 1500,
+  "tasks": [
+    {
+      "name": "greet",
+      "command": "node",
+      "args": ["-e", "console.log('hello')"],
+      "timeoutMs": 800
+    },
+    {
+      "name": "stuck",
+      "command": "node",
+      "args": ["-e", "setInterval(() => {}, 50)"],
+      "timeoutMs": 400
+    }
+  ]
+}

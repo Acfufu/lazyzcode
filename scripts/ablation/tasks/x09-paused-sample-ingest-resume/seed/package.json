@@ -1,0 +1,9 @@
+{
+  "name": "sample-ingest-resume",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node check.mjs"
+  }
+}

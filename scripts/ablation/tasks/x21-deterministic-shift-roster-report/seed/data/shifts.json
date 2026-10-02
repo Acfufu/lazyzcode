@@ -1,0 +1,10 @@
+{
+  "shifts": [
+    { "id": "S3", "role": "nurse", "hours": 8 },
+    { "id": "S2", "role": "tech", "hours": 4 },
+    { "id": "S1", "role": "nurse", "hours": 6 },
+    { "id": "S6", "role": "porter", "hours": 5 },
+    { "id": "S5", "role": "nurse", "hours": 8 },
+    { "id": "S4", "role": "tech", "hours": 6 }
+  ]
+}

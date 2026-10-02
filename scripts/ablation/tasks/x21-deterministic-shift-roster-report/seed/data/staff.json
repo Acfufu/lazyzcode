@@ -1,0 +1,10 @@
+{
+  "staff": [
+    { "name": "Dana", "role": "nurse", "available": true },
+    { "name": "alice", "role": "nurse", "available": true },
+    { "name": "Bo", "role": "nurse", "available": true },
+    { "name": "Cleo", "role": "tech", "available": true },
+    { "name": "Aria", "role": "tech", "available": false },
+    { "name": "Evan", "role": "tech", "available": true }
+  ]
+}

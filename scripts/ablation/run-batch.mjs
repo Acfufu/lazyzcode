@@ -114,7 +114,7 @@ export async function runBatch({
         const r = await runTrial({ variant, task, rep, batch, timeoutMs, force, tierHint: hint });
         appendFileSync(
           ledgerPath,
-          `${JSON.stringify({ ...base, status: "done", verdict: r.metrics.verdict, fakeComplete: r.metrics.fakeComplete, dirty429: (r.metrics.rateLimitedEvents ?? 0) > 0, payloadHash: r.payloadHash ?? null, at: new Date().toISOString() })}\n`,
+          `${JSON.stringify({ ...base, status: "done", verdict: r.metrics.verdict, fakeComplete: r.metrics.fakeComplete, dirty429: (r.metrics.rateLimitedEvents ?? 0) > 0, claimMarker: r.metrics.claimMarker ?? null, falseClaimMarker: r.metrics.falseClaimMarker ?? null, payloadHash: r.payloadHash ?? null, at: new Date().toISOString() })}\n`,
         );
         ran++;
       } catch (e) {

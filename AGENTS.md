@@ -10,7 +10,7 @@
 
 ## 2. 当前状态（2026-09-30 短表；完整历史档案 → docs/history.md）
 
-- **已发布**：npm `lazyzcode` **0.4.0**（registry latest；升级见 README）。
+- **已发布**：npm `lazyzcode` **0.4.1**（registry latest）＝编排纪律四件（#43–#46）。
 - **0.3.0 agent-first 弧收官（09-26）**：M0–M5 六阶段全落（决策 #32–#36 → docs/spikes/、history）。
 - 历史里程碑、消融账本与双审报告索引 → docs/history.md。
 - **0.3.1 收口（09-26）→ plan-v031-closeout.md；0.4.0 M0–M5 收官（09-27~30，对照全 MATCH·739/739）**：能力探针/策略身份+统一门/评审运行器/发现账本+recheck/评审复用/迁移实弹+run-pairs 配对评估（36 真运行·门不满足=尚无收益证据·**采纳暂缓 #42**）+**已发布 0.4.0（tag·发后核验过）**；细节见 history 与 docs/reviews/v040-policy-evaluation.md。

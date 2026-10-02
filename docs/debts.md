@@ -31,7 +31,7 @@
 | B1 | H3R 高危步门去留 | **维持休眠 A 态，复验不排期、触发器化**。升格前置=网格复验误停归零（根解半已落地：v024-debt-bundle#N1 分段+词元序列匹配；词法绕过族已收口 v024-fix-round#N6/N7；复验未跑）。触发器 = ① 用户点名升格 B；② 首例无人值守高危误操作真实事故（届时复验+升格一起议）。理据：复验结论唯一消费者是升格拍板，无升格需求则复验无人消费——「结果只作拍板输入」纪律下不跑。决策 #30 / ADR-0022 增补节 |
 | B2 | fast 形态判据①（写型双工人灰带） | **灰带按实测归档、不再主动投入**。实测读数入档：f1 0.63×（无收益区）/ h3 1.12×（灰带）；计价反证已强（双工 turns ≈ 串行 2×，即便速度坐实也不翻案）。既定拍板不变：`--workers` 保留主线实验形态、LIGHT only、不默认化（决策 #31 / ADR-0026）。触发器 = 引擎出现 `--model` 旗标 / 计价模型改按会话或墙钟计费时复评一次 |
 
-### C 线 · 0.5.0 编排纪律四项（2026-10-01 grill「四象限评估与补齐」；对照底稿 = `zcode/omo-lzy-compare-report/report.html` 表 6/7；拍板 #43–#46）——**已全部实施**（goal orch-discipline，2026-10-02：C1=core/graph.js 单源+waveSplit 关键路径 c22f6ef；C2=contested 原语 b293e0a；C3=status/doctor --json 8228746；C4=loop graph 双图视图 2c736f2；实现规格与红绿证据见该 goal attestation）
+### C 线 · 编排纪律四项（2026-10-01 grill「四象限评估与补齐」；对照底稿 = `zcode/omo-lzy-compare-report/report.html` 表 6/7；拍板 #43–#46）——**已全部实施并随 0.4.1 发布**（原列 0.5.0 候选，提前收口；goal orch-discipline，2026-10-02：C1=core/graph.js 单源+waveSplit 关键路径 c22f6ef；C2=contested 原语 b293e0a；C3=status/doctor --json 8228746；C4=loop graph 双图视图 2c736f2；实现规格与红绿证据见该 goal attestation）
 
 | # | 项 | 性质 |
 |---|---|---|

@@ -5,6 +5,8 @@ versioning is SemVer.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-02
+
 ### Added
 
 - **Execution graph single source** (decisions #43 / ADR-0036, goal `orch-discipline`): new

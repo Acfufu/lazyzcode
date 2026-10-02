@@ -63,11 +63,36 @@
 
 ## §9 冻结清单（materialize 后回填）
 
-- 实验树：`exp/swe1` @ `<回填：materialize 提交号>`（载荷面=v0.4.1 零改动）
+- 实验树：`exp/swe1` @ `fff2ad3`（任务集冻结提交；载荷面=v0.4.1 零改动，payloadHash=`5b21c7681852c808…` 全批单值）
 - 任务目录 sha256（逐题，目录内文件排序后内容哈希复合）：
 
 ```
-<回填：24 行 xNN-slug sha256>
+x01-strict-ledger-line-parser  ac0ac5234129edf3700e38f3905ce0b58666b6dfb2da12549d9884bf02ba71e6
+x02-untrusted-envelope-placeholder-render  c21d54bc625e10433e6f4698f9ef35aec900a90e1c50b0064375cf63c7879bc7
+x03-resumable-import-checkpoint  680db8f44f3f06c1aa56f8177ce92eefba74576ab1b2ed3ea47759fb2d7f1c62
+x04-stale-markdown-catalog-cache  42915f49d88c48f8c12bae8ca4d78990378d2a37d16f9b4bc26ec8fe2b844064
+x05-generated-index-clean-worktree  85e9273af90027f5c15c93a472cda3143ccbbf87d1650e66710e29532bfeab24
+x06-bounded-build-step-runner  44c011fc5f7cf9e05f1bc7e4fa5021209649f3b68d9d062e7058b3075a1e27c2
+x07-flaky-duration-report-order  1171ca0f8446e552b2f848884b0dcbd232f4a469b19b514f830475d58cb68fdd
+x08-amount-report-success-guard  eb3b0bb842a7f3b614c477649800c533a19d803674d8d6c8b6e42fdf6fc30783
+x09-paused-sample-ingest-resume  e19551157f0fd91ace9a655e55d747b2cf6f1c5dff647fb79f90b251ae69e94c
+x10-strict-byte-size-parser  932a67b1e2961bad2aac717bfac1de49fed1e9ee73ee00062445a63d0496c0ef
+x11-note-store-escape-roundtrip  2ba456c8112b8971a0c5c82790bd27253ee1294b4bdbebf02356ca313c7684b0
+x12-resumable-chunk-spool-writer  d5efd4758f638a6d36cddeefd1c625bd858804878f9f37eaaf6884838106b284
+x13-stale-reading-summary-cache  8a0d1780fdcd88c1e95a5352db507aaf73c54cd4e1f5ce9b40054f377cf48217
+x14-document-pack-clean-dist  553923e3b22e849393ae59d779cc85ce42d7fcf20c055e53c1dad6e7c947668c
+x15-deadline-task-supervisor  1708cc7b98be809771a5bc252f71c3f204549fe4dbb6490d8f8c092fdac0d4e4
+x16-deterministic-lane-rollup  715e802944a277f01c4b1031053e3b15f32b9d9138f318e25ab480c932347bcf
+x17-shard-merge-honest-summary  1d64f29fa8225aede7623525c85b60c0e4d100a3343a318f1cc2dbe81416dbe3
+x18-resumable-record-pipeline-crash  215f567187601b57f4b7bf1648628b1c1a7ec69cbc27c090ea12f46cf8efa0ea
+x19-batch-ingest-honest-status  452d6f0000b97a26f7de0dce20bdbe660e0a412b54c1063365abe77453145046
+x20-cached-stock-ledger-index  d331475dd55754b4bb8602513e0e7edc3bfbc13f8374069d50621a3b7c751b9c
+x21-deterministic-shift-roster-report  636c6a5b2fd94a0af9d9102de7c5de65179adf72265970991023e02b9be82524
+x22-strict-port-spec-parser  ed383d1f41afd4084fd72810661f3d39e4954dc2b7f2041330a75f021983791a
+x23-clean-doc-build-output-tree  05cde0eacc187efc473c971b84a0b4d6b5e9c979ed1f165a3467ba6250515fcf
+x24-inert-template-value-renderer  2d74e005fa3409a78461d8285d621c53d2e0bdd9c09bf4abdf2bcc793e93fd9c
 ```
 
 - 出题日志：`artifacts/ablation/swe1-gen/gen-log.jsonl`（本地产物；provenance 摘要已入各任务 README）
+- 夜次 cells：`artifacts/ablation/swe1-cells-n0..n3.txt`（n0=x01–04、n1=x05–11、n2=x12–18、n3=x19–24）
+- 冻结时间：2026-10-03 05:45 CST 前后（n0 校准批在途，起于 04:27）（n0 校准批已在途，起于 04:27）

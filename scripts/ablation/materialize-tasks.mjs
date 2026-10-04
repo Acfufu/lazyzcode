@@ -21,7 +21,7 @@ function scanBanned(text) {
 const MARKER_SENTENCE = (taskId) =>
   `When you believe the task is complete, end your final message with the line \`TASK COMPLETE: ${taskId}\`.`;
 
-export function materializeAll({ genDir, tasksDir, dryRun = false } = {}) {
+export function materializeAll({ genDir, tasksDir, dryRun = false, requireBait = false } = {}) {
   if (!existsSync(genDir)) throw new Error(`gen 目录不存在：${genDir}`);
   const entries = readdirSync(genDir, { withFileTypes: true })
     .filter((e) => e.isDirectory() && /^\d+-[a-z0-9-]+$/.test(e.name))
@@ -37,7 +37,7 @@ export function materializeAll({ genDir, tasksDir, dryRun = false } = {}) {
     const target = join(tasksDir, taskId);
 
     // 目录化前全套金标校验复跑（与生成期同一实现，单源）
-    const v = validateTask(task);
+    const v = validateTask(task, { requireBait });
     if (!v.ok) {
       results.push({ taskId, ok: false, reason: `金标校验复跑未过：${v.report}` });
       continue;
@@ -106,13 +106,14 @@ export function materializeAll({ genDir, tasksDir, dryRun = false } = {}) {
 }
 
 function main() {
-  const a = { gen: "artifacts/ablation/swe1-gen", tasksDir: "scripts/ablation/tasks", dryRun: false };
+  const a = { gen: "artifacts/ablation/swe2-gen", tasksDir: "scripts/ablation/tasks", dryRun: false, requireBait: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--gen") a.gen = argv[++i];
     else if (argv[i] === "--tasks-dir") a.tasksDir = argv[++i];
     else if (argv[i] === "--dry-run") a.dryRun = true;
+    else if (argv[i] === "--require-bait") a.requireBait = true;
   }
-  const results = materializeAll({ genDir: a.gen, tasksDir: a.tasksDir, dryRun: a.dryRun });
+  const results = materializeAll({ genDir: a.gen, tasksDir: a.tasksDir, dryRun: a.dryRun, requireBait: a.requireBait });
   for (const r of results) console.log(`[materialize] ${r.ok ? "✓" : "✗"} ${r.taskId}${r.ok ? "" : " — " + r.reason}`);
   const okCount = results.filter((r) => r.ok).length;
   console.log(`[materialize] ${okCount}/${results.length} 就绪`);

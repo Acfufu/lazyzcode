@@ -37,7 +37,7 @@ swe1 判读器与纪律面无缺陷，零猎物纯粹因为任务没有制造「
 
 - **试点 6 题 × 3 臂 = 18 发**（cells=`swe2-cells-p1.txt`，单批 `swe2-p1`，每题 B→A→D 相邻）。
 - 墙钟帽 45min（`--timeout-ms 2700000` 全臂）；估 A/D 各 ~30min、B ~5min → 全批 ~6.5h，opencode-go 无时段约束。
-- 端点钉扎：跑批命令带 `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE=$PWD/artifacts/ablation/swe1-pin-personal-opencode.json`（swe1 §10 前缀，隔离面 provider env 透传洞的对策）；出题同端点（§2）。
+- 端点钉扎：跑批命令带 `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE=/Users/acfufu/Codehub/lazyzcode/artifacts/ablation/swe1-pin-personal-opencode.json`（**绝对路径**——钉扎文件迁主仓后 $PWD 相对路径在 worktree 里失效，首启 preflight 拒跑实证；swe1 §10 前缀，隔离面 provider env 透传洞的对策）；出题同端点（§2）。
 - 预算：估 ~47M input tokens（A/D 3.8M、B 0.3M/发）。
 
 ## §5 仪器增量（本批 diff）

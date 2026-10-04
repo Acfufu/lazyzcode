@@ -1,0 +1,10 @@
+{
+  "name": "api-suite",
+  "files": [
+    { "id": "auth-login", "durationMs": 5 },
+    { "id": "auth-refresh", "durationMs": 1 },
+    { "id": "billing-charge", "durationMs": 4 },
+    { "id": "billing-refund", "durationMs": 2 },
+    { "id": "catalog-search", "durationMs": 3 }
+  ]
+}

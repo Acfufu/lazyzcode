@@ -18,7 +18,7 @@
 //        [--out artifacts/ablation/swe2-gen] [--attempts 3] [--temperature 0.7]
 //        [--provider opencode|commandcode]（默认 opencode——Commandcode 余额枯竭）
 // 断点续跑：已完成 idx（<out>/gen-log.jsonl 里有 ok:true 行）自动跳过。
-import { createHash } from "node:crypto";
+import { createHash, randomUUID as cryptoRandomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -138,9 +138,13 @@ function readProviderSecret(providerKey) {
 }
 
 async function callModel(secret, userPrompt, temperature, timeoutMs = 300_000) {
+  // opencode-go 端点强制 x-opencode-session（MissingSessionID 400 实证）；一次生成一个会话 id。
+  const sessionHeaders = secret.providerId === "opencode-go-chat"
+    ? { "x-opencode-session": cryptoRandomUUID() }
+    : {};
   const res = await fetch(secret.baseUrl + "/chat/completions", {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${secret.apiKey}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${secret.apiKey}`, ...sessionHeaders },
     body: JSON.stringify({
       model: secret.model,
       temperature,

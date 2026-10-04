@@ -1,0 +1,8 @@
+{
+  "taxRate": 0.1,
+  "discounts": {
+    "book": 0.1,
+    "toy": 0,
+    "gear": 0.2
+  }
+}

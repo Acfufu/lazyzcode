@@ -14,6 +14,7 @@ import {
   ReviewPreflightError,
   filterProviderConfig,
   prepareSandboxProviderConfig,
+  preflightReview,
   runReview,
 } from "../core/review.js";
 
@@ -70,14 +71,17 @@ test("filterProviderConfig：只留 enabled+key 腿、providerOrder 保序重写
   assert.equal(out.schemaVersion, 1, "config 之外的顶层键原样保留");
 });
 
-test("filterProviderConfig：结构不可识别 fail-open 返 null（同旧行为，不新增失败面）", () => {
-  assert.equal(filterProviderConfig(null), null);
-  assert.equal(filterProviderConfig({}), null);
-  assert.equal(filterProviderConfig({ config: {} }), null);
-  assert.equal(filterProviderConfig({ config: { providerConfigRules: { providerRules: "not-array" } } }), null);
+test("filterProviderConfig：结构不可识别 fail-closed 抛 ReviewPreflightError（收口①，不再回落整包透传）", () => {
+  for (const bad of [null, {}, { config: {} }, { config: { providerConfigRules: { providerRules: "not-array" } } }]) {
+    assert.throws(
+      () => filterProviderConfig(bad),
+      (e) => e instanceof ReviewPreflightError && e.reason === "provider-config-unrecognizable" && /恢复/.test(e.message),
+      `空结构须前置拒带恢复指路：${JSON.stringify(bad)}`,
+    );
+  }
 });
 
-test("prepareSandboxProviderConfig：env 在场→白名单落盘隔离 home 并返回覆盖 env；env 缺席/不可读→null", () => {
+test("prepareSandboxProviderConfig：env 在场→白名单落盘隔离 home 并返回覆盖 env；env 缺席→null；不可读→fail-closed 拒", () => {
   const home = mkdtempSync(join(tmpdir(), "lzy-sbx-home-"));
   const dir = mkdtempSync(join(tmpdir(), "lzy-sbx-cfg-"));
   const saved = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
@@ -96,9 +100,12 @@ test("prepareSandboxProviderConfig：env 在场→白名单落盘隔离 home 并
       filtered.config.providerConfigRules.providerRules.map((r) => r.providerId),
       ["cmdcode", "glm-leg"],
     );
-    // 非 JSON 文件 → fail-open null
+    // 非 JSON 文件 → fail-closed 前置拒（不可读，带恢复指路；不再 fail-open 回落整包）
     writeFileSync(realPath, "not-json{");
-    assert.equal(prepareSandboxProviderConfig(home), null);
+    assert.throws(
+      () => prepareSandboxProviderConfig(home),
+      (e) => e instanceof ReviewPreflightError && e.reason === "provider-config-unreadable" && /恢复/.test(e.message),
+    );
   } finally {
     if (saved === undefined) delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
     else process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = saved;
@@ -107,8 +114,34 @@ test("prepareSandboxProviderConfig：env 在场→白名单落盘隔离 home 并
   }
 });
 
-test("prepareSandboxProviderConfig：白名单为空=前置型拒（no-sandbox-provider，零消耗不 spawn）", () => {
-  const home = mkdtempSync(join(tmpdir(), "lzy-sbx-home-"));
+test("preflightReview：沙盒配置不可读/结构不可识别 fail-closed 前置拒（reserve 前零孤儿目录）", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lzy-sbx-pf-"));
+  const saved = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+  try {
+    // 非 JSON → provider-config-unreadable
+    const badPath = join(dir, "bad.json");
+    writeFileSync(badPath, "not-json{");
+    process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = badPath;
+    assert.throws(
+      () => preflightReview(dir, {}, { deps: { detectAuth: () => ({ envAuth: true }) } }),
+      (e) => e instanceof ReviewPreflightError && e.reason === "provider-config-unreadable",
+    );
+    // 结构不可识别（合法 JSON 缺 providerRules）→ provider-config-unrecognizable
+    const oddPath = join(dir, "odd.json");
+    writeFileSync(oddPath, JSON.stringify({ schemaVersion: 1, config: {} }));
+    process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = oddPath;
+    assert.throws(
+      () => preflightReview(dir, {}, { deps: { detectAuth: () => ({ envAuth: true }) } }),
+      (e) => e instanceof ReviewPreflightError && e.reason === "provider-config-unrecognizable",
+    );
+  } finally {
+    if (saved === undefined) delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+    else process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = saved;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("prepareSandboxProviderConfig：白名单为空=前置型拒（no-sandbox-provider，零消耗不 spawn）", () => {  const home = mkdtempSync(join(tmpdir(), "lzy-sbx-home-"));
   const dir = mkdtempSync(join(tmpdir(), "lzy-sbx-cfg-"));
   const saved = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
   try {

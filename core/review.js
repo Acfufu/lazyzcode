@@ -524,8 +524,9 @@ export function prepareIsolation(runDir) {
 //（实测 100% 落 new-provider/deepseek：OAuth 账号腿隔离面必死、bigmodel-api enabled=false）。
 // 白名单=只保留「enabled 且带 API key」的腿（OAuth 腿在隔离面本就不可用，留纯泄露面），
 // 重写 providerOrder/modelConfigRules 后落盘隔离 home 内的专属配置，spawn 时 extraEnv 覆盖
-// env 指向——真实配置文件路径自此不进沙盒。结构不可识别/不可读时 fail-open 回落整包透传
-//（同旧行为，不新增失败面；如实注释不掩盖）。
+// env 指向——真实配置文件路径自此不进沙盒。结构不可识别/不可读时 fail-closed 前置拒
+//（plan-v050 §4 收口①：未识别配置不得悄悄退回未约束整包透传——2026-10-02 暗烧案同型缝；
+// 报文带恢复指路。env 缺席=BUILTIN-only 机器，无个人配置可滤，仍返 null 不新增失败面）。
 export const SANDBOX_NO_LEG_MSG =
   "沙盒 provider 白名单为空（无 enabled 且带 API key 的 provider 腿）——评审会话跑在隔离 HOME，" +
   "宿主 OAuth 凭据不进入隔离面；恢复：启用至少一条带 API key 的 provider 腿后重跑（lzy doctor 看 headless 行）";
@@ -533,7 +534,15 @@ export const SANDBOX_NO_LEG_MSG =
 export function filterProviderConfig(cfg) {
   const config = cfg?.config ?? null;
   const rules = config?.providerConfigRules?.providerRules;
-  if (!Array.isArray(rules)) return null; // 结构不可识别：fail-open（同旧行为）
+  if (!Array.isArray(rules)) {
+    throw new ReviewPreflightError(
+      "沙盒 provider 配置结构不可识别（config.providerConfigRules.providerRules 缺席或非数组）——" +
+        "未识别配置不得未约束透传整包（fail-closed，plan-v050 §4 收口①）；" +
+        "恢复：修复 ZCODE_PERSONAL_PROVIDER_CONFIG_FILE 指向的配置文件（须含 providerRules 数组），" +
+        "或确认无需个人 provider 配置后移除该 env 重跑",
+      { reason: "provider-config-unrecognizable" },
+    );
+  }
   const apiKeyOf = (r) => {
     const acc = r?.config?.access ?? r?.config ?? {};
     const k = acc.apiKey ?? acc.api_key;
@@ -560,7 +569,8 @@ export function filterProviderConfig(cfg) {
 }
 
 // 隔离 home 内专属 provider 配置落盘 + spawn 用 extraEnv（覆盖 PERSONAL env 指向白名单文件；
-// BUILTIN env 不动——引擎内置目录，无用户 key）。返回 null=无可过滤（沿用整包透传）。
+// BUILTIN env 不动——引擎内置目录，无用户 key）。返回 null=env 缺席（BUILTIN-only，无个人
+// 配置可滤）；文件不可读/非 JSON/结构不可识别=fail-closed 前置拒（不再回落整包透传）。
 // 文件落隔离 home（本就是 ephemeral 凭据面，随沙盒清理），不入 .lazyzcode 主档。
 export function prepareSandboxProviderConfig(home) {
   const realPath = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
@@ -569,10 +579,14 @@ export function prepareSandboxProviderConfig(home) {
   try {
     cfg = JSON.parse(readFileSync(realPath, "utf8"));
   } catch {
-    return null; // 不可读/非 JSON：fail-open 同旧行为
+    throw new ReviewPreflightError(
+      `沙盒 provider 配置不可读/非 JSON（${realPath}）——未识别配置不得未约束透传整包（fail-closed，plan-v050 §4 收口①）；` +
+        "恢复：修复该文件为含 config.providerConfigRules.providerRules 数组的有效 JSON，" +
+        "或确认无需个人 provider 配置后移除 ZCODE_PERSONAL_PROVIDER_CONFIG_FILE env 重跑",
+      { reason: "provider-config-unreadable" },
+    );
   }
-  const filtered = filterProviderConfig(cfg);
-  if (filtered === null) return null;
+  const filtered = filterProviderConfig(cfg); // 结构不可识别在此抛（fail-closed 同判据）
   if (filtered.config.providerConfigRules.providerRules.length === 0) {
     throw new ReviewPreflightError(SANDBOX_NO_LEG_MSG, { reason: "no-sandbox-provider" });
   }
@@ -682,12 +696,20 @@ export function preflightReview(cwd, goal, { deps = {} } = {}) {
   // 机器（个人配置不进沙盒）不新增失败面。
   const sandboxPersonalPath = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
   if (sandboxPersonalPath && existsSync(sandboxPersonalPath)) {
-    let legCount = -1; // -1=不可判（结构不可识别/非 JSON）——prepare 侧 fail-open 兜底
+    // fail-closed（收口①）：不可读/非 JSON/结构不可识别=前置拒（reserve 前，零孤儿目录），
+    // 不再 prepare 侧 fail-open 兜底——与 prepareSandboxProviderConfig 同判据。
+    let filtered = null;
     try {
-      const filtered = filterProviderConfig(JSON.parse(readFileSync(sandboxPersonalPath, "utf8")));
-      if (filtered !== null) legCount = filtered.config.providerConfigRules.providerRules.length;
-    } catch {}
-    if (legCount === 0) {
+      filtered = filterProviderConfig(JSON.parse(readFileSync(sandboxPersonalPath, "utf8")));
+    } catch (e) {
+      if (e instanceof ReviewPreflightError) throw e; // 不可读/不可识别：原样前置拒
+      throw new ReviewPreflightError(
+        `沙盒 provider 配置不可读（${sandboxPersonalPath}）——fail-closed（plan-v050 §4 收口①）；` +
+          "恢复：修复该文件或确认无需个人 provider 配置后移除 ZCODE_PERSONAL_PROVIDER_CONFIG_FILE env 重跑",
+        { reason: "provider-config-unreadable" },
+      );
+    }
+    if (filtered.config.providerConfigRules.providerRules.length === 0) {
       throw new ReviewPreflightError(SANDBOX_NO_LEG_MSG, { reason: "no-sandbox-provider" });
     }
   }
@@ -1018,7 +1040,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           mode: "plan",
           cwd: snap.candidateDir,
           home: iso.home,
-          extraEnv: sandboxEnv, // 白名单 provider 配置覆盖（null=沿用继承，prepare 侧 fail-open 面）
+          extraEnv: sandboxEnv, // 白名单 provider 配置覆盖（null=env 缺席 BUILTIN-only 继承；不可读/不可识别已 fail-closed 拒）
           timeoutMs: timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS,
           deps: typeof deps.run === "function" ? { run: deps.run } : null,
         });

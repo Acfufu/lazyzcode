@@ -413,7 +413,12 @@ export function buildInputPackage(cwd, goal, runDir, { dutyId = BASELINE_DUTY_ID
   // 其余评审结论仍不注入——facts-only 不破（异议书是实现者文书非他轮评审结论）。
   let contestedReview = null;
   if (contested && typeof contested.groundsPath === "string") {
-    const grounds = readOptional(resolve(cwd, contested.groundsPath), AGENTS_CAP);
+    // 0.5.0 M0：优先消费随 facts 下传的已校验全文（runReview 前置已核 sha256/超长）；
+    // 直调打包面的旧路径（无 groundsContent）保留 readOptional 回退（back-compat）。
+    const grounds =
+      typeof contested.groundsContent === "string"
+        ? cappedFromBuffer(Buffer.from(contested.groundsContent, "utf8"), AGENTS_CAP)
+        : readOptional(resolve(cwd, contested.groundsPath), AGENTS_CAP);
     if (!grounds) disclosure.push(`异议书不可读：${contested.groundsPath}——复判输入缺异议书（如实披露）`);
     contestedReview = { ...contested, groundsIncluded: grounds !== null, ...(grounds ? { grounds } : {}) };
   }
@@ -859,6 +864,33 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       groundsSha256: fe.contest.groundsSha256,
       ...(fe.contest.note ? { contestNote: fe.contest.note } : {}),
     };
+    // 异议书哈希绑定复判输入（0.5.0 M0，plan-v050 §4 P1 收口）：登记 groundsSha256 与
+    // 实际字节在打包前核对——缺席/漂移/超长（复判须全文可判）三类前置拒（exit 3 不落档
+    // 不 spawn），报文带重新提交异议指路。身份绑定完整原文（sha256 对全字节）；校验通过
+    // 的全文随 facts 下传打包面（消除校验后重读的 TOCTOU 缝），截断仅影响注入展示。
+    let groundsBuf;
+    try {
+      groundsBuf = readFileSync(fe.contest.groundsPath);
+    } catch {
+      throw new ReviewPreflightError(
+        `异议书缺席：${fe.contest.groundsPath}（登记 sha256 ${fe.contest.groundsSha256.slice(0, 12)}…）——复判拒绝。重新提交异议后重跑：lzy finding contest ${contestedOf.slice(0, 8)} --grounds <文件>`,
+        { reason: "grounds-absent" },
+      );
+    }
+    const groundsSha = createHash("sha256").update(groundsBuf).digest("hex");
+    if (groundsSha !== fe.contest.groundsSha256) {
+      throw new ReviewPreflightError(
+        `异议书漂移：${fe.contest.groundsPath} 字节 sha256 ${groundsSha.slice(0, 12)}… ≠ 登记值 ${fe.contest.groundsSha256.slice(0, 12)}…——文书审计绑定失效，复判拒绝。重新提交异议后重跑：lzy finding contest ${contestedOf.slice(0, 8)} --grounds <文件>`,
+        { reason: "grounds-drift" },
+      );
+    }
+    if (groundsBuf.length > AGENTS_CAP) {
+      throw new ReviewPreflightError(
+        `异议书超长：${fe.contest.groundsPath} ${groundsBuf.length} 字节 > 注入上限 ${AGENTS_CAP}——复判输入须全文可判，复判拒绝。精简后重新提交：lzy finding contest ${contestedOf.slice(0, 8)} --grounds <文件>`,
+        { reason: "grounds-oversized" },
+      );
+    }
+    contestedFacts.groundsContent = groundsBuf.toString("utf8");
   }
   const failures = []; // [reason, detail] 按优先序；validity.reason=首因、detail=全列
   let pkgHash = null;

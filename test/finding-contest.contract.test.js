@@ -82,7 +82,7 @@ test("旧档（0.4.0 形状、无 contest 键）读侧兼容：list/openBlocking
   assert.equal(rows[0].fingerprint, fp);
 });
 
-test("contest：open→contested，异议书 sha256 入档；非 open 态拒", () => {
+test("contest：open→contested，异议书 sha256 入档；contested 态受理重交（0.5.0 M0 F-1）；resolve-request 仍拒", () => {
   const { cwd, fp, grounds } = fixture();
   const r = contestFinding(cwd, "demo", fp, { groundsPath: grounds, note: "by design", at: "2026-10-01T08:00:00.000Z" });
   assert.equal(r.status, "contested");
@@ -91,8 +91,16 @@ test("contest：open→contested，异议书 sha256 入档；非 open 态拒", (
   assert.equal(e.contest.groundsPath, grounds);
   assert.match(e.contest.groundsSha256, /^[0-9a-f]{64}$/);
   assert.equal(e.contest.note, "by design");
-  // 再 contest 拒（仅 open）；resolve-request 也拒（状态机分流）
-  assert.throws(() => contestFinding(cwd, "demo", fp, { groundsPath: grounds, at: "2026-10-01T08:00:00.000Z" }), /状态机拒绝：contested 态不受理 contest/);
+  // contested 态重交=恢复通道（0.5.0 M0 评审 F-1：新文书整体置换 contest 记录，历史只追加）
+  const grounds2 = join(cwd, "grounds-v2.md");
+  writeFileSync(grounds2, "重新提交的异议书正文。\n");
+  const r2 = contestFinding(cwd, "demo", fp, { groundsPath: grounds2, at: "2026-10-01T09:00:00.000Z" });
+  assert.equal(r2.status, "contested");
+  const e2 = loadFindingsFile(cwd, "demo").findings[fp];
+  assert.equal(e2.contest.groundsPath, grounds2);
+  assert.notEqual(e2.contest.groundsSha256, e.contest.groundsSha256);
+  assert.match(e2.history.at(-1).note, /重新提交异议书/);
+  // resolve-request 拒（状态机分流：修复声称走 close 通道，重交走 contest）
   assert.throws(() => requestResolve(cwd, "demo", fp, {}), /状态机拒绝：contested 态不受理 resolve-request/);
 });
 

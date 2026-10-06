@@ -134,6 +134,12 @@ test("preflightReview：沙盒配置不可读/结构不可识别 fail-closed 前
       () => preflightReview(dir, {}, { deps: { detectAuth: () => ({ envAuth: true }) } }),
       (e) => e instanceof ReviewPreflightError && e.reason === "provider-config-unrecognizable",
     );
+    // env 在场而文件缺席 → 前置拒（评审 a1.r1 F-2：不再绕过预检留 reserve 后孤儿目录）
+    process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = join(dir, "missing.json");
+    assert.throws(
+      () => preflightReview(dir, {}, { deps: { detectAuth: () => ({ envAuth: true }) } }),
+      (e) => e instanceof ReviewPreflightError && e.reason === "provider-config-unreadable",
+    );
   } finally {
     if (saved === undefined) delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
     else process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = saved;
@@ -216,8 +222,10 @@ test("runReview 接线：白名单 extraEnv 进 spawn、metering.usage 跨会话
     process.env.USERPROFILE = ledgerHome;
 
     let capturedSpawnArgs = null;
+    let sandboxCfgAtSpawn = null; // 即焚断言的读法：白名单配置在 spawn 后被清理——内容须在 spawn 时捕获
     const stubSpawn = async ({ cwd, home: sandboxHome, extraEnv }) => {
       capturedSpawnArgs = { cwd, home: sandboxHome, extraEnv };
+      sandboxCfgAtSpawn = JSON.parse(readFileSync(extraEnv.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE, "utf8"));
       mkdirSync(join(sandboxHome, ".zcode", "cli", "rollout"), { recursive: true });
       writeFileSync(
         join(sandboxHome, ".zcode", "cli", "rollout", "model-io-sess_sbx.jsonl"),
@@ -240,7 +248,7 @@ test("runReview 接线：白名单 extraEnv 进 spawn、metering.usage 跨会话
     // ① 白名单 extraEnv 真到 spawn 面，指向隔离 home 内文件，内容只含白名单腿
     assert.ok(capturedSpawnArgs, "spawn 替身须被调用");
     assert.ok(capturedSpawnArgs.extraEnv?.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE?.startsWith(capturedSpawnArgs.home), "覆盖 env 须指向隔离 home 内白名单文件");
-    const sandboxCfg = JSON.parse(readFileSync(capturedSpawnArgs.extraEnv.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE, "utf8"));
+    const sandboxCfg = sandboxCfgAtSpawn;
     assert.deepEqual(sandboxCfg.config.providerConfigRules.providerRules.map((r) => r.providerId), ["cmdcode", "glm-leg"]);
     // ② metering.usage 跨会话归并（同 provider/model 两行 → 一组，tokens 求和、points 求和）
     assert.equal(res.record.metering.status, "metered");
@@ -257,6 +265,12 @@ test("runReview 接线：白名单 extraEnv 进 spawn、metering.usage 跨会话
     assert.equal(line.runId, res.record.runId);
     assert.equal(line.points, 42);
     assert.deepEqual(line.usage, res.record.metering.usage);
+    // ④ 白名单沙盒配置即焚（评审 a1.r3 F-1）：运行收档后工作树内不再残留含 key 的专属配置
+    const reviewRoot = join(d, ".lazyzcode", "review");
+    const leftovers = existsSync(reviewRoot)
+      ? readdirSync(reviewRoot, { recursive: true }).filter((p) => String(p).endsWith("provider-config.sandbox.json"))
+      : [];
+    assert.deepEqual(leftovers, [], "工作树内不得残留 provider-config.sandbox.json（明文 apiKey 面即焚）");
   } finally {
     if (savedEnv === undefined) delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
     else process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = savedEnv;

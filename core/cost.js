@@ -330,11 +330,13 @@ export function sandboxLedgerLine(cwd, record, now = new Date()) {
 export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
   const line = sandboxLedgerLine(cwd, record, now);
   if (!line) return false;
-  // runId 幂等去重（收口③）：同 runId 已在账（任意月文件）→ 跳过追加——重放/恢复重跑
-  // 不双算，语义对齐 core/queue.js dedupKey 写面（queue.js:182-184/:614-647）。运行档为
-  // 计量真值，此处只喂聚合面。runId 缺席（无法判幂等键）照常追加如实保留。
-  // 返回值：true=本次追加；false=无行可记（缺 usage）或同 runId 已在账（幂等跳过）。
-  if (line.runId && readSandboxUsageLines().some((l) => l.runId === line.runId)) return false;
+  // runId 幂等去重（收口③）：同 (project, runId) 已在账（任意月文件）→ 跳过追加——重放/
+  // 恢复重跑不双算，语义对齐 core/queue.js dedupKey 写面（queue.js:182-184/:614-647）。
+  // project 入键（评审 a1.r1 F-1）：裸 runId 全账查重会把跨项目同名 runId 静默漏账——
+  // 与「同名项目不混账」的立项意图相反。运行档为计量真值，此处只喂聚合面。
+  // runId 缺席（无法判幂等键）照常追加如实保留。
+  // 返回值：true=本次追加；false=无行可记（缺 usage）或同 (project, runId) 已在账（幂等跳过）。
+  if (line.runId && readSandboxUsageLines().some((l) => l.runId === line.runId && l.project === line.project)) return false;
   const dir = sandboxUsageDir();
   mkdirSync(dir, { recursive: true });
   const month = new Date(now.getTime() + 8 * 3_600_000).toISOString().slice(0, 7);

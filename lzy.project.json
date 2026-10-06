@@ -19,7 +19,7 @@
         "id": "docs-links",
         "argv": ["node", "scripts/check-docs-links.mjs"],
         "timeoutMs": 60000,
-        "inputPaths": ["docs", ".github", "CHANGELOG.md", "README.md", "README.zh-CN.md", "scripts/check-docs-links.mjs"]
+        "inputPaths": ["docs", ".github", "test", "CHANGELOG.md", "README.md", "README.zh-CN.md", "scripts/check-docs-links.mjs"]
       }
     ]
   }

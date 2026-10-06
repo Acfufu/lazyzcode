@@ -695,9 +695,11 @@ export function preflightReview(cwd, goal, { deps = {} } = {}) {
   // reserve 前拒（不落档零孤儿目录）。仅 PERSONAL env 在场且文件实存时判——BUILTIN-only
   // 机器（个人配置不进沙盒）不新增失败面。
   const sandboxPersonalPath = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
-  if (sandboxPersonalPath && existsSync(sandboxPersonalPath)) {
-    // fail-closed（收口①）：不可读/非 JSON/结构不可识别=前置拒（reserve 前，零孤儿目录），
-    // 不再 prepare 侧 fail-open 兜底——与 prepareSandboxProviderConfig 同判据。
+  if (sandboxPersonalPath) {
+    // fail-closed（收口①）：不可读/缺席/非 JSON/结构不可识别=前置拒（reserve 前，零孤儿
+    // 目录）——不再 prepare 侧 fail-open 兜底，与 prepareSandboxProviderConfig 同判据
+    //（评审 a1.r1 F-2：原 existsSync 门使「env 在场而文件缺席」绕过预检，reserve 后才拒
+    // 留孤儿目录）。
     let filtered = null;
     try {
       filtered = filterProviderConfig(JSON.parse(readFileSync(sandboxPersonalPath, "utf8")));
@@ -1102,16 +1104,18 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       if (sessionMeta.length === 0 || sessionMeta.some((m) => !m.transcript)) {
         failures.push(["isolation-breach", "转录缺席（隔离 HOME 内未找到 model-io 转录——隔离未证，M0 口径）"]);
       } else {
-        // 允许前缀（拍板 4）：候选快照/运行目录/隔离 home/**引擎自身前缀**（provider 配置目录+
-        // 引擎安装目录+node 可执行目录——引擎自身运行所需读取不构成隔离破口）。
+        // 允许前缀（拍板 4）：候选快照/运行目录/隔离 home/**引擎自身前缀**（BUILTIN provider
+        // 配置目录＋引擎安装目录+node 可执行目录——引擎自身运行所需读取不构成隔离破口）。
+        // PERSONAL 真实配置目录**不入允许前缀**（评审 a1.r3 F-2）：白名单后沙盒只读隔离 home
+        // 内的专属副本，真实凭据目录的任何读取都应判越界——旧整包透传时代的豁免已失效，
+        // 留着它恰使白名单要防的那次读取无法被判破口。
         // 引擎缺席守卫（发布 CI 修复）：dirname("/nonexistent")="/" 会把允许前缀坍缩成文件
         // 系统根 ⇒ 隔离读取轨迹断言整体中和（CI 实锤 /etc/passwd 判内）——引擎缺席即不注入该前缀。
         const eng = findEngine();
         const enginePrefixes = eng ? [dirname(eng)] : [];
         enginePrefixes.push(dirname(process.execPath));
-        for (const key of ["ZCODE_BUILTIN_PROVIDER_CONFIG_FILE", "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"]) {
-          if (process.env[key]) enginePrefixes.push(dirname(process.env[key]));
-        }
+        const builtinCfg = process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE;
+        if (builtinCfg) enginePrefixes.push(dirname(builtinCfg));
         for (const m of sessionMeta) {
           const contained = assertReadsContained(readFileSync(join(reserve.runDir, m.transcript.path), "utf8"), [
             snap.candidateDir,
@@ -1125,6 +1129,12 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           }
         }
       }
+      // 白名单沙盒配置即焚（评审 a1.r3 F-1）：prepareSandboxProviderConfig 落盘的专属配置
+      // 含明文 apiKey——spawn 与读取轨迹断言收口后即删（转录/输入档不含 key，审计面不受
+      // 损）；「随沙盒清理」的原声称自此有实现真身。best-effort：清理失败不回头改已落档运行。
+      try {
+        rmSync(join(iso.home, "provider-config.sandbox.json"), { force: true });
+      } catch {}
     }
     // 运行后候选复查（拍板 5：四者=三字段+净树）与快照污染（拍板 4：快照树哈希变化）
     if (spawned) {

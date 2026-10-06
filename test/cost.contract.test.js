@@ -243,6 +243,11 @@ test("appendSandboxUsage：同 runId 重放幂等不双算、新 runId 照常入
     assert.equal(appendSandboxUsage("/x/y/pt-dedup", { ...noId }), true);
     assert.equal(appendSandboxUsage("/x/y/pt-dedup", { ...noId }), true, "无 runId 不去重，两行如实");
     assert.equal(readSandboxUsageLines().length, 4);
+    // 跨项目同 runId 不漏账（评审 a1.r1 F-1）：project 入键——同 runId 异项目各成一行
+    assert.equal(appendSandboxUsage("/x/y/other-proj", rec("fx.a1.r1")), true, "同 runId 异项目照常入账");
+    assert.equal(appendSandboxUsage("/x/y/other-proj", rec("fx.a1.r1")), false, "同 (project,runId) 重放仍幂等");
+    assert.equal(readSandboxUsageLines().length, 5);
+    assert.equal(readSandboxUsageLines().filter((l) => l.runId === "fx.a1.r1").length, 2, "两项目各持一行");
   } finally {
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;

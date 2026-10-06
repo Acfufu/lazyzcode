@@ -1,0 +1,49 @@
+# ADR-0037：headless 降阶满足语义——义务阻塞的诚实停止（2026-10-07，草案·待拍板）
+
+状态：**草案**（0.5.0 M1 形成的拍板件，debts A2；拍板后同步 §4 决策速查表与 docs/decisions.md，本文件转正式）。
+
+## 背景与动机
+
+0.4.0 配对评估（docs/reviews/v040-policy-evaluation.md §2 判据 7）新臂 0/18 宣称完成、finish 义务门拒 19 次；M1 逐次归因（artifacts/v050/m1/attribution.json，2026-10-06，v050 M1 N1）把这 19 次拆开：15/15 run 全部拦在 `review.general-correctness`；其中 **13 次发生在 oracle 已确认交付正确之后**（9 个 run，末次门阻块均在会话 93–98% 处）——拒绝原因全部是「评审无在案运行」或「评审运行无效（墙钟 120–200s 超时）」，即**交付已完成、产品面评审义务满足路径存在（`lzy review run` 全链已实现）但会话无人指引、预算与环境不支持**，会话只能在拒绝报文前空转或卡死。其余 6 次拦在四义务合取（评审×2＋核查×2），oracle 亦失败，属门正确拒绝。〔历史报告记保守拦 12；本次同口径实测 13，差 1 无法从冻结工件重建（唯一单尝试边界案 seq30），两数并存、不改旧数。〕
+
+结论：问题不是门太严，是**义务缺可执行满足路径**与**满足路径不可用时缺诚实体面停止语义**。前者 M1 已补（drive 段提示词义务指引＋zw recipes 评审序列，commit 01b99ee）；本 ADR 处理后者——降阶满足（degraded satisfaction）的语义边界。
+
+## 拍板请求
+
+无人值守语境下，目标允许以「义务阻塞」**诚实停止**（honest stop），它与完成（LOOP_COMPLETE）的边界为**三禁**：
+
+1. **不写 done**：`goal.status` 不落 done、不出最终 attestation——LOOP_COMPLETE 机器证明只属于全义务满足的完成，降阶态永不产出；
+2. **不授权合并/部署**：endpoint B/C 的交付门照旧，降阶态不携带任何交付授权；
+3. **不绕门**：统一门语义零改动——缺评审、open/contested 发现、漂移证据、失效授权继续拒；底线评审义务不可降档、headless 不是豁免理由。
+
+停止原因与下一步动作**用现有文本/JSON 表达，不发明新完成状态机**（plan-v050 §6 语义建议原文）：落地=drive 收束因具名分类 `obligation-blocked`（`classifyCause`，枚举字面量沿 merge-conflict 先例）＋既有 7 字段交接快照携带具名类与恢复路径（补评审/qualify/reuse/reassess 后 `zw 继续`）；goal/step/finding 状态枚举一个不加。
+
+**记账不裁决边界**（ADR-0022 同型）：段会话自报 `[drive] 义务阻塞：<义务 id>` 标记只改变收束分类与交接可读性——伪造标记改不了任何执法面（真正的门语义全在 `lzy finish`/统一门内）。降阶停止是 exit 0 干净收束族（与 stuck/预算尽同族），绝不写失败也不写完成。
+
+## 与相邻语义的边界
+
+| 形态 | 状态 | attestation | 交付授权 | 后续动作 |
+|---|---|---|---|---|
+| 完成 | done | 最终 attestation（LOOP_COMPLETE） | 按 endpoint 门 | 无（历史归档） |
+| **降阶停止（本 ADR）** | executing（不变） | 无 | 无 | 快照指路：补评审/复判→`zw 继续` |
+| stuck/预算尽 | executing（不变） | 无 | 无 | 快照指路：换路或提预算 |
+
+降阶停止与 stuck 的区别仅在**具名性与动作指向**：义务阻塞明确指认哪条义务、恢复动作是什么；收束分类供读面统计（doctor/watch 类观察面）按因分族。
+
+## 已落代码面（M1，皆不触门语义）
+
+- `core/drive.js` `composeSegmentPrompt` 第 3 步：finish 前先 `gate explain` 读义务，按指路满足（review run/qualify/reuse/policy reassess/核查回执）；确不可满足→自报标记诚实停止；
+- `core/drive.js` `classifyCause`＋段自报标记消费：义务阻塞立即干净收束，绝不空转剩余段；
+- zw recipes（finish/execute/unattended）补评审义务满足序列文本。
+
+## 被否的替代
+
+- **新增状态枚举**（partial/suspended goal 态）：违反「不先用现有文本/JSON 表达」的弧约束；状态机扩张的兼容面（迁移/观察/合同门）全要重过，收益仅是字段好看。
+- **headless 豁免评审义务**：直接违反 plan-v050 §6「headless 不是豁免理由，oracle 正确也不替代评审义务」；且把 0.4.0 的核心发现（门拦住假完成）倒退回去。
+- **评审义务自动降档为可选**：底线义务（policy.js 无契约亦生成）不可降，降档=改采纳门语义，超出本 ADR 权限。
+
+## 影响
+
+- M2 受控评审设计（评审义务满足面=M2）：降阶停止的可用性取决于评审 run 在无人值守预算内的可承担性——A3 预算分级拍板须把评审预算单列（plan-v050 §6 M2 已有该要求）；
+- 观察面（#46 契约）：收束分类可进 status/doctor 读面（本 ADR 不强制；落地走后续小步）；
+- 19 拒中 6 次四义务合取拦（oracle 亦失败）不受本 ADR 影响——那是门正确工作。

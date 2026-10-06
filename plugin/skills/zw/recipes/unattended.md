@@ -35,7 +35,13 @@ awake. `lzy doctor`'s `drive` line reports channel availability.
 ## Wake-up protocol (this IS a red-line contract, not a suggestion)
 
 1. **Continue only.** Re-ground with `lzy loop status`, then push the current pending
-   step exactly as the workflow says (commit → evidence → `lzy step done`).
+   step exactly as the workflow says (commit → evidence → `lzy step done`). When
+   steps run out, satisfy finish-gate obligations before finishing — review
+   obligations via `lzy review run` (reuse via `review qualify`/`review reuse`,
+   vanished extra obligations via `policy reassess`), checks via their receipt
+   command; an obligation genuinely unsatisfiable in-segment is an honest stop
+   (`[drive] 义务阻塞：<义务 id>`), never a bypass. Full sequence:
+   recipes/finish.md §Obligation gate.
 2. **Never start a new goal.** No goal in the workspace, or goal in `planning` state?
    Exit cleanly and say so — plan adoption needs a human.
 3. **Stop budget is the boundary.** Push until the Stop hook's 2-continue budget is

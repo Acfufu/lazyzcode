@@ -33,3 +33,25 @@
   无 RNG、可重放（同 scripts/ablation/run-batch.mjs 预注册 cells 家法）。
 - 每对固定模型/引擎/工具/任务/输入/CI 要求与相同预算；失败/中断全入账，
   换失效配对须整对重跑并记录原因与全部成本。
+
+## 判读代次与资格/质量门两层判定（0.5.0 M0 沉淀，goal v050-m0-instrument）
+
+- **oracleJudge 代次标记**：每个 run 记录携带 `oracleJudge`（整数代次）——判定器
+  机制变更（如 v2=FIXTURE 注入+结构化 expect；v3=check-2 glob 形重封存，
+  `artifacts/v050/oracle-v3/MANIFEST.json`）必须 bump 代次并落新标记；同批报告的
+  逐行判读代次必须统一，混杂即「不具备评估资格」。
+- **`--rejudge-oracle` 重判通道**：判定器修复只重跑判读腿（agent 会话与物化夹具
+  不动），逐行以新代次追加 supersede 行入 journal（append-only，旧行保留＝尝试账），
+  重出 report；判读代次混杂时它也是统一通道。
+- **评估资格 vs 质量门（两层判定，0.5.0 M0 起执法）**：`writeReport` 先过
+  **评估资格**（`qualificationGate`——缺任务/缺臂/缺 trial/重复 trial/未知判读/
+  身份与判读代次混杂，另加批清单冻结面三要素 `sequence`/`repoTaskIds`/
+  `keyCounterexampleIds` 缺席，拒因=「不具备评估资格」，stage=evaluation-qualification），
+  再过 **§9.2 质量门**（资格成立而指标不足＝「尚无质量收益证据」）。两种拒因在
+  报文与 report 形态上可判别；关键反例清单绑定批清单预注册字段 `keyCounterexampleIds`
+  （缺席=资格拒；显式空数组=声明「无」，逐项判读照常入 report.counterexamples）；
+  每任务门槛=⌈2/3×预注册 trial 数⌉，分母出自冻结序列不硬编码。
+- **独立性规则（承上节封存纪律，接代次治理语境）**：宿主不读封存内容——评估集
+  重封存（如 A1 oracle glob 形新代次）经独立子代理通道产出，宿主只收身份+sha256+
+  canary 机械回执；读过正式任务再调参＝整批独立性作废，须换新集重封存，评估集
+  重锚随新版次走（旧批记录与 journal 链零触碰）。

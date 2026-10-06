@@ -418,16 +418,38 @@ function checkHostGit(push, cwd) {
 // 钩子侧 fail-open 静默，这里给出「为什么没警戒」的信号。warn/skip only：水位是经验
 // 警戒线不是故障，绝不翻转退出码（fail-soft 纪律）。
 function checkWaterline(push) {
+  // 收口④：宿主账缺席/不可读只降级水位行——沙盒外泄账与宿主 billing db 无涉，
+  // 两个降级分支也照常报 sandbox-usage 行（「宿主账缺席仍可观测子账」）。
+  const pushSandboxUsage = () => {
+    const sb = summarizeSandboxUsage(readSandboxUsageLines());
+    if (sb.runs > 0) {
+      const tok = sb.all.tokens >= 1e6 ? `${(sb.all.tokens / 1e6).toFixed(1)}M` : `${sb.all.tokens}`;
+      push(
+        "sandbox-usage",
+        "ok",
+        `沙盒外泄账：落账 ${sb.runs} 评审运行 · 全部 ${tok} tok / ${Math.round(sb.all.points * 100) / 100} 分` +
+          `（近 7 天 ${(sb.day7.tokens / 1e6).toFixed(1)}M；provider/model 分解见 lzy loop cost）`,
+      );
+    } else {
+      push(
+        "sandbox-usage",
+        "skip",
+        "沙盒外泄账：无落账行（落账启用前已清理的沙盒无档可追——现存沙盒子账本由 TokenTracker 扫描面兜底）",
+      );
+    }
+  };
   const db = billingDbPath();
   if (!existsSync(db)) {
-    push("waterline", "skip", `无计费账本（${db}），水位警戒线不可用`);
+    push("waterline", "skip", `无计费账本（${db}），水位警戒线不可用——沙盒外泄账仍独立分列`);
+    pushSandboxUsage();
     return;
   }
   const env = process.env.LZY_WATERLINE_POINTS;
   const threshold = Number(env) || WATERLINE_POINTS;
   const read = rollingWaterline();
   if (read === null) {
-    push("waterline", "warn", "sqlite3 缺席或账本不可读——stop 钩子水位警戒将静默跳过（fail-open）");
+    push("waterline", "warn", "sqlite3 缺席或账本不可读——stop 钩子水位警戒将静默跳过（fail-open）——沙盒外泄账仍独立分列");
+    pushSandboxUsage();
     return;
   }
   const envNote = env ? `（env 覆盖自 ${WATERLINE_POINTS}）` : "";
@@ -444,22 +466,7 @@ function checkWaterline(push) {
   // 沙盒外泄账行（0.5.0 明烧面，2026-10-02 commandcode 暗烧案）：隔离 HOME 评审子账本
   // 不进宿主 model_usage——上方水位读数对其结构性盲。此处报落账聚合，ok/skip only：
   // 明烧是可见性不是故障，绝不翻转退出码（fail-soft 纪律）。
-  const sb = summarizeSandboxUsage(readSandboxUsageLines());
-  if (sb.runs > 0) {
-    const tok = sb.all.tokens >= 1e6 ? `${(sb.all.tokens / 1e6).toFixed(1)}M` : `${sb.all.tokens}`;
-    push(
-      "sandbox-usage",
-      "ok",
-      `沙盒外泄账：落账 ${sb.runs} 评审运行 · 全部 ${tok} tok / ${Math.round(sb.all.points * 100) / 100} 分` +
-        `（近 7 天 ${(sb.day7.tokens / 1e6).toFixed(1)}M；provider/model 分解见 lzy loop cost）`,
-    );
-  } else {
-    push(
-      "sandbox-usage",
-      "skip",
-      "沙盒外泄账：无落账行（落账启用前已清理的沙盒无档可追——现存沙盒子账本由 TokenTracker 扫描面兜底）",
-    );
-  }
+  pushSandboxUsage();
 }
 
 // orphan-wake 检查（plan-v2 Phase 2-4）：unbound wake automation（App 非会话上下文建，

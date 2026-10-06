@@ -164,7 +164,7 @@ test("CLI：lzy loop cost 无账本降级输出退出码 0（ISOLATED_HOME，零
 });
 
 // ── 沙盒外泄账（0.5.0 明烧面，2026-10-02 commandcode 暗烧案收口）──
-import { aggregateUsageRows, sandboxLedgerLine, appendSandboxUsage, readSandboxUsageLines, summarizeSandboxUsage, querySessionPoints } from "../core/cost.js";
+import { aggregateUsageRows, sandboxLedgerLine, appendSandboxUsage, readSandboxUsageLines, summarizeSandboxUsage, querySessionPoints, formatCost } from "../core/cost.js";
 
 test("aggregateUsageRows：按 (provider,model) 归组、tokens 求和、未计价组保留 tokens 计 0 分", () => {
   const dayH = H("2026-10-02T08:00:00+08:00"); // 周五白昼非高峰 → 常设 ×0.5
@@ -243,6 +243,31 @@ test("appendSandboxUsage：同 runId 重放幂等不双算、新 runId 照常入
     assert.equal(appendSandboxUsage("/x/y/pt-dedup", { ...noId }), true);
     assert.equal(appendSandboxUsage("/x/y/pt-dedup", { ...noId }), true, "无 runId 不去重，两行如实");
     assert.equal(readSandboxUsageLines().length, 4);
+  } finally {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedUP === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUP;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("formatCost：宿主账缺席时沙盒外泄账仍独立可达（收口④，宿主降级不短路）", () => {
+  const home = mkdtempSync(join(tmpdir(), "lzy-cost-fmtabsent-"));
+  const savedHome = process.env.HOME;
+  const savedUP = process.env.USERPROFILE;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    appendSandboxUsage("/x/y/pt-absent", {
+      runId: "fx.n5.r1", slug: "fx", attempt: 1, validity: { status: "valid" },
+      metering: { status: "metered", points: 2, usage: [{ provider: "p", model: "m", inputTokens: 9, cacheReadTokens: 0, outputTokens: 1, points: 2 }] },
+    });
+    const out = formatCost("/x/y/pt-absent", null);
+    assert.match(out, /计费账本缺席/, "隔离 HOME 无宿主账→宿主段降级");
+    assert.match(out, /沙盒外泄账/, "宿主账缺席仍须分列沙盒账（收口④）");
+    assert.match(out, /1 运行/, "落账运行数可见");
+    assert.doesNotMatch(out, /促销 overlay/, "宿主账缺席时宿主后置段不渲染");
   } finally {
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;

@@ -404,23 +404,26 @@ export function waterlineScopeNote(unpricedRows) {
 export function formatCost(cwd, goal, now = new Date()) {
   const lines = [];
   const db = billingDbPath();
+  // 收口④：宿主账缺席/不可读只降级宿主段，不短路——沙盒外泄账读 ~/.zcode/cli/lzy-usage，
+  // 与宿主 billing db/sqlite3 无涉，宿主账缺席时仍独立可达（「宿主账缺席仍可观测子账」）。
+  let rows = null;
   if (!existsSync(db)) {
-    lines.push(`积分成本报表：计费账本缺席（${db}），无积分可算`);
-    return lines.join("\n");
+    lines.push(`积分成本报表：计费账本缺席（${db}），无积分可算——沙盒外泄账仍独立分列（见下）`);
+  } else {
+    rows = collectUsageRows();
+    if (rows === null) {
+      lines.push("积分成本报表：sqlite3 缺席或账本不可读，降级跳过（fail-open）——沙盒外泄账仍独立分列（见下）");
+    } else {
+      const day7 = now.getTime() - 7 * 86_400_000;
+      const day30 = now.getTime() - 30 * 86_400_000;
+      const inRange = (fromMs) => (rows ?? []).filter((r) => Number(r.h) * 3_600_000 >= fromMs);
+      const pts = computePoints(rows);
+      lines.push(
+        `积分成本报表（常设系数+促销 overlay，UTC+8 口径）：近 7 天 ${fmt(computePoints(inRange(day7)).points)} · ` +
+          `近 30 天 ${fmt(computePoints(inRange(day30)).points)} · 全部 ${fmt(pts.points)} 积分`,
+      );
+    }
   }
-  const rows = collectUsageRows();
-  if (rows === null) {
-    lines.push("积分成本报表：sqlite3 缺席或账本不可读，降级跳过（fail-open）");
-    return lines.join("\n");
-  }
-  const day7 = now.getTime() - 7 * 86_400_000;
-  const day30 = now.getTime() - 30 * 86_400_000;
-  const inRange = (fromMs) => (rows ?? []).filter((r) => Number(r.h) * 3_600_000 >= fromMs);
-  const all = computePoints(rows);
-  lines.push(
-    `积分成本报表（常设系数+促销 overlay，UTC+8 口径）：近 7 天 ${fmt(computePoints(inRange(day7)).points)} · ` +
-      `近 30 天 ${fmt(computePoints(inRange(day30)).points)} · 全部 ${fmt(all.points)} 积分`,
-  );
   // 沙盒外泄账（0.5.0 明烧面）：隔离 HOME 评审子账本不进上方宿主账本读数——双源分列，
   // 绝不把两本账混算（归因口径不同：宿主=全账号，沙盒=本机评审运行落账）。
   const sb = summarizeSandboxUsage(readSandboxUsageLines(), now);
@@ -442,28 +445,31 @@ export function formatCost(cwd, goal, now = new Date()) {
   } else {
     lines.push("  沙盒外泄账：无落账行（落账启用前已清理的沙盒无档可追——现存沙盒子账本由 TokenTracker 扫描面兜底）");
   }
-  const unpriced = [...all.unpricedModels];
-  if (unpriced.length > 0) {
-    lines.push(`  未计价模型（0 积分如实缺表，对照官方文档补 COEFFICIENTS）：${unpriced.join("、")}`);
-  }
-  const active = OVERLAYS.filter((o) => now.getTime() < o.untilMs);
-  lines.push(
-    active.length > 0
-      ? `  促销 overlay 生效中：${active.map((o) => `${o.label}（至 ${new Date(o.untilMs).toISOString().slice(0, 10)}）`).join("；")}`
-      : "  促销 overlay：无生效条目（活动条款按日期区间自动回落常设规则）",
-  );
-  if (goal && (goal.startedAt || goal.finishedAt)) {
-    const claimed = claimedSessionIds(cwd);
-    const att = attributeGoalPoints(rows, goal, cwd, claimed);
-    const doneSteps = (goal.steps ?? []).filter((s) => s.status === "done").length;
-    const perStep = doneSteps > 0 ? att.points / doneSteps : att.points;
+  if (rows !== null) {
+    const pts = computePoints(rows);
+    const unpriced = [...pts.unpricedModels];
+    if (unpriced.length > 0) {
+      lines.push(`  未计价模型（0 积分如实缺表，对照官方文档补 COEFFICIENTS）：${unpriced.join("、")}`);
+    }
+    const active = OVERLAYS.filter((o) => now.getTime() < o.untilMs);
     lines.push(
-      `  目标面 ${goal.slug}（${goal.status}）：归因积分 ${fmt(att.points)}（会话 ${att.sessions} 个，OR 口径）· ` +
-        `步 ${doneSteps}/${(goal.steps ?? []).length} · 积分/步 ${fmt(perStep)}`,
+      active.length > 0
+        ? `  促销 overlay 生效中：${active.map((o) => `${o.label}（至 ${new Date(o.untilMs).toISOString().slice(0, 10)}）`).join("；")}`
+        : "  促销 overlay：无生效条目（活动条款按日期区间自动回落常设规则）",
+    );
+    if (goal && (goal.startedAt || goal.finishedAt)) {
+      const claimed = claimedSessionIds(cwd);
+      const att = attributeGoalPoints(rows, goal, cwd, claimed);
+      const doneSteps = (goal.steps ?? []).filter((s) => s.status === "done").length;
+      const perStep = doneSteps > 0 ? att.points / doneSteps : att.points;
+      lines.push(
+        `  目标面 ${goal.slug}（${goal.status}）：归因积分 ${fmt(att.points)}（会话 ${att.sessions} 个，OR 口径）· ` +
+          `步 ${doneSteps}/${(goal.steps ?? []).length} · 积分/步 ${fmt(perStep)}`,
+      );
+    }
+    lines.push(
+      "  人工复核：归因=时间窗∩(会话目录 OR 认领) 简化口径，session_id 标识空间同一性是假设——异常偏差先核对再下结论",
     );
   }
-  lines.push(
-    "  人工复核：归因=时间窗∩(会话目录 OR 认领) 简化口径，session_id 标识空间同一性是假设——异常偏差先核对再下结论",
-  );
   return lines.join("\n");
 }

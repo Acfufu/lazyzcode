@@ -321,10 +321,14 @@ export function contestFinding(cwd, slug, fingerprint, { groundsPath, note, at }
   const rec = loadFindingsFile(cwd, slug);
   if (!rec?.findings[fingerprint]) throw new FindingsError(`发现不在账：${slug} ${fingerprint.slice(0, 8)}`);
   const e = rec.findings[fingerprint];
-  if (e.status !== "open") {
-    throw new FindingsError(`状态机拒绝：${e.status} 态不受理 contest（仅 open 态可提异议——修复声称走 resolve-request，关闭态走 reopen）`);
+  // contested 态受理重新提交（0.5.0 M0 评审 F-1 修复）：复判前置拒（缺席/漂移/超长）的
+  // 恢复指路「重新提交异议」必须可达——否则发现卡死 contested 并永久阻塞统一门。
+  // re-contest 以新文书整体置换 contest 记录（新路径+新 sha256），历史只追加。
+  if (e.status !== "open" && e.status !== "contested") {
+    throw new FindingsError(`状态机拒绝：${e.status} 态不受理 contest（open 可提异议；contested 可重新提交异议书；修复声称走 resolve-request，关闭态走 reopen）`);
   }
   const stamp = at ?? new Date().toISOString();
+  const recontested = e.status === "contested";
   e.status = "contested";
   e.contest = {
     at: stamp,
@@ -332,7 +336,7 @@ export function contestFinding(cwd, slug, fingerprint, { groundsPath, note, at }
     groundsSha256: createHash("sha256").update(buf).digest("hex"),
     ...(note ? { note } : {}),
   };
-  appendHistory(e, { at: stamp, kind: "contested", note: note ?? `异议书 ${abs}（sha256 ${e.contest.groundsSha256.slice(0, 12)}…）` });
+  appendHistory(e, { at: stamp, kind: "contested", note: `${recontested ? "重新提交异议书" : "异议书"} ${abs}（sha256 ${e.contest.groundsSha256.slice(0, 12)}…）` });
   saveFindingsFile(cwd, rec);
   return { fingerprint, status: e.status, contest: e.contest };
 }

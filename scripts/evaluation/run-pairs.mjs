@@ -120,6 +120,12 @@ export function qualificationGate(runs, { batch, keyCounterexampleIds } = {}) {
     trialsByTask.get(tk).add(c.trial);
   }
 
+  // 关键反例 id 须在冻结任务集内（0.5.0 M0 评审 F-2）：错形/悬空 id 静默降级「守住」＝假读数。
+  const frozenTaskIds = new Set(sequence.map((c) => c.taskId));
+  for (const id of keyCounterexampleIds) {
+    if (typeof id !== "string" || !frozenTaskIds.has(id)) reasons.push(`关键反例 id 不在冻结任务集：${JSON.stringify(id)}——错形或悬空（核对批清单任务 id 形态，如全相对路径「<repo>/<task>」）`);
+  }
+
   // 行面核对：重复 trial / 身份混杂 / 未知判读 / 判读代次混杂。
   const cellSeen = new Map();
   const judgeGens = new Set();

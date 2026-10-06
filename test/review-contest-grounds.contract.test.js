@@ -145,4 +145,26 @@ describe("异议文书哈希绑定复判输入（0.5.0 M0）", () => {
       rmSync(d, { recursive: true, force: true });
     }
   });
+
+  test("恢复通道端到端：漂移前置拒后重新提交异议→复判 valid（0.5.0 M0 评审 F-1：指路必须可执行）", async () => {
+    const { d, fp, grounds } = fixture(GROUNDS);
+    try {
+      writeFileSync(grounds, "被修改过的理由文本。\n");
+      spawnSync("git", ["add", "-A"], { cwd: d });
+      spawnSync("git", ["commit", "-qm", "tamper"], { cwd: d });
+      await assert.rejects(() => runReview(d, { contestedOf: fp, deps }), /异议书漂移.*重新提交/s);
+      // 报文指路的动作照做：重新提交（contested 态受理）→ 复判通道打通。
+      const fixed = join(d, "grounds-v2.md");
+      writeFileSync(fixed, "重新提交的异议书：补充了行号证据，与被驳原文不同。\n");
+      spawnSync("git", ["add", "-A"], { cwd: d });
+      spawnSync("git", ["commit", "-qm", "recontest"], { cwd: d });
+      const { contestFinding: recontest } = await import("../core/findings.js");
+      recontest(d, "fx", fp, { groundsPath: fixed, note: "重新提交" });
+      const res = await runReview(d, { contestedOf: fp, deps });
+      assert.equal(res.exitHint, 0);
+      assert.equal(res.record.validity.status, "valid");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
 });

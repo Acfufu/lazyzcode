@@ -109,6 +109,12 @@ describe("评估资格判定（0.5.0 M0）", () => {
     assert.ok(out.qualification.reasons.some((x) => /判读代次混杂/.test(x)));
   });
 
+  test("关键反例 id 悬空/错形：不在冻结任务集=资格拒（0.5.0 M0 评审 F-2，不再静默「守住」）", () => {
+    const out = reportOf(makeBatch({ keyCounterexampleIds: ["lazyzcode/task-1", "lazyzcode/ghost-task"] }), SEQ.map((c) => row(c)));
+    assert.equal(out.refused, true);
+    assert.ok(out.qualification.reasons.some((x) => /关键反例 id 不在冻结任务集/.test(x)), out.qualification.reasons.join("；"));
+  });
+
   test("关键反例清单未预注册：字段缺席=资格拒（与显式空可判别）", () => {
     const b = makeBatch();
     delete b.keyCounterexampleIds;

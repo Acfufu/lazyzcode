@@ -185,7 +185,7 @@ function contractBudgetRef(cwd, goal) {
   return { declared: true, ref: contract.budgetRef ?? null, drifted: false, path: goal.contract.path };
 }
 
-function composeSegmentPrompt(cwd, cliPath) {
+export function composeSegmentPrompt(cwd, cliPath) {
   // 「zw 继续」头触发 UPS 分层装载 zw 协议（headless UPS 活体先例=e2e-loop 人权门轮）；
   // 后接紧凑续跑契约（对话史在 headless 段不可依赖——交接状态全在盘面，offpeak-probe 教训）。
   return [
@@ -196,9 +196,27 @@ function composeSegmentPrompt(cwd, cliPath) {
     "本段任务：",
     `1. 运行 node ${cliPath} loop status 核实状态与下一步。`,
     "2. 有未完步骤：只推进一个步骤——按计划完成该步，先 commit 再取证，然后 node <CLI> step done <ID> --note …，随即结束本段（勿连续多步，段间由 drive 复核三门）。",
-    "3. status 显示无未完步骤：按 zw 协议走收尾对照门（逐对核验证据后 node <CLI> attest comparator --file …）并 node <CLI> loop finish 收官。",
+    "3. status 显示无未完步骤：先 node <CLI> gate explain 读义务面——逐义务按其指路满足（评审义务=lzy review run 取真实评审；候选漂移走 review qualify/reuse 复用腿；确已消失的额外义务走 policy reassess 复判；核查义务=按指路补回执），全部满足后走收尾对照门（逐对核验证据后 node <CLI> attest comparator --file …）并 node <CLI> loop finish 收官；义务在本段确不可满足（预算尽/runner 缺席）：如实结束本段，不伪造回执、不绕门，并在响应末行写 [drive] 义务阻塞：<义务 id>。",
     "红线：绝不注册新目标；绝不运行 lzy loop drive；绝不 reset/abandon；写命令已带 fence 环境（勿摘）；全程用工具真实执行，不要问询；无新输入时立即收尾本段。",
   ].join("\n");
+}
+
+// A2 落地面（plan-v050 §6 语义建议：停止原因先用现有文本表达，不发明新状态机）：收束因
+// → 具名分类。消融仪器/读面按因分类（merge-conflict 枚举字面量先例）；分类只影响交接
+// 可读性与读面统计，不改任何门语义（记账不裁决，ADR-0022）。
+export function classifyCause(cause) {
+  const s = String(cause ?? "");
+  if (s === "done") return "done";
+  if (s.startsWith("义务阻塞")) return "obligation-blocked";
+  if (s.startsWith("预算尽") || s.startsWith("积分预算尽") || s.startsWith("墙钟预算尽")) return "budget-exhausted";
+  if (s.startsWith("无推进")) return "no-progress";
+  if (s.startsWith("段数尽")) return "segments-exhausted";
+  if (s.startsWith("段间门拒") || s.startsWith("段间内部错误")) return "gate";
+  if (s.startsWith("目标已非")) return "handover";
+  if (s.startsWith("工具调用被拒")) return "tool-denied";
+  if (s === "merge-conflict") return "merge-conflict";
+  if (s.startsWith("段失败")) return "segment-failed";
+  return "other";
 }
 
 // 7 字段交接快照自写（lint 家法：先 lint 后登记，契约字面量与 SKILL 模板逐字节一致）。
@@ -219,7 +237,7 @@ function authorHandoffSnapshot(cwd, goal, cause, extraRisk, deps) {
     "## 下一步动作",
     `接手会话按计划推下一未完步骤（先 commit 再取证；收束因「${cause}」，非目标失败）`,
     "## 目标与进度",
-    `${goal?.slug ?? "—"} · ${doneCountOf(goal)}/${(goal?.steps ?? []).length} 步 · drive 收束因=${cause}`,
+    `${goal?.slug ?? "—"} · ${doneCountOf(goal)}/${(goal?.steps ?? []).length} 步 · drive 收束因=${cause}（${classifyCause(cause)}）`,
     "## 脏树清单",
     Array.isArray(porcelain) && porcelain.length > 0 ? porcelain.join("\n") : "（无）",
     "## tree hash",
@@ -556,6 +574,25 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
           break;
         }
         throw err;
+      }
+      // A2 义务阻塞具名收束（plan-v050 §6 语义建议「停止原因先用现有文本表达」）：段会话
+      // 自报义务在本段不可满足（响应末行标记，composeSegmentPrompt 第 3 步指令）⇒ 立即
+      // 干净收束（不空转剩余段）——「预算耗尽诚实停止」同族：exit 0 + 7 字段快照，绝不写
+      // done、不绕任何门。记账不裁决（ADR-0022 同边界）：标记是段自报，只影响收束分类与
+      // 交接可读性；真正的门语义仍在 lzy finish/统一门，伪造标记改不了执法面。
+      // 扫描面=response∪stdout（--json 模式下响应文本在 summary.response 字段，headless
+      // 解析面要求 stdout 整体单 JSON 对象；response 侧在前——标记行取净文本，不取 JSON
+      // 转义串）。
+      const segParts = [typeof result.response === "string" ? result.response : "", typeof result.stdout === "string" ? result.stdout : ""];
+      const segSelfReport = segParts.join("\n");
+      if (segSelfReport.includes("[drive] 义务阻塞：")) {
+        const markerLine = segParts.map((p) => p.split("\n").find((l) => l.includes("[drive] 义务阻塞："))).find(Boolean) ?? "";
+        windDown(
+          true,
+          `义务阻塞（${markerLine.split("[drive] 义务阻塞：")[1]?.trim().slice(0, 160) || "义务未具名"}）`,
+          "段会话自报义务在本段不可满足（评审 runner 缺席/预算不足等）——恢复：交互会话补评审（lzy review run/qualify/reuse）或 policy reassess 复判后 zw 继续",
+        );
+        break;
       }
       // H3R 命令层命中标记（N4）：钩子在段内拦下高危命令时写 `loop/h3r-hit.json`（带段标）。
       // **读+消费只在这里发生一次、且必定清除**（在 done/换代判之前）；判定顺序在 done 与

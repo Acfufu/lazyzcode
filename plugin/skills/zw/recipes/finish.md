@@ -10,6 +10,29 @@ against the current subject set, AND every {host}∪subjects tree is clean
 current MATCH comparator attestation. This is the only valid "done". 不做完不停 —
 if finish rejects, keep working, never declare victory.
 
+## Obligation gate (read before the first finish attempt)
+
+`finish` also runs the unified policy gate; a rejection there names the unsatisfied
+obligations. Don't rediscover the path each time — satisfy obligations in this order:
+
+1. `lzy gate explain` — the readout; each obligation line carries its own remedy.
+2. **Review obligations** (`review.*`): `lzy review run` takes a real
+   same-generation review (preflight checks auth/authorization/clean tree/metering
+   first — exit 3 rejects without spawning). A candidate-only drift may reuse a
+   qualified run instead: `lzy review qualify <runId> --scope <声明>` then
+   `lzy review reuse <runId>` (the gate auto-consumes a valid reuse leg).
+3. **Vanished extra obligations**: an additional requirement that no longer applies
+   is independently re-judged, never silently skipped —
+   `lzy policy reassess <义务id> --impact … --cancel-reason … --basis …`
+   (baseline obligations cannot be cancelled).
+4. **Check obligations** (`check.*`): follow the gate's remedy line to produce the
+   receipt it names.
+
+In an unattended drive segment, an obligation you genuinely cannot satisfy in-segment
+(budget exhausted, review runner unavailable) is an honest stop: end the segment with
+a final line `[drive] 义务阻塞：<义务 id>` — never fake a receipt, never bypass the
+gate. drive records the wind-down cause as 义务阻塞 (A2, distinct from done).
+
 On success `finish` writes the **final attestation**
 `.lazyzcode/attestations/<attemptId>.json` — the LOOP_COMPLETE machine proof
 (planHash, per-root head trees, composite fingerprint, ledger-anchored evidence refs,

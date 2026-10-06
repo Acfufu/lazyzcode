@@ -22,6 +22,12 @@ lzy step done N1 --note "<what was done, one line>"
   any semantic/model-judged check — CLI stdout, file existence and content
   assertions, `grep`/`diff`. Never spend a model call on a question a command can
   answer.
+- **Obligation pre-read (before stepping into finish)**: when the last N step is
+  within reach, run `lzy gate explain` early — review obligations need a real review
+  run (`lzy review run`; qualified reuse via `review qualify` + `review reuse`;
+  vanished extra obligations re-judged via `policy reassess`) and checks need
+  receipts. Starting this only after a finish rejection wastes a full loop; the full
+  satisfaction path lives in recipes/finish.md.
 
 ## Parallel dispatch (same-goal multi-worker, minimal claim chain)
 

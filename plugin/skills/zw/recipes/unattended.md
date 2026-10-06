@@ -18,10 +18,13 @@ whose usage cannot be metered are reported, never counted as zero),
 and every segment's lzy writes carry the run's fence token so a taken-over run fails
 closed on write instead of corrupting state). Wind-down is always clean and
 enumerated: `done`, wall clock exhausted, points budget exhausted, segments
-exhausted, two consecutive zero-progress segments (stuck), the step gate stopping at
+exhausted, two consecutive zero-progress segments (stuck), an obligation the segment
+could not satisfy reporting 义务阻塞 (A2: finish-gate review/check obligations
+unsatisfiable in-segment — honest stop, never done), the step gate stopping at
 a high-risk step (`h3r`), or a high-risk command denied at the tool boundary
 (`PreToolUse`). Every non-done wind-down authors the 7-field handoff snapshot itself
-and registers the handoff marker (see `recipes/continuation.md`), so the next wake-up
+(and stamps the named cause class, `classifyCause`) and registers the handoff marker
+(see `recipes/continuation.md`), so the next wake-up
 (or a human `zw 继续`) resumes from disk. Exit code 0 = done or clean wind-down;
 1 = gate reject or segment failure. Since 0.2.4 `lzy loop drive --workers N` (sugar
 `--fast` ≡ 2) runs N worker chains per wave on sibling worktrees — env-auth required,

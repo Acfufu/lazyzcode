@@ -3,8 +3,9 @@
 // 归因用「简化 OR + 人工复核」（红队 R4 否决过巧公式）：目标时间窗 ∩（会话目录=本仓 ∪
 // 认领会话集）。spawn 豁免声明：本模块经 hostdb 查 sqlite3——plan-v2 §4-2 明示豁免，
 // loop.js 零 spawn 纪律不受影响。
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, mkdirSync, appendFileSync } from "node:fs";
+import { resolve, join, basename } from "node:path";
+import { homedir } from "node:os";
 import { queryHostDb } from "./hostdb.js";
 import { billingDbPath } from "./paths.js";
 import { utc8HourDay } from "./ratelimit.js";
@@ -256,24 +257,131 @@ export function rollingWaterlinePoints() {
 // 收口面，M0 发现一）；默认值=宿主账本，既有调用点零变化。SELECT 只读幂等：同 sessionId
 // 二次读不累加（读数无状态，拍板 7 去重语义天然满足）。
 export function querySessionPoints(sessionId, { dbPath = billingDbPath() } = {}) {
-  if (typeof sessionId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) return { absent: true, unpriced: [], points: 0 };
+  if (typeof sessionId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) return { absent: true, unpriced: [], points: 0, usage: [] };
   const db = dbPath;
-  if (!existsSync(db)) return { absent: true, unpriced: [], points: 0 };
+  if (!existsSync(db)) return { absent: true, unpriced: [], points: 0, usage: [] };
   const sql =
-    "SELECT m.session_id AS sid, m.model_id AS model, m.started_at/3600000 AS h, " +
+    "SELECT m.session_id AS sid, m.provider_id AS provider, m.model_id AS model, m.started_at/3600000 AS h, " +
     "SUM(m.input_tokens) AS it, SUM(m.cache_read_input_tokens) AS crt, SUM(m.output_tokens) AS ot " +
     "FROM model_usage m WHERE m.session_id = '" + sessionId + "' AND m.status = 'completed' " +
-    "GROUP BY sid, model, h";
+    "GROUP BY sid, provider, model, h";
   let rows = null;
   try {
     rows = queryHostDb(db, sql); // null=sqlite3 缺席/查询失败（降级面）——同 metering-absent 停类
   } catch {
     rows = null;
   }
-  if (rows == null) return { absent: true, unpriced: [], points: 0 };
-  if (rows.length === 0) return { absent: true, unpriced: [], points: 0 };
+  if (rows == null) return { absent: true, unpriced: [], points: 0, usage: [] };
+  if (rows.length === 0) return { absent: true, unpriced: [], points: 0, usage: [] };
   const agg = computePoints(rows);
-  return { absent: false, unpriced: [...agg.unpricedModels], points: agg.points };
+  return { absent: false, unpriced: [...agg.unpricedModels], points: agg.points, usage: aggregateUsageRows(rows) };
+}
+
+// usage 按 (provider, model) 归组聚合（0.5.0 明烧面，2026-10-02 commandcode 暗烧案的落账
+// 真源面）：tokens 忠实求和（未计价模型组照样保留 tokens——烧了就是烧了，绝不把「未计价」
+// 渲染成「没消耗」），组内逐行重入 computePoints 同一计价单源（overlay/常设乘数按小时桶
+// 判定不丢——改表双位点漂移结构性消失）。
+export function aggregateUsageRows(rows) {
+  const groups = new Map();
+  for (const r of rows ?? []) {
+    const key = `${r.provider ?? "(未知)"}|${r.model ?? "(未知)"}`;
+    const g =
+      groups.get(key) ??
+      { provider: r.provider ?? null, model: r.model ?? null, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, points: 0 };
+    g.inputTokens += Number(r.it) || 0;
+    g.cacheReadTokens += Number(r.crt) || 0;
+    g.outputTokens += Number(r.ot) || 0;
+    g.points += computePoints([r]).points;
+    groups.set(key, g);
+  }
+  return [...groups.values()];
+}
+
+// ── 沙盒外泄账（0.5.0 明烧落账面）：隔离 HOME 评审子账本永远不进宿主 model_usage
+//（计量缝收口面，ADR-0031），宿主报表/TokenTracker 对其双盲——2026-10-02 对账实锤：
+// 7 天 550M tok 全走 new-provider（commandcode）而主库零行。落账=评审收档时把
+// metering.usage 追加进全局账本 `~/.zcode/cli/lzy-usage/YYYY-MM.jsonl`；目录选 ~/.zcode/cli
+// 而非项目 .lazyzcode——项目可删，账不能删。逐行=一次评审运行（invalid/unpriced 运行
+// 照样入账：tokens 已烧）。月份按 UTC+8 归属（+8h 位移后取 ISO 年月，与报表口径一致）。
+
+export function sandboxUsageDir() {
+  return join(homedir(), ".zcode", "cli", "lzy-usage");
+}
+
+// 纯函数（可测）：运行档 → 账本行。无 usage 的运行（未 spawn/计量读数失败）不产行——
+// 「缺用量不算零」口径由运行档 metering 面承载，账本只收真实烧掉的 tokens。
+export function sandboxLedgerLine(cwd, record, now = new Date()) {
+  const usage = record?.metering?.usage;
+  if (!Array.isArray(usage) || usage.length === 0) return null;
+  return {
+    ts: now.toISOString(),
+    kind: "review",
+    project: basename(String(cwd ?? "")) || null,
+    runId: record.runId ?? null,
+    slug: record.slug ?? null,
+    attempt: record.attempt ?? null,
+    validity: record.validity?.status ?? null,
+    points: Number(record.metering.points) || 0,
+    usage,
+  };
+}
+
+export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
+  const line = sandboxLedgerLine(cwd, record, now);
+  if (!line) return false;
+  const dir = sandboxUsageDir();
+  mkdirSync(dir, { recursive: true });
+  const month = new Date(now.getTime() + 8 * 3_600_000).toISOString().slice(0, 7);
+  appendFileSync(join(dir, `${month}.jsonl`), `${JSON.stringify(line)}\n`, { mode: 0o600 });
+  return true;
+}
+
+export function readSandboxUsageLines({ dir = sandboxUsageDir() } = {}) {
+  let names = [];
+  try {
+    names = readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort();
+  } catch {
+    return []; // 目录缺席=尚无落账（fail-soft，报表如实显示「无落账行」）
+  }
+  const lines = [];
+  for (const f of names) {
+    for (const l of readFileSync(join(dir, f), "utf8").split("\n")) {
+      if (!l.trim()) continue;
+      try {
+        const o = JSON.parse(l);
+        if (o && o.kind === "review") lines.push(o);
+      } catch {} // 非法行跳过（追加写中断半行容忍）
+    }
+  }
+  return lines;
+}
+
+// 纯聚合（可测）：落账行 → 窗口化汇总。tokens/points 均 from usage（行内点=计量原语算好
+// 的组点，这里只求和不重算——计价单源仍在 computePoints）。
+export function summarizeSandboxUsage(lines, now = new Date()) {
+  const agg = (ls) => {
+    const groups = new Map();
+    let points = 0;
+    let tokens = 0;
+    for (const l of ls) {
+      points += Number(l.points) || 0;
+      for (const u of l.usage ?? []) {
+        const key = `${u.provider ?? "(未知)"}|${u.model ?? "(未知)"}`;
+        const g =
+          groups.get(key) ??
+          { provider: u.provider ?? null, model: u.model ?? null, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, points: 0 };
+        g.inputTokens += Number(u.inputTokens) || 0;
+        g.cacheReadTokens += Number(u.cacheReadTokens) || 0;
+        g.outputTokens += Number(u.outputTokens) || 0;
+        g.points += Number(u.points) || 0;
+        groups.set(key, g);
+      }
+    }
+    for (const g of groups.values()) tokens += g.inputTokens + g.cacheReadTokens + g.outputTokens;
+    return { points, tokens, byKey: [...groups.values()] };
+  };
+  const win = (fromMs) => (lines ?? []).filter((l) => Date.parse(l.ts) >= now.getTime() - fromMs);
+  return { runs: (lines ?? []).length, all: agg(lines), day7: agg(win(7 * 86_400_000)), day30: agg(win(30 * 86_400_000)) };
 }
 
 // 口径披露句（单一来源，doctor 行与 stop nudge 副本同文案）。
@@ -307,6 +415,27 @@ export function formatCost(cwd, goal, now = new Date()) {
     `积分成本报表（常设系数+促销 overlay，UTC+8 口径）：近 7 天 ${fmt(computePoints(inRange(day7)).points)} · ` +
       `近 30 天 ${fmt(computePoints(inRange(day30)).points)} · 全部 ${fmt(all.points)} 积分`,
   );
+  // 沙盒外泄账（0.5.0 明烧面）：隔离 HOME 评审子账本不进上方宿主账本读数——双源分列，
+  // 绝不把两本账混算（归因口径不同：宿主=全账号，沙盒=本机评审运行落账）。
+  const sb = summarizeSandboxUsage(readSandboxUsageLines(), now);
+  const fmtTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : `${n}`);
+  if (sb.runs > 0) {
+    lines.push(
+      `沙盒外泄账（隔离 HOME 评审落账，${sb.runs} 运行）：近 7 天 ${fmtTok(sb.day7.tokens)} tok / ${fmt(sb.day7.points)} 分 · ` +
+        `近 30 天 ${fmtTok(sb.day30.tokens)} tok / ${fmt(sb.day30.points)} 分 · 全部 ${fmtTok(sb.all.tokens)} tok / ${fmt(sb.all.points)} 分`,
+    );
+    const topKeys = [...sb.all.byKey].sort(
+      (x, y) => y.inputTokens + y.cacheReadTokens + y.outputTokens - (x.inputTokens + x.cacheReadTokens + x.outputTokens),
+    );
+    for (const g of topKeys.slice(0, 5)) {
+      lines.push(
+        `  ${g.provider ?? "(未知)"} / ${g.model ?? "(未知)"}：input ${fmtTok(g.inputTokens)} · 缓存读 ${fmtTok(g.cacheReadTokens)} · ` +
+          `输出 ${fmtTok(g.outputTokens)} · ${fmt(g.points)} 分`,
+      );
+    }
+  } else {
+    lines.push("  沙盒外泄账：无落账行（落账启用前已清理的沙盒无档可追——现存沙盒子账本由 TokenTracker 扫描面兜底）");
+  }
   const unpriced = [...all.unpricedModels];
   if (unpriced.length > 0) {
     lines.push(`  未计价模型（0 积分如实缺表，对照官方文档补 COEFFICIENTS）：${unpriced.join("、")}`);

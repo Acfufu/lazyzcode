@@ -31,7 +31,7 @@ import {
   userCliLogDir,
 } from "./paths.js";
 import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvisory, providerMixNote, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
-import { WATERLINE_POINTS, rollingWaterline, rollingWaterlinePoints, waterlineScopeNote } from "./cost.js";
+import { WATERLINE_POINTS, rollingWaterline, rollingWaterlinePoints, waterlineScopeNote, readSandboxUsageLines, summarizeSandboxUsage } from "./cost.js";
 import { loadWordlist } from "./h3r.js";
 import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
@@ -441,6 +441,25 @@ function checkWaterline(push) {
     `近 5h 滚动 ${read.points} / 警戒线 ${threshold} 积分${envNote}${scopeNote}——` +
       (over ? "已超线，stop 钩子将注入收尾 nudge（5h 窗内一次）" : "未超线"),
   );
+  // 沙盒外泄账行（0.5.0 明烧面，2026-10-02 commandcode 暗烧案）：隔离 HOME 评审子账本
+  // 不进宿主 model_usage——上方水位读数对其结构性盲。此处报落账聚合，ok/skip only：
+  // 明烧是可见性不是故障，绝不翻转退出码（fail-soft 纪律）。
+  const sb = summarizeSandboxUsage(readSandboxUsageLines());
+  if (sb.runs > 0) {
+    const tok = sb.all.tokens >= 1e6 ? `${(sb.all.tokens / 1e6).toFixed(1)}M` : `${sb.all.tokens}`;
+    push(
+      "sandbox-usage",
+      "ok",
+      `沙盒外泄账：落账 ${sb.runs} 评审运行 · 全部 ${tok} tok / ${Math.round(sb.all.points * 100) / 100} 分` +
+        `（近 7 天 ${(sb.day7.tokens / 1e6).toFixed(1)}M；provider/model 分解见 lzy loop cost）`,
+    );
+  } else {
+    push(
+      "sandbox-usage",
+      "skip",
+      "沙盒外泄账：无落账行（落账启用前已清理的沙盒无档可追——现存沙盒子账本由 TokenTracker 扫描面兜底）",
+    );
+  }
 }
 
 // orphan-wake 检查（plan-v2 Phase 2-4）：unbound wake automation（App 非会话上下文建，

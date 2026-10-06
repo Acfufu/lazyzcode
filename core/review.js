@@ -19,7 +19,7 @@ import { createGit } from "./git.js";
 import { findEngine } from "./paths.js";
 import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless, detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
-import { querySessionPoints } from "./cost.js";
+import { querySessionPoints, appendSandboxUsage } from "./cost.js";
 
 export const REVIEW_VERSION = 1;
 export const REVIEW_FAMILY = "review";
@@ -513,6 +513,69 @@ export function prepareIsolation(runDir) {
   return { home };
 }
 
+// 沙盒 provider 白名单（2026-10-02 commandcode 暗烧案正交修法）：隔离 HOME 会话此前整包
+// 透传宿主 provider env（ZCODE_PERSONAL_PROVIDER_CONFIG_FILE 指向真实配置）——全部 API key
+// 对沙盒内进程明文可见，且裸会话默认模型解析顺位到哪条腿全凭 providerOrder+enabled 巧合
+//（实测 100% 落 new-provider/deepseek：OAuth 账号腿隔离面必死、bigmodel-api enabled=false）。
+// 白名单=只保留「enabled 且带 API key」的腿（OAuth 腿在隔离面本就不可用，留纯泄露面），
+// 重写 providerOrder/modelConfigRules 后落盘隔离 home 内的专属配置，spawn 时 extraEnv 覆盖
+// env 指向——真实配置文件路径自此不进沙盒。结构不可识别/不可读时 fail-open 回落整包透传
+//（同旧行为，不新增失败面；如实注释不掩盖）。
+export const SANDBOX_NO_LEG_MSG =
+  "沙盒 provider 白名单为空（无 enabled 且带 API key 的 provider 腿）——评审会话跑在隔离 HOME，" +
+  "宿主 OAuth 凭据不进入隔离面；恢复：启用至少一条带 API key 的 provider 腿后重跑（lzy doctor 看 headless 行）";
+
+export function filterProviderConfig(cfg) {
+  const config = cfg?.config ?? null;
+  const rules = config?.providerConfigRules?.providerRules;
+  if (!Array.isArray(rules)) return null; // 结构不可识别：fail-open（同旧行为）
+  const apiKeyOf = (r) => {
+    const acc = r?.config?.access ?? r?.config ?? {};
+    const k = acc.apiKey ?? acc.api_key;
+    return typeof k === "string" && k.length > 0 ? k : null;
+  };
+  const kept = rules.filter((r) => r && r.enabled === true && apiKeyOf(r));
+  const keptIds = new Set(kept.map((r) => r.providerId).filter(Boolean));
+  const order = (Array.isArray(config?.providerOrder) ? config.providerOrder : kept.map((r) => r.providerId)).filter((id) => keptIds.has(id));
+  const mcr = config?.modelConfigRules ?? {};
+  const filterModelRules = (arr) => (Array.isArray(arr) ? arr.filter((m) => m && keptIds.has(m.providerId)) : arr);
+  return {
+    ...cfg,
+    config: {
+      ...config,
+      providerConfigRules: { ...(config.providerConfigRules ?? {}), providerRules: kept },
+      providerOrder: order,
+      modelConfigRules: {
+        ...mcr,
+        providerModelRules: filterModelRules(mcr.providerModelRules),
+        manualProviderModelRules: filterModelRules(mcr.manualProviderModelRules),
+      },
+    },
+  };
+}
+
+// 隔离 home 内专属 provider 配置落盘 + spawn 用 extraEnv（覆盖 PERSONAL env 指向白名单文件；
+// BUILTIN env 不动——引擎内置目录，无用户 key）。返回 null=无可过滤（沿用整包透传）。
+// 文件落隔离 home（本就是 ephemeral 凭据面，随沙盒清理），不入 .lazyzcode 主档。
+export function prepareSandboxProviderConfig(home) {
+  const realPath = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+  if (!realPath || realPath.length === 0) return null;
+  let cfg;
+  try {
+    cfg = JSON.parse(readFileSync(realPath, "utf8"));
+  } catch {
+    return null; // 不可读/非 JSON：fail-open 同旧行为
+  }
+  const filtered = filterProviderConfig(cfg);
+  if (filtered === null) return null;
+  if (filtered.config.providerConfigRules.providerRules.length === 0) {
+    throw new ReviewPreflightError(SANDBOX_NO_LEG_MSG, { reason: "no-sandbox-provider" });
+  }
+  const path = join(home, "provider-config.sandbox.json");
+  writeFileSync(path, JSON.stringify(filtered, null, 2), { mode: 0o600 });
+  return { ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: path };
+}
+
 // 泄漏断言（拍板 4 机械面）：input 字节不得含同 (slug,attempt) 任一在先运行的 runId／结论
 // 摘要哈希／raw 哈希串。命中即 invalid（理由 leak）——facts-only 是独立性的物证面。
 export function assertNoLeak(inputText, priorRuns) {
@@ -608,6 +671,20 @@ export function preflightReview(cwd, goal, { deps = {} } = {}) {
         "恢复：注入 provider env 后重跑（lzy doctor 看 headless 行）",
       { reason: "no-auth" },
     );
+  }
+  // 沙盒白名单腿预检（2026-10-02 暗烧案）：与 prepareSandboxProviderConfig 同判据，提前到
+  // reserve 前拒（不落档零孤儿目录）。仅 PERSONAL env 在场且文件实存时判——BUILTIN-only
+  // 机器（个人配置不进沙盒）不新增失败面。
+  const sandboxPersonalPath = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+  if (sandboxPersonalPath && existsSync(sandboxPersonalPath)) {
+    let legCount = -1; // -1=不可判（结构不可识别/非 JSON）——prepare 侧 fail-open 兜底
+    try {
+      const filtered = filterProviderConfig(JSON.parse(readFileSync(sandboxPersonalPath, "utf8")));
+      if (filtered !== null) legCount = filtered.config.providerConfigRules.providerRules.length;
+    } catch {}
+    if (legCount === 0) {
+      throw new ReviewPreflightError(SANDBOX_NO_LEG_MSG, { reason: "no-sandbox-provider" });
+    }
   }
   let budget = null;
   if (goal?.contract?.contractHash) {
@@ -882,12 +959,13 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       const pkg = buildInputPackage(cwd, goal, rs.runDir, { dutyId: duty, now: startedAt, contested: contestedFacts });
       const snap = materializeCandidate(cwd, rs.runDir);
       const iso = prepareIsolation(rs.runDir);
+      const sandboxEnv = prepareSandboxProviderConfig(iso.home);
       const priors = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).filter((r) => r.seq < rs.seq);
       const leak = assertNoLeak(readFileSync(pkg.inputPath, "utf8"), priors);
-      return { reserve: rs, pkg, snap, iso, priors, leak };
+      return { reserve: rs, pkg, snap, iso, sandboxEnv, priors, leak };
     });
     reserve = prepared.reserve;
-    const { pkg, snap, iso, priors, leak } = prepared;
+    const { pkg, snap, iso, sandboxEnv, priors, leak } = prepared;
     pkgHash = pkg.inputPackageHash;
     snapHash = snap.treeHash;
     if (!leak.ok) {
@@ -908,6 +986,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           mode: "plan",
           cwd: snap.candidateDir,
           home: iso.home,
+          extraEnv: sandboxEnv, // 白名单 provider 配置覆盖（null=沿用继承，prepare 侧 fail-open 面）
           timeoutMs: timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS,
           deps: typeof deps.run === "function" ? { run: deps.run } : null,
         });
@@ -1044,6 +1123,23 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       const totalPoints = withRows.reduce((acc, x) => acc + (Number(x.r.points) || 0), 0);
       const anyUnpriced = withRows.some((x) => x.r.points === 0 && Array.isArray(x.r.unpriced) && x.r.unpriced.length > 0);
       const allAbsent = reads.length > 0 && withRows.length === 0;
+      // usage 跨会话归并（0.5.0 明烧面，2026-10-02 暗烧案）：组点由计量原语（computePoints）
+      // 算好，此处只求和不重算——计价单源不旁落；unpriced 分支同样透出（tokens 烧了就是烧了）。
+      const usageBy = new Map();
+      for (const x of withRows) {
+        for (const u of x.r.usage ?? []) {
+          const k = `${u.provider ?? "(未知)"}|${u.model ?? "(未知)"}`;
+          const g =
+            usageBy.get(k) ??
+            { provider: u.provider ?? null, model: u.model ?? null, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, points: 0 };
+          g.inputTokens += Number(u.inputTokens) || 0;
+          g.cacheReadTokens += Number(u.cacheReadTokens) || 0;
+          g.outputTokens += Number(u.outputTokens) || 0;
+          g.points += Number(u.points) || 0;
+          usageBy.set(k, g);
+        }
+      }
+      const usage = [...usageBy.values()];
       const breakdown = reads
         .map((x) => {
           const label = x.sessionId ?? "无会话身份";
@@ -1059,6 +1155,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
         metering = {
           status: "unpriced",
           points: null,
+          usage,
           note: `模型未计价（表外行；逐会话：${breakdown}）——unpriced 不算零（ADR-0027 修正节）；扩价：lzy loop cost 看未计价行，价表 core/cost.js MODEL_ALIASES（N4 #5）`,
         };
       } else {
@@ -1066,6 +1163,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
         metering = {
           status: "metered",
           points: totalPoints,
+          usage,
           note: `逐会话（distinct sessionId 去重）：${breakdown}${hasUnpriced ? "；表外模型行计 0——读数为下界（计价子集口径）" : ""}`,
         };
       }
@@ -1105,6 +1203,13 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
     };
     const out = await finishRun(cwd, reserve, record);
+    // 明烧落账（0.5.0，2026-10-02 commandcode 暗烧案）：metering.usage 在场的运行（含
+    // invalid/unpriced——tokens 已烧）追加进全局沙盒外泄账（~/.zcode/cli/lzy-usage/）。
+    // best-effort：账本 IO 失败不回头改已落档运行——计量真值恒以运行档 metering.usage
+    // 为准，此处只喂聚合面（lzy loop cost / doctor / TokenTracker）。
+    try {
+      appendSandboxUsage(cwd, out.record);
+    } catch {}
     // N9：评审消耗入账（LEDGER review 类）——契约绑定才写（authorization 形状须 64hex
     // contractHash；无契约 goal 保持运行档 durable 面）；metered 才写（absent/unpriced
     // 不算零口径由运行档计量面承载）；dedup=runId（天然唯一，重放幂等）。

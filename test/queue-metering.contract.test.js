@@ -80,7 +80,7 @@ const okDriveDeps = {
 test("①真实缺席路径：HOME 隔离→宿主 db 缺席→querySessionPoints=absent（不算零）；派发结算记 metering-absent", async () => {
   const d = qrepo("lzy-qmeter-1-");
   try {
-    assert.deepEqual(querySessionPoints("sess-abc"), { absent: true, unpriced: [], points: 0 });
+    assert.deepEqual(querySessionPoints("sess-abc"), { absent: true, unpriced: [], points: 0, usage: [] });
     approvedItem(d, "qi-m1");
     setQueueBudget(d, { points: 100 }); // 积分限批次：缺席→停派语义激活
     const r = await runQueueDispatch(d, {}, okDriveDeps); // 不注入 queryPoints→真实缺席路径
@@ -177,8 +177,8 @@ test("⑥0.4.0 M2 参数化：默认路径=宿主账本（隔离 HOME 缺席→a
     "sqlite3",
     [
       db,
-      "CREATE TABLE model_usage (session_id TEXT, model_id TEXT, started_at INTEGER, input_tokens INTEGER, cache_read_input_tokens INTEGER, output_tokens INTEGER, status TEXT);" +
-        "INSERT INTO model_usage VALUES ('sess-n4', 'glm-5.3-flash', 1, 1000000, 0, 1000, 'completed');",
+      "CREATE TABLE model_usage (session_id TEXT, provider_id TEXT, model_id TEXT, started_at INTEGER, input_tokens INTEGER, cache_read_input_tokens INTEGER, output_tokens INTEGER, status TEXT);" +
+        "INSERT INTO model_usage VALUES ('sess-n4', 'test-provider', 'glm-5.3-flash', 1, 1000000, 0, 1000, 'completed');",
     ],
     { encoding: "utf8" },
   );

@@ -164,7 +164,7 @@ test("CLI：lzy loop cost 无账本降级输出退出码 0（ISOLATED_HOME，零
 });
 
 // ── 沙盒外泄账（0.5.0 明烧面，2026-10-02 commandcode 暗烧案收口）──
-import { aggregateUsageRows, sandboxLedgerLine, readSandboxUsageLines, summarizeSandboxUsage, querySessionPoints } from "../core/cost.js";
+import { aggregateUsageRows, sandboxLedgerLine, appendSandboxUsage, readSandboxUsageLines, summarizeSandboxUsage, querySessionPoints } from "../core/cost.js";
 
 test("aggregateUsageRows：按 (provider,model) 归组、tokens 求和、未计价组保留 tokens 计 0 分", () => {
   const dayH = H("2026-10-02T08:00:00+08:00"); // 周五白昼非高峰 → 常设 ×0.5
@@ -195,7 +195,7 @@ test("sandboxLedgerLine：有 usage 成行（kind/project/runId/points），无 
   };
   const line = sandboxLedgerLine("/x/y/proj", rec, now);
   assert.equal(line.kind, "review");
-  assert.equal(line.project, "proj");
+  assert.equal(line.project, "/x/y/proj", "project=仓库根全路径（同名项目不混账）");
   assert.equal(line.runId, "fx.a1.r1");
   assert.equal(line.points, 42);
   assert.equal(line.ts, now.toISOString());
@@ -219,6 +219,37 @@ test("summarizeSandboxUsage：窗口化聚合（7d/30d/all）与 byKey tokens/po
   assert.equal(s.day30.points, 101);
   const key = s.all.byKey.find((k) => k.model === "deepseek/deepseek-v4.1-flash");
   assert.equal(key.inputTokens, 750);
+});
+
+test("appendSandboxUsage：同 runId 重放幂等不双算、新 runId 照常入账、无 runId 不去重（收口③）", () => {
+  const home = mkdtempSync(join(tmpdir(), "lzy-cost-dedup-"));
+  const savedHome = process.env.HOME;
+  const savedUP = process.env.USERPROFILE;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const rec = (runId) => ({
+      runId, slug: "fx", attempt: 1, validity: { status: "valid" },
+      metering: { status: "metered", points: 3, usage: [{ provider: "p", model: "m", inputTokens: 5, cacheReadTokens: 0, outputTokens: 1, points: 3 }] },
+    });
+    assert.equal(appendSandboxUsage("/x/y/pt-dedup", rec("fx.a1.r1")), true);
+    assert.equal(appendSandboxUsage("/x/y/pt-dedup", rec("fx.a1.r1")), false, "同 runId 重放跳过（恢复重跑不双算）");
+    assert.equal(appendSandboxUsage("/x/y/pt-dedup", rec("fx.a1.r2")), true, "新 runId 照常入账");
+    const lines = readSandboxUsageLines();
+    assert.equal(lines.length, 2);
+    assert.equal(lines.find((l) => l.runId === "fx.a1.r1").project, "/x/y/pt-dedup", "project=仓库根全路径");
+    // runId 缺席无法判幂等键：照常追加如实保留（不去重）
+    const noId = rec(null);
+    assert.equal(appendSandboxUsage("/x/y/pt-dedup", { ...noId }), true);
+    assert.equal(appendSandboxUsage("/x/y/pt-dedup", { ...noId }), true, "无 runId 不去重，两行如实");
+    assert.equal(readSandboxUsageLines().length, 4);
+  } finally {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedUP === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUP;
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("readSandboxUsageLines：多文件合并、坏行与非 review kind 剔除、目录缺席 fail-soft 返 []", () => {

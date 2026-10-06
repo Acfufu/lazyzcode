@@ -4,7 +4,7 @@
 // 认领会话集）。spawn 豁免声明：本模块经 hostdb 查 sqlite3——plan-v2 §4-2 明示豁免，
 // loop.js 零 spawn 纪律不受影响。
 import { existsSync, readdirSync, readFileSync, realpathSync, mkdirSync, appendFileSync } from "node:fs";
-import { resolve, join, basename } from "node:path";
+import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import { queryHostDb } from "./hostdb.js";
 import { billingDbPath } from "./paths.js";
@@ -310,13 +310,14 @@ export function sandboxUsageDir() {
 
 // 纯函数（可测）：运行档 → 账本行。无 usage 的运行（未 spawn/计量读数失败）不产行——
 // 「缺用量不算零」口径由运行档 metering 面承载，账本只收真实烧掉的 tokens。
+// project=仓库根全路径（收口③身份面）：basename 在两个同名项目间不可判，聚合面不混账。
 export function sandboxLedgerLine(cwd, record, now = new Date()) {
   const usage = record?.metering?.usage;
   if (!Array.isArray(usage) || usage.length === 0) return null;
   return {
     ts: now.toISOString(),
     kind: "review",
-    project: basename(String(cwd ?? "")) || null,
+    project: String(cwd ?? "") || null,
     runId: record.runId ?? null,
     slug: record.slug ?? null,
     attempt: record.attempt ?? null,
@@ -329,6 +330,11 @@ export function sandboxLedgerLine(cwd, record, now = new Date()) {
 export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
   const line = sandboxLedgerLine(cwd, record, now);
   if (!line) return false;
+  // runId 幂等去重（收口③）：同 runId 已在账（任意月文件）→ 跳过追加——重放/恢复重跑
+  // 不双算，语义对齐 core/queue.js dedupKey 写面（queue.js:182-184/:614-647）。运行档为
+  // 计量真值，此处只喂聚合面。runId 缺席（无法判幂等键）照常追加如实保留。
+  // 返回值：true=本次追加；false=无行可记（缺 usage）或同 runId 已在账（幂等跳过）。
+  if (line.runId && readSandboxUsageLines().some((l) => l.runId === line.runId)) return false;
   const dir = sandboxUsageDir();
   mkdirSync(dir, { recursive: true });
   const month = new Date(now.getTime() + 8 * 3_600_000).toISOString().slice(0, 7);

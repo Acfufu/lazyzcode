@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, basename } from "node:path";
+import { join } from "node:path";
 import {
   BASELINE_DUTY_ID,
   ReviewPreflightError,
@@ -253,7 +253,7 @@ test("runReview 接线：白名单 extraEnv 进 spawn、metering.usage 跨会话
     assert.equal(files.length, 1, "落账月文件恰一");
     const line = JSON.parse(readFileSync(join(ledgerDir, files[0]), "utf8").split("\n")[0]);
     assert.equal(line.kind, "review");
-    assert.equal(line.project, basename(d));
+    assert.equal(line.project, d, "project=仓库根全路径（同名项目不混账）");
     assert.equal(line.runId, res.record.runId);
     assert.equal(line.points, 42);
     assert.deepEqual(line.usage, res.record.metering.usage);

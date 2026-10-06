@@ -162,3 +162,157 @@ test("CLI：lzy loop cost 无账本降级输出退出码 0（ISOLATED_HOME，零
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+// ── 沙盒外泄账（0.5.0 明烧面，2026-10-02 commandcode 暗烧案收口）──
+import { aggregateUsageRows, sandboxLedgerLine, readSandboxUsageLines, summarizeSandboxUsage, querySessionPoints } from "../core/cost.js";
+
+test("aggregateUsageRows：按 (provider,model) 归组、tokens 求和、未计价组保留 tokens 计 0 分", () => {
+  const dayH = H("2026-10-02T08:00:00+08:00"); // 周五白昼非高峰 → 常设 ×0.5
+  const rows = [
+    { sid: "s1", provider: "new-provider", model: "deepseek/deepseek-v4.1-flash", h: dayH, it: 1_000_000, crt: 1_000_000, ot: 1_000_000 },
+    { sid: "s2", provider: "new-provider", model: "deepseek/deepseek-v4.1-flash", h: dayH, it: 500_000, crt: 0, ot: 0 }, // 跨会话同组
+    { sid: "s1", provider: "other", model: "minimax-m2.7", h: dayH, it: 10, crt: 0, ot: 0 }, // 未计价
+  ];
+  const g = aggregateUsageRows(rows);
+  assert.equal(g.length, 2);
+  const ds = g.find((x) => x.model === "deepseek/deepseek-v4.1-flash");
+  assert.equal(ds.provider, "new-provider");
+  assert.equal(ds.inputTokens, 1_500_000);
+  assert.equal(ds.cacheReadTokens, 1_000_000);
+  assert.equal(ds.outputTokens, 1_000_000);
+  // 计价单源核对：1.5×2 + 1×0.04 + 1×8 = 11.04 ×0.5 = 5.52
+  assert.equal(Math.round(ds.points * 100) / 100, 5.52);
+  const mm = g.find((x) => x.model === "minimax-m2.7");
+  assert.equal(mm.inputTokens, 10, "未计价组 tokens 照实保留——烧了就是烧了");
+  assert.equal(mm.points, 0);
+});
+
+test("sandboxLedgerLine：有 usage 成行（kind/project/runId/points），无 usage 返 null", () => {
+  const now = new Date("2026-10-02T09:00:00+08:00");
+  const rec = {
+    runId: "fx.a1.r1", slug: "fx", attempt: 1, validity: { status: "valid" },
+    metering: { status: "metered", points: 42, usage: [{ provider: "p", model: "m", inputTokens: 1, cacheReadTokens: 0, outputTokens: 0, points: 42 }] },
+  };
+  const line = sandboxLedgerLine("/x/y/proj", rec, now);
+  assert.equal(line.kind, "review");
+  assert.equal(line.project, "proj");
+  assert.equal(line.runId, "fx.a1.r1");
+  assert.equal(line.points, 42);
+  assert.equal(line.ts, now.toISOString());
+  assert.equal(sandboxLedgerLine("/x/y/proj", { ...rec, metering: { status: "absent", points: null, note: "n" } }), null, "缺用量不算零不入账");
+  assert.equal(sandboxLedgerLine("/x/y/proj", { ...rec, metering: { status: "metered", points: 42, usage: [] } }), null);
+});
+
+test("summarizeSandboxUsage：窗口化聚合（7d/30d/all）与 byKey tokens/points 求和（kind 过滤在读取面）", () => {
+  const now = new Date("2026-10-02T09:00:00+08:00");
+  const u = (it) => [{ provider: "new-provider", model: "deepseek/deepseek-v4.1-flash", inputTokens: it, cacheReadTokens: 0, outputTokens: 0, points: 1 }];
+  const lines = [
+    { ts: "2026-10-01T00:00:00Z", kind: "review", points: 1, usage: u(100) }, // ~1.4d → 7d 窗
+    { ts: "2026-09-20T00:00:00Z", kind: "review", points: 1, usage: u(200) }, // ~12d → 30d 窗
+    { ts: "2026-08-01T00:00:00Z", kind: "review", points: 1, usage: u(400) }, // ~62d → 仅 all
+    { ts: "2026-10-01T00:00:00Z", kind: "junk", points: 99, usage: u(50) }, // 非 review kind——读取面已剔，此处验聚合不重滤
+  ];
+  const s = summarizeSandboxUsage(lines, now);
+  assert.equal(s.runs, 4);
+  assert.equal(s.all.points, 102);
+  assert.equal(s.day7.points, 100, "day7 含 junk 行（读取面过滤在前）");
+  assert.equal(s.day30.points, 101);
+  const key = s.all.byKey.find((k) => k.model === "deepseek/deepseek-v4.1-flash");
+  assert.equal(key.inputTokens, 750);
+});
+
+test("readSandboxUsageLines：多文件合并、坏行与非 review kind 剔除、目录缺席 fail-soft 返 []", () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-cost-ledger-"));
+  try {
+    const dir = join(d, ".zcode", "cli", "lzy-usage");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "2026-09.jsonl"), JSON.stringify({ ts: "x", kind: "review", points: 1, usage: [] }) + "\nBROKEN{\n");
+    writeFileSync(join(dir, "2026-10.jsonl"), JSON.stringify({ ts: "y", kind: "review", points: 2, usage: [] }) + "\n" + JSON.stringify({ ts: "z", kind: "junk" }) + "\n");
+    const lines = readSandboxUsageLines({ dir });
+    assert.equal(lines.length, 2, "坏行与非 review kind 剔除");
+    assert.deepEqual(lines.map((l) => l.points), [1, 2], "文件名排序 09 在前");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+  assert.deepEqual(readSandboxUsageLines({ dir: join(d, "nope") }), []);
+});
+
+// 真 db 腿（sqlite3 在场；hostdb-wal 家法 skip 守卫）
+const HAS_SQLITE3 = spawnSync("sqlite3", ["--version"], { timeout: 5_000 }).status === 0;
+const sqlOf = (db, statement) => spawnSync("sqlite3", [db, statement], { encoding: "utf8", timeout: 10_000 });
+const MU_SCHEMA =
+  "CREATE TABLE model_usage(session_id TEXT, provider_id TEXT, model_id TEXT, status TEXT, started_at INTEGER, " +
+  "input_tokens INTEGER, cache_read_input_tokens INTEGER, output_tokens INTEGER);";
+
+test("querySessionPoints 真 db：usage 按 (provider,model) 分组、tokens/points 与库一致（0.5.0 升级面）", { skip: !HAS_SQLITE3 && "sqlite3 缺席" }, () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-cost-db-"));
+  try {
+    const db = join(d, "db.sqlite");
+    const hMs = H("2026-10-02T08:00:00+08:00") * 3_600_000;
+    const r = sqlOf(
+      db,
+      `${MU_SCHEMA} ` +
+        `INSERT INTO model_usage VALUES('s9','new-provider','deepseek/deepseek-v4.1-flash','completed',${hMs},1000000,0,0); ` +
+        `INSERT INTO model_usage VALUES('s9','new-provider','deepseek/deepseek-v4.1-flash','completed',${hMs + 3_600_000},500000,0,0); ` +
+        `INSERT INTO model_usage VALUES('s9','other','minimax-m2.7','completed',${hMs},10,0,0);`,
+    );
+    assert.equal(r.status, 0, `建库失败：${r.stderr}`);
+    const q = querySessionPoints("s9", { dbPath: db });
+    assert.equal(q.absent, false);
+    assert.equal(q.usage.length, 2);
+    const ds = q.usage.find((x) => x.model === "deepseek/deepseek-v4.1-flash");
+    assert.equal(ds.provider, "new-provider");
+    assert.equal(ds.inputTokens, 1_500_000, "跨小时桶同组求和");
+    assert.ok(ds.points > 0, "已计价组积分非零");
+    assert.ok(q.unpriced.includes("minimax-m2.7"), "表外模型如实具名");
+    const mm = q.usage.find((x) => x.model === "minimax-m2.7");
+    assert.equal(mm.inputTokens, 10);
+    assert.equal(mm.points, 0);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("CLI：lzy loop cost 沙盒外泄账段（真 db+真落账目录，双源分列）", { skip: !HAS_SQLITE3 && "sqlite3 缺席" }, () => {
+  const home = mkdtempSync(join(tmpdir(), "lzy-cost-sb-home-"));
+  const cwd0 = mkdtempSync(join(tmpdir(), "lzy-cost-sb-cwd-"));
+  try {
+    const dbDir = join(home, ".zcode", "cli", "db");
+    mkdirSync(dbDir, { recursive: true });
+    const db = join(dbDir, "db.sqlite");
+    const hMs = H("2026-10-02T08:00:00+08:00") * 3_600_000;
+    const r = sqlOf(
+      db,
+      `CREATE TABLE session(id TEXT, directory TEXT); ${MU_SCHEMA} ` +
+        `INSERT INTO model_usage VALUES('s1','account:bigmodel','GLM-5.3-Flash','completed',${hMs},1000000,0,0);`,
+    );
+    assert.equal(r.status, 0, `建库失败：${r.stderr}`);
+    const ledgerDir = join(home, ".zcode", "cli", "lzy-usage");
+    mkdirSync(ledgerDir, { recursive: true });
+    const month = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 7);
+    writeFileSync(
+      join(ledgerDir, `${month}.jsonl`),
+      JSON.stringify({
+        ts: new Date().toISOString(), kind: "review", project: "pt-sol", runId: "fx.a1.r1", slug: "fx", attempt: 1,
+        validity: "valid", points: 1,
+        usage: [{ provider: "new-provider", model: "deepseek/deepseek-v4.1-flash", inputTokens: 1_000_000, cacheReadTokens: 0, outputTokens: 0, points: 1 }],
+      }) + "\n",
+    );
+    const cli = spawnSync(process.execPath, [CLI, "loop", "cost"], {
+      cwd: cwd0,
+      encoding: "utf8",
+      timeout: 60_000,
+      env: { ...process.env, HOME: home, USERPROFILE: home, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+    });
+    assert.equal(cli.status, 0, cli.stderr);
+    const out = `${cli.stdout}${cli.stderr}`;
+    assert.match(out, /积分成本报表/, "宿主账本面共存");
+    assert.match(out, /沙盒外泄账（隔离 HOME 评审落账，1 运行）/, "沙盒面独立分列");
+    assert.match(out, /new-provider \/ deepseek\/deepseek-v4\.1-flash/);
+    assert.match(out, /1\.0M tok/);
+    assert.match(out, /近 7 天 1\.0M tok \/ 1 分/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+    rmSync(cwd0, { recursive: true, force: true });
+  }
+});

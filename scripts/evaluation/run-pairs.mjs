@@ -93,9 +93,84 @@ export function verifyJournalChain(lines) {
   return { ok: true, brokenAt: null, last: prev };
 }
 
+// §评估资格判定（0.5.0 M0，plan-v050 §4 P0 收口）：与 §9.2 质量门分离的前置层。
+// 资格不成立＝这批数据不能进入质量门判读——六类数据缺陷（缺任务/缺臂/缺 trial/重复 trial/
+// 未知判读/身份与判读代次混杂）另加批清单冻结面三要素缺席；资格成立而门不满足＝
+// 「尚无质量收益证据」。资格拒与质量门结论在报告层可判别（stage=evaluation-qualification）。
+export function qualificationGate(runs, { batch, keyCounterexampleIds } = {}) {
+  const reasons = [];
+  const sequence = Array.isArray(batch?.sequence) ? batch.sequence : null;
+  if (!sequence || sequence.length === 0) reasons.push("批清单无冻结序列（batch.sequence 缺席或空）——完整性无从核对");
+  if (!batch?.repoTaskIds || typeof batch.repoTaskIds !== "object") reasons.push("批清单无任务集合（batch.repoTaskIds 缺席）");
+  if (!Array.isArray(keyCounterexampleIds)) reasons.push("批清单未预注册关键反例清单（keyCounterexampleIds 字段缺席）——逐项反例判读无法绑定（存量批重出报告沿新批规则重冻结，不改旧批）");
+  if (reasons.length > 0 || !sequence) return { eligible: false, reasons, stats: { sequenceCells: sequence?.length ?? 0, rows: runs.length, trialsByTask: new Map() } };
+
+  // 预注册分母与格位表全部取自冻结序列——分母不再硬编码（plan-v050 §4 P0 验收）。
+  const seqCellBySeq = new Map();
+  const trialsByTask = new Map();
+  const seqCellSeen = new Map();
+  for (const c of sequence) {
+    const cell = `${c.repo}/${c.taskId}::t${c.trial}::${c.arm}`;
+    if (seqCellBySeq.has(c.seq)) reasons.push(`冻结序列 seq ${c.seq} 重复声明——序列损坏`);
+    if (seqCellSeen.has(cell)) reasons.push(`冻结序列重复格位：${cell}（seq ${seqCellSeen.get(cell)} 与 seq ${c.seq}）——冻结面即损坏`);
+    seqCellBySeq.set(c.seq, cell);
+    seqCellSeen.set(cell, c.seq);
+    const tk = `${c.repo}/${c.taskId}`;
+    if (!trialsByTask.has(tk)) trialsByTask.set(tk, new Set());
+    trialsByTask.get(tk).add(c.trial);
+  }
+
+  // 行面核对：重复 trial / 身份混杂 / 未知判读 / 判读代次混杂。
+  const cellSeen = new Map();
+  const judgeGens = new Set();
+  const rowsByTask = new Map();
+  for (const r of runs) {
+    const tk = `${r.repo}/${r.taskId}`;
+    if (!rowsByTask.has(tk)) rowsByTask.set(tk, []);
+    rowsByTask.get(tk).push(r);
+    const cell = `${tk}::t${r.trial}::${r.arm}`;
+    if (cellSeen.has(cell)) reasons.push(`重复 trial：${cell}（seq ${cellSeen.get(cell)} 与 seq ${r.seq} 同格双行）`);
+    else cellSeen.set(cell, r.seq);
+    const expectCell = seqCellBySeq.get(r.seq);
+    if (expectCell === undefined) reasons.push(`seq ${r.seq} 不在冻结序列内（${cell}）——身份混杂`);
+    else if (expectCell !== cell) reasons.push(`seq ${r.seq} 记录格位 ${cell} ≠ 冻结序列 ${expectCell}——身份混杂`);
+    if (r.status !== "skipped" && r.oraclePassed !== true && r.oraclePassed !== false) reasons.push(`未知判读：seq ${r.seq} ${cell}（oraclePassed=${String(r.oraclePassed)}）——判读缺席不记败，先 --rejudge-oracle 统一或 --force-seq 重跑该腿`);
+    judgeGens.add(r.oracleJudge == null ? "v1(隐)" : `v${r.oracleJudge}`);
+  }
+  if (judgeGens.size > 1) reasons.push(`判读代次混杂（${[...judgeGens].sort().join(" × ")}）——判读代次须统一，先 --rejudge-oracle`);
+
+  // 缺任务/缺臂/缺 trial：对批清单声明的任务集合逐格对表。
+  for (const [repo, ids] of Object.entries(batch.repoTaskIds)) {
+    for (const taskId of ids) {
+      const tk = `${repo}/${taskId}`;
+      const rows = rowsByTask.get(tk) ?? [];
+      if (rows.length === 0) {
+        reasons.push(`缺任务：${tk} 零行记录`);
+        continue;
+      }
+      const expectedTrials = trialsByTask.get(tk);
+      for (const arm of ARMS) {
+        const armRows = rows.filter((r) => r.arm === arm);
+        if (armRows.length === 0) {
+          reasons.push(`缺臂：${tk} 无 ${arm} 臂记录`);
+          continue;
+        }
+        if (expectedTrials) {
+          for (const t of [...expectedTrials].sort()) {
+            if (!armRows.some((r) => r.trial === t)) reasons.push(`缺 trial：${tk} ${arm} 臂缺 trial ${t}`);
+          }
+        }
+      }
+    }
+  }
+  return { eligible: reasons.length === 0, reasons, stats: { sequenceCells: sequence.length, rows: runs.length, trialsByTask } };
+}
+
 // §9.2 质量门判定（报告层）：输入=逐 run 记录（oraclePassed/goalDone/legitimateStop 标记）。
 // 返回 {met, reasons[]}——met=false 即「尚无质量收益证据」，不产晋级材料。
-export function qualityGate(runs, { keyCounterexampleIds = [] } = {}) {
+// trialsByTask（0.5.0 M0）：预注册 trial 分母（Map tk→trial 数，出自冻结序列）——
+// 每任务门槛=⌈2/3×预注册 trial 数⌉，不再硬编码成功数 2；缺席时回退 3（直接调用方兼容）。
+export function qualityGate(runs, { keyCounterexampleIds = [], trialsByTask = null } = {}) {
   const reasons = [];
   const byArm = (arm) => runs.filter((r) => r.arm === arm && r.status !== "skipped");
   const fresh = byArm("new");
@@ -111,7 +186,10 @@ export function qualityGate(runs, { keyCounterexampleIds = [] } = {}) {
   for (const t of tasks) {
     const armTrials = (arm) => fresh.concat(base).filter((r) => `${r.repo}/${r.taskId}` === t && r.arm === arm);
     const okOf = (rs) => rs.filter((r) => r.oraclePassed === true).length;
-    if (armTrials("new").length > 0 && okOf(armTrials("new")) < 2) reasons.push(`${t}：新臂正确交付 ${okOf(armTrials("new"))}/${armTrials("new").length}（每任务须 ≥2/3）`);
+    const reg = trialsByTask?.get(t);
+    const trialsRegistered = typeof reg === "number" ? reg : reg instanceof Set ? reg.size : 3;
+    const need = Math.ceil((2 / 3) * trialsRegistered);
+    if (armTrials("new").length > 0 && okOf(armTrials("new")) < need) reasons.push(`${t}：新臂正确交付 ${okOf(armTrials("new"))}/${armTrials("new").length}（每任务须 ≥${need}/${trialsRegistered}，预注册 trial 分母）`);
   }
   const newOk = fresh.filter((r) => r.oraclePassed === true).length;
   const oldOk = base.filter((r) => r.oraclePassed === true).length;
@@ -246,6 +324,8 @@ export function preflight(f, { cwd = process.cwd() } = {}) {
     sealedRoot,
     srcDirs,
     budgets: {},
+    // 关键反例清单冻结面绑定（0.5.0 M0）：缺席记 null（报告层资格拒），显式数组照录。
+    keyCounterexampleIds: Array.isArray(index.keyCounterexampleIds) ? index.keyCounterexampleIds : null,
     sequence: null,
   };
   const perRepoManifests = {};
@@ -512,7 +592,20 @@ export function writeReport(outDir, batch, runs) {
   if (!integrityOk) {
     return { refused: true, integrity };
   }
-  const qg = qualityGate(runs, {});
+  // 评估资格前置层（0.5.0 M0）：资格拒（stage=evaluation-qualification）独立于完整性拒与
+  // §9.2 质量门——不完整批在此拦下，不进入质量门判读。关键反例清单绑定批清单预注册字段，
+  // 缺席即资格拒；显式空数组＝声明「无」，逐项判读照常入报告。
+  const keyCounterexampleIds = Array.isArray(batch.keyCounterexampleIds) ? batch.keyCounterexampleIds : null;
+  const qualification = qualificationGate(runs, { batch, keyCounterexampleIds });
+  if (!qualification.eligible) {
+    return { refused: true, stage: "evaluation-qualification", qualification, integrity };
+  }
+  const qg = qualityGate(runs, { keyCounterexampleIds: keyCounterexampleIds ?? [], trialsByTask: qualification.stats.trialsByTask });
+  const freshRows = runs.filter((r) => r.arm === "new" && r.status !== "skipped");
+  const counterexampleItems = (keyCounterexampleIds ?? []).map((id) => {
+    const bad = freshRows.filter((r) => r.taskId === id && r.oraclePassed === false && r.goalDone === true);
+    return { id, falseCompletions: bad.length, verdict: bad.length === 0 ? "守住（0 次新臂错误完成）" : `命中（${bad.length} 次新臂错误完成——质量门拒因见 qualityGate.reasons）` };
+  });
   const byPair = {};
   for (const r of runs) {
     const key = `${r.repo}/${r.taskId}/t${r.trial}`;
@@ -534,6 +627,8 @@ export function writeReport(outDir, batch, runs) {
         new: runs.filter((r) => r.arm === "new").reduce((s, r) => s + (r.points ?? 0), 0),
       },
     },
+    qualification: { eligible: true, sequenceCells: qualification.stats.sequenceCells, rows: qualification.stats.rows },
+    counterexamples: { declared: keyCounterexampleIds?.length ?? 0, note: (keyCounterexampleIds?.length ?? 0) === 0 ? "批清单显式预注册为空" : null, items: counterexampleItems },
     qualityGate: qg,
     conclusion: qg.met ? "质量门满足（晋级材料见 qualityGate；采纳=维护者决定）" : "尚无质量收益证据（§9.2 不满足——不宣称通过，不产晋级材料）",
     pairs: byPair,
@@ -595,7 +690,11 @@ async function main() {
     for (const l of after) if (l.record?.seq != null) latest.set(l.record.seq, l.record);
     const rep = writeReport(outDir, batch, [...latest.values()]);
     if (rep.refused) {
-      console.error(`[run-pairs] BLOCKED：完整性门拒（${JSON.stringify(rep.integrity)}）`);
+      if (rep.stage === "evaluation-qualification") {
+        console.error(`[run-pairs] BLOCKED：评估资格拒——不具备评估资格：\n${rep.qualification.reasons.map((x) => `  - ${x}`).join("\n")}\n  （补齐配对 / --force-seq 重跑缺失腿 / --rejudge-oracle 统一判读代次后重出报告）`);
+      } else {
+        console.error(`[run-pairs] BLOCKED：完整性门拒（${JSON.stringify(rep.integrity)}）`);
+      }
       process.exit(3);
     }
     console.log(`[run-pairs] rejudge ${rejudged} runs；report：${rep.report.conclusion}`);
@@ -657,7 +756,11 @@ async function main() {
     }
     const rep = writeReport(outDir, frozen, [...bySeqLatest.values()]);
     if (rep.refused) {
-      console.error(`[run-pairs] BLOCKED：完整性门拒（${JSON.stringify(rep.integrity)}）——删改结果/换环境后 report 必拒（V14）`);
+      if (rep.stage === "evaluation-qualification") {
+        console.error(`[run-pairs] BLOCKED：评估资格拒——不具备评估资格：\n${rep.qualification.reasons.map((x) => `  - ${x}`).join("\n")}\n  （补齐配对 / --force-seq 重跑缺失腿 / --rejudge-oracle 统一判读代次后重出报告）`);
+      } else {
+        console.error(`[run-pairs] BLOCKED：完整性门拒（${JSON.stringify(rep.integrity)}）——删改结果/换环境后 report 必拒（V14）`);
+      }
       process.exit(3);
     }
     console.log(`[run-pairs] report：${rep.report.conclusion}`);

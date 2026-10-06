@@ -263,6 +263,13 @@ describe("⑥report 完整性拒（包/环境/journal 三面）", () => {
       writeFileSync(tgzC, "c");
       const batch = {
         batchId: "fx",
+        // 0.5.0 M0 冻结面三要素：资格判定（qualificationGate）的核对输入。
+        keyCounterexampleIds: [],
+        repoTaskIds: { r: ["t"] },
+        sequence: [
+          { seq: 1, repo: "r", taskId: "t", trial: 1, arm: "old" },
+          { seq: 2, repo: "r", taskId: "t", trial: 1, arm: "new" },
+        ],
         packages: { baseline: { path: tgzB, sha256: sha256Of(tgzB) }, candidate: { path: tgzC, sha256: sha256Of(tgzC) } },
         env: { node: process.version },
       };

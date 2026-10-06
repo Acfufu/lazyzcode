@@ -8,12 +8,14 @@ markdown: GFM
 highlighter: rouge
 permalink: pretty
 
-# 历史评审与证据档案不进站点构建：Liquid 会把正文中的 {{{ 误当模板语法炸掉整个构建；
+# 历史评审、证据档案与校准交接/模板不进站点构建：Liquid 会把正文中的 {{{ 误当模板语法炸掉整个构建；
 # 这些是内部 QA 记录，GitHub 仓库页照常渲染，无需站点化。
 exclude:
   - reviews
   - evidence
   - history.md
+  - handoffs
+  - templates
 
 defaults:
   # 兜底：其余 md（adr/spikes/diagnostics/research 等内部工程记录）走 bare 布局，

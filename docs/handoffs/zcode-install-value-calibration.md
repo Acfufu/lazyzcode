@@ -59,7 +59,7 @@
 
 ## 保留的历史与现存工作
 
-编写交接时 HEAD 是 `9171d240712535d71e4bfc58e585fea031ccc031`。已有未提交内容包括 `core/cost.js`、`core/doctor.js`、`core/review.js`、两份计量测试、未跟踪的 provider 测试与 `docs/plan-v050-closure-and-evaluation.md`。重新检查实际状态，不覆盖、不视为本次已验证交付。
+编写交接时 HEAD 是 `9171d240712535d71e4bfc58e585fea031ccc031`。当时的未提交件已于 2026-10-06 处置（用户直令）：`docs/plan-v050-closure-and-evaluation.md` 入库；`core/cost.js`/`core/doctor.js`/`core/review.js` 与三份计量/provider 测试（772/772 绿、按该计划 §P0 属候选待语义验证）挪至分支 `wip-v050-metering-provider` 保管，主工作树已净。校准前环境事实（全局 lzy 已装 0.4.1、安装时间不可回溯、swe1–3 题族排除、候选源仓库清单）在 `artifacts/install-value-calibration/pre-batch/`（本地，不入库）。仍须重新检查实际状态，不覆盖、不视为本次已验证交付。
 
 [0.4.0 评估](../reviews/v040-policy-evaluation.md) 是历史材料；不要读取旧密封任务来凑新题。旧 `scripts/evaluation/run-pairs.mjs` 可以借用经核实的归档/身份思路，但它的任务结构和质量门不适用于本协议。
 

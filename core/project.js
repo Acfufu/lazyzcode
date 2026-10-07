@@ -99,7 +99,9 @@ function validateRecipe(cls, raw, cwd, seenIds, index) {
   if (outputs !== undefined) {
     if (!Array.isArray(outputs)) reject(`${at}.outputs 须为字符串数组`);
     for (const o of outputs) {
-      if (typeof o !== "string") reject(`${at}.outputs 含非字符串项`);
+      // 空白项拒（M2 评审 a1.r1 F-6）：过校验后在执行期以 EISDIR 崩掉且不留回执——
+      // 与 env/writePaths/inputPaths 的非空语义拉齐。
+      if (typeof o !== "string" || !o.trim()) reject(`${at}.outputs 含非字符串或空白项`);
       // outputs 收容（M2，a1.r13 F-1）：同 writePaths 家法——outputs 会把 sha256 写进回执，
       // 绝对/逃逸条目等于把仓外任意路径（含设备文件等无界源）纳入回执工件面。
       if (isAbsolute(o)) reject(`${at}.outputs 含绝对路径：「${o}」——只收项目根相对路径（writePaths 家法）`);

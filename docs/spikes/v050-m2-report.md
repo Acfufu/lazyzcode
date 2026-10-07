@@ -54,7 +54,7 @@ goal `v050-m2-freeze`（HEAVY · risk med）· 2026-10-08 · 计划快照 sha256
 
 ## 8 · 证据索引（工件持久家法，M0 口径）
 
-计划快照 `322d8280500dd6ab…`；`.lazyzcode/loop/snapshots/v050-m2-freeze.md` 同内容。工件 sha256（前 16 位）：`a86874f5c751a4f1` a3-wallclock.json · `ed0c5285304e9108` lazyzcode-0.4.1.tgz（基线包）· `8e759cc7ca335682` evalsets/MANIFEST.json · 红半日志 f1/f2/f3/f5/f6/f7-red.log（artifacts/v050/m2/，sha 见 `lzy evidence list` 账本绑定）。树内正本：scripts/v050/probes/{f1-verify-receipt.mjs,f2-reroute-probe.sh,f3-cause-readface.mjs}＋scripts/v050/artifact-index/v050-m1.json（重放=`node scripts/v050/replay-artifacts.mjs --index scripts/v050/artifact-index/v050-m1.json`）。
+计划快照 `322d8280500dd6ab…`；`.lazyzcode/loop/snapshots/v050-m2-freeze.md` 同内容。工件 sha256（前 16 位）：`a86874f5c751a4f1` a3-wallclock.json · `ed0c5285304e9108` lazyzcode-0.4.1.tgz（基线包）· `062a6b6a36862448` evalsets/MANIFEST.json（重钉后现行值；初版 `8e759cc7ca335682` 为冻结提交时形态，重排记见 §5 冻结后修正）· 红半日志 f1/f2/f3/f5/f6/f7-red.log（artifacts/v050/m2/，sha 见 `lzy evidence list` 账本绑定）。树内正本：scripts/v050/probes/{f1-verify-receipt.mjs,f2-reroute-probe.sh,f3-cause-readface.mjs}＋scripts/v050/artifact-index/v050-m1.json（重放=`node scripts/v050/replay-artifacts.mjs --index scripts/v050/artifact-index/v050-m1.json`）。
 
 本棒提交链（1296d18 后）：`6de965f` N1-N3 → `85e884e` N4-N5 → `03d2718` N6 → `33fc26a` N7-N8 → `e5ab779` N9 → `fb66624` N10 → `f41c7fa` N11 → `a90669d` N12 → 冻结提交＋收口提交（N13）。
 
@@ -64,7 +64,11 @@ goal `v050-m2-freeze`（HEAVY · risk med）· 2026-10-08 · 计划快照 sha256
 - run-hook .cmd 孪生与 win32 全套未在 Windows 活体复测（源面 grep 钉面；VM 复测属 M4 发布域，v030 先例）。
 - 封存侧 canary 依赖环境：node v24.19.0／bun 1.3.14／Xcode 27.0（27A266a）/iPhone 17 Pro 模拟器——M3 批前预飞须复核同代环境在位。
 - npm test 全量终验读数见 F8（终树活体 stdout）。
+- **评审快照形态读数（a1.r1 F-2，如实注记）**：评审候选快照（git archive 无 .git）跑 npm test=806/809——三条红均系 evaluation-runner/package.surface 三测要求本地 `.git`（plan-v050 §8 v0.4.1 导出同一形态已记）；真仓读数以 F8/test-suite 回执（809/809）为权威，两数并存口径沿 v041 先例。
+- **node 轴半兑现 disposition（a1.r1 F-7）**：toolchain.node 取 process.execPath@version——execPath 即本进程实际解析面（argv[0] 字面量解析的结果），git/sqlite3 探针覆盖 PATH 解析变化；PATH 变量原文**有意不入指纹**（跨 shell/会话 PATH 抖动会令回执复用判定恒失效，背离 ADR-0025 复用经济性）——a1.r5 F-1 的「工具链解析面纳入」语义以此口径为满足，记录在案不另改码。
 
-## 10 · 评审收敛与发现处置（报告入库后补节）
+## 10 · 评审收敛与发现处置（a1.r1 blocked → 修复轮 → 待 a1.r2）
 
-（a 轮评审后按 M0/M1 体例补：修复轮提交、发现处置、终树重采读数。）
+a1.r1（2026-10-07，真评审会话，--timeout-ms 1800000）：**blocked**——F-1〔阻塞〕新评估集冻结索引缺 `keyCounterexampleIds` 预注册（run-pairs 报告层资格门硬要求，M3 将先付整批再被拒）；P2×3（F-2 快照形态读数／F-3 报告 §8 残留旧 MANIFEST sha／F-4 收束分类写面无断言）＋P3×3（F-5 N1/N2/N3/N5 零仓内覆盖／F-6 outputs 空白项 EISDIR／F-7 node 轴半兑现）。评审总评确认八冻结项实现本体无伪实现/死代码。
+
+**修复轮（d7eb431 后单提交）**：F-1=keyCounterexampleIds 由封存侧指定三 id（lazyzcode/task-2、openchamber/task-1、zpigeon-ios/task-1，跨三仓核心判读位，理由入 index.keyCounterexampleRationale；宿主仍零任务内容阅读）写入 v050-freeze-index.json；F-3=报告 §8 改列重钉后 sha；F-4=handoff-cause-readface 增写面两断言（marker.cause 落盘＋metrics cause:* 计数/旧签名不产键）；F-5=verify-receipt 增回执补轴仓内回归（tzEffective/toolchain/legs）＋project-manifest 增 cwd/outputs 收容断言；F-6=outputs 空白项前置拒（project.js，与 env/writePaths 非空语义拉齐）；F-2/F-7=处置注记入 §9（不改码）。修复后全量 F 证据重采（提交=指纹作废纪律）。

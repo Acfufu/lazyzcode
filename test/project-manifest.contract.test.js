@@ -120,3 +120,22 @@ test("无清单：project check 如实报无清单（skip 语义）", () => {
   assert.equal(r.code, 0);
   assert.match(r.out, /无 lzy\.project\.json/);
 });
+
+// ── M2（a1.r13 F-1 收容＋a1.r1 F-6 空白拒）：cwd/outputs 与 writePaths 同族家法 ──
+test("拒绝面：cwd 绝对路径与根逃逸（writePaths 家法）", () => {
+  const s = scratch();
+  manifest(s, { schemaVersion: 1, capabilities: { check: [{ id: "x", argv: ["a"], cwd: "/tmp" }] } });
+  assert.match(lzy(["project", "check"], s).out, /cwd 含绝对路径/);
+  manifest(s, { schemaVersion: 1, capabilities: { check: [{ id: "x", argv: ["a"], cwd: "../outside" }] } });
+  assert.match(lzy(["project", "check"], s).out, /cwd 逃逸项目根/);
+});
+
+test("拒绝面：outputs 绝对/逃逸/空白项（收容＋EISDIR 前置拒）", () => {
+  const s = scratch();
+  manifest(s, { schemaVersion: 1, capabilities: { check: [{ id: "x", argv: ["a"], outputs: ["/dev/null"] }] } });
+  assert.match(lzy(["project", "check"], s).out, /outputs 含绝对路径/);
+  manifest(s, { schemaVersion: 1, capabilities: { check: [{ id: "x", argv: ["a"], outputs: ["../esc.txt"] }] } });
+  assert.match(lzy(["project", "check"], s).out, /outputs 逃逸项目根/);
+  manifest(s, { schemaVersion: 1, capabilities: { check: [{ id: "x", argv: ["a"], outputs: [""] }] } });
+  assert.match(lzy(["project", "check"], s).out, /outputs 含非字符串或空白项/);
+});

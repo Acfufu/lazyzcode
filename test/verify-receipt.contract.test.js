@@ -218,3 +218,34 @@ test("契约绑定：四类回执 contractHash 严格等于 goal.contract.contra
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+// ── M2（a1.r5 F-1/F-2 仓内回归钉面，评审 a1.r1 F-5 收口）：回执补轴与腿清单——
+// tzEffective/toolchain 在 envFingerprint、legs[] 直读 skip 计数与 TAP 名单。
+test("回执补轴：tzEffective/toolchain/legs（M2 真执行面）", () => {
+  const manifest = {
+    schemaVersion: 1,
+    capabilities: {
+      check: [{
+        id: "suite",
+        argv: [process.execPath, "-e", "console.log('ℹ tests 3');console.log('ℹ pass 2');console.log('ℹ fail 0');console.log('ℹ skipped 1');console.log('# SKIP - sqlite3 缺席');"],
+        timeoutMs: 30_000,
+      }],
+    },
+  };
+  const d = repo("lzy-vr-m2-", manifest);
+  try {
+    const r = lzyIn(d, ["verify", "run", "suite", "--note", "M2 轴回归"]);
+    assert.equal(r.status, 0, r.out);
+    const receipts = listReceipts(d);
+    const rcpt = receipts.find((x) => x.checkId === "suite");
+    assert.ok(rcpt, "suite 回执缺席");
+    const fp = rcpt.envFingerprint;
+    assert.equal(typeof fp.tzEffective, "string", `tzEffective 缺席：${JSON.stringify(fp)}`);
+    assert.ok(fp.toolchain && typeof fp.toolchain.node === "string" && typeof fp.toolchain.git === "string" && typeof fp.toolchain.sqlite3 === "string", `toolchain 缺轴：${JSON.stringify(fp.toolchain)}`);
+    assert.ok(Array.isArray(rcpt.legs) && rcpt.legs.length >= 2, `legs 缺席：${JSON.stringify(rcpt.legs)}`);
+    assert.ok(/skipped=1/.test(rcpt.legs[0].reason), `skip 计数不在腿面：${JSON.stringify(rcpt.legs[0])}`);
+    assert.ok(rcpt.legs.some((l) => l.status === "skip" && /sqlite3 缺席/.test(l.reason)), `TAP 名单腿缺席：${JSON.stringify(rcpt.legs)}`);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

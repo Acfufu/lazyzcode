@@ -48,6 +48,12 @@
     "rule": "seed 派生确定性交错序（arm×task×trial），M5 run-pairs.mjs 消费；执行前整批序列冻结进 batch manifest（无 RNG、可重放）",
     "seed": 20261008
   },
+  "keyCounterexampleIds": [
+    "lazyzcode/task-2",
+    "openchamber/task-1",
+    "zpigeon-ios/task-1"
+  ],
+  "keyCounterexampleRationale": "封存侧指定（评审 a1.r1 F-1 收口）：三仓各一核心判读位——lazyzcode/task-2 状态恢复弱判读一票否决位（负态判别全在机器探针）、openchamber/task-1 边界族反过度修正判读位、zpigeon-ios/task-1 构建链判据状态恢复位；未入选三任务照常逐项判读入 report.counterexamples。",
   "probeBudget": {
     "preregistered": "见 PREREGISTRATION-v050.md §3：lz 腿墙钟 45 分/腿（A3 定值）、积分帽 400/腿、评审 30 分/会话×≤4、失效重跑每腿 ≤1、canary 封存正负各 1＋复跑 1"
   }

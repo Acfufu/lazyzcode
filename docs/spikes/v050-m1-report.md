@@ -52,3 +52,20 @@ M1 提交链（f8e494f 基线后）：`f09cb59` merge 计量候选 → `78a9817`
 - 未跑真付费评审会话与真实 drive 无人值守实弹——义务满足路径的活体验证以契约测试＋提示词/recipes 钉面为准（真会话烧分，属 M2 受控评审设计输入）；
 - npm test 读数以各步记录为准，终验（F5）以终树全量活体 stdout 为权威；
 - Windows/发布面未测（M4 范围）。
+
+## 8 · 评审收敛与发现处置（报告入库后补节，2026-10-07）
+
+主体交付（§1–§7）入库后，义务门执法按 N6 铺设的路径走通：finish 首拦即 6 义务（评审×3＋检查×3）→ 三检查回执＋三职责真评审（`lzy review run`，valid·metered）→ 三轮修复迭代 → 终轮三职责 pass·零阻塞（a1.r10/r11/r13）。这是「真宿主正常流程可完成」的活体最小版：19 拒的同型场景在本棒收口时由会话按 gate explain→review run 序列自行走通。
+
+**修复轮**（每轮提交后全量重采＋评审重跑）：
+
+| 提交 | 内容 | 消费的评审发现 |
+|---|---|---|
+| 6e94c28 | 去重键补项目维度／preflight 判据合一／沙盒配置即焚（spawn 路径）／隔离前缀剔除真实凭据目录／docs-links 配方补 test/ | a1.r1 F-1、a1.r1 F-2、a1.r3 F-1、a1.r3 F-2、a1.r2 F-1 |
+| 6543dae | 即焚单点化（落档前）／去重键补计量内容指纹 | a1.r4 F-1、a1.r4 F-2 |
+| fd7ca6f | 即焚异常路径全覆盖（catch 入口）／义务阻塞末行锚定＋回声负例／workers 适用面限定／classifyCause 谓词如实化 | a1.r7 F-2、a1.r7 F-5、a1.r7 F-4、a1.r7 F-3 |
+| 本棒收口前 | home.html softwareVersion 0.4.0→0.4.1（0.4.1 发布漏的第五处同步）；doctor sandbox-usage 行守护测试；recipes 满足序列守护测试 | a1.r11 F-1、a1.r11 F-2、a1.r11 F-3 |
+
+**deferred（非阻塞有案，M2 输入）**：回执环境指纹缺 TZ 生效时区/PATH 工具链轴（a1.r5 F-1）、回执不记录跳过腿（a1.r5 F-2）、verify 配方 cwd/outputs 收容（a1.r13 F-1）、run-hook /tmp 固定名日志（a1.r3 F-3/a1.r13 F-3）、无人值守缺省 yolo 未在帮助声明（a1.r13 F-4）、SECURITY.md 状态清单未涵盖仓外账本（a1.r3 F-5/a1.r13 F-5）、classifyCause workers 径落 other（a1.r10 F-3）、树外工件可复现性（a1.r5 F-3/a1.r11 F-4）。
+
+**过程事实**：a1.r12（ese）超墙钟 1800s 落 invalid(timeout)，重跑即过（a1.r13）——评审会话墙钟预算 30 分钟在深树职责上偶发不足；a1.r7（gc）判 blocked·P1＝证据未绑候选树（修复提交晚于重采，重采即解，非代码缺陷）。计数台账最终 798=779＋12＋7（drive-prompt 契约测试含回声负例与 recipes 守护共 5 用例）。

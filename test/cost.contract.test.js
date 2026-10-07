@@ -292,6 +292,40 @@ test("formatCost：宿主账缺席时沙盒外泄账仍独立可达（收口④�
   }
 });
 
+test("CLI：doctor 宿主账缺席仍报 sandbox-usage 行（收口④守护，评审 a1.r11 F-2）", () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-cost-doc-"));
+  const g = spawnSync("git", ["init", "-q"], { cwd: d, encoding: "utf8" });
+  try {
+    assert.equal(g.status, 0, "git init 夹具（doctor host-git 行须仓在场）");
+    // 隔离 HOME（无宿主账本）＋预置一条落账行 → doctor 必须双行齐出：waterline skip ＋ sandbox-usage ok
+    const usageDir = join(ISOLATED_HOME, ".zcode", "cli", "lzy-usage");
+    mkdirSync(usageDir, { recursive: true });
+    writeFileSync(
+      join(usageDir, "guard.jsonl"),
+      JSON.stringify({
+        ts: new Date().toISOString(), kind: "review", project: "/x/y/guard", runId: "guard.r1", slug: "guard", attempt: 1,
+        validity: "valid", points: 2,
+        usage: [{ provider: "p", model: "m", inputTokens: 9, cacheReadTokens: 0, outputTokens: 1, points: 2 }],
+      }) + "\n",
+    );
+    const r = spawnSync(process.execPath, [CLI, "doctor"], {
+      cwd: d,
+      encoding: "utf8",
+      timeout: 60_000,
+      env: { ...process.env, HOME: ISOLATED_HOME, USERPROFILE: ISOLATED_HOME, LZY_ZCODE_ENGINE: SUPPRESS_ENGINE },
+    });
+    // 退出码 0/1 均合法（隔离 HOME 下 install/files 安装面行恒 fail 翻码——status-doctor
+    // 家法同源）；断言面=沙盒外泄账行的可达性（收口④本体），不绑退出码。
+    assert.ok(r.status === 0 || r.status === 1, `doctor 退出码 0/1（实得 ${r.status}）`);
+    const out = `${r.stdout}${r.stderr}`;
+    assert.match(out, /waterline/, "水位行在场");
+    assert.match(out, /无计费账本/, "宿主账缺席时水位行如实降级");
+    assert.match(out, /沙盒外泄账：落账 1/, "宿主账缺席时沙盒外泄账行仍可达（不短路）");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
 test("readSandboxUsageLines：多文件合并、坏行与非 review kind 剔除、目录缺席 fail-soft 返 []", () => {
   const d = mkdtempSync(join(tmpdir(), "lzy-cost-ledger-"));
   try {

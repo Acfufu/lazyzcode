@@ -83,6 +83,15 @@ test("composeSegmentPrompt：finish 步带义务满足路径（gate explain 读�
   assert.match(prompt, /绝不注册新目标/, "既有红线保持");
 });
 
+// ── N6：recipes 满足序列守护（评审 a1.r11 F-3：grep 断言落测试防漂移）──
+test("zw recipes 三件均含评审义务满足序列字面量（守护回归面）", () => {
+  const RE = /review run|review qualify|policy reassess|gate explain/;
+  for (const f of ["finish.md", "execute.md", "unattended.md"]) {
+    const text = readFileSync(join(ROOT, "plugin", "skills", "zw", "recipes", f), "utf8");
+    assert.match(text, RE, `${f} 须含评审义务满足路径字面量（三 recipes 守护）`);
+  }
+});
+
 // ── N7：classifyCause 具名分类 ──
 test("classifyCause：代表性收束因逐类映射（覆盖主干族；未列族如实落 other，不称全集）", () => {
   assert.equal(classifyCause("done"), "done");

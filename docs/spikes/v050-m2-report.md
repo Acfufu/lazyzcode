@@ -38,6 +38,7 @@ goal `v050-m2-freeze`（HEAVY · risk med）· 2026-10-08 · 计划快照 sha256
 - **快照**：lazyzcode `1296d18`／openchamber `63bd5070c`／zpigeon-ios **`92ff0922`**（live HEAD rev-parse 实锤——计划记录 96ed3d1 已过时，按封存纪律以实锤封存，偏差记 MANIFEST perRepo.snapshotCommitNote）；三 commit 本地 cat-file 实证在场；zpigeon 兄弟依赖 pin 前移 8541ebca（project.yml 引用 ../zpigeon，夹具兄弟目录家法）记 MANIFEST。
 - **排除面**：devSet 六家族＋M0 六任务＋oracle-v3 覆盖缺陷均不相交（封存侧实读核对，宿主免读）；覆盖类别 error-handling/state-restore/boundary。
 - freeze manifests：`scripts/evaluation/manifests/v050-freeze-{index,lazyzcode,openchamber,zpigeon-ios}.json`（镜像 m0 形态，budget=N10 定值）＋README 登记节；M0 清单与旧批记录原样保留（重封存不覆盖旧失败记录纪律）。
+- **冻结后修正（收口相位，F6 预飞抓出）**：封存 MANIFEST 初版按 perRepo+files 形产出，run-pairs preflight 消费的是 M0 evalsets 形（`repos.<repo>.tasks[{id,briefSha256,defectSpecSha256,oracleSha256}]`，run-pairs.mjs:281-292）——实现方对既有元数据（路径+哈希+canary 判定，均已在案）做**机械重排**（任务内容文件零触碰，18 文件 sha 逐一对表不变；任务文件三 sha 自校验 0 差），MANIFEST sha `8e759cc7ca335682…`→`062a6b6a36862448…`，四份 freeze manifest 同步重钉。候选包身份不受影响（pack=产品载荷；本修正属评估侧清单，预飞随过：batch 冻结 m5eval-20261007200807、36 runs、seed 20261008）。
 - **开发材料转挂**（决策 #50）：M0 六任务＋oracle-v3 转开发材料的消费位=A3 墙钟定值（本报告 §3）；语义位记录在 v050-freeze manifests 的 devSet.note。
 
 ## 6 · 树外证据重放通道（a1.r5 F-3／a1.r11 F-4 通道半）

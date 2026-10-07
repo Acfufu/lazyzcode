@@ -30,7 +30,7 @@
       "state-restore",
       "boundary"
     ],
-    "manifestSha256": "8e759cc7ca3356827102c3f9d9391c74100a4b591a3300147fc07e807f77a0d5",
+    "manifestSha256": "062a6b6a3686244818438a64a5c17c4a9a3f8ff89b1d201f9f5d5ebf3152997e",
     "manifestSha256VerifiedBy": "宿主侧 python3 hashlib 全量复算 18/18＋MANIFEST 自身（2026-10-08，v050-m2-freeze#N11）",
     "sealedBy": "independent-subagent（独立上下文；宿主未读封存内容——泄露即作废该批独立性）",
     "canary": "双向 6/6：正（修复态）全 pass、负（缺陷态）全 fail（封存侧 mktemp 克隆真实执行；实现方不读判据故不复跑，复跑属 M3 批前预飞）",

@@ -51,6 +51,6 @@
 
 - **基线包**：lazyzcode-0.4.1.tgz（registry 发布包，tag v0.4.1=9171d2407125）
   sha256 `ed0c5285304e91085b9488ed7789e18a4ef1e2bf97b317d3acf89bbb5c75e319`。
-- **候选包**：lazyzcode-0.5.0.tgz（npm pack @ 冻结提交 a48d0e1）
-  sha256 `d0ccad722f7ed9c2c04783004f973d6d53b10a5bcbd7e35ec6743cc32e1d1f89`。
-- **冻结提交**：`a48d0e1`（main；本回填记录=收口提交，不入候选包）。
+- **候选包**：lazyzcode-0.5.0.tgz（npm pack @ 修复轮终树；评审 a1.r1 修复轮〔F-1 阻塞＋P2×3＋P3×3〕属 M2 收口内，取代冻结提交 a48d0e1 的前轮包 d0ccad722f7e…）
+  sha256 `（收口提交回填）`。
+- **冻结提交**：`（收口提交回填：修复轮终树提交）`（main；本回填记录=收口提交，不入候选包）。

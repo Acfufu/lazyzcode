@@ -330,13 +330,20 @@ export function sandboxLedgerLine(cwd, record, now = new Date()) {
 export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
   const line = sandboxLedgerLine(cwd, record, now);
   if (!line) return false;
-  // runId 幂等去重（收口③）：同 (project, runId) 已在账（任意月文件）→ 跳过追加——重放/
-  // 恢复重跑不双算，语义对齐 core/queue.js dedupKey 写面（queue.js:182-184/:614-647）。
-  // project 入键（评审 a1.r1 F-1）：裸 runId 全账查重会把跨项目同名 runId 静默漏账——
-  // 与「同名项目不混账」的立项意图相反。运行档为计量真值，此处只喂聚合面。
+  // 幂等去重（收口③）：同 (project, runId) 且计量内容一致才判重放（评审 a1.r4 F-2）——
+  // runId 茎 <slug>.a<n>.r<n> 在账本（全局，跨 reset 存活）与工作区清空重建后可被新运行
+  // 回收，裸茎撞车会把真实消耗静默跳过；计量内容（points＋tokens 合计）入键：同 run 重放
+  // 内容必然一致，回收 id 的新运行消耗几乎必然不同。语义对齐 core/queue.js dedupKey 写面。
   // runId 缺席（无法判幂等键）照常追加如实保留。
-  // 返回值：true=本次追加；false=无行可记（缺 usage）或同 (project, runId) 已在账（幂等跳过）。
-  if (line.runId && readSandboxUsageLines().some((l) => l.runId === line.runId && l.project === line.project)) return false;
+  // 返回值：true=本次追加；false=无行可记（缺 usage）或同键已在账（幂等跳过）。
+  const fp = (l) =>
+    `${Number(l.points) || 0}|${(l.usage ?? []).reduce(
+      (s, u) => s + (Number(u.inputTokens) || 0) + (Number(u.cacheReadTokens) || 0) + (Number(u.outputTokens) || 0),
+      0,
+    )}`;
+  if (line.runId && readSandboxUsageLines().some((l) => l.runId === line.runId && l.project === line.project && fp(l) === fp(line))) {
+    return false;
+  }
   const dir = sandboxUsageDir();
   mkdirSync(dir, { recursive: true });
   const month = new Date(now.getTime() + 8 * 3_600_000).toISOString().slice(0, 7);

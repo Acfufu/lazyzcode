@@ -248,6 +248,16 @@ test("appendSandboxUsage：同 runId 重放幂等不双算、新 runId 照常入
     assert.equal(appendSandboxUsage("/x/y/other-proj", rec("fx.a1.r1")), false, "同 (project,runId) 重放仍幂等");
     assert.equal(readSandboxUsageLines().length, 5);
     assert.equal(readSandboxUsageLines().filter((l) => l.runId === "fx.a1.r1").length, 2, "两项目各持一行");
+    // 回收 runId 的新运行不漏账（评审 a1.r4 F-2）：计量内容入键——同茎不同消耗照常入账
+    assert.equal(
+      appendSandboxUsage("/x/y/pt-dedup", {
+        ...rec("fx.a1.r2"),
+        metering: { status: "metered", points: 9, usage: [{ provider: "p", model: "m", inputTokens: 77, cacheReadTokens: 0, outputTokens: 2, points: 9 }] },
+      }),
+      true,
+      "同 (project,runId) 不同计量内容=回收 id 的新运行照常入账",
+    );
+    assert.equal(readSandboxUsageLines().length, 6);
   } finally {
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;

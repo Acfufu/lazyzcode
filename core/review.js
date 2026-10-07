@@ -1129,12 +1129,6 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           }
         }
       }
-      // 白名单沙盒配置即焚（评审 a1.r3 F-1）：prepareSandboxProviderConfig 落盘的专属配置
-      // 含明文 apiKey——spawn 与读取轨迹断言收口后即删（转录/输入档不含 key，审计面不受
-      // 损）；「随沙盒清理」的原声称自此有实现真身。best-effort：清理失败不回头改已落档运行。
-      try {
-        rmSync(join(iso.home, "provider-config.sandbox.json"), { force: true });
-      } catch {}
     }
     // 运行后候选复查（拍板 5：四者=三字段+净树）与快照污染（拍板 4：快照树哈希变化）
     if (spawned) {
@@ -1266,6 +1260,13 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
     };
+    // 白名单沙盒配置即焚（评审 a1.r1 F-1/a1.r4 F-1）：prepareSandboxProviderConfig 落盘的
+    // 专属配置含明文 apiKey——单点清理放落档前，覆盖全部 post-prepare 路径（正常 spawn/
+    // leak 前置拒/计量失败都到不了盘面残留）；「随沙盒清理」的原声称自此有实现真身。
+    // best-effort：清理失败不回头改已落档运行。转录/输入档不含 key，审计面不受损。
+    try {
+      rmSync(join(iso.home, "provider-config.sandbox.json"), { force: true });
+    } catch {}
     const out = await finishRun(cwd, reserve, record);
     // 明烧落账（0.5.0，2026-10-02 commandcode 暗烧案）：metering.usage 在场的运行（含
     // invalid/unpriced——tokens 已烧）追加进全局沙盒外泄账（~/.zcode/cli/lzy-usage/）。

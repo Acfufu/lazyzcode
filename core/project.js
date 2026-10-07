@@ -66,6 +66,16 @@ function validateRecipe(cls, raw, cwd, seenIds, index) {
     if (typeof a !== "string" || !a.trim()) reject(`${at}.argv 含非字符串或空项`);
   }
   if (recipeCwd !== undefined && (typeof recipeCwd !== "string" || !recipeCwd.trim())) reject(`${at}.cwd 须为非空字符串`);
+  // cwd 收容（M2，a1.r13 F-1）：与 writePaths/inputPaths 同族——绝对路径与根逃逸都拒，
+  // 声明式检查命令不再能在项目根之外执行（相对语义随之稳定的家法一致性）。
+  if (recipeCwd !== undefined) {
+    if (isAbsolute(recipeCwd)) reject(`${at}.cwd 含绝对路径：「${recipeCwd}」——只收项目根相对路径（writePaths 家法）`);
+    const resolvedCwd = resolve(cwd, recipeCwd);
+    const relCwd = relative(cwd, resolvedCwd);
+    if (relCwd.startsWith("..") || resolve(cwd, relCwd) !== resolvedCwd) {
+      reject(`${at}.cwd 逃逸项目根：「${recipeCwd}」→ ${relCwd}`);
+    }
+  }
   if (timeoutMs !== undefined && (!Number.isInteger(timeoutMs) || timeoutMs <= 0)) reject(`${at}.timeoutMs 须为正整数（毫秒）`);
   if (env !== undefined) {
     if (!Array.isArray(env)) reject(`${at}.env 须为变量名数组（只报名单，值运行时注入）`);
@@ -90,6 +100,14 @@ function validateRecipe(cls, raw, cwd, seenIds, index) {
     if (!Array.isArray(outputs)) reject(`${at}.outputs 须为字符串数组`);
     for (const o of outputs) {
       if (typeof o !== "string") reject(`${at}.outputs 含非字符串项`);
+      // outputs 收容（M2，a1.r13 F-1）：同 writePaths 家法——outputs 会把 sha256 写进回执，
+      // 绝对/逃逸条目等于把仓外任意路径（含设备文件等无界源）纳入回执工件面。
+      if (isAbsolute(o)) reject(`${at}.outputs 含绝对路径：「${o}」——只收项目根相对路径（writePaths 家法）`);
+      const resolvedOut = resolve(cwd, o);
+      const relOut = relative(cwd, resolvedOut);
+      if (relOut.startsWith("..") || resolve(cwd, relOut) !== resolvedOut) {
+        reject(`${at}.outputs 逃逸项目根：「${o}」→ ${relOut}`);
+      }
     }
   }
   // inputPaths（0.3.0 M2 范围档，ADR-0025）：该检查依赖的受验证输入清单——文件或目录条目，

@@ -186,17 +186,37 @@ export function candidateIdentity(cwd) {
 }
 
 // 环境指纹：逐名值 sha256——值原文不落盘（清单 env 名单可能承载凭据语义）。
+// M2（a1.r5 F-1）：补两轴——tzEffective 生效时区（TZ 环境值缺席时取系统生效区，UTC+8 机
+// 与 UTC 机的回执不再同指纹）与 toolchain 工具链轴（node 解析面、git 版本、sqlite3 可探测：
+// argv[0] 字面量与测试腿都经 PATH 解析，工具链换代/换机在指纹面可见）。逐项只落 sha256
+// 或探测结论，不落值原文。
 function envFingerprint(names) {
   const vars = {};
   for (const n of names) {
     const v = process.env[n];
     vars[n] = v === undefined ? "absent" : createHash("sha256").update(v).digest("hex");
   }
+  const toolHash = (s) => createHash("sha256").update(s).digest("hex");
+  const probe = (argv) => {
+    const r = spawnSync(argv[0], argv.slice(1), { timeout: 5000, encoding: "utf8" });
+    if (r.error) return "absent";
+    return r.status === 0 ? toolHash(`${r.stdout}`.trim()) : `unavailable(exit=${r.status})`;
+  };
+  let tzEffective = null;
+  try {
+    tzEffective = Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
+  } catch {}
   return {
     platform: process.platform,
     arch: process.arch,
     nodeVersion: process.version,
     TZ: process.env.TZ ?? null,
+    tzEffective,
+    toolchain: {
+      node: toolHash(`${process.execPath}@${process.version}`),
+      git: probe(["git", "--version"]),
+      sqlite3: probe(["sqlite3", "--version"]),
+    },
     vars,
   };
 }
@@ -244,6 +264,36 @@ function findCheckRecipe(manifest, checkId) {
   );
 }
 
+// 腿清单（M2，a1.r5 F-2）：从 stdout 直读测试腿事实——node --test 摘要计数（tests/pass/
+// fail/skipped）一行腿＋TAP `# SKIP - <原因>` 逐条名单腿。skip 计数与名单回执直读后，
+// 「真库腿降 skip 的绿」与「全腿跑过的绿」在回执面可区分（消费方判定语义不变）。
+// 无摘要输出的配方 legs=[]（非套件运行如实为空，不编腿）。
+function suiteLegs(stdout) {
+  const legs = [];
+  const grab = (re) => {
+    const m = stdout.match(re);
+    return m ? Number(m[1]) : null;
+  };
+  const tests = grab(/^ℹ tests (\d+)$/m);
+  if (tests !== null) {
+    const pass = grab(/^ℹ pass (\d+)$/m) ?? 0;
+    const fail = grab(/^ℹ fail (\d+)$/m) ?? 0;
+    const skipped = grab(/^ℹ skipped (\d+)$/m) ?? 0;
+    legs.push({
+      name: "node-test",
+      status: fail > 0 ? "fail" : "pass",
+      reason: `tests=${tests} pass=${pass} fail=${fail} skipped=${skipped}`,
+    });
+    if (skipped > 0) {
+      legs.push({ name: "skipped", status: "skip", reason: `${skipped} 腿 skip——回执直读，免「全腿跑过」假绿` });
+    }
+  }
+  for (const m of stdout.matchAll(/^# SKIP - (.+)$/gm)) {
+    legs.push({ name: "skip", status: "skip", reason: m[1].trim() });
+  }
+  return legs;
+}
+
 // 受控执行一问（kind=run）：真实 spawn 产生回执。拒绝面：无 goal/无清单/checkId 缺席/
 // cwd 非法。执行=spawnSync(argv, {shell:false})，超时 SIGTERM 击杀记 exit.timeout；
 // 原始 stdout/stderr 落 raw/<runId>.log（与人工摘要分离保存），回执工件面绑 sha256。
@@ -276,11 +326,13 @@ export function runCheck(cwd, checkId, { accepts = [], note = null } = {}) {
   const rawRel = join(goal.slug, "raw", `${runId}.log`);
   const rawAbs = join(verifyRoot(cwd), rawRel);
   mkdirSync(dirname(rawAbs), { recursive: true });
+  const legs = suiteLegs(r.stdout ?? "");
   const rawText =
     `$ lzy verify run ${checkId}（argv: ${JSON.stringify(recipe.argv)} · cwd: ${recipe.cwd} · timeoutMs: ${timeoutMs}）\n` +
     `$ startedAt: ${startedAt} · endedAt: ${endedAt}\n` +
     `--- stdout ---\n${r.stdout ?? ""}\n--- stderr ---\n${r.stderr ?? ""}\n` +
-    `--- exit ---\n${r.error ? `error: ${r.error.message}` : r.signal ? `signal: ${r.signal}（超时击杀）` : `code: ${r.status}`}\n`;
+    `--- exit ---\n${r.error ? `error: ${r.error.message}` : r.signal ? `signal: ${r.signal}（超时击杀）` : `code: ${r.status}`}\n` +
+    (legs.length > 0 ? `--- legs ---\n${legs.map((l) => `${l.status}: ${l.name} — ${l.reason}`).join("\n")}\n` : "");
   writeFileSync(rawAbs, rawText, { mode: 0o600 });
   const artifacts = [{ path: rawRel.split("\\").join("/"), sha256: sha256File(rawAbs) }];
   for (const o of recipe.outputs ?? []) {
@@ -306,6 +358,7 @@ export function runCheck(cwd, checkId, { accepts = [], note = null } = {}) {
     recipe: { id: recipe.id, argv: recipe.argv, cwd: recipe.cwd ?? ".", timeoutMs, manifestHash: loaded.hash },
     inputSnapshot: inputSnapshot(cwd, recipe.inputPaths ?? []),
     envFingerprint: envFingerprint(recipe.env ?? []),
+    legs,
     startedAt,
     endedAt,
     exit,
@@ -405,7 +458,7 @@ export function judgeReuse(cwd, checkId, baseRunId) {
     }
   }
   if (base && base.recipe.manifestHash === loaded.hash && JSON.stringify(envFingerprint(recipe.env ?? [])) !== JSON.stringify(base.envFingerprint)) {
-    reasons.push("环境指纹变化（platform/node/TZ/名单变量）——环境变化无法解释即回退（ADR-0025）");
+    reasons.push("环境指纹变化（platform/node/TZ 生效时区/工具链/名单变量）——环境变化无法解释即回退（ADR-0025）");
   }
   return reasons.length === 0
     ? {

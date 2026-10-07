@@ -64,11 +64,13 @@ goal `v050-m2-freeze`（HEAVY · risk med）· 2026-10-08 · 计划快照 sha256
 - run-hook .cmd 孪生与 win32 全套未在 Windows 活体复测（源面 grep 钉面；VM 复测属 M4 发布域，v030 先例）。
 - 封存侧 canary 依赖环境：node v24.19.0／bun 1.3.14／Xcode 27.0（27A266a）/iPhone 17 Pro 模拟器——M3 批前预飞须复核同代环境在位。
 - npm test 全量终验读数见 F8（终树活体 stdout）。
-- **评审快照形态读数（a1.r1 F-2，如实注记）**：评审候选快照（git archive 无 .git）跑 npm test=806/809——三条红均系 evaluation-runner/package.surface 三测要求本地 `.git`（plan-v050 §8 v0.4.1 导出同一形态已记）；真仓读数以 F8/test-suite 回执（809/809）为权威，两数并存口径沿 v041 先例。
+- **评审快照形态读数（a1.r1 F-2，如实注记）**：评审候选快照（git archive 无 .git）跑 npm test=806/809——三条红均系 evaluation-runner/package.surface 三测要求本地 `.git`（plan-v050 §8 v0.4.1 导出同一形态已记）；真仓读数以终树 test-suite 回执（814/814，raw/r-20261007T205626-a6nhfp8.log 活体）为权威——809/809 为修复轮前读数、806/809 为 a1.r1 快照形态读数，历史读数随文保留不追改（a1.r2 F-1 订正：台账统一=活体 runner 读数 814；评审静态枚举 808 与 runner 计数差=嵌套/动态注册口径，如实并存）。
 - **node 轴半兑现 disposition（a1.r1 F-7）**：toolchain.node 取 process.execPath@version——execPath 即本进程实际解析面（argv[0] 字面量解析的结果），git/sqlite3 探针覆盖 PATH 解析变化；PATH 变量原文**有意不入指纹**（跨 shell/会话 PATH 抖动会令回执复用判定恒失效，背离 ADR-0025 复用经济性）——a1.r5 F-1 的「工具链解析面纳入」语义以此口径为满足，记录在案不另改码。
 
-## 10 · 评审收敛与发现处置（a1.r1 blocked → 修复轮 → 待 a1.r2）
+## 10 · 评审收敛与发现处置（a1.r1 blocked → 修复轮 → a1.r2 pass → 终轮订正）
 
 a1.r1（2026-10-07，真评审会话，--timeout-ms 1800000）：**blocked**——F-1〔阻塞〕新评估集冻结索引缺 `keyCounterexampleIds` 预注册（run-pairs 报告层资格门硬要求，M3 将先付整批再被拒）；P2×3（F-2 快照形态读数／F-3 报告 §8 残留旧 MANIFEST sha／F-4 收束分类写面无断言）＋P3×3（F-5 N1/N2/N3/N5 零仓内覆盖／F-6 outputs 空白项 EISDIR／F-7 node 轴半兑现）。评审总评确认八冻结项实现本体无伪实现/死代码。
 
 **修复轮（d7eb431 后单提交）**：F-1=keyCounterexampleIds 由封存侧指定三 id（lazyzcode/task-2、openchamber/task-1、zpigeon-ios/task-1，跨三仓核心判读位，理由入 index.keyCounterexampleRationale；宿主仍零任务内容阅读）写入 v050-freeze-index.json；F-3=报告 §8 改列重钉后 sha；F-4=handoff-cause-readface 增写面两断言（marker.cause 落盘＋metrics cause:* 计数/旧签名不产键）；F-5=verify-receipt 增回执补轴仓内回归（tzEffective/toolchain/legs）＋project-manifest 增 cwd/outputs 收容断言；F-6=outputs 空白项前置拒（project.js，与 env/writePaths 非空语义拉齐）；F-2/F-7=处置注记入 §9（不改码）。修复后全量 F 证据重采（提交=指纹作废纪律）。
+
+**a1.r2（2026-10-08，真评审会话）**：**pass**（零 P0/P1）——5 条非阻塞发现全数处置：F-1〔P2〕测试计数台账三处互斥（809/817/814）→ 以终树活体回执 814/814 为唯一权威，本节与 history.md 同步订正，静态枚举 808 与 runner 差如实注记；F-2〔P2〕评估 README 残留旧 MANIFEST sha → 改列重钉后 `062a6b6a36862448`；F-3〔P2〕legs[] 两半绑定互斥 reporter 形态 → **disposition 注记**：`ℹ` 摘要半=default reporter 真实套件面（test-suite 回执即此形态），TAP `# SKIP` 半=recipe 显式选择 tap reporter 时的设计能力半，仓内测试与 F1 探针以合成夹具自证、未对真实 node --test 输出取形——如实声明，真实形态由 test-suite 回执 raw log 承载；F-4〔P3〕replay alsoAt 只查在场不查哈希 → **disposition 注记**：树内正本哈希由本报告 §8 的 18/18 shasum 独立复算承载（通道首跑即对表全过），哈希断言入通道列 M3 前小修候选；F-5〔P3〕outputs 校验按项目根、执行按 recipe cwd 双基目录 → **disposition 注记**：cwd 本身经收容校验 ⊆ 项目根，故两基目录解析结果均 ⊆ 项目根（收容性保持），仅相对语义随 cwd 变化——行为如实记录，不改码。

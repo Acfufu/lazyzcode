@@ -10,7 +10,7 @@
 
 - **全新评估集 generation 1**（决策 #50 评估集重锚）：`v050-freeze-index.json` ＋
   三仓 `v050-freeze-<repo>.json`；封存正本 `artifacts/v050/evalsets/`
-  （MANIFEST sha256 `8e759cc7ca335682…`，seed **20261008**，sealedBy
+  （MANIFEST sha256 `062a6b6a36862448…`〔初版 8e759cc7… 因 run-pairs 消费形机械重排被取代，见 M2 报告 §5〕，seed **20261008**，sealedBy
   independent-subagent，宿主零阅读）；每仓 2 全新任务，覆盖类别
   error-handling / state-restore / boundary。
 - 快照：lazyzcode `1296d18`、openchamber `63bd5070c`、zpigeon-ios `92ff0922`

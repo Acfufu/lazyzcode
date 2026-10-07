@@ -74,3 +74,13 @@ a1.r1（2026-10-07，真评审会话，--timeout-ms 1800000）：**blocked**—�
 **修复轮（d7eb431 后单提交）**：F-1=keyCounterexampleIds 由封存侧指定三 id（lazyzcode/task-2、openchamber/task-1、zpigeon-ios/task-1，跨三仓核心判读位，理由入 index.keyCounterexampleRationale；宿主仍零任务内容阅读）写入 v050-freeze-index.json；F-3=报告 §8 改列重钉后 sha；F-4=handoff-cause-readface 增写面两断言（marker.cause 落盘＋metrics cause:* 计数/旧签名不产键）；F-5=verify-receipt 增回执补轴仓内回归（tzEffective/toolchain/legs）＋project-manifest 增 cwd/outputs 收容断言；F-6=outputs 空白项前置拒（project.js，与 env/writePaths 非空语义拉齐）；F-2/F-7=处置注记入 §9（不改码）。修复后全量 F 证据重采（提交=指纹作废纪律）。
 
 **a1.r2（2026-10-08，真评审会话）**：**pass**（零 P0/P1）——5 条非阻塞发现全数处置：F-1〔P2〕测试计数台账三处互斥（809/817/814）→ 以终树活体回执 814/814 为唯一权威，本节与 history.md 同步订正，静态枚举 808 与 runner 差如实注记；F-2〔P2〕评估 README 残留旧 MANIFEST sha → 改列重钉后 `062a6b6a36862448`；F-3〔P2〕legs[] 两半绑定互斥 reporter 形态 → **disposition 注记**：`ℹ` 摘要半=default reporter 真实套件面（test-suite 回执即此形态），TAP `# SKIP` 半=recipe 显式选择 tap reporter 时的设计能力半，仓内测试与 F1 探针以合成夹具自证、未对真实 node --test 输出取形——如实声明，真实形态由 test-suite 回执 raw log 承载；F-4〔P3〕replay alsoAt 只查在场不查哈希 → **disposition 注记**：树内正本哈希由本报告 §8 的 18/18 shasum 独立复算承载（通道首跑即对表全过），哈希断言入通道列 M3 前小修候选；F-5〔P3〕outputs 校验按项目根、执行按 recipe cwd 双基目录 → **disposition 注记**：cwd 本身经收容校验 ⊆ 项目根，故两基目录解析结果均 ⊆ 项目根（收容性保持），仅相对语义随 cwd 变化——行为如实记录，不改码。
+
+## 11 · 职责评审轮与终验（收口记录，2026-10-08）
+
+- **a1.r5** review.verification-deps：**pass**（metered 13.98 分）——零依赖宣称/三配方同义性/inputPaths 覆盖反查/env 输入面全核；P3×1（node/PATH 指纹轴口径，沿 §9 F-7 disposition 并存）。
+- **a1.r6** review.external-side-effects：**pass**——六类副作用面全查（无外发/无凭据/写点与 SECURITY 逐条对上/spawn 全字面量）；P2×1（installer 递归删除护栏对「等于插件根」目标不设防——脏注册表前提下的防御纵深缺口，转 debts/M3 候选）＋P3×2（评审沙盒 key 落盘窄窗〔a1.r13 F-2 同源已知〕、沙盒继承宿主 env 口径〔a1.r3 F-4 同源已知〕）。
+- **发现关闭**：f1e4a0e5（a1.r1 阻塞 P1）→ 修复轮 795f6b6 → resolve-request → 独立复核 **a1.r7 pass**（metered 8.13 分）→ closed-fixed。
+- **对照**：comparator 8/8 MATCH（F1–F7 gen4／F8 gen3，亲跑复现＋红半/篡改腿亲见，artifacts/v050/m2/comparator-verdicts.json）。
+- **收口相**：a1.r3 invalid（timeout，30 分墙钟饿死＝M1 同型慢窗）→ 1h 预算重跑 a1.r4 pass——评审腿预算单列（PREREGISTRATION §3 的 30 分/会话实测上限即此而来）。INV-08 harness 错配 7 条（红绿串手打漂移）→ 从账本复制红串回填绿 gen4 清零（M1 同款雷二次踩，配方再验证）。
+- **终验 attestation**：LOOP_COMPLETE `ef582980ec4047fd…`（.lazyzcode/attestations/v050-m2-freeze-20261007T233146Z.json）。
+- 非阻塞发现余额（转后续弧候选）：a1.r4 P2×3＋P3×3、a1.r5 P3×1、a1.r6 P2×1＋P3×2——记档在案不阻收官（pass＋非阻塞 findings＝合法收官纪律）。

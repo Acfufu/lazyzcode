@@ -6,6 +6,21 @@
 （docs/plan-v040-engineering-policy.md §7 模块表）——清单记录事实与判据身份，
 不构成任何 goal 的完成权威。
 
+## 0.5.0 正式重评冻结清单（v050-freeze-*，goal v050-m2-freeze，2026-10-08）
+
+- **全新评估集 generation 1**（决策 #50 评估集重锚）：`v050-freeze-index.json` ＋
+  三仓 `v050-freeze-<repo>.json`；封存正本 `artifacts/v050/evalsets/`
+  （MANIFEST sha256 `8e759cc7ca335682…`，seed **20261008**，sealedBy
+  independent-subagent，宿主零阅读）；每仓 2 全新任务，覆盖类别
+  error-handling / state-restore / boundary。
+- 快照：lazyzcode `1296d18`、openchamber `63bd5070c`、zpigeon-ios `92ff0922`
+  （live HEAD 实锤；计划记录 96ed3d1 已过时，偏差记 MANIFEST perRepo 注记）。
+- 预算：A3 定值 **45 分/腿**（决策 #48，`wallMsPerRun: 2700000`）＋积分帽 400
+  ＋评审/重跑/canary 单列（预注册文本 `PREREGISTRATION-v050.md`）。
+- M0 冻结清单（`m0-freeze-*`）与其批记录按「重封存不覆盖旧失败记录」纪律原样保留；
+  M0 六任务＋oracle-v3 转开发材料（决策 #50），A3 定值消费记录
+  `artifacts/v050/m2/a3-wallclock.json`。
+
 ## 冻结清单格式（manifests/*.json）
 
 - `schemaVersion: 1`；每仓一份 `m0-freeze-<repo>.json` + 汇总索引 `m0-freeze-index.json`。

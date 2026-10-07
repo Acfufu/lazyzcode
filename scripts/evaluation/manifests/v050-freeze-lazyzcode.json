@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "repo": "lazyzcode",
+  "frozenHeadSha": "1296d1823208f96aecf9ba9ceac8188007855acf",
+  "frozenAt": "2026-10-08T04:00:00+08:00",
+  "environment": {
+    "os": "macOS 26.7.1 (arm64)",
+    "node": "v24.19.0",
+    "engine": "ZCode 3.14.0 代（/Applications/ZCode.app Resources/glm/zcode.cjs）"
+  },
+  "ci": {
+    "workflows": [
+      "ci.yml"
+    ],
+    "verdict": "real",
+    "deliveryCap": "mergeable"
+  },
+  "devSet": {
+    "note": "决策 #50：M0 六任务＋oracle-v3 转开发材料（本仓两任务=artifacts/v040/M0/evalsets/lazyzcode/task-{1,2}＋artifacts/v050/oracle-v3/lazyzcode/）；A3 墙钟定值消费位=artifacts/v050/m2/a3-wallclock.json（52 run 逐腿实测）。M0 封存内容实现方未读，转挂只动语义位不动内容。"
+  },
+  "evalSet": {
+    "sealedRoot": "artifacts/v050/evalsets/lazyzcode",
+    "manifestRef": "artifacts/v050/evalsets/MANIFEST.json",
+    "taskCount": 2,
+    "coverageCategories": [
+      "error-handling",
+      "state-restore"
+    ],
+    "manifestSha256": "8e759cc7ca3356827102c3f9d9391c74100a4b591a3300147fc07e807f77a0d5",
+    "status": "sealed"
+  },
+  "budget": {
+    "wallMsPerRun": 2700000,
+    "pointsPerRun": 400,
+    "note": "每次运行预注册上限（A3 定值 45 分/腿，决策 #48：v040 批 52 run 逐腿实测 ceil5(max(45,p95×1.2))，证据 artifacts/v050/m2/a3-wallclock.json）；M5 batch manifest 只可调低；突破须重新冻结"
+  },
+  "notes": "新评估集 generation 1（seed 20261008），独立子代理封存（宿主零阅读，只收 sha256/类别/canary 判定）；快照=1296d18（封存时 main）。"
+}

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "goal": "v050-m1-completion",
+  "description": "0.5.0 M1 工件机器索引（v050-m2-freeze#N9 树外证据重放通道）：逐文件全 sha256，重放=node scripts/v050/replay-artifacts.mjs --index scripts/v050/artifact-index/v050-m1.json",
+  "source": "docs/spikes/v050-m1-report.md §6（M0 工件持久家法）",
+  "artifactsRoot": "artifacts/v050/m1",
+  "indexCapturedAt": "2026-10-08",
+  "reportDrift": [
+    {
+      "path": "attribution.json",
+      "reportSha16": "e86a61e140df4231",
+      "diskSha256": "c9ed6864a73540533f2491636557043346ff5a9f0a8e646fb543e28a98aa90be",
+      "note": "M1 报告 §6 前缀与盘面现值不符（修复轮重生成、报告未回填）——重放通道首跑即抓到的真实漂移；旧密封记录不改，本索引以盘面现值为重放权威"
+    },
+    {
+      "path": "attribution.md",
+      "reportSha16": "3e5bea62cfac6841",
+      "diskSha256": "53fe42de5beadc60da5938a2b97671ed5eab72b13f205adaef1387a1d42a99b6",
+      "note": "同上——报告 §6 前缀漂移，以盘面现值为准"
+    }
+  ],
+  "items": [
+    { "path": "parse-attribution.mjs", "sha256": "535576eceedcc33661258d7408bd2040d0c47cdc7944e7d94583e2dc7935cfa4", "alsoAt": "scripts/v050/probes/f1-attribution.mjs" },
+    { "path": "attribution.json", "sha256": "c9ed6864a73540533f2491636557043346ff5a9f0a8e646fb543e28a98aa90be" },
+    { "path": "attribution.md", "sha256": "53fe42de5beadc60da5938a2b97671ed5eab72b13f205adaef1387a1d42a99b6" },
+    { "path": "probe-f2.mjs", "sha256": "492af5f3b1470f4bd6dbc1017b40048f128589e852f1014e42a7979e8ea4580c", "alsoAt": "scripts/v050/probes/f2-metering.mjs" },
+    { "path": "f1-red.log", "sha256": "159cc851ccc8e9d46aa62dd81acdd4d29e052b81e25fb2a6f4e795e030740f0e" },
+    { "path": "f2-red.log", "sha256": "05fa183141c666f277c61d2664f65acab0ac6305531d75ea3d742d500d01d2d7" }
+  ]
+}

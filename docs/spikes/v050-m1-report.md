@@ -45,6 +45,8 @@ M0 报告「对 M1 输入」引 v040 报告「§9」系悬空锚（该文仅 §1
 计划快照 `7edf80092c4eea38…`；`.lazyzcode/loop/snapshots/v050-m1-completion.md` 同内容。工件 sha256（前 16 位）：
 `535576eceedcc336` parse-attribution.mjs · `e86a61e140df4231` attribution.json · `3e5bea62cfac6841` attribution.md · `492af5f3b1470f4b` probe-f2.mjs · `159cc851ccc8e9d4` f1-red.log · `05fa183141c666f2` f2-red.log（正本在 artifacts/v050/m1/，证据副本随 F 项入 .lazyzcode/evidence/）。
 
+**M2 补记（v050-m2-freeze#N9，2026-10-08）**：重放通道落地——机器索引 `scripts/v050/artifact-index/v050-m1.json`（全 sha256）、重放命令 `node scripts/v050/replay-artifacts.mjs --index scripts/v050/artifact-index/v050-m1.json`、两条探针树内正本 `scripts/v050/probes/f1-attribution.mjs`（≡parse-attribution.mjs）与 `scripts/v050/probes/f2-metering.mjs`（≡probe-f2.mjs，逐字节同哈希）。首跑实证两处索引漂移：盘面 attribution.json=`c9ed6864a7354053`、attribution.md=`53fe42de5beadc60`，与本节记录的 `e86a61e140df4231`/`3e5bea62cfac6841` 不符（修复轮重生成、本报告未回填；旧密封记录不改）——重放权威以机器索引（盘面现值）为准，其余四件前缀逐一对上。
+
 M1 提交链（f8e494f 基线后）：`f09cb59` merge 计量候选 → `78a9817` N3 fail-closed → `2096812` N4 去重 → `9eb2691` N5 宿主账可达 → `01b99ee` N6+N7 完成路径＋cause 具名 → `c65e6bc` N8 ADR 草案 → `7bb3388` N9 锚点订正 → 本报告（N10）。
 
 ## 7 · 验证限制（如实）

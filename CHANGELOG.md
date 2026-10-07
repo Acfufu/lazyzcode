@@ -5,6 +5,8 @@ versioning is SemVer.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-08（候选冻结：M3 评估用候选；发布机械件另走 M4 release checklist）
+
 ### Added (0.5.0 M2 working set)
 
 - Review sandbox usage ledger: each paid review run appends one line to the

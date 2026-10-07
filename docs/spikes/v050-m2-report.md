@@ -49,7 +49,7 @@ goal `v050-m2-freeze`（HEAVY · risk med）· 2026-10-08 · 计划快照 sha256
 
 - package.json **0.5.0**＋plugin.json 0.5.0（守护测试钉定的同步点恰此三点：package/plugin/CHANGELOG——test/package.surface.test.js）；**marketplace.json/home.html/sitemap 有意不动**：三者是 release-checklist 第 11 步发布面同步点（ref 钉发布 tag，M4 打 tag 前提前 bump=悬空 install pin）；此口径为本棒对计划「版本同步逐点」的执行解释（按守护测试逐点=守护测试覆盖的点）。
 - 基线=v0.4.1 发布包（registry npm pack，tag 9171d2407125）：sha256 `ed0c5285304e9108…`（全量见 PREREGISTRATION §5）。
-- 候选包=npm pack（修复轮终树；评审修复轮属 M2 收口内，前轮包 d0ccad722f7e…〔冻结提交 a48d0e1〕被取代）：sha256 **由收口提交回填**（§5 文本在包内故 sha 记包外——候选身份=修复轮终树之 pack）。
+- 候选包=npm pack（修复轮终树；评审修复轮属 M2 收口内，前轮包 d0ccad722f7e…〔冻结提交 a48d0e1〕被取代）：sha256 `9901ddd9a983b99268fa5d9b696a9de88849e5e4378a1f69f245414324c2ce0b`（§5 文本在包内故 sha 记包外——候选身份=修复轮终树 cbed7aa 之 pack）。
 - 冻结后纪律：候选冻结点=M2 收口；M3 零改动（#51）；突破须重新冻结。
 
 ## 8 · 证据索引（工件持久家法，M0 口径）

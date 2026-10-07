@@ -51,6 +51,6 @@
 
 - **基线包**：lazyzcode-0.4.1.tgz（registry 发布包，tag v0.4.1=9171d2407125）
   sha256 `ed0c5285304e91085b9488ed7789e18a4ef1e2bf97b317d3acf89bbb5c75e319`。
-- **候选包**：lazyzcode-0.5.0.tgz（npm pack @ 冻结提交树）
-  sha256 `（收口提交回填）`。
-- **冻结提交**：`（收口提交回填）`（main）。
+- **候选包**：lazyzcode-0.5.0.tgz（npm pack @ 冻结提交 a48d0e1）
+  sha256 `d0ccad722f7ed9c2c04783004f973d6d53b10a5bcbd7e35ec6743cc32e1d1f89`。
+- **冻结提交**：`a48d0e1`（main；本回填记录=收口提交，不入候选包）。

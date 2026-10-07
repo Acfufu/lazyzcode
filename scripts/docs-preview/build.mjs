@@ -90,8 +90,8 @@ for (const file of walk(SRC)) {
   built++;
 }
 
-fs.cpSync(path.join(SRC, "assets"), path.join(OUT, "assets"), { recursive: true });
-if (fs.existsSync(path.join(SRC, "reports"))) fs.cpSync(path.join(SRC, "reports"), path.join(OUT, "reports"), { recursive: true });
+fs.cpSync(path.join(SRC, "assets"), path.join(OUT, "assets"), { recursive: true, verbatimSymlinks: true });
+if (fs.existsSync(path.join(SRC, "reports"))) fs.cpSync(path.join(SRC, "reports"), path.join(OUT, "reports"), { recursive: true, verbatimSymlinks: true });
 // Jekyll copies root-level static files verbatim; mirror the ones we ship
 for (const f of ["llms.txt", "sitemap.xml", "robots.txt"]) {
   if (fs.existsSync(path.join(SRC, f))) fs.copyFileSync(path.join(SRC, f), path.join(OUT, f));

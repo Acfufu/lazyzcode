@@ -122,7 +122,7 @@ export async function runH3rTrial({
   git(p.scratch, ["config", "user.name", "ablation-trial"]);
   const seedDir = join(taskDir, "seed");
   if (existsSync(seedDir)) {
-    for (const f of readdirSync(seedDir)) cpSync(join(seedDir, f), join(p.scratch, f), { recursive: true });
+    for (const f of readdirSync(seedDir)) cpSync(join(seedDir, f), join(p.scratch, f), { recursive: true, verbatimSymlinks: true });
   }
   git(p.scratch, ["add", "-A"]);
   git(p.scratch, ["commit", "-qm", "seed"]);
@@ -207,7 +207,7 @@ export async function runH3rTrial({
 function archive(p) {
   // ① .lazyzcode 树（循环态/账本/快照全貌）
   rmSync(p.lazyzcodeTree, { recursive: true, force: true });
-  if (existsSync(join(p.scratch, ".lazyzcode"))) cpSync(join(p.scratch, ".lazyzcode"), p.lazyzcodeTree, { recursive: true });
+  if (existsSync(join(p.scratch, ".lazyzcode"))) cpSync(join(p.scratch, ".lazyzcode"), p.lazyzcodeTree, { recursive: true, verbatimSymlinks: true });
   else {
     mkdirSync(p.lazyzcodeTree, { recursive: true });
     writeFileSync(join(p.lazyzcodeTree, ".absent"), "无 .lazyzcode\n");

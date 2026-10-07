@@ -128,7 +128,7 @@ export async function runFastPair({
   git(repo, ["config", "user.name", "ablation-trial"]);
   const seedDir = join(taskDir, "seed");
   if (existsSync(seedDir)) {
-    for (const f of readdirSync(seedDir)) cpSync(join(seedDir, f), join(repo, f), { recursive: true });
+    for (const f of readdirSync(seedDir)) cpSync(join(seedDir, f), join(repo, f), { recursive: true, verbatimSymlinks: true });
   }
   git(repo, ["add", "-A"]);
   git(repo, ["commit", "-qm", "seed"]);

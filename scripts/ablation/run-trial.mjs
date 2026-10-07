@@ -127,7 +127,7 @@ function archiveArtifacts(p, summaries) {
   // ③ .lazyzcode 树拷贝（trial 会话的循环态/账本/证据全貌）。
   rmSync(p.lazyzcodeTree, { recursive: true, force: true });
   if (existsSync(join(p.scratch, ".lazyzcode"))) {
-    cpSync(join(p.scratch, ".lazyzcode"), p.lazyzcodeTree, { recursive: true });
+    cpSync(join(p.scratch, ".lazyzcode"), p.lazyzcodeTree, { recursive: true, verbatimSymlinks: true });
   } else {
     mkdirSync(p.lazyzcodeTree, { recursive: true });
     writeFileSync(join(p.lazyzcodeTree, ".absent"), "无 .lazyzcode（B 变体未装插件，预期形态）\n");
@@ -204,7 +204,7 @@ export async function runTrial({
   git(p.scratch, ["config", "user.name", "ablation-trial"]);
   const seedDir = join(taskDir, "seed");
   if (existsSync(seedDir)) {
-    for (const f of readdirSync(seedDir)) cpSync(join(seedDir, f), join(p.scratch, f), { recursive: true });
+    for (const f of readdirSync(seedDir)) cpSync(join(seedDir, f), join(p.scratch, f), { recursive: true, verbatimSymlinks: true });
   }
   git(p.scratch, ["add", "-A"]);
   git(p.scratch, ["commit", "-qm", "seed"]);

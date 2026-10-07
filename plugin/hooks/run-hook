@@ -5,12 +5,19 @@
 # 用法（hooks.json）："${ZCODE_PLUGIN_ROOT}/hooks/run-hook" <script.js> [args…]
 #   POSIX（sh -c）按 shebang 走本文件；Windows（cmd.exe）经 PATHEXT 解析对偶孪生 run-hook.cmd
 #   （两文件一行清单跨双平台，schema 无平台字段，见 docs/design-crossplatform.md §1）。
-# 纪律：node 彻底解析不到时记一行 /tmp/lzy-hook-launcher.log 后 exit 0 放行（fail-open，绝不阻断会话）。
+# 纪律：node 彻底解析不到时记一行 ~/.cache/lzy-hook/launcher.log 后 exit 0 放行（fail-open，绝不阻断会话）。
 set -u
 dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
+# 写点用户私有化（M2，a1.r3 F-5／a1.r13 F-3）：弃世界可写共享目录固定名——`>>` 会跟随
+# 预置符号链接，多用户机上他人可借同名链接把追加行（含 PATH 值）改道进本用户可写文件。
+# 改 $HOME/.cache/lzy-hook/（用户私有目录，他人无写权=预置改道面不存在；HOME 缺席即放弃
+# 记日志，fail-open 语义不变）。
 launcher_log() {
-  printf '%s lzy hook: %s\n' "$(date -u +%FT%TZ)" "$1" >> /tmp/lzy-hook-launcher.log 2>/dev/null || true
+  [ -n "${HOME:-}" ] || return 0
+  log_dir="$HOME/.cache/lzy-hook"
+  mkdir -p "$log_dir" 2>/dev/null || return 0
+  printf '%s lzy hook: %s\n' "$(date -u +%FT%TZ)" "$1" >> "$log_dir/launcher.log" 2>/dev/null || true
 }
 
 # sort -V 功能探针（不只看退出码）：能自然排序 v2/v10 才算可用。

@@ -8,15 +8,13 @@
 做 ZCode 版的 [lazycodex](https://github.com/code-yeongyu/lazycodex)（OmO 引擎的 Codex 发行版，MIT）。形态：**ZCode 插件 + 轻量 CLI（`lzy`）**——插件承载 skills/hooks/agents（纪律层），CLI 承载目标循环状态机与安装器。背景见 `docs/reports/index.html`。
 
 
-## 2. 当前状态（2026-09-30 短表；完整历史档案 → docs/history.md）
+## 2. 当前状态（2026-10-07 短表；完整历史档案 → docs/history.md）
 
 - **已发布**：npm `lazyzcode` **0.4.1**（latest）＝编排纪律四件（#43–#46）。
-- **0.3.0 agent-first 弧收官（09-26）**：M0–M5 六阶段全落（决策 #32–#36 → docs/spikes/、history）。
-- 里程碑/消融/双审索引 → docs/history.md。
-- **0.3.1 收口（09-26）→ plan-v031-closeout.md；0.4.0 M0–M5 收官（09-27~30，对照全 MATCH·739/739）**：能力探针/策略身份+统一门/评审运行器/发现账本+recheck/评审复用/迁移实弹+run-pairs 配对评估（36 真运行·门不满足=尚无收益证据·**采纳暂缓 #42**）+**已发布 0.4.0（已核验）**；细节见 history 与 v040-policy-evaluation.md。
+- **0.5.0（#42 重评兑现版）**：M0 仪器＋M1 可完成（10-06/07）收官 → v050-m0/m1-report.md；**M2 拍板落定 10-07（#47–#51）**。
 - 发布机械件按 docs/release-checklist.md；评审报告库 → docs/reviews/。
 
-## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19；引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔3.12.x 代 0.16.5→3.14.0 代 0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕，设计前必读）；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组（插件记录字段逐字相同），lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**——0.1.2 期 engine-3140-sync 即因只锚版本而漏检，代价是 0.16.9 宿主上 status/doctor 的 `enabled` 行 fail 级误报翻退出码
+## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19，设计前必读）：引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔0.16.5→0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组，lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**（engine-3140-sync 只锚版本漏检教训）
 
 1. 钩子恰为 **7 事件**（SessionStart/UserPromptSubmit/PreToolUse/PermissionRequest/PostToolUse/PostToolUseFailure/Stop）。对比 Codex 原生 12 事件**缺 6 个**：无 SubagentStop/SubagentStart/PreCompact/PostCompact/SessionEnd/Interrupt。
 2. Stop 续跑 **≤3 次**，且必须带**非空** additionalContexts（输出空 JSON 永不续跑）；exit 2 在 Stop 上 = block = 强制续跑（reason 注入为上下文）。
@@ -54,6 +52,11 @@
 | #44 | 异议原语 | findings 加 open→contested 边：书面异议→复判（contestedOf）裁 falsified/维持；facts-only 不破（已实施） |
 | #45 | 文书协议终局 | 节点间通信=带状态机语义文书（计划/findings/review 档/handoff/claim），自由消息永不入门（ADR-0035） |
 | #46 | 观察面契约 | status/doctor --json（schemaVersion 只增不改）+loop graph 双图视图；watch/HTTP/wire 不做（已实施） |
+| #47 | 降阶满足语义 | ADR-0037 转正：三禁＋义务阻塞具名收束；收束分类进 status/doctor 列 M2 必落（2026-10-07） |
+| #48 | lz 预算分级 | 任务不变、lz 墙钟 45 分量级（开发集实测定值）；评审/重跑额度单列（2026-10-07） |
+| #49 | 采纳判据 | 主门不动＋产品标准单列：质量不劣＋收束 100%＋完成率≥1/2＋积分不升，不得称质量提升（2026-10-07） |
+| #50 | 评估集重锚 | 全新任务集（三仓×2 独立封存，v3 判据＋新 seed）；M0 六任务＋oracle-v3 转开发材料（2026-10-07） |
+| #51 | M2 冻结面 | M1 deferred 8 条全部候选冻结前修；冻结点=M2 收口，基线=v0.4.1（2026-10-07） |
 
 其余 #1-#24 全表 → docs/decisions.md。
 
@@ -79,17 +82,17 @@
 AGENTS.md                    ← 本文件：单一事实入口（宪法）
 docs/
   research-*.md              ← 调研底稿（报告的事实来源）
-  history.md decisions.md debts.md    ← 历史里程碑档案 / 决策速查全表 / 挂帐单源账本（0.3.0 知识路由自 AGENTS 迁出）
+  history.md decisions.md debts.md    ← 历史里程碑档案 / 决策速查全表 / 挂帐单源账本
   reports/                   ← 报告中心（index+full/pm/dev）+ 逆向源码复核记录
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
-  _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架（Jekyll/GFM，source=/docs）
-  spikes/p0-day1.md          ← P0 首日三 spike 结果（Edit/四风格/Stop 预算）
-  adr/0001..0036-*.md         ← 架构决策原文（§4 摘要/decisions.md 全表）；0035=文书协议、0036=宿主底座与执行图
+  _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架
+  spikes/p0-day1.md          ← P0 首日三 spike 结果
+  adr/0001..0037-*.md         ← 架构决策原文（§4 摘要/decisions.md 全表）；0035=文书协议、0036=宿主底座、0037=降阶满足
   reviews/ release-checklist.md  ← 评审报告/处置记录 + 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist
   handoffs/ templates/        ← 安装价值校准交接/记录模板
   diagnostics/               ← 运行环境诊断记录（钩子 env/PATH）
 plugin/ core/ cli/ test/ .github/  ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI（见 README）+ 契约测试（node:test 零依赖）+ CI 骨架
-scripts/docs-preview/        ← 文档站本地预览与校验工具链（dev-only 独立依赖，根包零依赖）
+scripts/docs-preview/        ← 文档站本地预览与校验工具链（dev-only 独立依赖）
 README.md（英）+ README.zh-CN.md（中）LICENSE CHANGELOG.md  ← 开源门面（lazycodex 同构双语说明）
 artifacts/                   ← 本地产物（已 gitignore，不入库）
 ```
@@ -108,7 +111,7 @@ artifacts/                   ← 本地产物（已 gitignore，不入库）
 ## 9. 维护规则
 
 1. **决策变更 → 必须同步 docs/decisions.md 全表**（一行一条 + 日期）并刷新本文件 §4 摘要行；阶段推进 → 更新 §2 短表。
-2. 根 AGENTS.md 体积预算 **≤12 KiB**（0.3.0 知识路由，2026-09-24 自「≤150 行」升级）；历史/决策/术语已外迁 docs/history.md、docs/decisions.md、CONTEXT.md，细节一律引用 `docs/`，不复制正文。
+2. 根 AGENTS.md 体积预算 **≤12 KiB**（0.3.0 知识路由）；历史/决策/术语已外迁 docs/history.md、docs/decisions.md、CONTEXT.md，细节一律引用 `docs/`，不复制正文。
 3. 新术语先查根 CONTEXT.md（§8 只留高频五词）；需要新词时按其 CONTEXT-FORMAT 风格（定义 + _Avoid_）补入 CONTEXT.md。
 4. **与本文件冲突的旧约定，以本文件为准。**
 5. 开发期新决策满足「难逆 / 无背景会费解 / 真取舍」三条件时，逐条立 `docs/adr/NNNN-*.md`（一段话即可）；已有拍板不补 ADR（rationale 已在报告）。

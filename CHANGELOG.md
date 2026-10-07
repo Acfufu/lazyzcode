@@ -5,6 +5,26 @@ versioning is SemVer.
 
 ## [Unreleased]
 
+### Added (0.5.0 M2 working set)
+
+- Review sandbox usage ledger: each paid review run appends one line to the
+  user-private `~/.zcode/cli/lzy-usage/YYYY-MM.jsonl` (project path, runId,
+  provider/model token usage) — declared in SECURITY.md's state inventory.
+- `lzy status --json` / `lzy doctor --json` new `handoff-causes` check row:
+  drive wind-down cause tallies (`cause:<family>` in `metrics.json`), the
+  observation face for degraded honest stops (ADR-0037, decision #47).
+- `lzy verify run` receipts now record effective timezone + toolchain axes in
+  the environment fingerprint and a per-leg `legs[]` list (skip counts and
+  names read straight off the receipt).
+
+### Changed (0.5.0 M2 working set)
+
+- Hook launcher failure log moved to user-private `~/.cache/lzy-hook/`
+  (POSIX) / `%APPDATA%\lzy-hook\` (Windows) — no more world-writable
+  shared `/tmp` fixed-name write point.
+- `lzy loop drive --mode` default (`yolo`) is now stated in the CLI usage
+  text and the zw unattended recipe.
+
 ## [0.4.1] - 2026-10-02
 
 ### Added

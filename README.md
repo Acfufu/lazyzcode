@@ -358,7 +358,7 @@ machinery; LazyZCode is the workflow that makes them finish what they start.
 | 🕵️ **Read-only agents** | explorer / plan-reviewer / qa-executor, auto-discovered by the engine |
 | 💬 **comment-checker** | Advisory TODO/debug-residue nudges; never blocks |
 | 🩺 **`lzy doctor`** | Offline health report incl. hook-node resolution and rate-limit pressure |
-| 🔒 **Privacy & red lines** | Zero telemetry; `lzy` never writes your `config.json` |
+| 🔒 **Privacy & red lines** | Zero telemetry; `lzy` never writes your `config.json`; all state local (declared exceptions: the user-private review usage ledger `~/.zcode/cli/lzy-usage/` and `--workers` sibling worktrees `<dir>/<repo>-fast/` — see SECURITY.md) |
 
 ## 🆚 Eleven things only LazyZCode does
 

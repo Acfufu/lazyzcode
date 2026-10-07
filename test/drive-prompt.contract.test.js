@@ -177,3 +177,13 @@ test("义务阻塞回声不误触：标记在响应中段（非末行）→ 不�
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+// ── M2 N7（a1.r13 F-4）：无人值守缺省 yolo 披露——帮助与指南两处钉面（缺省最宽权限档
+// 是设计必然，但用户可见面必须直说，不能只藏在运行日志里）。
+test("drive 缺省 yolo 披露：usage 帮助块与 zw unattended recipe 两处在场", () => {
+  const usage = readFileSync(join(ROOT, "cli", "lzy.js"), "utf8");
+  assert.ok(usage.includes("--mode 缺省 yolo（自动批准工具调用"), "usage 帮助块缺缺省 yolo 披露");
+  assert.ok(usage.includes("build|edit|plan|yolo"), "usage 帮助块缺 --mode 枚举");
+  const recipe = readFileSync(join(ROOT, "plugin", "skills", "zw", "recipes", "unattended.md"), "utf8");
+  assert.ok(recipe.includes("defaults to `yolo`"), "unattended recipe 缺缺省 yolo 披露");
+});

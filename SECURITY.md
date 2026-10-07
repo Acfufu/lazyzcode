@@ -55,9 +55,18 @@ What this project promises about its own security surface:
 - **Hooks fail open.** A missing or broken hook environment degrades the
   discipline layer, never the host session.
 - **All state is local**, under `.lazyzcode/` and the ZCode plugin cache.
+  Two declared exceptions (M2, a1.r3 F-3 / a1.r13 F-5): the review sandbox
+  usage ledger appends one line per paid review run to the user-private
+  `~/.zcode/cli/lzy-usage/YYYY-MM.jsonl` (0600, local only, records project
+  path + provider/model token usage), and `--workers` wave orchestration
+  creates sibling worktrees next to the host repo as
+  `<sibling-dir>/<repo>-fast/`. Both are user-local, never synced or
+  transmitted.
 - **Spawn sites use literal argv with `shell: false`**, including the
   Windows `cmd` paths, which go through `ComSpec /d /s /c` with literal
-  strings.
+  strings. The hook launcher failure log lives in the user-private profile
+  (`~/.cache/lzy-hook/`, `%APPDATA%\lzy-hook\`) — no world-writable
+  shared-directory write points.
 
 These properties are contract-tested. If you find a violation, that is a
 security-relevant report — please follow the private reporting channel above.

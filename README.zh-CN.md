@@ -307,7 +307,7 @@ skills/hooks/agents 机器，LazyZCode 是让它们把活干完的那层工作�
 | 🕵️ **只读代理** | explorer / plan-reviewer / qa-executor，引擎自动发现 |
 | 💬 **comment-checker** | TODO/调试残留轻提示；不阻断 |
 | 🩺 **`lzy doctor`** | 离线体检，含 hook-node 解析与限流压力 |
-| 🔒 **隐私与红线** | 零遥测；`lzy` 永不改写你的 `config.json` |
+| 🔒 **隐私与红线** | 零遥测；`lzy` 永不改写你的 `config.json`；状态全本地（声明例外：用户私有的评审用量账 `~/.zcode/cli/lzy-usage/` 与 `--workers` 兄弟工作根 `<目录>/<repo>-fast/`——见 SECURITY.md） |
 
 ## 🆚 只有 LazyZCode 做到的十一件事
 

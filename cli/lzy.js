@@ -1034,7 +1034,10 @@ function printHelp() {
                                             （risk/lease/预算）+逐段 sessionId 计量；收束自写 handoff
                                             快照交回（退出码 0=done 或干净收束，1=门拒/段失败）；
                                             --workers N=多工人波编排（ADR-0026：LIGHT only，
-                                            HEAVY 入口拒；--fast≡--workers 2，--fast=false=单工人）
+                                            HEAVY 入口拒；--fast≡--workers 2，--fast=false=单工人）；
+                                            --mode 缺省 yolo（自动批准工具调用=最宽权限档，
+                                            无人值守设计必然；可选 build|edit|plan|yolo，
+                                            显式传参才收窄——无人看管的运行前须知悉）
   lzy loop subject add <path>               声明兄弟仓根入 subject 集（仅 executing；校验 git 仓/
                                             与宿主无包含；集合变化=全体 F 证据过期须重取）
   lzy loop subject remove <path>            移除 subject（missing 死锁出口；证据过期语义照走）

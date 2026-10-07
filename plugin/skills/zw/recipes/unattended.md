@@ -16,8 +16,12 @@ retired the account-level 5h rolling waterline to a `lzy doctor` advisory line; 
 contract `budget-ref: none` skips the points axis and keeps wall clock only; segments
 whose usage cannot be metered are reported, never counted as zero),
 and every segment's lzy writes carry the run's fence token so a taken-over run fails
-closed on write instead of corrupting state). Wind-down is always clean and
-enumerated: `done`, wall clock exhausted, points budget exhausted, segments
+closed on write instead of corrupting state). **Default mode disclosure (M2,
+a1.r13 F-4): `--mode` defaults to `yolo` — segments run with the widest permission
+tier (tool calls auto-approved). That is inherent to unattended execution (an
+interactive gate would stall every segment); pass `--mode build|edit|plan`
+explicitly to narrow it, and know this before an unattended run.** Wind-down is
+always clean and enumerated: `done`, wall clock exhausted, points budget exhausted, segments
 exhausted, two consecutive zero-progress segments (stuck), an obligation the segment
 could not satisfy reporting 义务阻塞 (A2: finish-gate review/check obligations
 unsatisfiable in-segment — honest stop, never done), the step gate stopping at

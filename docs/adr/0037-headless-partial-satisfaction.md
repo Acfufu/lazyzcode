@@ -33,7 +33,7 @@
 ## 已落代码面（M1，皆不触门语义）
 
 - `core/drive.js` `composeSegmentPrompt` 第 3 步：finish 前先 `gate explain` 读义务，按指路满足（review run/qualify/reuse/policy reassess/核查回执）；确不可满足→自报标记诚实停止；
-- `core/drive.js` `classifyCause`＋段自报标记消费：义务阻塞立即干净收束，绝不空转剩余段；
+- `core/drive.js` `classifyCause`＋段自报标记消费：义务阻塞立即干净收束，绝不空转剩余段。适用面=**单工人段路径**（workers 波工人禁 finish、收口由 drive 波间统一执行，标记不适用）；判定取响应**末行**行首标记（提示词回声不触发）；
 - zw recipes（finish/execute/unattended）补评审义务满足序列文本。
 
 ## 被否的替代

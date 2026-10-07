@@ -576,20 +576,20 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
         throw err;
       }
       // A2 义务阻塞具名收束（plan-v050 §6 语义建议「停止原因先用现有文本表达」）：段会话
-      // 自报义务在本段不可满足（响应末行标记，composeSegmentPrompt 第 3 步指令）⇒ 立即
+      // 自报义务在本段不可满足（响应**末行**标记，composeSegmentPrompt 第 3 步指令）⇒ 立即
       // 干净收束（不空转剩余段）——「预算耗尽诚实停止」同族：exit 0 + 7 字段快照，绝不写
-      // done、不绕任何门。记账不裁决（ADR-0022 同边界）：标记是段自报，只影响收束分类与
-      // 交接可读性；真正的门语义仍在 lzy finish/统一门，伪造标记改不了执法面。
-      // 扫描面=response∪stdout（--json 模式下响应文本在 summary.response 字段，headless
-      // 解析面要求 stdout 整体单 JSON 对象；response 侧在前——标记行取净文本，不取 JSON
-      // 转义串）。
-      const segParts = [typeof result.response === "string" ? result.response : "", typeof result.stdout === "string" ? result.stdout : ""];
-      const segSelfReport = segParts.join("\n");
-      if (segSelfReport.includes("[drive] 义务阻塞：")) {
-        const markerLine = segParts.map((p) => p.split("\n").find((l) => l.includes("[drive] 义务阻塞："))).find(Boolean) ?? "";
+      // done、不绕任何门。末行锚定（评审 a1.r7 F-5）：只认响应最后一个非空行的行首标记——
+      // 提示词指令文本的回声（出现在响应中段）不触发假阳性诚实停止。适用面=单工人段
+      //（评审 a1.r7 F-4：workers 波工人禁 finish、收口由 drive 波间统一执行，标记不适用）。
+      // 记账不裁决（ADR-0022 同边界）：标记是段自报，只影响收束分类与交接可读性；真正的
+      // 门语义仍在 lzy finish/统一门，伪造标记改不了执法面。
+      const segResponse = typeof result.response === "string" ? result.response : "";
+      const lastLine = segResponse.trimEnd().split("\n").filter((l) => l.trim().length > 0).pop() ?? "";
+      const markerMatch = lastLine.match(/^\s*\[drive\] 义务阻塞：\s*(.*)$/);
+      if (markerMatch) {
         windDown(
           true,
-          `义务阻塞（${markerLine.split("[drive] 义务阻塞：")[1]?.trim().slice(0, 160) || "义务未具名"}）`,
+          `义务阻塞（${markerMatch[1].trim().slice(0, 160) || "义务未具名"}）`,
           "段会话自报义务在本段不可满足（评审 runner 缺席/预算不足等）——恢复：交互会话补评审（lzy review run/qualify/reuse）或 policy reassess 复判后 zw 继续",
         );
         break;

@@ -84,7 +84,7 @@ test("composeSegmentPrompt：finish 步带义务满足路径（gate explain 读�
 });
 
 // ── N7：classifyCause 具名分类 ──
-test("classifyCause：既有收束因全集逐类映射（枚举字面量先例，读面按因分类）", () => {
+test("classifyCause：代表性收束因逐类映射（覆盖主干族；未列族如实落 other，不称全集）", () => {
   assert.equal(classifyCause("done"), "done");
   assert.equal(classifyCause("义务阻塞（review.general-correctness）"), "obligation-blocked");
   assert.equal(classifyCause("预算尽（墙钟预算超顶）"), "budget-exhausted");
@@ -127,6 +127,27 @@ test("义务阻塞：段响应带 [drive] 义务阻塞 标记 → EXIT=0 干净�
     assert.match(snap, /obligation-blocked/, "快照携带具名收束类（classifyCause）");
     assert.match(snap, /义务阻塞/, "收束因原文在场");
     assert.equal(loadRuntime(d).activeLease, null, "lease 已释放");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("义务阻塞回声不误触：标记在响应中段（非末行）→ 不收束，走既有 stuck 路径（评审 a1.r7 F-5）", async () => {
+  const d = executingRepo("lzy-driveprompt-echo-");
+  const run = () => ({
+    exitCode: 0,
+    stdout: JSON.stringify({
+      sessionId: "sess-echo",
+      response:
+        "按第 3 步指引：义务未满足时在响应末行写 [drive] 义务阻塞：<义务 id>。本段汇报：义务面已读，尚可尝试，暂不停止。",
+    }),
+    stderr: "",
+  });
+  try {
+    const { result, lines } = await captureStdout(() => runDrive(d, { maxSegments: 4 }, passDeps(run)));
+    assert.equal(result.ok, true, lines);
+    assert.match(lines, /无推进（stuck/, "回声不触发诚实停止——走既有 stuck 收束");
+    assert.doesNotMatch(lines, /收束：义务阻塞/, "中段回声不得误标收束因");
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

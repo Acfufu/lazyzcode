@@ -1006,6 +1006,14 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
   let rawInfo = null;
   let transcriptInfo = null;
   let result = null;
+  // 白名单沙盒配置即焚锚点（评审 a1.r7 F-2）：null=未达 prepare 面（无事可焚）。
+  let sandboxCfgHome = null;
+  const burnSandboxCfg = () => {
+    if (!sandboxCfgHome) return;
+    try {
+      rmSync(join(sandboxCfgHome, "provider-config.sandbox.json"), { force: true });
+    } catch {}
+  };
   try {
     // N3 #11（M2 自审 F-5）写前缀单写者锁：reserve→输入包→候选快照→隔离→泄漏断言整段进
     // withLock——并发 review run 此前可交错序号/输入包（注释称单写者=loop 锁但代码未取）。
@@ -1022,6 +1030,13 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     });
     reserve = prepared.reserve;
     const { pkg, snap, iso, sandboxEnv, priors, leak } = prepared;
+    sandboxCfgHome = iso.home; // 异常路径即焚的闭包锚点（外层 catch 引用；null=未达 prepare 面）
+    // 白名单沙盒配置即焚（评审 a1.r1 F-1/a1.r4 F-1/a1.r7 F-2）：prepareSandboxProviderConfig
+    // 落盘的专属配置含明文 apiKey——正常路径在落档前单点焚，异常路径由外层 catch 入口焚，
+    // 两点半覆盖全部 post-prepare 路径（含 spawn 前中止）。「随沙盒清理」的原声称自此有
+    // 实现真身。best-effort：清理失败不回头改已落档运行；转录/输入档不含 key，审计面
+    // 不受损。锁体内 prepare 写盘后的 throw 残余面如实注记：该窗口仅 listReviewRuns/
+    // assertNoLeak 两个健壮读面，覆盖不到即孤儿目录人工回收家族。
     pkgHash = pkg.inputPackageHash;
     snapHash = snap.treeHash;
     if (!leak.ok) {
@@ -1260,15 +1275,8 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
     };
-    // 白名单沙盒配置即焚（评审 a1.r1 F-1/a1.r4 F-1）：prepareSandboxProviderConfig 落盘的
-    // 专属配置含明文 apiKey——单点清理放落档前，覆盖全部 post-prepare 路径（正常 spawn/
-    // leak 前置拒/计量失败都到不了盘面残留）；「随沙盒清理」的原声称自此有实现真身。
-    // best-effort：清理失败不回头改已落档运行。转录/输入档不含 key，审计面不受损。
-    try {
-      rmSync(join(iso.home, "provider-config.sandbox.json"), { force: true });
-    } catch {}
-    const out = await finishRun(cwd, reserve, record);
-    // 明烧落账（0.5.0，2026-10-02 commandcode 暗烧案）：metering.usage 在场的运行（含
+    burnSandboxCfg(); // 正常路径单点即焚（异常路径见外层 catch 入口）
+    const out = await finishRun(cwd, reserve, record);    // 明烧落账（0.5.0，2026-10-02 commandcode 暗烧案）：metering.usage 在场的运行（含
     // invalid/unpriced——tokens 已烧）追加进全局沙盒外泄账（~/.zcode/cli/lzy-usage/）。
     // best-effort：账本 IO 失败不回头改已落档运行——计量真值恒以运行档 metering.usage
     // 为准，此处只喂聚合面（lzy loop cost / doctor / TokenTracker）。
@@ -1294,6 +1302,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     }
     return out;
   } catch (err) {
+    burnSandboxCfg(); // 异常路径即焚（评审 a1.r7 F-2；sandboxCfgHome=null 时 no-op）
     if (err instanceof ReviewPreflightError) throw err; // 前置型拒绝不落档（N3 #11 锁忙走此通道）
     if (err instanceof LoopError && !spawned) {
       // N3 #11：锁忙（等待超时）→ preflight 型拒——不 spawn 不消耗不落档，exit 3 面。

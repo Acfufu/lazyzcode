@@ -111,6 +111,22 @@ test("classifyCause：代表性收束因逐类映射（覆盖主干族；未列�
   assert.equal(classifyCause(null), "other");
 });
 
+// ── M2 N6（a1.r10 F-3）：workers 波编排六族＋单工人两漏族补映射——收束串原文一字不动，
+// 只补词表；「收束分类供读面按因分族」（ADR-0037）在 --workers 下同样成立。
+test("classifyCause：workers 六族与单工人漏族全部具名（≠other）", () => {
+  assert.equal(classifyCause("装配失败（3 波工人返回非零）"), "segment-failed");
+  assert.equal(classifyCause("工人段失败（exit=1）：seg-2"), "segment-failed");
+  assert.equal(classifyCause("整合验证前置读失败：x"), "segment-failed");
+  assert.equal(classifyCause("整合验证执行失败：x"), "segment-failed");
+  assert.equal(classifyCause("整合验证失败（gate explain 缺口）"), "segment-failed");
+  assert.equal(classifyCause("波间心跳失败（worker-1）"), "segment-failed");
+  assert.equal(classifyCause("段间心跳失败（seg-3）：超时"), "segment-failed");
+  assert.equal(classifyCause("波间门拒（波 2 收口门）：发现未清"), "gate");
+  assert.equal(classifyCause("finish 失败（exit=2）：义务门拒"), "gate");
+  assert.equal(classifyCause("高危步停摆（H3R：步 N5 超时未决）"), "gate");
+  assert.equal(classifyCause("波数尽（4 波）"), "segments-exhausted");
+});
+
 // ── N7：义务阻塞段自报 → 立即干净收束（绝不写 done）──
 test("义务阻塞：段响应带 [drive] 义务阻塞 标记 → EXIT=0 干净收束+快照过 lint+快照带具名类", async () => {
   const d = executingRepo("lzy-driveprompt-ob-");

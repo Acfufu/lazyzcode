@@ -2376,7 +2376,7 @@ export function lintHandoffSnapshot(content) {
   return missing;
 }
 
-export function handoffGoal(cwd, snapshot, treeHash) {
+export function handoffGoal(cwd, snapshot, treeHash, causeFamily = null) {
   requireActive(cwd, "executing"); // planning/已完结目标上登记交接没有语义（Stop 不拉）
   if (typeof snapshot !== "string" || !snapshot.trim()) {
     throw new LoopError(
@@ -2415,6 +2415,9 @@ export function handoffGoal(cwd, snapshot, treeHash) {
     const marker = {
       snapshot: snapAbs,
       treeHash: typeof treeHash === "string" ? treeHash : null,
+      // drive 收束分类（M2，#47 必落）：登记时带上具名族（classifyCause 产出）——读面按因
+      // 分族（status/doctor handoff-causes 行）；旧标记无此键=读面如实无分族，不猜。
+      cause: typeof causeFamily === "string" && causeFamily.trim() ? causeFamily.trim() : null,
       requestedAt: new Date().toISOString(),
     };
     const p = handoffPath(cwd);
@@ -2425,6 +2428,9 @@ export function handoffGoal(cwd, snapshot, treeHash) {
     writeFileSync(tmp, `${JSON.stringify(marker, null, 2)}\n`, { mode: 0o600 });
     renameSync(tmp, p); // 原子落盘：与 Stop 侧 unlink 消费的互斥由文件系统原子性保证
     incMetrics(cwd, "registered"); // 永不抛（契约见上）——登记不因计数失败而失败
+    // 收束分族计数（M2，#47）：metrics.json cause:<family> 键（跨 reset 永续，位阶同
+    // registered/consumed）——status/doctor 读面的分族计数源；同样永不抛。
+    if (marker.cause) incMetrics(cwd, `cause:${marker.cause}`);
     return marker;
   });
 }

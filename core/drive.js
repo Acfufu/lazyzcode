@@ -216,6 +216,23 @@ export function classifyCause(cause) {
   if (s.startsWith("工具调用被拒")) return "tool-denied";
   if (s === "merge-conflict") return "merge-conflict";
   if (s.startsWith("段失败")) return "segment-failed";
+  // workers 波编排与单工人漏族（M2，a1.r10 F-3）：收束串原文一字不动（extract-metrics.mjs
+  // 按串自分类，改串=仪器静默改判），只把词表补齐——装配/工人段/整合验证/心跳族归段失败，
+  // 波间门拒/finish 失败/高危步停摆归门，波数尽归段数尽族。「收束分类供读面按因分族」
+  // （ADR-0037）自此在 --workers 下同样成立。
+  if (
+    s.startsWith("装配失败") ||
+    s.startsWith("工人段失败") ||
+    s.startsWith("整合验证前置读失败") ||
+    s.startsWith("整合验证执行失败") ||
+    s.startsWith("整合验证失败") ||
+    s.startsWith("波间心跳失败") ||
+    s.startsWith("段间心跳失败")
+  ) {
+    return "segment-failed";
+  }
+  if (s.startsWith("波间门拒") || s.startsWith("finish 失败") || s.startsWith("高危步停摆")) return "gate";
+  if (s.startsWith("波数尽")) return "segments-exhausted";
   return "other";
 }
 
@@ -409,7 +426,7 @@ export async function runDrive(cwd, opts = {}, deps = {}) {
     if (fresh && fresh.status === "executing") {
       try {
         const { snap, treeHash } = authorHandoffSnapshot(cwd, fresh, cause, riskNote, deps);
-        handoffGoal(cwd, snap, treeHash);
+        handoffGoal(cwd, snap, treeHash, classifyCause(cause));
         outcome = { ok, cause, handoff: snap };
         console.log(`[drive] 收束：${cause}——handoff 快照：${snap}（复归：zw 继续）`);
       } catch (err) {
@@ -953,7 +970,7 @@ async function runDriveWorkers(cwd, opts, deps, workers) {
     if (fresh && fresh.status === "executing") {
       try {
         const { snap, treeHash } = authorHandoffSnapshot(cwd, fresh, cause, note, deps);
-        handoffGoal(cwd, snap, treeHash);
+        handoffGoal(cwd, snap, treeHash, classifyCause(cause));
         outcome = { ok, cause, handoff: snap };
         console.log(`[drive] 收束：${cause}——handoff 快照：${snap}（复归：zw 继续）`);
       } catch (err) {

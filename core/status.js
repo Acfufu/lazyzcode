@@ -215,7 +215,8 @@ export async function collectStatus() {
   // 计数差值非损失（reset 清理/坏标记丢弃/化石标记都只登记不消费）。
   try {
     const marker = JSON.parse(readFileSync(handoffPath(process.cwd()), "utf8"));
-    push("handoff", "warn", `交接标记在场（快照 ${marker.snapshot ?? "?"}）——下个 Stop 将放行`);
+    const causeTag = marker.cause ? ` · 收束因=${marker.cause}` : "";
+    push("handoff", "warn", `交接标记在场（快照 ${marker.snapshot ?? "?"}${causeTag}）——下个 Stop 将放行`);
   } catch {} // 无标记=常态，静默
   const metrics = readMetrics(process.cwd());
   if (metrics) {
@@ -223,6 +224,19 @@ export async function collectStatus() {
       "handoff-usage",
       "ok",
       `登记 ${metrics.registered ?? 0} · 消费 ${metrics.consumed ?? 0}（差值=reset 清理/坏标记，非损失）`,
+    );
+    // drive 收束分族读面（M2，决策 #47 必落／a1.r10 F-3）：metrics.json cause:<族> 计数
+    //（handoffGoal 登记时累加，跨 reset 永续）——「收束分类供读面按因分族」（ADR-0037）；
+    // doctor 面经 collectStatus 内嵌同享此行。无登记=skip，不做疤痕误警。
+    const tally = Object.keys(metrics)
+      .filter((k) => k.startsWith("cause:") && typeof metrics[k] === "number" && metrics[k] > 0)
+      .sort()
+      .map((k) => `${k.slice(6)}×${metrics[k]}`)
+      .join(" · ");
+    push(
+      "handoff-causes",
+      tally ? "ok" : "skip",
+      tally ? `drive 收束分族：${tally}` : "无 drive 收束分类登记（handoffGoal 未带 cause 族）",
     );
   }
 

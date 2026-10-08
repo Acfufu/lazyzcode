@@ -29,6 +29,11 @@ const ARMS = ["old", "new"];
 const TRIALS_PER_TASK = 3;
 const KILL_FLOOR_MS = 90_000; // 中断注入下限：转录在场后再跑满 floor 才杀（两臂同触发条件）
 const ORACLE_TIMEOUT_MS = 120_000;
+// 判定器代次（README「判读代次与资格/质量门」）：v2=FIXTURE 注入+结构化 expect；v3=check-2
+// glob 形重封存（oracle-v3）。v050 封存集按 v3 约定产出（evalsets/MANIFEST.json notes
+// 「oracleJudge=3 glob-form/xcodebuild-probe conventions」）——批内统一盖 v3，旧批 v2 行
+// 保留原样；重判通道以本常量去重/盖章。
+const ORACLE_JUDGE = 3;
 
 function parseArgs(argv) {
   const f = {};
@@ -298,6 +303,16 @@ export function preflight(f, { cwd = process.cwd() } = {}) {
     if (!src || !existsSync(join(src, ".git"))) return { blocked: `仓 ${repo} 本地源缺席（--source-${repo} <路径> 指认含冻结提交的本地克隆）` };
     const chk = spawnSync("git", ["-C", src, "cat-file", "-e", `${sealed.repos[repo].snapshotCommit}^{commit}`]);
     if (chk.status !== 0) return { blocked: `仓 ${repo} 本地源缺冻结提交 ${sealed.repos[repo].snapshotCommit.slice(0, 8)}——重冻结或补齐克隆后重跑` };
+    const sd = sealed.repos[repo].siblingDependency ?? null;
+    if (sd) {
+      // 2026-10-08 P0：兄弟仓 pin 预飞从不核验——pin 失配时物化静默产出空兄弟目录
+      // （zpigeon-ios 全 12 腿实证风险面），此处前置拒（顺序：主仓源 → 兄弟源 → 引擎）。
+      const pin = siblingPinOf(sd);
+      if (!pin) return { blocked: `仓 ${repo} 兄弟依赖缺 pin 键（snapshotCommit/sealTimePin 皆无）——清单方言漂移` };
+      if (!sd.repo || !existsSync(join(sd.repo, ".git"))) return { blocked: `仓 ${repo} 兄弟依赖源缺席：${sd.repo ?? "(未记录路径)"}` };
+      const chkSib = spawnSync("git", ["-C", sd.repo, "cat-file", "-e", `${pin}^{commit}`]);
+      if (chkSib.status !== 0) return { blocked: `仓 ${repo} 兄弟依赖源缺 pin ${String(pin).slice(0, 12)}：${sd.repo}——补齐克隆或修正清单后重跑` };
+    }
     srcDirs[repo] = src;
   }
   const engine = findEngine();
@@ -346,10 +361,26 @@ export function preflight(f, { cwd = process.cwd() } = {}) {
 }
 
 // ── 执行 ─────────────────────────────────────────────────────────────
-function materializeRepo(srcDir, commit, dest) {
+// siblingDependency pin 键方言归一（2026-10-08 P0）：v040 封存写 snapshotCommit、v050 独立
+// 封存子代理写 sealTimePin——两代清单都要能物化；皆缺=null（预飞前置拒，勿把 undefined
+// 静默送进 git archive）。
+export function siblingPinOf(sd) {
+  return sd?.snapshotCommit ?? sd?.sealTimePin ?? null;
+}
+
+export function materializeRepo(srcDir, commit, dest) {
+  if (typeof commit !== "string" || commit.trim() === "") {
+    // 2026-10-08 P0：pin 解析失败曾以 `git archive 'undefined'` 静默产出空目录——bash 管道
+    // 无 pipefail 时取 tar 状态、空 stdin 仍 exit 0，物化"成功"但夹具缺件（zpigeon-ios 全
+    // 12 腿会挂成假失败）——此处 fail-closed。
+    throw new Error(`夹具物化缺 commit：src=${srcDir}（sibling pin 解析失败或未声明？）`);
+  }
   mkdirSync(dest, { recursive: true });
-  const r = spawnSync("bash", ["-c", `git -C '${srcDir}' archive '${commit}' | tar -x -C '${dest}'`], { encoding: "utf8" });
+  const chk = spawnSync("git", ["-C", srcDir, "cat-file", "-e", `${commit}^{commit}`], { encoding: "utf8" });
+  if (chk.status !== 0) throw new Error(`夹具源缺 commit ${String(commit).slice(0, 12)}：${srcDir}`);
+  const r = spawnSync("bash", ["-o", "pipefail", "-c", `git -C '${srcDir}' archive '${commit}' | tar -x -C '${dest}'`], { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`夹具物化失败：${r.stderr ?? r.stdout}`);
+  if (readdirSync(dest).length === 0) throw new Error(`夹具物化产物为空：${srcDir}@${String(commit).slice(0, 12)}`);
   spawnSync("git", ["init", "-q"], { cwd: dest });
   spawnSync("git", ["config", "user.email", "eval@l"], { cwd: dest });
   spawnSync("git", ["config", "user.name", "eval"], { cwd: dest });
@@ -451,7 +482,7 @@ async function runCell(cell, ctx) {
     materializeRepo(batch.srcDirs[cell.repo], rd.snapshotCommit, repoDir);
     if (rd.siblingDependency) {
       const sibDest = join(runDir, basename(rd.siblingDependency.repo));
-      materializeRepo(rd.siblingDependency.repo, rd.siblingDependency.snapshotCommit, sibDest);
+      materializeRepo(rd.siblingDependency.repo, siblingPinOf(rd.siblingDependency), sibDest);
     }
     const briefSrc = join(batch.sealedRoot, cell.taskId, "brief.md");
     const briefPath = join(runDir, "brief.md");
@@ -536,7 +567,7 @@ async function runCell(cell, ctx) {
     } else {
       rec.oracleError = (ov.stderr ?? "").slice(0, 200);
     }
-    rec.oracleJudge = 2; // N9 仪面修复后判定器代次（v2=FIXTURE 注入+结构化 expect；--rejudge-oracle 以此去重）
+    rec.oracleJudge = ORACLE_JUDGE; // 判定器代次常量（v050 封存集=v3；--rejudge-oracle 以此去重）
     if (rec.status === "infra" || rec.status === "ok") rec.status = rec.timedOut ? "timeout" : rec.exit === 0 ? "ok" : "nonzero-exit";
     // 非_ok 态归因注记（infra/429/内容杀流 vs 任务性失败——§9.1 分标记；引擎错误尾注 200 字符）。
     // 终态归因后统一落：resume 专注记优先；终态 ok 不留腿1注记（seq23/30 曾把腿1击杀注记
@@ -649,7 +680,7 @@ async function main() {
   if (f.help === true) {
     console.log("用法: run-pairs.mjs --manifest <m0-freeze-index.json> --baseline <0.3.1.tgz> --candidate <候选.tgz> --out <证据根> [--max-runs N] [--arm old|new] [--repo <名>] [--phase preflight|report]");
     console.log("  内部模式: --eval-oracle <oracle.json> --eval-cwd <repo> --eval-out <result.json>");
-    console.log("  重判模式: --rejudge-oracle <证据根>（对 journal 末行无 oracleJudge=v2 的记录仅重跑密封 oracle 判读腿——不重跑 agent 会话；supersede 行入账后重生成 report）");
+    console.log(`  重判模式: --rejudge-oracle <证据根>（对 journal 末行非当前代次（ORACLE_JUDGE=${ORACLE_JUDGE}）的记录仅重跑密封 oracle 判读腿——不重跑 agent 会话；supersede 行入账后重生成 report）`);
     process.exit(0);
   }
   if (typeof f["eval-oracle"] === "string") {
@@ -670,7 +701,7 @@ async function main() {
     for (const l of loadJournal(outDir).lines) if (l.record?.seq != null) bySeqLatest.set(l.record.seq, l.record);
     let rejudged = 0;
     for (const rec of bySeqLatest.values()) {
-      if (rec.oracleJudge === 2) continue; // 已是 v2 判定器产物（force-seq 重跑行）——不重复烧判读
+      if (rec.oracleJudge === ORACLE_JUDGE) continue; // 已是当前代次判定器产物（force-seq 重跑行）——不重复烧判读
       const repoDir = join(rec.runDir, "repo");
       if (!existsSync(repoDir)) continue;
       const oracleOut = join(rec.runDir, "oracle-result.json");
@@ -685,7 +716,7 @@ async function main() {
       } else {
         updated.oracleError = (ov.stderr ?? "").slice(0, 200);
       }
-      updated.oracleJudge = 2;
+      updated.oracleJudge = ORACLE_JUDGE;
       updated.rejudgedAt = new Date().toISOString();
       appendJournal(outDir, updated);
       rejudged += 1;

@@ -3,7 +3,7 @@
 // 零真会话零网络（oracle 用 bash 夹具命令；预飞用临时绝对路径指向的假清单）。
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +18,7 @@ const RP = join(ROOT, "scripts", "evaluation", "run-pairs.mjs");
 // 缺省注入现进程可执行文件让 findEngine 恒有解（⑤预飞基态/拒面次序不再被宿主环境劫持）。
 process.env.LZY_ZCODE_ENGINE = process.env.LZY_ZCODE_ENGINE ?? process.execPath;
 
-const { deriveSequence, chainSha, verifyJournalChain, qualityGate, preflight, appendJournal, loadJournal, writeReport } = await import(
+const { deriveSequence, chainSha, verifyJournalChain, qualityGate, preflight, appendJournal, loadJournal, writeReport, siblingPinOf, materializeRepo } = await import(
   `file://${RP}`
 );
 const sha256Of = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
@@ -290,6 +290,110 @@ describe("⑥report 完整性拒（包/环境/journal 三面）", () => {
       assert.equal(ref2.integrity.journalChain, false);
     } finally {
       rmSync(d, { recursive: true, force: true });
+    }
+  });
+});
+
+// 2026-10-08 P0 修复面：v050 独立封存子代理把兄弟仓 pin 写成 sealTimePin，而 runCell 读
+// snapshotCommit ⇒ undefined 进 git archive ⇒ 管道无 pipefail 静默产出空兄弟目录（zpigeon-ios
+// 全 12 腿风险）。红半=对修复前 run-pairs.mjs 跑本组（siblingPinOf 缺席 TypeError /
+// materializeRepo 不抛 / 空目录）；绿半=下组全过。
+describe("⑦兄弟依赖物化（pin 方言回退＋fail-closed＋预飞前置拒——2026-10-08 P0）", () => {
+  const head = () => spawnSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8" }).stdout.trim();
+
+  test("siblingPinOf：sealTimePin（v050 封存方言）/snapshotCommit（v040）两读，主键优先，皆缺=null", () => {
+    assert.equal(siblingPinOf({ repo: "x", sealTimePin: "a".repeat(40) }), "a".repeat(40));
+    assert.equal(siblingPinOf({ repo: "x", snapshotCommit: "b".repeat(40) }), "b".repeat(40));
+    assert.equal(siblingPinOf({ repo: "x", snapshotCommit: "b".repeat(40), sealTimePin: "a".repeat(40) }), "b".repeat(40));
+    assert.equal(siblingPinOf({ repo: "x", reason: "y" }), null);
+    assert.equal(siblingPinOf(null), null);
+  });
+
+  test("materializeRepo：pin 缺席/不可达必抛（旧路径静默空目录）；sealTimePin 形态物化真身", () => {
+    const d = mkdtempSync(join(tmpdir(), "lzy-mat-"));
+    try {
+      assert.throws(() => materializeRepo(ROOT, siblingPinOf({ repo: ROOT }), join(d, "empty")), /夹具物化缺 commit/);
+      assert.throws(() => materializeRepo(ROOT, "0".repeat(40), join(d, "bad")), /夹具源缺 commit/);
+      const dest = join(d, "sib");
+      materializeRepo(ROOT, siblingPinOf({ repo: ROOT, sealTimePin: head() }), dest);
+      assert.ok(existsSync(join(dest, "package.json")), "sealTimePin 方言须物化出真身（旧路径=空目录）");
+      assert.ok(existsSync(join(dest, "cli", "lzy.js")));
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  test("预飞：兄弟 pin 可达（sealTimePin 方言）⇒ 过；pin 不可达/缺键/源缺席 ⇒ 前置拒", () => {
+    const base = mkdtempSync(join(tmpdir(), "lzy-sib-"));
+    const sealedRoot = join(base, "sealed");
+    const repos = {};
+    for (const repo of ["lazyzcode", "zpigeon-ios"]) {
+      const taskDir = join(sealedRoot, repo, "task-1");
+      mkdirSync(taskDir, { recursive: true });
+      writeFileSync(join(taskDir, "brief.md"), `brief ${repo}\n`);
+      writeFileSync(join(taskDir, "defect-spec.md"), `defect ${repo}\n`);
+      writeFileSync(join(taskDir, "oracle.json"), JSON.stringify({ task: "task-1", checks: [] }));
+      repos[repo] = {
+        snapshotCommit: head(),
+        tasks: [
+          {
+            id: `${repo}/task-1`,
+            briefSha256: sha256Of(join(taskDir, "brief.md")),
+            defectSpecSha256: sha256Of(join(taskDir, "defect-spec.md")),
+            oracleSha256: sha256Of(join(taskDir, "oracle.json")),
+          },
+        ],
+      };
+    }
+    repos["zpigeon-ios"].siblingDependency = { repo: ROOT, sealTimePin: head(), reason: "fx" };
+    const manifestJson = join(sealedRoot, "MANIFEST.json");
+    writeFileSync(manifestJson, JSON.stringify({ schemaVersion: 1, generatedAt: "t", sealedBy: "x", seed: 1, repos }));
+    const manifestsDir = join(base, "manifests");
+    mkdirSync(manifestsDir, { recursive: true });
+    const manifests = {};
+    for (const repo of Object.keys(repos)) {
+      const p = join(manifestsDir, `m0-freeze-${repo}.json`);
+      writeFileSync(p, JSON.stringify({ schemaVersion: 1, budget: { wallMsPerRun: 1000, pointsPerRun: 10 } }));
+      manifests[repo] = p;
+    }
+    const index = join(base, "index.json");
+    writeFileSync(index, JSON.stringify({ schemaVersion: 1, manifests, evalSet: { sealedRoot, files: 7, manifestSha256: sha256Of(manifestJson) } }));
+    const tgzB = join(base, "b.tgz");
+    const tgzC = join(base, "c.tgz");
+    writeFileSync(tgzB, "baseline bytes");
+    writeFileSync(tgzC, "candidate bytes");
+    const cwd = mkdtempSync(join(tmpdir(), "lzy-sib-cwd-"));
+    mkdirSync(join(cwd, ".lazyzcode", "loop", "snapshots"), { recursive: true });
+    writeFileSync(join(cwd, ".lazyzcode", "loop", "goal.json"), JSON.stringify({ slug: "fx", status: "executing" }));
+    writeFileSync(join(cwd, ".lazyzcode", "loop", "snapshots", "fx.md"), "# plan\n");
+    const args = () => ({ manifest: index, baseline: tgzB, candidate: tgzC, out: join(base, "out"), "source-lazyzcode": ROOT, "source-zpigeon-ios": ROOT });
+    const rewriteSealed = (mutate) => {
+      const sealed = JSON.parse(readFileSync(manifestJson, "utf8"));
+      mutate(sealed);
+      writeFileSync(manifestJson, JSON.stringify(sealed));
+      const idx = JSON.parse(readFileSync(index, "utf8"));
+      idx.evalSet.manifestSha256 = sha256Of(manifestJson);
+      writeFileSync(index, JSON.stringify(idx));
+    };
+    try {
+      const ok = preflight(args(), { cwd });
+      assert.equal(ok.blocked, undefined, `sealTimePin 方言被拒：${ok.blocked}`);
+      assert.equal(ok.batch.repos["zpigeon-ios"].siblingDependency.sealTimePin, head());
+      rewriteSealed((s) => {
+        s.repos["zpigeon-ios"].siblingDependency.sealTimePin = "0".repeat(40);
+      });
+      assert.match(preflight(args(), { cwd }).blocked, /兄弟依赖源缺 pin 0{12}/);
+      rewriteSealed((s) => {
+        s.repos["zpigeon-ios"].siblingDependency = { repo: ROOT, reason: "fx" };
+      });
+      assert.match(preflight(args(), { cwd }).blocked, /兄弟依赖缺 pin 键/);
+      rewriteSealed((s) => {
+        s.repos["zpigeon-ios"].siblingDependency = { repo: join(base, "nope"), snapshotCommit: head(), reason: "fx" };
+      });
+      assert.match(preflight(args(), { cwd }).blocked, /兄弟依赖源缺席/);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+      rmSync(cwd, { recursive: true, force: true });
     }
   });
 });

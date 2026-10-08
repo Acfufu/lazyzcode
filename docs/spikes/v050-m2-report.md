@@ -51,6 +51,7 @@ goal `v050-m2-freeze`（HEAVY · risk med）· 2026-10-08 · 计划快照 sha256
 - 基线=v0.4.1 发布包（registry npm pack，tag 9171d2407125）：sha256 `ed0c5285304e9108…`（全量见 PREREGISTRATION §5）。
 - 候选包=npm pack（修复轮终树；评审修复轮属 M2 收口内，前轮包 d0ccad722f7e…〔冻结提交 a48d0e1〕被取代）：sha256 `9901ddd9a983b99268fa5d9b696a9de88849e5e4378a1f69f245414324c2ce0b`（npm files 白名单=cli/core/plugin/README×2/CHANGELOG——scripts/docs 不入包，故候选包 sha 对评估侧文档编辑不变量；本记录即终值，无自指循环）。
 - 冻结后纪律：候选冻结点=M2 收口；M3 零改动（#51）；突破须重新冻结。
+- **补记（2026-10-08，M3 批前重冻结——#51「突破须重新冻结」的首次兑现）**：沙盒 provider 显式允许表收紧事故修复（commit `5da050a`，`core/review.js` 属 pack 白名单）⇒ 候选包 `9901ddd9…` 作废；重打包自 main 终树 `3d38113`，新 sha256 `4db51559c3eb754c353565cbad7de2de0c0558040dc3bdb10484387128305bdc`（新旧包逐文件对表，delta 恰 `package/core/review.js`）。同批评估侧 harness 修复（兄弟仓 pin 方言回退＋物化 fail-closed＋预飞前置拒 P0／`ORACLE_JUDGE=3` P1，不入包）见 commit `3d38113`。权威记录＝`scripts/evaluation/PREREGISTRATION-v050.md` §5 增补记 1；本行不改既有冻结文本（补记纪律）。
 
 ## 8 · 证据索引（工件持久家法，M0 口径）
 

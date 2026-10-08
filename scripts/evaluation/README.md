@@ -54,7 +54,9 @@
 - **oracleJudge 代次标记**：每个 run 记录携带 `oracleJudge`（整数代次）——判定器
   机制变更（如 v2=FIXTURE 注入+结构化 expect；v3=check-2 glob 形重封存，
   `artifacts/v050/oracle-v3/MANIFEST.json`）必须 bump 代次并落新标记；同批报告的
-  逐行判读代次必须统一，混杂即「不具备评估资格」。
+  逐行判读代次必须统一，混杂即「不具备评估资格」。当前代次常量＝`run-pairs.mjs` 的
+  `ORACLE_JUDGE`（2026-10-08 起=3，v050 封存集按 v3 约定产出）；重判通道以该常量
+  去重/盖章。
 - **`--rejudge-oracle` 重判通道**：判定器修复只重跑判读腿（agent 会话与物化夹具
   不动），逐行以新代次追加 supersede 行入 journal（append-only，旧行保留＝尝试账），
   重出 report；判读代次混杂时它也是统一通道。

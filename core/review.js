@@ -6,7 +6,7 @@
 //（拍板 6）；dutyTableVersion 不在此钉现行值——旧规则版本的记录须保持可读，一致性由 gate 判。
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, cpSync, rmSync, statSync, writeFileSync, openSync, closeSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { join, resolve, sep, dirname, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawnSync } from "node:child_process";
@@ -518,20 +518,43 @@ export function prepareIsolation(runDir) {
   return { home };
 }
 
-// 沙盒 provider 白名单（2026-10-02 commandcode 暗烧案正交修法）：隔离 HOME 会话此前整包
-// 透传宿主 provider env（ZCODE_PERSONAL_PROVIDER_CONFIG_FILE 指向真实配置）——全部 API key
-// 对沙盒内进程明文可见，且裸会话默认模型解析顺位到哪条腿全凭 providerOrder+enabled 巧合
-//（实测 100% 落 new-provider/deepseek：OAuth 账号腿隔离面必死、bigmodel-api enabled=false）。
-// 白名单=只保留「enabled 且带 API key」的腿（OAuth 腿在隔离面本就不可用，留纯泄露面），
-// 重写 providerOrder/modelConfigRules 后落盘隔离 home 内的专属配置，spawn 时 extraEnv 覆盖
-// env 指向——真实配置文件路径自此不进沙盒。结构不可识别/不可读时 fail-closed 前置拒
-//（plan-v050 §4 收口①：未识别配置不得悄悄退回未约束整包透传——2026-10-02 暗烧案同型缝；
-// 报文带恢复指路。env 缺席=BUILTIN-only 机器，无个人配置可滤，仍返 null 不新增失败面）。
+// 沙盒 provider 白名单（2026-10-02 commandcode 暗烧案正交修法；2026-10-08 opencode 腿复发案收紧）：
+// 隔离 HOME 会话此前整包透传宿主 provider env（ZCODE_PERSONAL_PROVIDER_CONFIG_FILE 指向真实配置）
+// ——全部 API key 对沙盒内进程明文可见，且裸会话默认模型解析顺位到哪条腿全凭 providerOrder+enabled
+// 巧合（实测 100% 落 new-provider/deepseek：OAuth 账号腿隔离面必死、bigmodel-api enabled=false）。
+// 白名单=「enabled 且带 API key」∩ **显式允许表**：只按 enabled 全过会在启用腿集变化时无声换腿
+// （10-07 实证：new-provider 停用后唯一 enabled 腿 opencode-go-chat 被如实透传，沙盒 4 天暗烧
+// ~587M tok）——允许表空=拒绝（fail-closed），烧哪条腿必须是显式决定。重写
+// providerOrder/modelConfigRules 后落盘隔离 home 内的专属配置，spawn 时 extraEnv 覆盖 env 指向
+// ——真实配置文件路径自此不进沙盒。结构不可识别/不可读时 fail-closed 前置拒（plan-v050 §4 收口①：
+// 未识别配置不得悄悄退回未约束整包透传——2026-10-02 暗烧案同型缝；报文带恢复指路。env 缺席=
+// BUILTIN-only 机器，无个人配置可滤，仍返 null 不新增失败面）。
 export const SANDBOX_NO_LEG_MSG =
-  "沙盒 provider 白名单为空（无 enabled 且带 API key 的 provider 腿）——评审会话跑在隔离 HOME，" +
-  "宿主 OAuth 凭据不进入隔离面；恢复：启用至少一条带 API key 的 provider 腿后重跑（lzy doctor 看 headless 行）";
+  "沙盒 provider 允许表为空，或与任何 enabled 且带 API key 的 provider 腿无交集——评审会话跑在隔离 HOME，" +
+  "宿主 OAuth 凭据不进入隔离面；恢复：把要放行的 providerId 写进 LZY_SANDBOX_PROVIDERS（逗号分隔）" +
+  "或 ~/.zcode/cli/lzy-sandbox-providers 文件（每行/逗号分隔，# 注释），确认该腿 enabled 且带 API key 后重跑" +
+  "（lzy doctor 看 headless 行）";
 
-export function filterProviderConfig(cfg) {
+// 显式允许表来源（env 优先，其次文件；皆空=空表）。允许表只放行显式写下的 providerId——
+// 「启用腿集变化时无声换腿透传」这一失效形态由此结构性关闭。
+export function sandboxProviderAllowlist() {
+  let raw = String(process.env.LZY_SANDBOX_PROVIDERS ?? "");
+  if (raw.trim() === "") {
+    try {
+      raw = readFileSync(join(homedir(), ".zcode", "cli", "lzy-sandbox-providers"), "utf8");
+    } catch {
+      raw = "";
+    }
+  }
+  return new Set(
+    raw
+      .split(/[\n,]/)
+      .map((s) => s.replace(/#.*$/, "").trim())
+      .filter(Boolean),
+  );
+}
+
+export function filterProviderConfig(cfg, { allow = sandboxProviderAllowlist() } = {}) {
   const config = cfg?.config ?? null;
   const rules = config?.providerConfigRules?.providerRules;
   if (!Array.isArray(rules)) {
@@ -548,7 +571,8 @@ export function filterProviderConfig(cfg) {
     const k = acc.apiKey ?? acc.api_key;
     return typeof k === "string" && k.length > 0 ? k : null;
   };
-  const kept = rules.filter((r) => r && r.enabled === true && apiKeyOf(r));
+  const allowSet = allow instanceof Set ? allow : new Set(allow ?? []);
+  const kept = rules.filter((r) => r && r.enabled === true && apiKeyOf(r) && allowSet.has(r.providerId));
   const keptIds = new Set(kept.map((r) => r.providerId).filter(Boolean));
   const order = (Array.isArray(config?.providerOrder) ? config.providerOrder : kept.map((r) => r.providerId)).filter((id) => keptIds.has(id));
   const mcr = config?.modelConfigRules ?? {};

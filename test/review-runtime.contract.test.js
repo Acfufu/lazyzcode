@@ -35,6 +35,11 @@ import { ensurePolicyRecord } from "../core/policy.js";
 import { evaluateGate } from "../core/gate.js";
 import { recordAuthorization } from "../core/contract.js";
 
+// 沙盒 provider 前置固定为 BUILTIN-only 形态（2026-10-08 显式允许表案）：本文件测 gate/运行时
+// 语义，不测 provider 白名单——机器 env 在场会让「允许表为空」前置拒生效，测试须自洽。
+delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+
+
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const CLI = join(ROOT, "cli", "lzy.js");
 const CONTRACT = "task: t\nendpoint: A\nscope: .\nrecipe: none\nbudget-ref: none\n\n- [A1] x\n";

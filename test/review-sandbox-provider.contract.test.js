@@ -16,6 +16,7 @@ import {
   prepareSandboxProviderConfig,
   preflightReview,
   runReview,
+  sandboxProviderAllowlist,
 } from "../core/review.js";
 
 const FENCE = (obj) => "```json\n" + JSON.stringify(obj) + "\n```";
@@ -57,8 +58,8 @@ const BASE_CONFIG = () => ({
   },
 });
 
-test("filterProviderConfig：只留 enabled+key 腿、providerOrder 保序重写、modelConfigRules 陪葬过滤", () => {
-  const out = filterProviderConfig(BASE_CONFIG());
+test("filterProviderConfig：只留 enabled+key∩显式允许表 的腿、providerOrder 保序重写、modelConfigRules 陪葬过滤", () => {
+  const out = filterProviderConfig(BASE_CONFIG(), { allow: ["cmdcode", "glm-leg"] });
   assert.ok(out, "合法结构须产出过滤结果");
   const ids = out.config.providerConfigRules.providerRules.map((r) => r.providerId);
   assert.deepEqual(ids, ["cmdcode", "glm-leg"], "剔 OAuth 腿与禁用腿，保序");
@@ -70,6 +71,50 @@ test("filterProviderConfig：只留 enabled+key 腿、providerOrder 保序重写
   assert.deepEqual(out.config.modelConfigRules.manualProviderModelRules, [{ providerId: "glm-leg", modelId: "glm/z", config: {} }]);
   assert.equal(out.schemaVersion, 1, "config 之外的顶层键原样保留");
 });
+
+test("filterProviderConfig：允许表收紧语义——表内未列/enabled 腿不换名透传；空表=空（2026-10-08 opencode 腿复发案）", () => {
+  // 允许表只放行 cmdcode：glm-leg 虽 enabled+key 也被剔（显式允许=烧哪条腿是显式决定）
+  const only = filterProviderConfig(BASE_CONFIG(), { allow: ["cmdcode"] });
+  assert.deepEqual(only.config.providerConfigRules.providerRules.map((r) => r.providerId), ["cmdcode"]);
+  assert.deepEqual(only.config.providerOrder, ["cmdcode"]);
+  // 允许表列了但没有对应 enabled+key 腿 → 空（prepare 侧转 no-sandbox-provider 前置拒）
+  const none = filterProviderConfig(BASE_CONFIG(), { allow: ["ghost-leg"] });
+  assert.deepEqual(none.config.providerConfigRules.providerRules, []);
+  // 空表 → 空（fail-closed 默认位）
+  const empty = filterProviderConfig(BASE_CONFIG(), { allow: [] });
+  assert.deepEqual(empty.config.providerConfigRules.providerRules, []);
+});
+
+test("sandboxProviderAllowlist：env 优先；env 缺席读 ~/.zcode/cli/lzy-sandbox-providers（HOME 覆盖）；皆空=空表", () => {
+  const fakeHome = mkdtempSync(join(tmpdir(), "lzy-sbx-allow-"));
+  const savedEnv = process.env.LZY_SANDBOX_PROVIDERS;
+  const savedHome = process.env.HOME;
+  try {
+    // env 在场：逗号/换行混排 + # 注释剔除
+    process.env.LZY_SANDBOX_PROVIDERS = "cmdcode, glm-leg\n# 注释行\n";
+    assert.deepEqual([...sandboxProviderAllowlist()].sort(), ["cmdcode", "glm-leg"]);
+    // env 缺席 → 文件回退（HOME 覆盖隔离，绝不读真实 ~/.zcode）
+    delete process.env.LZY_SANDBOX_PROVIDERS;
+    process.env.HOME = fakeHome;
+    mkdirSync(join(fakeHome, ".zcode", "cli"), { recursive: true });
+    writeFileSync(join(fakeHome, ".zcode", "cli", "lzy-sandbox-providers"), "glm-leg\n# x\ncmdcode\n");
+    assert.deepEqual([...sandboxProviderAllowlist()].sort(), ["cmdcode", "glm-leg"]);
+    // env 空串（显式空）也要回落文件?? 语义：env 去空白后为空＝等同缺席 → 文件生效
+    process.env.LZY_SANDBOX_PROVIDERS = "   ";
+    assert.deepEqual([...sandboxProviderAllowlist()].sort(), ["cmdcode", "glm-leg"]);
+    // 文件缺席 → 空表
+    rmSync(join(fakeHome, ".zcode", "cli", "lzy-sandbox-providers"));
+    delete process.env.LZY_SANDBOX_PROVIDERS;
+    assert.deepEqual([...sandboxProviderAllowlist()], []);
+  } finally {
+    if (savedEnv === undefined) delete process.env.LZY_SANDBOX_PROVIDERS;
+    else process.env.LZY_SANDBOX_PROVIDERS = savedEnv;
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
 
 test("filterProviderConfig：结构不可识别 fail-closed 抛 ReviewPreflightError（收口①，不再回落整包透传）", () => {
   for (const bad of [null, {}, { config: {} }, { config: { providerConfigRules: { providerRules: "not-array" } } }]) {
@@ -85,7 +130,9 @@ test("prepareSandboxProviderConfig：env 在场→白名单落盘隔离 home 并
   const home = mkdtempSync(join(tmpdir(), "lzy-sbx-home-"));
   const dir = mkdtempSync(join(tmpdir(), "lzy-sbx-cfg-"));
   const saved = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+  const savedAllow = process.env.LZY_SANDBOX_PROVIDERS;
   try {
+    process.env.LZY_SANDBOX_PROVIDERS = "cmdcode,glm-leg"; // 显式允许表（2026-10-08 收紧后的前置）
     // env 缺席 → null（BUILTIN-only 机器零新增失败面）
     delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
     assert.equal(prepareSandboxProviderConfig(home), null);
@@ -109,6 +156,8 @@ test("prepareSandboxProviderConfig：env 在场→白名单落盘隔离 home 并
   } finally {
     if (saved === undefined) delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
     else process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = saved;
+    if (savedAllow === undefined) delete process.env.LZY_SANDBOX_PROVIDERS;
+    else process.env.LZY_SANDBOX_PROVIDERS = savedAllow;
     rmSync(home, { recursive: true, force: true });
     rmSync(dir, { recursive: true, force: true });
   }
@@ -212,9 +261,11 @@ test("runReview 接线：白名单 extraEnv 进 spawn、metering.usage 跨会话
   const cfgDir = mkdtempSync(join(tmpdir(), "lzy-sbx-cfg-"));
   const ledgerHome = mkdtempSync(join(tmpdir(), "lzy-sbx-ledger-"));
   const savedEnv = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+  const savedAllow = process.env.LZY_SANDBOX_PROVIDERS;
   const savedHome = process.env.HOME;
   const d = fixture();
   try {
+    process.env.LZY_SANDBOX_PROVIDERS = "cmdcode,glm-leg"; // 显式允许表（2026-10-08 收紧后的前置）
     const realPath = join(cfgDir, "provider_config.json");
     writeFileSync(realPath, JSON.stringify(BASE_CONFIG()));
     process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = realPath;
@@ -274,6 +325,8 @@ test("runReview 接线：白名单 extraEnv 进 spawn、metering.usage 跨会话
   } finally {
     if (savedEnv === undefined) delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
     else process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = savedEnv;
+    if (savedAllow === undefined) delete process.env.LZY_SANDBOX_PROVIDERS;
+    else process.env.LZY_SANDBOX_PROVIDERS = savedAllow;
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;
     if (savedHome === undefined) delete process.env.USERPROFILE;

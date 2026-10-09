@@ -8,7 +8,7 @@ goal `v050-m3-reval`（HEAVY · risk med）· 计划快照 sha256 `6cb15e7846e0f
 - **环境轴实读与封存标签对账**：node v24.19.0／bun 1.3.14／Xcode 27.0 (27A266a)／iPhone 17 Pro 模拟器在场；壳 Info.plist **3.14.5**（2026-10-08 13:58 自动更新，计划写预期 3.14.4——漂移注记）；引擎权威 `zcode.cjs --version` **0.16.9 未变** ⇒ 无引擎代际漂移（AGENTS §3 分线）。封存清单标签「ZCode 3.14.0 代」按注记对账，非暂停条件。
 - **腿钉定**：批 1 因执行侧事故未带允许表 env（见 §7）；批 2 起 `LZY_SANDBOX_PROVIDERS=bigmodel-api`。全 36 腿隔离计量行 provider 唯一＝**bigmodel-api**（模型 GLM-5.3-Flash），两臂同腿成立。**计费口径（2026-10-10 用户更正）**：本机 bigmodel-api 腿走 GLM 套餐 API 通道，批消耗实际扣减套餐额度；harness points 为本仓计价表估算面。
 - **canary 独立复跑**（N1，独立子代理通道，宿主零阅读）：**正 6/6 pass · 负 6/6 fail**，与封存判定表逐任务一致；回执＋12 存证在 `artifacts/v050/m3/canary/`。一次性偏差＝zpigeon-ios/task-2 首负跑撞 120s 单检测超时（冷构建方差，预热后 59s 干净通过）——环境抖动，非仪面/密封集缺陷。
-- **修复 delta 聚焦评审**（N3）：**valid pass**（metered 4.0 分；运行 id 落 `.lazyzcode/review/`，收口注记回填——facts-only 纪律：评审输入不得含在先运行标记，故正文运行 id 于收口提交时回填）——非阻塞 P2×1（`--rejudge-oracle` 对已盖本代次戳但判读缺席的行永久跳过，remedy 指路死路；实操绕行＝`--force-seq`）＋P3×1（run-pairs 计量回退 SQL 内插 sessionId 未净化）；记档不阻进批，处置见 §8。首跑 invalid（opencode-go-chat 腿上游 deepseek-v4.1-flash 对 thinking 长会话确定性 400，`x-zen-model` 头实证）→ 换腿后复跑即过。
+- **修复 delta 聚焦评审**（N3）：`v050-m3-reval.a1.r2` **valid pass**（metered 4.0 分；收口回填——facts-only 纪律：评审输入不得含在先运行标记，正文运行 id 于收口提交回填）——非阻塞 P2×1（`--rejudge-oracle` 对已盖本代次戳但判读缺席的行永久跳过，remedy 指路死路；实操绕行＝`--force-seq`）＋P3×1（run-pairs 计量回退 SQL 内插 sessionId 未净化）；记档不阻进批，处置见 §8。首跑 invalid（opencode-go-chat 腿上游 deepseek-v4.1-flash 对 thinking 长会话确定性 400，`x-zen-model` 头实证）→ 换腿后复跑即过。
 
 ## 2 · 执行账面
 
@@ -51,15 +51,22 @@ journal **39 行**（append-only 尝试账；现行 36 seq）· 分三批＋1 �
 ## 7 · 特殊腿归因与 harnessChanges／事故节（全如实）
 
 1. **执行侧 env 事故（批 1）**：N5 启动 shell 漏导出 `LZY_SANDBOX_PROVIDERS` → 新臂腿内评审义务不可满足（空允许表前置拒族；旧臂 0.4.1 无此机制不受影响）。实锤 seq12 首跑：agent HEAVY 全链走完（6/6 步、oracle=true）后 finish 被义务评审拦，**按 ADR-0037 具名收束**（handoff、如实报告、目标保持 executing）——义务阻塞收束的真会话样本。处置：批 2 起带 env；seq3/10/12 按单列额度 `--force-seq` 重跑（各 1 次），原行保留＝尝试账；三条重跑后全部 ok/goalDone=true/oracle=true（9.39/8.32/2.90 分）。档案 `artifacts/v050/m3/preflight/leg-incident.md`。
-2. **超时腿×3**（seq2 old、seq30 new、seq33 old）：墙钟 2700s 耗尽 harness SIGKILL；oracle 均 true（交付物已在夹具）但 goal 循环未及 finish；计量 absent（WAL 脏＋immutable 直读无行）——缺失不记零。其中 lazyzcode/task-2::t2 对（seq33 old done vs seq30 new timeout）是唯一 old 臂 goalDone 占优对。
-3. **评审首跑 invalid**：opencode-go-chat 腿上游 deepseek-v4.1-flash 对 thinking 长会话确定性 400（`reasoning_content must be passed back`；单/双轮探针过、评审级长会话必死）——换 bigmodel-api 腿后复跑过。该腿随后周额度耗尽（用户报），对批无影响（批已钉 bigmodel-api）。
+2. **超时腿×3**（seq2 old、seq30 new、seq33 old）：墙钟 2700s 耗尽 harness SIGKILL；oracle 均 true（交付物已在夹具）但 goal 循环未及 finish；计量 absent（WAL 脏＋immutable 直读无行）——缺失不记零。其中 lazyzcode/task-2::t2 对（**seq25** old done vs seq30 new timeout）是唯一 old 臂 goalDone 占优对。〔收口勘误：初稿误写 seq33——seq33 为 task-2::t1 的 old 臂超时腿，a1.r8 P2 F-1 抓出，本行即订正。〕
+3. **评审首跑（a1.r1）invalid**：opencode-go-chat 腿上游 deepseek-v4.1-flash 对 thinking 长会话确定性 400（`reasoning_content must be passed back`；单/双轮探针过、评审级长会话必死）——换 bigmodel-api 腿后复跑过。该腿随后周额度耗尽（用户报），对批无影响（批已钉 bigmodel-api）。
 4. **壳版本漂移注记**：3.14.4→3.14.5（2026-10-08 13:58 自动更新，N1②③ 之间）；引擎权威 0.16.9 未变，非代际漂移；批内两臂同引擎。
 5. **harness 修复两件（批前，M2 收口后）**：兄弟仓 pin 方言回退＋物化 fail-closed＋预飞前置拒（P0，防 zpigeon 12 腿静默打废——批内 zpigeon 12 腿全过即其量产验证）；`ORACLE_JUDGE=3` 代次常量（P1）。均 commit 3d38113，819/819 绿。
-6. **非阻塞发现处置**：职责评审轮 P2（rejudge remedy 死路指路）——登记为 M4 前小修候选（修法：跳过条件加「oraclePassed 为 null 不跳」或 remedy 文案分叉）；P3（SQL 净化）——同列。均不涉本批数据有效性。
+6. **非阻塞发现处置**：a1.r2 P2（rejudge remedy 死路指路）——登记为 M4 前小修候选（修法：跳过条件加「oraclePassed 为 null 不跳」或 remedy 文案分叉）；P3（SQL 净化）——同列。均不涉本批数据有效性。
 
 ## 8 · 结论
 
 0.5.0 候选相对 v0.4.1 基线：**质量完全打平（18/18 vs 18/18、零错误完成）、收束面大幅改善（预算内 33/33 全 done、新臂完成率 17/18）、积分成本上升 36%、无一项严格改善**。按预注册主门：**尚无质量收益证据——不采纳、不宣称、不产晋级材料**（ADR-0034 维持，0.4.1 保持旧默认）。产品标准 2/4 不构成采纳依据（#49 措辞禁令）。0.5.0 的纪律层价值在本批显示为「同质量下的收束诚实化与可观测化」（具名收束、义务门、逐腿计量），其采纳与否留待用户以产品标准面另行决断；#42 既有默认策略比较仍按 PREREG §4 另列段处理（本次未启动）。
+
+## 8.1 · 收口记录（2026-10-10）
+
+- **三职责评审全 pass**：general-correctness＝a1.r2（4.0 分，对 5ce2778）→标记中性化后候选漂移→**a1.r8 重跑 pass**（4.38 分，对 27954b2；非阻塞 P2×1＝本报告 §7.2 归因错标〔已上方勘误〕＋P3×2＝quadrants.mjs 零契约测试/harvest 干跑显示边界，均记档不阻收官）；verification-deps＝**a1.r6 pass**（1.49 分，P3×1 已记录取舍）；external-side-effects＝**a1.r7 pass**（2.33 分，零发现）。评审弧全程 8 次 spawn：a1.r1/r3/r4/r5 invalid（腿 400×1＋facts-only leak×3——运行标记经报告正文与 goal 步注记两条路泄入输入包，均 spawn 前零消耗）＋a1.r2/r6/r7/r8 valid。
+- **三检查回执**（绑定现行指纹 7f177c3d08db）：docs-links r-…krazd50／help-smoke r-…ktizmvz／test-suite r-…kvqd3vd 全 exit 0（test-suite=819/819）。
+- **对照**：comparator 6/6 MATCH（gen2 绑定，亲跑复现，`artifacts/v050/m3/comparator-verdicts.json`）。
+- **终验 attestation**：LOOP_COMPLETE `12c010a15606f155…`（.lazyzcode/attestations/v050-m3-reval-20261009T221346Z.json）。
 
 ## 9 · 验证限制（如实）
 

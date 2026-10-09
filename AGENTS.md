@@ -11,7 +11,7 @@
 ## 2. 当前状态（2026-10-08 短表；完整历史档案 → docs/history.md）
 
 - **已发布**：npm `lazyzcode` **0.4.1**（latest）＝编排纪律四件（#43–#46）。
-- **0.5.0（#42 重评版）**：M0/M1 收官；**M2 候选冻结 10-08**（冻结面 8 条＋收束读面＋A3/A4 预注册＋新评估集 #50）→ v050-m2-report.md。
+- **0.5.0（#42 重评版）**：M0/M1/M2 收官（候选冻结 10-08，批前重冻结 4db51559）；**M3 重评 10-10**：主门=尚无质量收益证据（两臂 18/18 打平、积分+36%、无严格改善）——**不采纳、维持 0.4.1 旧默认（ADR-0034）**→ v050-m3-report.md。
 - 发布机械件按 docs/release-checklist.md；评审报告库 → docs/reviews/。
 
 ## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19，设计前必读）：引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔0.16.5→0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组，lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**（engine-3140-sync 只锚版本漏检教训）
@@ -23,7 +23,7 @@
 5. 宿主内置**多模型目录**（zai/bigmodel 双厂商×计划档，默认 GLM 套餐；3.12.1 复核）→ tier 预算护栏可借模型维度，不自研模型路由。
 6. 工作区钩子**信任门已在引擎灰度**（`workspace_hooks_*` 策略码，文档未提）→ 永不改写用户 config.json（见 §5 红线）。
 7. 事实源优先级：**reversed-zcode 引擎源码 > zcode-guide 官方文档**（文档存在滞后，已实证 4 处）。
-8. **cache 安装型插件默认禁用**：装载需「安装+启用」两步，启用态在 config `plugins.enabledPlugins`（Spike 2 实测）；cache 清单候选仅 `.zcode/.claude/.codex` 三种，`.cursor-plugin` 仅工作区 walk-up 路径接受。3.12.3 起应用随包内置官方插件目录 `Resources/glm/packages/`（3.14.0 代 **14 载荷**：document-skills 拆 documents/pdf/presentations/spreadsheets 四件各 0.1.7，新增 image-search 0.1.1/node-repl-host 0.6.0/plugin-creator 0.1.1，bump browser-use 0.5.1/computer-use 0.6.1/zcode-guide 0.2.0；`defaultEnabled` 自 manifest 迁入引擎内置 seed 表〔14 个 manifest 全无此键；表值 10 真 4 假〕；seed 进用户 cache 前缀 `official/`，marketplace 安装为 `cache/` 前缀；`plugins list` 活体 15 条=官方 13 显+video2code 市场装+lazyzcode 本地，zcode-guide 知识包仍不入列）；启用态=seed 缺省×用户覆盖、仍归引擎管理，config.json 零写入红线不涉。
+8. **cache 安装型插件默认禁用**：装载需「安装+启用」两步，启用态在 config `plugins.enabledPlugins`（Spike 2 实测）；cache 清单候选仅 `.zcode/.claude/.codex` 三种，`.cursor-plugin` 仅工作区 walk-up 路径接受。3.12.3 起应用随包内置官方插件目录 `Resources/glm/packages/`（3.14.0 代 **14 载荷**，逐项清单→docs/history.md 与引擎基线档案；`defaultEnabled` 自 manifest 迁入引擎内置 seed 表，表值 10 真 4 假；seed 进用户 cache 前缀 `official/`，marketplace 安装为 `cache/` 前缀；`plugins list` 活体 15 条=官方 13 显+video2code 市场装+lazyzcode 本地）；启用态=seed 缺省×用户覆盖、仍归引擎管理，config.json 零写入红线不涉。
 
 
 ## 4. 决策速查表（现行摘要；全表 → docs/decisions.md；变更须同步该表+日期）

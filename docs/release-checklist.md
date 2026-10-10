@@ -853,3 +853,25 @@ install`). Requires the ZCode desktop app (logged in), Node ≥ 22, git.
 - **F1–F4 双证据全在案**（红半绑 pre-fix 外部面、绿半绑复合指纹 `5b68a624ad`）；comparator 两轮 4/4 MATCH，按发现补强 F1 红半退出码原文与 F3 双支双跑后复核仍全 MATCH。
 - **终验 attestation**：`.lazyzcode/attestations/v021-engine-surface-20260920T144518Z.json`（sha256 `5b782537464e826f6a258ec4eb3edfca56115fb5aea17bda3b8ed2fdccf7f1ca`）。
 - **发布机械件余项**：三体 bump（package.json / 市场 manifest version+ref / plugin.json）→ CHANGELOG 定版 → CI 四腿绿 → tag v0.2.1 最后切 → GitHub Release → **publish 待用户 2FA** → 隔离 prefix 冒烟 + 真机 `lzy update` 0.2.0→0.2.1。市场 manifest 的 pin 形态（ref vs sha）见第 11 步注记（ADJ-88）。**建议 VM 复测**：win32 引擎 0.16.5 上 `enabled` 行本已 ✔（该台不受此 bug 影响），0.16.9 宿主才是本轮修复面——若 VM 引擎停留在 0.16.5，可只跑 update 链与 scratch loop 回归。
+
+## 执行记录（0.5.0，收束诚实化版——机械件已备，publish 留用户）
+
+### 内容与定位
+
+- **minor 面**：0.5.0 = v050 弧 M0–M2 工作集（具名收束读面/沙盒 provider 显式允许表/评审用量账本/verify 回执补轴/run-hook 日志私有化）＋M3 正式重评**负结论如实入档**（预注册主门=尚无质量收益证据：18/18 打平、积分+36%、零严格改善）。发布沿 0.4.0 先例（评估负结论不阻断发布），**采纳面维持 ADR-0034、无晋级宣称**；报告 `docs/spikes/v050-m3-report.md`。
+- **M4 发布前小修两件**（M3 评审 a1.r2 F-1/F-2，2026-10-10，824cf2b）：`--rejudge-oracle` 对判读缺席行不再代次跳过＋跳过行显式计数（合成夹具活体：判读缺席重判/旧代次重判/在场与 runDir 缺席两类跳过）；immutable 计量回退 SQL 会话 id 白名单净化（与 querySessionPoints 同规则，scripts 侧就地内联——core/ 在包白名单内，发布期产品码零漂移约束）。
+- **定版提交**：f7789a5——版本五处同步（marketplace.json version+ref→v0.5.0／home.html softwareVersion／sitemap 首页 lastmod→2026-10-10；guide 本弧零实质改动未动）＋CHANGELOG 定版节（M3 负结论如实注记＋沙盒 provider 允许表条目补入——该 5da050a 修复此前漏记）。
+
+### 发布链实弹（2026-10-10）
+
+- **发布前验证**（定版树实跑）：`npm test` 819/819（env 剥离形态）；`provenance-ready` exit 0（ref 联锁 v0.5.0）；`npm publish --dry-run` **70 文件 / 507.8 kB / shasum `803268f285f166b19cafdc2ca1642bc26499894f`**；敏感串双级扫描：清单层 0 命中，内容层 `sess_` 0／`/Users/` 0／`.mimosa` 3=package.json 排除模式×2＋installer 守卫注释（设计内）／`.lazyzcode` 35 文件=产品状态目录名（设计内）／`acfufu` 3=package.json 元数据 URL（必需）；docs-links 117 文件零断链。
+- **CI 首跑红（windows node24 一腿）**：`review-sandbox-provider` 夹具 HOME 覆盖在 win32 空转——`os.homedir()` 读 USERPROFILE 不吃 HOME，文件回退子用例读到真 home 空文件得 `[]`。**本批 5da050a 起的 M2 收口后段提交随本次 push 首过 CI（此前只在宿主实弹）**——0.4.0「测试面宿主绿≠CI 证据」教训复演；win32 测试雷新增一族=「os.homedir() 依平台读 HOME/USERPROFILE，夹具双变量同指 fakeHome」。test-only 修复 9cbcc87（载荷零 delta，沿 0.2.1 先例）→ 复跑 **四腿＋docs job 全绿**（run 38019497611，判决=gh run view conclusion）。
+- **tag 最后切**：`v0.5.0 = 9cbcc87`（CI 绿判树）；tag 树 `npm pack` shasum 与定版前 dry-run **逐字一致** ✔（`803268f2…`，载荷冻结不变量成立）。
+- **GitHub Release**：已建（非 draft；notes 三节 Highlights/Evaluation note〔M3 负结论如实〕/Coverage boundary〔macOS/arm64 单机如实、win32 复测 pending〕/Upgrade）。Pages 两次部署 success（f7789a5、9cbcc87），站点 softwareVersion 0.5.0 上线。
+
+### Runbook 余项（publish 用户 2FA 起）
+
+1. **publish（用户 2FA）**：载荷=tag 树 tarball `/tmp/lzy050-tagtree/lazyzcode-0.5.0.tgz`（`npm publish <tarball>`，绕 0.0.6 tag 后提交反模式）。
+2. **发后核验**：registry `dist-tag latest=0.5.0`（curl HTTP 端点为真相源，CDN 传播窗数分钟）；发布 shasum 与 dry-run 逐字一致；隔离 prefix 冒烟 `npm i -g lazyzcode@0.5.0 --prefix /tmp/lzy-smoke-050 --prefer-online`（npm12 EALLOWREMOTE 绕法）→ `lzy --version` 应 0.5.0 ＋ `lzy doctor`；真机 `lzy update` 0.4.1→0.5.0 全链（新装子进程 sync=ADR-0012 活体）；doctor `payload-ver` 双 ✔。
+3. **win32 VM 复测**（发布域，publish 后才可做——update 目标须已发布）：registry 新装/update 链/doctor（handoff-causes 新行活体）/scratch loop 全链（具名收束读面 win32 活体）。
+4. **收官同步**：AGENTS §2 发布收官四处固定位点＋本节补记（publish 时刻/registry 读数）＋CHANGELOG 无需动（定版日=publish 日）。

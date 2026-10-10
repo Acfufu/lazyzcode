@@ -34,6 +34,10 @@ const ORACLE_TIMEOUT_MS = 120_000;
 // 「oracleJudge=3 glob-form/xcodebuild-probe conventions」）——批内统一盖 v3，旧批 v2 行
 // 保留原样；重判通道以本常量去重/盖章。
 const ORACLE_JUDGE = 3;
+// 会话 id 白名单（a1.r2 F-2/P3，M4 发布前修复）：immutable 直读回退 SQL 内插前净化——与
+// core/cost.js querySessionPoints 同一道规则（引擎会话 id 空间 [A-Za-z0-9_-]，≤128）。
+// 就地内联而非导入 core 导出：core/ 在 npm 包白名单内，发布期产品码零漂移约束。
+const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
 function parseArgs(argv) {
   const f = {};
@@ -537,17 +541,22 @@ async function runCell(cell, ctx) {
       if (pts?.absent) {
         // 击杀/超时留非空 WAL ⇒ hostdb 守卫拒 immutable 回退（宁 null，M4 缺陷①语义）——
         // 评估账面改用 harness 侧 immutable 直读（已落盘行=击杀前已完成请求，M0 KILL-2 先例；
-        // 如实标 metered-immutable，可能与引擎最终结算有差——账面注记）。
-        const sql = `SELECT m.session_id AS sid, m.model_id AS model, m.started_at/3600000 AS h, SUM(m.input_tokens) AS it, SUM(m.cache_read_input_tokens) AS crt, SUM(m.output_tokens) AS ot FROM model_usage m WHERE m.session_id = '${rec.sessionId}' AND m.status = 'completed' GROUP BY sid, model, h`;
-        const rr = spawnSync("sqlite3", [`file:${db}?immutable=1`, "-json", sql], { encoding: "utf8", timeout: 30_000 });
-        if (rr.status === 0 && rr.stdout?.trim()) {
-          try {
-            const rows = JSON.parse(rr.stdout);
-            const compute = (await import("../../core/cost.js")).computePoints;
-            pts = { absent: false, unpriced: [], points: compute(rows) };
-            mode = "metered-immutable";
-          } catch {
-            pts = { absent: true, unpriced: [], points: 0 };
+        // 如实标 metered-immutable，可能与引擎最终结算有差——账面注记）。内插前过会话 id 白名单。
+        if (!SESSION_ID_RE.test(rec.sessionId)) {
+          rec.points = null;
+          rec.metering = "absent";
+        } else {
+          const sql = `SELECT m.session_id AS sid, m.model_id AS model, m.started_at/3600000 AS h, SUM(m.input_tokens) AS it, SUM(m.cache_read_input_tokens) AS crt, SUM(m.output_tokens) AS ot FROM model_usage m WHERE m.session_id = '${rec.sessionId}' AND m.status = 'completed' GROUP BY sid, model, h`;
+          const rr = spawnSync("sqlite3", [`file:${db}?immutable=1`, "-json", sql], { encoding: "utf8", timeout: 30_000 });
+          if (rr.status === 0 && rr.stdout?.trim()) {
+            try {
+              const rows = JSON.parse(rr.stdout);
+              const compute = (await import("../../core/cost.js")).computePoints;
+              pts = { absent: false, unpriced: [], points: compute(rows) };
+              mode = "metered-immutable";
+            } catch {
+              pts = { absent: true, unpriced: [], points: 0 };
+            }
           }
         }
       }
@@ -700,10 +709,15 @@ async function main() {
     const bySeqLatest = new Map();
     for (const l of loadJournal(outDir).lines) if (l.record?.seq != null) bySeqLatest.set(l.record.seq, l.record);
     let rejudged = 0;
+    let skippedJudged = 0;
+    let skippedNoRepo = 0;
     for (const rec of bySeqLatest.values()) {
-      if (rec.oracleJudge === ORACLE_JUDGE) continue; // 已是当前代次判定器产物（force-seq 重跑行）——不重复烧判读
+      // 已是当前代次判定器产物**且判读在场**——不重复烧判读。判读缺席（oraclePassed=null，
+      // oracle 运行期崩溃/超时）的行即便盖了本代次戳也重判：跳过它会让资格拒报文的
+      // --rejudge-oracle remedy 对该失效形态成为死路（a1.r2 F-1/P2，M4 发布前修复）。
+      if (rec.oracleJudge === ORACLE_JUDGE && (rec.oraclePassed === true || rec.oraclePassed === false)) { skippedJudged += 1; continue; }
       const repoDir = join(rec.runDir, "repo");
-      if (!existsSync(repoDir)) continue;
+      if (!existsSync(repoDir)) { skippedNoRepo += 1; continue; }
       const oracleOut = join(rec.runDir, "oracle-result.json");
       const ov = spawnSync(process.execPath, [fileURLToPath(import.meta.url), "--eval-oracle", join(batch.sealedRoot, rec.taskId, "oracle.json"), "--eval-cwd", repoDir, "--eval-out", oracleOut], { encoding: "utf8", timeout: ORACLE_TIMEOUT_MS + 30_000 });
       const updated = { ...rec };
@@ -734,7 +748,7 @@ async function main() {
       }
       process.exit(3);
     }
-    console.log(`[run-pairs] rejudge ${rejudged} runs；report：${rep.report.conclusion}`);
+    console.log(`[run-pairs] rejudge ${rejudged} runs（跳过：判读在场 ${skippedJudged} · runDir 缺席 ${skippedNoRepo}——两类跳过行均显式计数，不再静默）；report：${rep.report.conclusion}`);
     process.exit(0);
   }
   const pf = preflight(f);

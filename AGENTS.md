@@ -10,7 +10,7 @@
 
 ## 2. 当前状态（2026-10-10 短表；完整历史档案 → docs/history.md）
 
-- **已发布**：npm `lazyzcode` **0.5.0**（latest）＝收束诚实化工作集（具名收束读面 #47／沙盒 provider 显式允许表／评审用量账本／verify 回执补轴）；发布沿 0.4.0 先例不带采纳宣称；win32 VM 复测 10-10（update 链+doctor+人权门批准链+三道门拒向活体；完整 finish 边界=统一门评审义务需引擎凭据、干净机如实不可达，记档 release-checklist）。
+- **已发布**：npm `lazyzcode` **0.5.0**（latest）＝收束诚实化工作集（具名收束读面 #47／沙盒 provider 允许表／评审用量账本／回执补轴；沿 0.4.0 先例无采纳宣称）；win32 VM 复测 10-10（跨两版 update+doctor+人权门+三道门拒向活体；完整 finish=统一门评审义务需凭据，边界记档 release-checklist）。
 - **0.5.0 重评（M3，10-10）**：主门=尚无质量收益证据（两臂 18/18 打平、积分+36%、无严格改善）——**不采纳、纪律默认维持旧线（ADR-0034）**→ v050-m3-report.md。
 - 发布机械件按 docs/release-checklist.md；评审报告库 → docs/reviews/。
 

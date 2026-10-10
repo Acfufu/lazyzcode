@@ -3,11 +3,17 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
-## [Unreleased]
+## [0.5.0] - 2026-10-10
 
-## [0.5.0] - 2026-10-08（候选冻结：M3 评估用候选；发布机械件另走 M4 release checklist）
+The closeout-honesty release. Degraded goal-loop stops become named and
+observable instead of silent, and the paid-review path stops burning providers
+nobody explicitly chose. Shipped per the 0.4.0 precedent: the preregistered
+M3 paired re-evaluation against 0.4.1 returned **no quality-benefit evidence**
+on its main gate (18/18 pairs oracle-flat, points +36%, zero strict
+improvements), so this release carries no adoption claim (ADR-0034) — it
+ships the code, not a superiority narrative.
 
-### Added (0.5.0 M2 working set)
+### Added
 
 - Review sandbox usage ledger: each paid review run appends one line to the
   user-private `~/.zcode/cli/lzy-usage/YYYY-MM.jsonl` (project path, runId,
@@ -19,8 +25,15 @@ versioning is SemVer.
   the environment fingerprint and a per-leg `legs[]` list (skip counts and
   names read straight off the receipt).
 
-### Changed (0.5.0 M2 working set)
+### Changed
 
+- Review sandbox provider selection tightened to an explicit allowlist:
+  isolated-HOME review sessions previously inherited any enabled+keyed host
+  provider, so a leg-set change could silently route paid reviews to a
+  metered provider (a four-day unnoticed burn, caught in reconciliation).
+  The allowlist now comes from `LZY_SANDBOX_PROVIDERS` or
+  `~/.zcode/cli/lzy-sandbox-providers` (line- or comma-separated, `#`
+  comments); an empty allowlist fails closed before any spend.
 - Hook launcher failure log moved to user-private `~/.cache/lzy-hook/`
   (POSIX) / `%APPDATA%\lzy-hook\` (Windows) — no more world-writable
   shared `/tmp` fixed-name write point.

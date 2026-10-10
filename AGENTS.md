@@ -8,10 +8,10 @@
 做 ZCode 版的 [lazycodex](https://github.com/code-yeongyu/lazycodex)（OmO 引擎的 Codex 发行版，MIT）。形态：**ZCode 插件 + 轻量 CLI（`lzy`）**——插件承载 skills/hooks/agents（纪律层），CLI 承载目标循环状态机与安装器。背景见 `docs/reports/index.html`。
 
 
-## 2. 当前状态（2026-10-08 短表；完整历史档案 → docs/history.md）
+## 2. 当前状态（2026-10-10 短表；完整历史档案 → docs/history.md）
 
-- **已发布**：npm `lazyzcode` **0.4.1**（latest）＝编排纪律四件（#43–#46）。
-- **0.5.0（#42 重评版）**：M0/M1/M2 收官（候选冻结 10-08，批前重冻结 4db51559）；**M3 重评 10-10**：主门=尚无质量收益证据（两臂 18/18 打平、积分+36%、无严格改善）——**不采纳、维持 0.4.1 旧默认（ADR-0034）**→ v050-m3-report.md。
+- **已发布**：npm `lazyzcode` **0.5.0**（latest）＝收束诚实化工作集（具名收束读面 #47／沙盒 provider 显式允许表／评审用量账本／verify 回执补轴）；发布沿 0.4.0 先例不带采纳宣称；win32 VM 复测 10-10（update 链+doctor+人权门批准链+三道门拒向活体；完整 finish 边界=统一门评审义务需引擎凭据、干净机如实不可达，记档 release-checklist）。
+- **0.5.0 重评（M3，10-10）**：主门=尚无质量收益证据（两臂 18/18 打平、积分+36%、无严格改善）——**不采纳、纪律默认维持旧线（ADR-0034）**→ v050-m3-report.md。
 - 发布机械件按 docs/release-checklist.md；评审报告库 → docs/reviews/。
 
 ## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19，设计前必读）：引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔0.16.5→0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组，lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**（engine-3140-sync 只锚版本漏检教训）

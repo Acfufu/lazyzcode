@@ -875,3 +875,17 @@ install`). Requires the ZCode desktop app (logged in), Node ≥ 22, git.
 2. **发后核验**：registry `dist-tag latest=0.5.0`（curl HTTP 端点为真相源，CDN 传播窗数分钟）；发布 shasum 与 dry-run 逐字一致；隔离 prefix 冒烟 `npm i -g lazyzcode@0.5.0 --prefix /tmp/lzy-smoke-050 --prefer-online`（npm12 EALLOWREMOTE 绕法）→ `lzy --version` 应 0.5.0 ＋ `lzy doctor`；真机 `lzy update` 0.4.1→0.5.0 全链（新装子进程 sync=ADR-0012 活体）；doctor `payload-ver` 双 ✔。
 3. **win32 VM 复测**（发布域，publish 后才可做——update 目标须已发布）：registry 新装/update 链/doctor（handoff-causes 新行活体）/scratch loop 全链（具名收束读面 win32 活体）。
 4. **收官同步**：AGENTS §2 发布收官四处固定位点＋本节补记（publish 时刻/registry 读数）＋CHANGELOG 无需动（定版日=publish 日）。
+
+### 发后核验（2026-10-10，publish 用户 2FA，全过）
+
+- **registry 直证**：CDN 传播窗内 `dist-tags.latest=0.5.0` 翻转（curl HTTP 端点轮询 3 次现形）；**registry tarball 与 tag 树 tarball 字节一致**（sha256 `4a7089f9…` 双向 cmp 同）＋`dist.shasum 803268f2…` 与定版前 dry-run 逐字一致；`engines>=22`、`bin.lzy=cli/lzy.js` 无误。
+- **隔离 prefix 冒烟 ✔**：`npm i -g lazyzcode@0.5.0 --prefix /tmp/lzy-smoke-050 --prefer-online` 1s 装成 → ADR-0012 中间态自名（CLI 0.5.0·载荷 0.4.1）→ sync 后 `0.5.0（插件载荷同版本）· 引擎 0.16.9`；doctor EXIT=0。
+- **真机 `lzy update` 0.4.1→0.5.0 全链 EXIT=0**（「sync 已由新装子进程执行」=ADR-0012 活体）；doctor EXIT=0：`payload 0.5.0`/`install 缓存 0.5.0`/`files 25 文件逐字`/`enabled hooks:6`/**`handoff-causes` 新行活体**（「无 drive 收束分类登记」如实读数）/`payload-ver` 23 版本目录·CLI 0.5.0 一致。CHANGELOG 定版日=publish 日，无需重提。
+
+### win32 VM 复测（2026-10-10，Windows 11 aarch64，引擎 0.16.5，prlctl exec SYSTEM+LOCALAPPDATA 指向）
+
+- **update 链**：VM 全局 0.3.0 → `lzy update` **跨两版 0.3.0→0.5.0 EXIT=0**（新装子进程 sync，缓存落 systemprofile 既知形态）；`lzy --version` 0.5.0·载荷同版本。
+- **doctor EXIT=0 全脸**：payload/install/files（25 文件逐字）/enabled hooks:6（**0.16.5 对象包封代同样 ✔**——normalizePluginList 双代活体）/hooks 语法/node/hook-node 兜底 C:\Tools\node/payload-ver 10 目录·CLI 一致/platform 候选命中；headless/drive ⚠=干净机凭据缺席既知态。
+- **scratch loop（node 驱动脚本经宿主 http.server+客户机 curl 通道）**：register→**人权门拒出短码→UPS 钩子 stdin `approve <短码>` 批准记录落 approvals/→重采纳过门**（快照 sha256 绑定）→start→step done→`lzy status --json` **schemaVersion=1＋`handoff-causes` 行 JSON 活体**（0.5.0 观察面契约 win32 首发）。
+- **三道门拒向活体（本弧增量证据）**：①finish 完整性闸门两次正确拦脏树（plan.md/driver 自身）；②finish 政策层义务拦（统一门 `review.general-correctness` 要求真实评审运行）——**0.4.x 统一门七合取首次上 win32，行为正确**；③LIGHT 零 F goal 的完整 finish 在干净 VM **结构性不可达**（义务评审需引擎凭据，VM 无）——边界=凭据非平台，如实记档（0.4.0/0.4.1 未做 VM 复测，本条为其首次 win32 曝光读数）。
+- 收尾：scratch/驱动脚本/日志已清、宿主 http.server 已停、VM 停回未启动态（=开工前）；VM 全局停 0.5.0（本次升级物）。遗留注记：C:\scratch010 为 0.1.x 时代旧残留，非本场所留未动。

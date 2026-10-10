@@ -89,13 +89,16 @@ test("sandboxProviderAllowlist：env 优先；env 缺席读 ~/.zcode/cli/lzy-san
   const fakeHome = mkdtempSync(join(tmpdir(), "lzy-sbx-allow-"));
   const savedEnv = process.env.LZY_SANDBOX_PROVIDERS;
   const savedHome = process.env.HOME;
+  const savedUserProfile = process.env.USERPROFILE;
   try {
     // env 在场：逗号/换行混排 + # 注释剔除
     process.env.LZY_SANDBOX_PROVIDERS = "cmdcode, glm-leg\n# 注释行\n";
     assert.deepEqual([...sandboxProviderAllowlist()].sort(), ["cmdcode", "glm-leg"]);
     // env 缺席 → 文件回退（HOME 覆盖隔离，绝不读真实 ~/.zcode）
+    // win32 双补：os.homedir() 读 USERPROFILE 不吃 HOME——两变量都指 fakeHome 才隔离
     delete process.env.LZY_SANDBOX_PROVIDERS;
     process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
     mkdirSync(join(fakeHome, ".zcode", "cli"), { recursive: true });
     writeFileSync(join(fakeHome, ".zcode", "cli", "lzy-sandbox-providers"), "glm-leg\n# x\ncmdcode\n");
     assert.deepEqual([...sandboxProviderAllowlist()].sort(), ["cmdcode", "glm-leg"]);
@@ -111,6 +114,8 @@ test("sandboxProviderAllowlist：env 优先；env 缺席读 ~/.zcode/cli/lzy-san
     else process.env.LZY_SANDBOX_PROVIDERS = savedEnv;
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;
+    if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUserProfile;
     rmSync(fakeHome, { recursive: true, force: true });
   }
 });

@@ -34,7 +34,7 @@ SQLite 不改变 OS 沙盒边界，不等于供应商余额，也不能把逐段
 - [loop](../core/loop.js)、[runtime](../core/runtime.js)：仍存在 JSON 生命周期与租约协调，局部 DB 不覆盖这些跨存储转换。
 - [既有 migrate](../core/migrate.js)：承担特定版本的目标迁移，不视为现成的通用 DB 迁移框架。
 
-缺陷依据为本地 [沙盒与预算评估报告](../artifacts/sandbox-budget-evaluation-2026-10-11/report.md)，F1–F5 来自历史探针。本地 artifacts 不随仓库发布，核心反例在 P0 表中保留。实施时重新复现，不能把历史报告当作当前源码已验证结果。此前独立评审沙盒 A/B 改动不属于本计划，保留其工作集与证据。
+缺陷依据为本地评估报告 `artifacts/sandbox-budget-evaluation-2026-10-11/report.md`（本地 artifacts 不入 git，路径仅本机可解析），F1–F5 来自历史探针。核心反例在 P0 表中保留。实施时重新复现，不能把历史报告当作当前源码已验证结果。此前独立评审沙盒 A/B 改动不属于本计划，保留其工作集与证据。
 
 与 [完整产品价值计划](plan-native-product-value.md) 的全链路计量要求重叠；复用同一账务修复与事件身份，不建立第二套成本口径。SQLite 迁移不作为该实验计划自动增加的前置条件。
 

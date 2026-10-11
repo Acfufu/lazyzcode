@@ -18,7 +18,7 @@ import {
   FINDINGS_VERSION, DIAGNOSIS_REQUIRED_THRESHOLD,
 } from "../core/findings.js";
 import { runReview as actualRunReview, preflightReview, BASELINE_DUTY_ID, REVIEW_VERSION, dutyTemplateHash, reserveRun, materializeCandidate, saveReviewRun, ReviewPreflightError } from "../core/review.js";
-import { withInjectedReviewSandbox } from "./helpers/review-sandbox-stub.js";
+import { withInjectedReviewSandbox, testReviewSandbox } from "./helpers/review-sandbox-stub.js";
 const runReview = withInjectedReviewSandbox(actualRunReview);
 import { candidateIdentity } from "../core/verify.js";
 import { createHash } from "node:crypto";
@@ -362,7 +362,9 @@ test("锁忙前置拒：无主 .lock ⇒ review-busy 前置拒（非 ReferenceEr
     mkdirSync(join(d, ".lazyzcode", "loop", ".lock"), { recursive: true }); // 无 owner.json=持锁者必等满 LOCK_WAIT 后 LoopError
     let err = null;
     try {
-      await runReview(d, { duty: BASELINE_DUTY_ID, timeoutMs: 30000, deps: { preflight: async () => ({ budget: null }) } });
+      // 本测试只验锁忙路径（无假引擎，wrapper 不会自动注入沙盒）；沙盒能力与锁忙语义无关，
+      // 显式注入 testReviewSandbox 才能在无 Seatbelt 平台（Linux/Windows）到达锁判定。
+      await runReview(d, { duty: BASELINE_DUTY_ID, timeoutMs: 30000, deps: { preflight: async () => ({ budget: null }), prepareSandbox: testReviewSandbox } });
     } catch (e) {
       err = e;
     }

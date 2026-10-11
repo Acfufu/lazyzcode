@@ -32,7 +32,7 @@ import {
   userCliLogDir,
 } from "./paths.js";
 import { collectRateLimitStats, contentAdvisory, costAdvisory, providerBandAdvisory, providerMixNote, scheduleAdvisory, transportAdvisory } from "./ratelimit.js";
-import { WATERLINE_POINTS, rollingWaterline, rollingWaterlinePoints, waterlineScopeNote, readSandboxUsageLines, summarizeSandboxUsage } from "./cost.js";
+import { WATERLINE_POINTS, rollingWaterline, rollingWaterlinePoints, waterlineScopeNote, readSandboxUsageWithDiag, summarizeSandboxUsage } from "./cost.js";
 import { loadWordlist } from "./h3r.js";
 import { queryHostDb } from "./hostdb.js";
 import { auditAgentsMd } from "./agentsmd.js";
@@ -422,15 +422,24 @@ function checkWaterline(push) {
   // 收口④：宿主账缺席/不可读只降级水位行——沙盒外泄账与宿主 billing db 无涉，
   // 两个降级分支也照常报 sandbox-usage 行（「宿主账缺席仍可观测子账」）。
   const pushSandboxUsage = () => {
-    const sb = summarizeSandboxUsage(readSandboxUsageLines());
+    // N4/F5：完整性诊断随行——坏行/目录不可读不渲染成完整 ok（warn 如实上浮）。
+    const sbRead = readSandboxUsageWithDiag();
+    const sb = summarizeSandboxUsage(sbRead.lines);
+    if (sbRead.diag.dirState === "unreadable") {
+      push("sandbox-usage", "warn", "沙盒外泄账：账目录不可读——读数不可得（不冒充无落账，F5）；现存沙盒子账本由 TokenTracker 扫描面兜底");
+      return;
+    }
+    const corruptTail = sbRead.diag.corruptLines > 0 ? ` · ⚠ ${sbRead.diag.corruptLines} 条坏行已跳过（读数为不完整下界，F5）` : "";
     if (sb.runs > 0) {
       const tok = sb.all.tokens >= 1e6 ? `${(sb.all.tokens / 1e6).toFixed(1)}M` : `${sb.all.tokens}`;
       push(
         "sandbox-usage",
-        "ok",
+        sbRead.diag.corruptLines > 0 ? "warn" : "ok",
         `沙盒外泄账：落账 ${sb.runs} 评审运行 · 全部 ${tok} tok / ${Math.round(sb.all.points * 100) / 100} 分` +
-          `（近 7 天 ${(sb.day7.tokens / 1e6).toFixed(1)}M；provider/model 分解见 lzy loop cost）`,
+          `（近 7 天 ${(sb.day7.tokens / 1e6).toFixed(1)}M；provider/model 分解见 lzy loop cost）${corruptTail}`,
       );
+    } else if (sbRead.diag.corruptLines > 0) {
+      push("sandbox-usage", "warn", `沙盒外泄账：无有效落账行但含 ${sbRead.diag.corruptLines} 条坏行——完整性存疑不冒充 ok（F5）`);
     } else {
       push(
         "sandbox-usage",

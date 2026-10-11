@@ -164,7 +164,7 @@ test("CLI：lzy loop cost 无账本降级输出退出码 0（ISOLATED_HOME，零
 });
 
 // ── 沙盒外泄账（0.5.0 明烧面，2026-10-02 commandcode 暗烧案收口）──
-import { aggregateUsageRows, sandboxLedgerLine, appendSandboxUsage, readSandboxUsageLines, summarizeSandboxUsage, querySessionPoints, formatCost } from "../core/cost.js";
+import { aggregateUsageRows, sandboxLedgerLine, appendSandboxUsage, readSandboxUsageLines, readSandboxUsageWithDiag, sandboxUsageDir, summarizeSandboxUsage, querySessionPoints, formatCost } from "../core/cost.js";
 
 test("aggregateUsageRows：按 (provider,model) 归组、tokens 求和、未计价组保留 tokens 计 0 分", () => {
   const dayH = H("2026-10-02T08:00:00+08:00"); // 周五白昼非高峰 → 常设 ×0.5
@@ -300,6 +300,37 @@ test("appendSandboxUsage：harvest 水位身份——同水位判重放、水位
     if (savedUP === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = savedUP;
     rmSync(home, { recursive: true, force: true });
+
+test("readSandboxUsageWithDiag：坏行/异 kind/目录缺席诊断；formatCost 对坏行上浮不冒充 ok（F5）", () => {
+  const home = mkdtempSync(join(tmpdir(), "lzy-cost-diag-"));
+  const savedHome = process.env.HOME;
+  const savedUP = process.env.USERPROFILE;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    // 目录缺席=absent（与「完整无消费」可区分，且不冒充不可读）
+    const absent = readSandboxUsageWithDiag();
+    assert.equal(absent.diag.dirState, "absent");
+    assert.equal(absent.lines.length, 0);
+    const good = JSON.stringify({ ts: "2026-10-10T03:00:00Z", kind: "review", project: "/p", runId: "r1", points: 1, usage: [] });
+    mkdirSync(sandboxUsageDir(), { recursive: true });
+    writeFileSync(join(sandboxUsageDir(), "2026-10.jsonl"), `${good}\n{broken\n${JSON.stringify({ ts: "x", kind: "other" })}\n`);
+    const { lines, diag } = readSandboxUsageWithDiag();
+    assert.equal(lines.length, 1);
+    assert.equal(diag.corruptLines, 2, "坏行与可解析异 kind 行均如实计数（不静默丢）");
+    assert.equal(diag.dirState, "ok");
+    const out = formatCost("/p", null);
+    assert.match(out, /2 条坏行/);
+    assert.match(out, /不完整下界/);
+    assert.equal(readSandboxUsageLines().length, 1, "旧 lines-only 读面保持兼容");
+  } finally {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedUP === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUP;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
   }
 });
 

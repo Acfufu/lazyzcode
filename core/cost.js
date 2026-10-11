@@ -362,24 +362,42 @@ export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
   return true;
 }
 
-export function readSandboxUsageLines({ dir = sandboxUsageDir() } = {}) {
-  let names = [];
+// 读面带完整性诊断（N4/F5）：坏行数与目录态（ok|absent|unreadable）随行返回——「完整无消费」
+// 与「未能读取/读到坏账」在读面上不可再混淆；追加失败由调用点如实上浮（review.js 去 catch 吞）。
+export function readSandboxUsageWithDiag({ dir = sandboxUsageDir() } = {}) {
+  let names;
   try {
     names = readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort();
-  } catch {
-    return []; // 目录缺席=尚无落账（fail-soft，报表如实显示「无落账行」）
+  } catch (e) {
+    const absent = e?.code === "ENOENT";
+    return { lines: [], diag: { files: 0, corruptLines: 0, dirState: absent ? "absent" : "unreadable" } };
   }
   const lines = [];
+  let corruptLines = 0;
   for (const f of names) {
-    for (const l of readFileSync(join(dir, f), "utf8").split("\n")) {
+    let text = null;
+    try {
+      text = readFileSync(join(dir, f), "utf8");
+    } catch {
+      corruptLines += 1; // 文件级不可读按坏行计（诚实下界，不静默丢文件）
+      continue;
+    }
+    for (const l of text.split("\n")) {
       if (!l.trim()) continue;
       try {
         const o = JSON.parse(l);
         if (o && o.kind === "review") lines.push(o);
-      } catch {} // 非法行跳过（追加写中断半行容忍）
+        else corruptLines += 1; // 可解析但非本账 kind——观测面不静默丢
+      } catch {
+        corruptLines += 1; // 非法行（追加写中断半行容忍——但计数上浮不冒充完整）
+      }
     }
   }
-  return lines;
+  return { lines, diag: { files: names.length, corruptLines, dirState: "ok" } };
+}
+
+export function readSandboxUsageLines({ dir } = {}) {
+  return readSandboxUsageWithDiag({ dir }).lines;
 }
 
 // 纯聚合（可测）：落账行 → 窗口化汇总。tokens/points 均 from usage（行内点=计量原语算好
@@ -446,9 +464,13 @@ export function formatCost(cwd, goal, now = new Date()) {
   }
   // 沙盒外泄账（0.5.0 明烧面）：隔离 HOME 评审子账本不进上方宿主账本读数——双源分列，
   // 绝不把两本账混算（归因口径不同：宿主=全账号，沙盒=本机评审运行落账）。
-  const sb = summarizeSandboxUsage(readSandboxUsageLines(), now);
+  // N4/F5：完整性诊断随行——坏行/目录不可读不渲染成「无落账」的完整 ok。
+  const sbRead = readSandboxUsageWithDiag();
+  const sb = summarizeSandboxUsage(sbRead.lines, now);
   const fmtTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : `${n}`);
-  if (sb.runs > 0) {
+  if (sbRead.diag.dirState === "unreadable") {
+    lines.push("  沙盒外泄账：账目录不可读——读数不可得（不冒充「无落账」，F5）；现存沙盒子账本由 TokenTracker 扫描面兜底");
+  } else if (sb.runs > 0) {
     lines.push(
       `沙盒外泄账（隔离 HOME 评审落账，${sb.runs} 运行）：近 7 天 ${fmtTok(sb.day7.tokens)} tok / ${fmt(sb.day7.points)} 分 · ` +
         `近 30 天 ${fmtTok(sb.day30.tokens)} tok / ${fmt(sb.day30.points)} 分 · 全部 ${fmtTok(sb.all.tokens)} tok / ${fmt(sb.all.points)} 分`,
@@ -464,6 +486,9 @@ export function formatCost(cwd, goal, now = new Date()) {
     }
   } else {
     lines.push("  沙盒外泄账：无落账行（落账启用前已清理的沙盒无档可追——现存沙盒子账本由 TokenTracker 扫描面兜底）");
+  }
+  if (sbRead.diag.dirState === "ok" && sbRead.diag.corruptLines > 0) {
+    lines.push(`  ⚠ 沙盒外泄账含 ${sbRead.diag.corruptLines} 条坏行（已跳过）——读数为不完整下界，核对后可重跑 harvest 补账（F5）`);
   }
   if (rows !== null) {
     const pts = computePoints(rows);

@@ -1420,9 +1420,12 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     // invalid/unpriced——tokens 已烧）追加进全局沙盒外泄账（~/.zcode/cli/lzy-usage/）。
     // best-effort：账本 IO 失败不回头改已落档运行——计量真值恒以运行档 metering.usage
     // 为准，此处只喂聚合面（lzy loop cost / doctor / TokenTracker）。
+    // N4/F5：追加失败不再静默吞——外泄账缺行=观测面缺口，如实上浮（运行档与补账通道仍在）。
     try {
       appendSandboxUsage(cwd, out.record);
-    } catch {}
+    } catch (e) {
+      console.error(`[lzy] 沙盒外泄账追加失败（用量以运行档 metering.usage 为准，可重跑 harvest 补账）：${String(e?.message ?? e).slice(0, 160)}`);
+    }
     // N9：评审消耗入账（LEDGER review 类）——契约绑定才写（authorization 形状须 64hex
     // contractHash；无契约 goal 保持运行档 durable 面）；metered/partial 才写（N1：partial 的
     // 已知积分保守入账不丢，缺口由运行档与 preflight 执法面承载；absent/unpriced 不算零口径

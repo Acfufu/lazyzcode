@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync, realpathSync, lstatSync, readdirSync, unlinkSync, rmSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep, parse } from "node:path";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { startReviewProxy } from "./review-proxy.js";
@@ -87,7 +87,9 @@ function quotedPath(path) {
 export function seatbeltPolicy({ home, candidateDir, inputPath, enginePath, policyPath, proxyPort }) {
   const engineRoot = realpathSync(dirname(enginePath));
   const userHome = realpathSync(homedir());
-  if (engineRoot === "/" || engineRoot === userHome || userHome.startsWith(`${engineRoot}${sep}`)) throw new ReviewSandboxError("引擎运行目录过宽（根目录或用户 HOME 祖先），请将自定义引擎放在专用安装目录");
+  // 根判据用 parse(p).root === p 而非字面 "/":win32 上 join("/", x) 的 dirname 是盘相对根
+  // "\"（realpath 后为盘根），字面比较放行盘根引擎——跨平台同判（POSIX "/" 仍命中）。
+  if (parse(engineRoot).root === engineRoot || engineRoot === userHome || userHome.startsWith(`${engineRoot}${sep}`)) throw new ReviewSandboxError("引擎运行目录过宽（根目录或用户 HOME 祖先），请将自定义引擎放在专用安装目录");
   const reads = ["/System", "/usr/lib", "/usr/share", "/usr/bin", "/bin", engineRoot, realpathSync(candidateDir), realpathSync(home)];
   const literals = ["/", "/dev/null", "/dev/urandom", "/private/etc/localtime", realpathSync(process.execPath), realpathSync(inputPath), resolve(policyPath)];
   if (!Number.isInteger(proxyPort) || proxyPort < 1 || proxyPort > 65535) throw new ReviewSandboxError("沙盒代理端口非法");

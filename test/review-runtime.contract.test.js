@@ -28,9 +28,11 @@ import {
   normalizeVerdict,
   parseReviewResult,
   reserveRun,
-  runReview,
+  runReview as actualRunReview,
   saveReviewRun,
 } from "../core/review.js";
+import { withInjectedReviewSandbox } from "./helpers/review-sandbox-stub.js";
+const runReview = withInjectedReviewSandbox(actualRunReview);
 import { ensurePolicyRecord } from "../core/policy.js";
 import { evaluateGate } from "../core/gate.js";
 import { recordAuthorization } from "../core/contract.js";

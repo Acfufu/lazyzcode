@@ -74,6 +74,7 @@ import {
 import { recordComparatorAttestation } from "../core/attest.js";
 import { computePolicyIdentity, loadPolicyRecord, identityStableHash, deriveObligations, REVIEW_RUNNER_FACE, reassessObligation } from "../core/policy.js"; // 0.4.0 M1 N7 解释面 + M3 N8 reassess 面
 import { ReviewPreflightError, ReviewError, listReviewRuns, runReview, qualifyReviewScope, reuseReviewScope, BASELINE_DUTY_ID } from "../core/review.js"; // 0.4.0 M2 N6 评审运行器 CLI 面 + M4 N2/N3 资格与复用
+import { recoverReviewSandbox } from "../core/review-sandbox.js";
 import { listFindings, requestResolve, closeFinding, diagnoseFinding, relinkFindings, reopenFinding, contestFinding, adjudicateContest, findingFingerprint, CLOSED_FINDING_STATUSES, DIAGNOSIS_REQUIRED_THRESHOLD, openBlockingFindings } from "../core/findings.js"; // 0.4.0 M3 N6/N7 发现账本 CLI 面 + M4 N3 reopen + M-orch 异议原语（决策 #44）
 import { evaluateGate } from "../core/gate.js";
 import { findEngine, pluginsRoot, repoPluginDir, userCliLogDir } from "../core/paths.js";
@@ -1055,6 +1056,7 @@ function printHelp() {
                                             v2 全满足 0，v1/无身份 0（接线面 finish/queue/delivery
                                             自动执法，本命令只解释）
   lzy review run [--duty <id>] [--timeout-ms N]
+  lzy review cleanup <runId>                 清理已结束所有者遗留的评审凭据副本和临时目录
                                             受控独立评审运行器（0.4.0 M2）：隔离 HOME+候选快照的
                                             真实评审会话产出结构化判决并落档 .lazyzcode/review/；
                                             退出码：0=pass 且有效，1=blocked/invalid（已落档，
@@ -1802,6 +1804,13 @@ async function cmdReview(args) {
   const { _, f } = parseArgs(args);
   const sub = _[0] ?? "";
   const cwd = process.cwd();
+  if (sub === "cleanup") {
+    if (!_[1] || _.length !== 2) { console.error("用法错：lzy review cleanup <runId>"); process.exitCode = 2; return; }
+    const state = recoverReviewSandbox(cwd, _[1]);
+    console.log(`评审沙盒清理 ${_[1]} · ${state.state}${state.errors.length ? ` · ${state.errors.join("、")}` : ""}`);
+    process.exitCode = state.state === "clean" ? 0 : 1;
+    return;
+  }
   if (sub === "run") {
     const duty = f.duty;
     let timeoutMs;
@@ -2082,7 +2091,7 @@ async function cmdReview(args) {
     }
     return;
   }
-  console.error("用法错：lzy review run|recheck|qualify|list|show（run=真实评审运行；recheck=独立复核+闭候选对账；qualify=范围资格挑战；list/show 只读）");
+  console.error("用法错：lzy review run|recheck|qualify|list|show|cleanup（cleanup=回收已结束所有者的沙盒残留；list/show 只读）");
   process.exitCode = 2;
 }
 

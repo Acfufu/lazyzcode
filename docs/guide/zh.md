@@ -316,6 +316,28 @@ oracle 判定交付仓。0.4.0 批次报告（含如实质量门读数：不满�
   指纹，归因不了的漂移即拒（`env` 轴）。
 - 拿不准就从窄声明，让 `lzy review reuse` 打印逐因回退——被拒路径会点名缺什么。
 
+## 独立评审的 OS 沙盒（开发中，未发布）
+
+本节描述当前开发契约，已发布 0.5.0 的隔离能力不据此升级。`lzy review run` 和
+`recheck` 使用 macOS Seatbelt 包住评审引擎及其后代：候选快照、事实输入只读，
+隔离 HOME 和 tmp 可写。路径元数据查询仍允许，不隐藏文件存在性；环境白名单不继承宿主 secret、NODE_OPTIONS、DYLD 或代理。
+PERSONAL 配置仍须显式 provider 允许表，BUILTIN 模板也复制到隔离面；OAuth-only
+认证仍不可用。
+
+网络仅能经父进程代理访问已允许 provider 的 API endpoint，取 PERSONAL 的
+`api.baseUrl` 或 BUILTIN 模板默认值。普通 HTTP 精确核 origin；HTTPS 仅准入配置的
+hostname:port CONNECT，不核隧道内 TLS SNI、HTTP Host 或路径。启动时固定 DNS
+解析地址，本 run 不随请求重新解析；显式准入的本地/内网 API 仍可达。endpoint
+不可解析或代理不可用即拒绝启动。
+缺 OS 后端或探针失败不回退裸启动，Linux/Windows 暂不支持该评审入口。
+其他 drive/queue 默认行为不变。
+
+正常结束、超时与可捕获中断回收受管进程组及凭据副本/tmp；恶意 `setsid` 后代仍受
+OS 限制，但不保证全回收。SIGKILL 后运行 `lzy doctor` 查残留，再用
+`lzy review cleanup <runId>` 清理已无活 owner 的登记配置副本和 tmp，转录与用量库保留。
+已准入 API 的凭据仍对评审可读，API 本身允许传输数据；这不是容器/VM，也不保证
+阻止一切外泄、评审正确或预算硬帽。详见 [ADR-0038](../adr/0038-review-os-sandbox.md)。
+
 ## 目标循环命令
 
 ```
@@ -338,6 +360,7 @@ lzy policy show|explain                 # 策略身份与义务集解释（0.4.0
 lzy gate explain                        # 统一只读门逐义务解释+快照哈希（blocked 退出码非 0）
 lzy review run [--duty <id>] [--timeout-ms N]   # 受控独立评审运行器（0.4.0 M2）：隔离 HOME+候选快照，
                                         # 结构化判决落档；0=pass 且有效 / 1=blocked·invalid / 2=用法 / 3=前置不具备（不 spawn）
+lzy review cleanup <runId>             # 开发中：回收死 owner 的登记凭据副本/tmp，保留转录/用量库
 lzy review list                         # 在案评审运行枚举（只读；家族损坏 fail-closed 非 0）
 lzy review show <runId>                 # 逐字段+发现表+原始输出指针（只读）
 lzy review recheck [--fingerprint <前8>]  # 独立复核运行（0.4.0 M3）：同职责新会话重跑并产出闭候选读数

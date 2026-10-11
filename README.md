@@ -443,6 +443,18 @@ defend against:
   Node scripts (UserPromptSubmit, SessionStart, Stop, PreToolUse, PostToolUse,
   PostToolUseFailure); their output is injected context for the model, not a
   sandbox boundary.
+- **Independent review OS sandbox (in development, unreleased):** macOS Seatbelt
+  restricts the review engine and descendants; candidate/factual inputs are read-only
+  and isolated HOME/tmp are writable. An environment allowlist and controlled proxy
+  restrict access to allowed API endpoints. HTTP checks the exact origin; HTTPS checks
+  CONNECT hostname:port, not tunneled SNI/Host/paths. DNS addresses are pinned at startup;
+  explicitly allowed local/private APIs remain reachable. Unresolved endpoints or missing
+  proxies/backends refuse launch; Linux/Windows do not yet support this entry point. Other drive/queue defaults
+  are unchanged. Managed process groups are reclaimed on normal exit/interruption;
+  doctor reports SIGKILL residues for `lzy review cleanup <runId>`. Allowed API
+  credentials remain readable and the endpoint can receive data. This does not promise
+  prevention of all exfiltration, complete hostile-child reclamation, review correctness
+  or a hard spending cap. [Scope and recovery](docs/guide/en.md#os-sandbox-for-independent-reviews-in-development-unreleased).
 - **Install footprint is the engine's official plugin cache** — enabling flows
   through the engine's official CLI, and LazyZCode never writes your
   `config.json`.
@@ -450,7 +462,7 @@ defend against:
   shasum with `npm view lazyzcode dist.integrity`. Marketplace: the manifest
   pins a commit sha, so the loaded payload is the pinned tree.
 - **Threat-model boundary, stated plainly:** LazyZCode guards against laziness
-  (fake done, silent scope abandonment), not against a malicious agent — local
+  (fake done, silent scope abandonment). Outside the dedicated review sandbox, local
   ledgers, approval records, and counters are readable/writable by any process
   with your permissions; integrity claims are enforced by protocol text plus
   the audit ring, not tamper-proof hardware.

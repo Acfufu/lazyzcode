@@ -400,6 +400,37 @@ patterns keep a declaration grantable instead of refused:
 - When in doubt, declare narrowly and let `lzy review reuse` print the per-reason
   fallback — a refused path names exactly what was missing.
 
+## OS sandbox for independent reviews (in development, unreleased)
+
+This describes the development contract, not an upgrade to the published 0.5.0
+isolation boundary. `lzy review run` and `recheck` wrap the review engine and its
+descendants in macOS Seatbelt. Candidate snapshots and factual inputs are read-only;
+the isolated HOME and tmp are writable. Path metadata queries remain allowed, so
+file existence is not hidden. An environment allowlist excludes inherited
+host secrets, NODE_OPTIONS, DYLD settings and proxies. PERSONAL configuration still
+requires an explicit provider allowlist; BUILTIN templates are copied into the
+isolated HOME too. OAuth-only authentication remains unavailable.
+
+Network access goes through a parent-process proxy for endpoints from allowed
+PERSONAL `api.baseUrl` values or BUILTIN template defaults. Plain HTTP forwarding
+checks the exact origin. HTTPS permits only CONNECT to the configured hostname:port;
+it does not inspect TLS SNI, HTTP Host or paths inside the tunnel. DNS addresses are
+resolved and pinned when the proxy starts, not resolved again per request in this run.
+Explicitly allowed local/private API endpoints remain reachable. An unresolved
+endpoint, unavailable proxy or OS backend, or failed probe refuses launch without
+falling back to an unrestricted process. Linux/Windows
+do not yet support this review entry point. Other drive/queue defaults are unchanged.
+
+Normal exit, timeout and catchable interruption reclaim the managed process group
+and credential copies/tmp. Descendants that deliberately use `setsid` retain OS
+restrictions, but complete process reclamation is not guaranteed. After SIGKILL,
+use `lzy doctor` to inspect residues and `lzy review cleanup <runId>` to remove
+registered configuration copies and tmp only after their owner is no longer alive.
+Transcripts and usage databases remain. Allowed API credentials are readable by the
+reviewer and the allowed endpoint can receive data. This is not a container/VM and
+does not guarantee prevention of all exfiltration, review correctness or a hard
+spending cap. See [ADR-0038](../adr/0038-review-os-sandbox.md).
+
 ## Goal loop commands
 
 ```
@@ -422,6 +453,7 @@ lzy policy show|explain                 # policy identity & obligation set expla
 lzy gate explain                        # unified read-only gate: per-obligation verdicts + snapshot hash (blocked exits non-zero)
 lzy review run [--duty <id>] [--timeout-ms N]   # controlled independent review runner (0.4.0 M2): isolated HOME +
                                         # candidate snapshot, structured verdict on record; 0=pass&valid / 1=blocked·invalid / 2=usage / 3=precondition (no spawn)
+lzy review cleanup <runId>             # development: reclaim dead-owner credential copies/tmp; keep transcripts/usage DB
 lzy review list                         # enumerate review runs on record (read-only; corrupt family fails closed non-zero)
 lzy review recheck [--fingerprint <p8>] # independent recheck run (0.4.0 M3): fresh same-duty session + closure candidates
 lzy review qualify <runId> --scope <decl.json>  # scope qualification (0.4.0 M4): declare the duty's scope and run the

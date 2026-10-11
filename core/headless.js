@@ -87,10 +87,10 @@ function parseJsonSummary(stdout) {
 }
 
 // 一次 headless 调用。返回（Promise）：
-// { ok, exitCode, signal, timedOut, durationMs, stdout, stderr,
+// { ok, exitCode, signal, timedOut, aborted, durationMs, stdout, stderr,
 //   response?, sessionId?, usage?, projection?, raw?, error? }
 // ok=false 时 error 是一族可操作的恢复式文案（超时/非零退出/JSON 解析/spawn 失败）。
-// deps.run 可注入供离线契约测试（update.js 先例）：收到 {argv, cwd, env, timeoutMs}，
+// deps.run 收到 {argv, cwd, env, timeoutMs, launcher, processTree, signal}；默认 argv 不变。
 // 返回 {exitCode, signal?, timedOut?, stdout, stderr, spawnError?}（同步或 Promise）。
 export function spawnHeadless({
   prompt,
@@ -100,6 +100,10 @@ export function spawnHeadless({
   cwd = process.cwd(),
   home = null,
   extraEnv = null,
+  baseEnv = null,
+  launcher = null,
+  processTree = false,
+  signal = null,
   enginePath = null,
   deps = null,
 } = {}) {
@@ -110,6 +114,12 @@ export function spawnHeadless({
     throw new HeadlessError(`--mode 显式必填不设默认（--prompt 缺省 yolo，自驱动必须显式选模式）：收到 ${JSON.stringify(mode) ?? "undefined"}，合法 ${[...HEADLESS_MODES].join("|")}`);
   }
   assertTimeoutMs(timeoutMs);
+  if (processTree && process.platform === "win32") {
+    throw new HeadlessError("processTree 需要 POSIX 进程组；Windows 未实现后代回收，拒绝假保证");
+  }
+  if (launcher && (typeof launcher.command !== "string" || !launcher.command || !Array.isArray(launcher.prefixArgs) || !launcher.prefixArgs.every(x => typeof x === "string"))) {
+    throw new HeadlessError("launcher 须为 {command: 非空字符串, prefixArgs: 字符串数组}");
+  }
   const engine = enginePath ?? findEngine();
   if (!engine) {
     throw new HeadlessError(
@@ -117,22 +127,29 @@ export function spawnHeadless({
     );
   }
   const argv = buildArgv({ engine, prompt, resume, mode });
-  const env = { ...process.env, ...(extraEnv ?? {}) };
+  const env = { ...(baseEnv ?? process.env), ...(extraEnv ?? {}) };
   if (home) {
     env.HOME = home;
     env.USERPROFILE = home;
   }
   const run = deps?.run ?? defaultRun;
   const startedAt = Date.now();
-  return Promise.resolve(run({ argv, cwd, env, timeoutMs })).then((raw) => {
+  return Promise.resolve(run({ argv, cwd, env, timeoutMs, launcher, processTree, signal })).then((raw) => {
     const base = {
       exitCode: raw.exitCode,
       signal: raw.signal ?? null,
       timedOut: Boolean(raw.timedOut),
+      aborted: Boolean(raw.aborted),
       durationMs: Date.now() - startedAt,
       stdout: String(raw.stdout ?? ""),
       stderr: String(raw.stderr ?? ""),
     };
+    if (base.aborted) {
+      return { ...base, ok: false, error: "引擎 headless 调用已取消；已回收受管进程，请检查已产生的输出后重试" };
+    }
+    if (raw.cleanupError) {
+      return { ...base, ok: false, error: `引擎进程回收失败：${raw.cleanupError}；请检查残留进程后重试` };
+    }
     if (raw.spawnError) {
       return { ...base, ok: false, error: `引擎进程启动失败：${raw.spawnError}（headless 契约见 docs/spikes/headless.md）` };
     }
@@ -169,89 +186,95 @@ export function spawnHeadless({
   });
 }
 
-function defaultRun({ argv, cwd, env, timeoutMs }) {
+// processTree 仅回收同 POSIX 进程组；自行 setsid 的后代须由 OS 沙盒另行约束。
+function defaultRun({ argv, cwd, env, timeoutMs, launcher, processTree, signal }) {
+  if (signal?.aborted) return Promise.resolve({ exitCode: null, aborted: true });
   return new Promise((resolvePromise) => {
-    // node 直跑引擎（spike §1：node v24 直跑 zcode.cjs；engine.js 同款）——argv[0]=引擎
-    // 路径作为 node 的首参，绝不直跑引擎文件（非可执行位 EACCES）。
-    const child = spawn(process.execPath, argv, { cwd, env, shell: false });
+    const command = launcher?.command ?? process.execPath;
+    const args = launcher ? [...launcher.prefixArgs, process.execPath, ...argv] : argv;
+    const child = spawn(command, args, { cwd, env, shell: false, detached: processTree });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let aborted = false;
     let settled = false;
     let spawnError = null;
+    let cleanupError = null;
+    const timers = new Set();
+    const later = (fn, ms) => {
+      const timer = setTimeout(fn, ms);
+      timers.add(timer);
+      return timer;
+    };
+    const destroyStreams = () => {
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+    };
+    const kill = () => {
+      try {
+        if (processTree) {
+          if (child.pid) process.kill(-child.pid, "SIGKILL");
+        } else child.kill("SIGKILL");
+      } catch (err) {
+        if (err.code !== "ESRCH") cleanupError = err.message;
+      }
+    };
     const settle = (payload) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
-      resolvePromise({ stdout, stderr, timedOut, ...(spawnError ? { spawnError } : {}), ...payload });
+      for (const timer of timers) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      destroyStreams();
+      resolvePromise({ stdout, stderr, timedOut, aborted, ...(spawnError ? { spawnError } : {}), ...(cleanupError ? { cleanupError } : {}), ...payload });
     };
-    // 墙钟兜底结算（ADJ-38，0.2.1 五轮双审）：SIGKILL 只及直接子进程；持 stdio 管道的
-    // 后代可把 close 拖到预算外（探针实测 timeoutMs=1000 实耗 25s=25×）。预算到点即
-    // destroy 管道 + exit 事件结算（宽限窗收 stdout 尾巴），保证「预算到点 ⇒ 预算+ε 返回」。
-    const graceTimer = () => {
-      setTimeout(() => settle({ exitCode: null, signal: "SIGKILL" }), 1500).unref();
+    const onAbort = () => {
+      if (settled) return;
+      aborted = true;
+      kill();
+      destroyStreams();
+      // 返回不依赖后代持有的 stdio 或引擎自行退出。
+      settle({ exitCode: null, signal: "SIGKILL" });
     };
-    const timer = setTimeout(() => {
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const deadline = later(() => {
       timedOut = true;
-      try {
-        child.kill("SIGKILL");
-      } catch {}
-      try {
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-      } catch {}
-      graceTimer();
+      kill();
+      destroyStreams();
+      later(() => settle({ exitCode: null, signal: "SIGKILL" }), 1500);
     }, timeoutMs);
-    // 流内 UTF-8 解码（ADJ-39）：逐 chunk 字符串拼接会把跨边界的多字节字符解成 U+FFFD。
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
-    // 体积上限（ADJ-49）：唯一无预算读面——恶意/故障引擎刷屏可 OOM。
     const MAX_STREAM = 8 * 1024 * 1024;
     let stdoutTruncated = false;
     let stderrTruncated = false;
     child.stdout?.on("data", (d) => {
-      if (stdout.length >= MAX_STREAM) {
-        stdoutTruncated = true;
-        return;
-      }
+      if (stdout.length >= MAX_STREAM) { stdoutTruncated = true; return; }
       stdout += d;
     });
     child.stderr?.on("data", (d) => {
-      if (stderr.length >= MAX_STREAM) {
-        stderrTruncated = true;
-        return;
-      }
+      if (stderr.length >= MAX_STREAM) { stderrTruncated = true; return; }
       stderr += d;
     });
+    const truncation = () => ({
+      ...(stdoutTruncated ? { stdoutTruncated: true } : {}),
+      ...(stderrTruncated ? { stderrTruncated: true } : {}),
+    });
     child.on("error", (err) => {
-      // 单监听器（ADJ-52，0.2.1 五轮双审）：原实现同一 error 事件挂两个监听（一个记
-      // spawnError、一个起 50ms 兜底），语义冗余且让 timedOut 分支的 settle 优先级依赖
-      // 事件顺序。合并为一个：先记因，再起短窗兜底——个别平台 spawn 失败后 close 可能
-      // 迟到，error 后 50ms 补结算，Promise 永不挂。
       spawnError = err?.message ?? String(err);
-      setTimeout(() => {
-        settle({ exitCode: null, signal: null, spawnError });
-      }, 50).unref();
+      if (processTree) kill();
+      later(() => settle({ exitCode: null, signal: null }), 50);
     });
-    child.on("exit", (code, signal) => {
-      // ADJ-38：exit 即结算（不等 close——close 依赖 stdio 关闭，可被后代拖住）。
-      // 但正常路径给 200ms 宽限收 stdout 尾巴，超时未 close 也按 exit 结算。
-      setTimeout(() => {
-        settle({
-          exitCode: code,
-          signal: signal ?? null,
-          ...(stdoutTruncated ? { stdoutTruncated: true } : {}),
-          ...(stderrTruncated ? { stderrTruncated: true } : {}),
-        });
-      }, 200).unref();
+    child.on("exit", (code, exitSignal) => {
+      clearTimeout(deadline);
+      // 正常退出也回收继承 stdio 的同组后代，再给缓冲输出短宽限。
+      if (processTree) kill();
+      later(() => settle({ exitCode: code, signal: exitSignal ?? null, ...truncation() }), 200);
     });
-    child.on("close", (code, signal) => {
-      settle({
-        exitCode: code,
-        signal: signal ?? null,
-        ...(stdoutTruncated ? { stdoutTruncated: true } : {}),
-        ...(stderrTruncated ? { stderrTruncated: true } : {}),
-      });
+    child.on("close", (code, exitSignal) => {
+      if (processTree) kill();
+      settle({ exitCode: code, signal: exitSignal ?? null, ...truncation() });
     });
+    // 防止检查与监听之间发生取消。
+    if (signal?.aborted) onAbort();
   });
 }

@@ -10,7 +10,9 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
-import { runReview, BASELINE_DUTY_ID } from "../core/review.js";
+import { runReview as actualRunReview, BASELINE_DUTY_ID } from "../core/review.js";
+import { withInjectedReviewSandbox } from "./helpers/review-sandbox-stub.js";
+const runReview = withInjectedReviewSandbox(actualRunReview);
 import { FINDINGS_VERSION, assertFindingsShape, findingFingerprint, contestFinding } from "../core/findings.js";
 import { saveFamilyFile } from "../core/queue.js";
 

@@ -379,14 +379,23 @@ lazyzcode/
 - **钩子执行本地代码。** 六个生命周期事件运行本插件的本地 Node 脚本
   （UserPromptSubmit、SessionStart、Stop、PreToolUse、PostToolUse、PostToolUseFailure）；
   其输出是对模型的注入上下文，不是沙箱边界。
+- **独立评审 OS 沙盒（开发中，未发布）**：macOS Seatbelt 约束评审引擎及后代，
+  候选/事实只读、隔离 HOME/tmp 可写；环境白名单与受控代理将网络限于已允许
+  provider 的 API endpoint。HTTP 精确核 origin；HTTPS 只核 CONNECT hostname:port，
+  不核隧道内 SNI/Host/路径。启动时固定 DNS 地址，显式本地/内网 API 仍可达；
+  endpoint 不可解析、代理或后端缺席拒启动，Linux/Windows 暂不支持该入口；
+  drive/queue 默认行为不变。正常/中断清理受管进程组，SIGKILL 残留由 doctor
+  提示并经 `lzy review cleanup <runId>` 回收。准入 API 凭据可读且 endpoint 能接收
+  数据，不保证所有外泄防护、恶意后代全回收、评审正确或预算硬帽。
+  [范围与恢复方式](docs/guide/zh.md#独立评审的-os-沙盒开发中未发布)。
 - **安装落点是引擎官方插件缓存**——启用走引擎官方 CLI，LazyZCode 绝不写你的
   `config.json`。
 - **双分发链，用户可自验。** npm：把发布公示的 shasum 与
   `npm view lazyzcode dist.integrity` 逐字核对。市场：manifest 钉 commit sha，
   装载的载荷就是被钉的那棵树。
-- **威胁模型边界，明示：** LazyZCode 防的是偷懒（假完成、无声弃坑），不防恶意
-  agent——本地账本、批准记录、计数器对同权限进程全部可读写；完整性声明靠协议
-  文本加审计环执法，不靠防篡改硬件。
+- **威胁模型边界，明示：** LazyZCode 防的是偷懒（假完成、无声弃坑）。上述独立
+  评审沙盒以外，本地账本、批准记录、计数器对同权限进程全部可读写；完整性声明
+  靠协议文本加审计环执法，不靠防篡改硬件。
 
 ## 📄 License
 

@@ -20,6 +20,8 @@ import { findEngine } from "./paths.js";
 import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless, detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
 import { querySessionPoints, appendSandboxUsage } from "./cost.js";
+import { createReviewSandbox, reviewSandboxCapability, registerReviewCleanup, cleanupReviewSandbox, prepareReviewProviderRuntime } from "./review-sandbox.js";
+import { findReviewTranscript, queryReviewHostDb } from "./review-artifacts.js";
 
 export const REVIEW_VERSION = 1;
 export const REVIEW_FAMILY = "review";
@@ -272,7 +274,7 @@ export function reserveRun(cwd, slug, attempt) {
   if (existsSync(runDir) && readdirSync(runDir).length > 0) {
     throw new ReviewError(`运行目录已存在且非空（孤儿残留，先人工回收）：${runDir}`);
   }
-  mkdirSync(runDir, { recursive: true });
+  mkdirSync(runDir, { recursive: true, mode: 0o700 });
   return { seq, runId, runDir };
 }
 
@@ -514,7 +516,7 @@ function hashTree(root) {
 // 隔离 HOME：每运行独立 <runDir>/home（引擎 rollout 转录与子账本都落这里——计量缝收口面）。
 export function prepareIsolation(runDir) {
   const home = join(runDir, "home");
-  mkdirSync(home, { recursive: true });
+  mkdirSync(home, { recursive: true, mode: 0o700 });
   return { home };
 }
 
@@ -578,13 +580,12 @@ export function filterProviderConfig(cfg, { allow = sandboxProviderAllowlist() }
   const mcr = config?.modelConfigRules ?? {};
   const filterModelRules = (arr) => (Array.isArray(arr) ? arr.filter((m) => m && keptIds.has(m.providerId)) : arr);
   return {
-    ...cfg,
+    schemaVersion: cfg.schemaVersion,
     config: {
-      ...config,
-      providerConfigRules: { ...(config.providerConfigRules ?? {}), providerRules: kept },
+      ...(keptIds.has(config.defaultModelSelection?.providerId) ? { defaultModelSelection: config.defaultModelSelection } : {}),
+      providerConfigRules: { providerRules: kept },
       providerOrder: order,
       modelConfigRules: {
-        ...mcr,
         providerModelRules: filterModelRules(mcr.providerModelRules),
         manualProviderModelRules: filterModelRules(mcr.manualProviderModelRules),
       },
@@ -952,6 +953,10 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
   }
   // 前置四查（拍板 7）：默认真前置；deps.preflight 可注入（CI 无凭据面替换）
   const pre = await (deps.preflight ?? preflightReview)(cwd, goal, { deps });
+  if (!deps.prepareSandbox) {
+    const capability = reviewSandboxCapability();
+    if (!capability.available) throw new ReviewPreflightError(capability.detail, { reason: "sandbox-unavailable" });
+  }
   const startedAt = new Date();
   // 候选固定（拍板 5）：三字段 + 净树断言——脏树=前置拒（评审候选须提交态，先提交再评审）
   const identity = candidateIdentity(cwd);
@@ -1032,21 +1037,29 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
   let result = null;
   // 白名单沙盒配置即焚锚点（评审 a1.r7 F-2）：null=未达 prepare 面（无事可焚）。
   let sandboxCfgHome = null;
+  let sandbox = null;
+  const abortController = new AbortController();
+  const interrupt = () => abortController.abort();
+  const signals = ["SIGINT", "SIGTERM"];
+  const cleanup = () => sandboxCfgHome ? cleanupReviewSandbox(dirname(sandboxCfgHome)) : null;
   const burnSandboxCfg = () => {
-    if (!sandboxCfgHome) return;
-    try {
-      rmSync(join(sandboxCfgHome, "provider-config.sandbox.json"), { force: true });
-    } catch {}
+    const state = cleanup();
+    if (state?.state === "failed") failures.push(["isolation-breach", `沙盒清理失败：${state.errors.join("、")}；lzy doctor 检查残留`]);
+    return state;
   };
+  for (const signal of signals) process.on(signal, interrupt);
   try {
     // N3 #11（M2 自审 F-5）写前缀单写者锁：reserve→输入包→候选快照→隔离→泄漏断言整段进
     // withLock——并发 review run 此前可交错序号/输入包（注释称单写者=loop 锁但代码未取）。
     // spawn 本体不进锁（引擎时长超 LOCK_WAIT 预算）；锁忙=LoopError→preflight 型拒（exit 3 不落档）。
     const prepared = await withLock(cwd, () => {
       const rs = reserveRun(cwd, goal.slug, goal.attempt);
+      reserve = rs;
       const pkg = buildInputPackage(cwd, goal, rs.runDir, { dutyId: duty, now: startedAt, contested: contestedFacts });
       const snap = materializeCandidate(cwd, rs.runDir);
       const iso = prepareIsolation(rs.runDir);
+      sandboxCfgHome = iso.home;
+      registerReviewCleanup(rs.runDir);
       const sandboxEnv = prepareSandboxProviderConfig(iso.home);
       const priors = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).filter((r) => r.seq < rs.seq);
       const leak = assertNoLeak(readFileSync(pkg.inputPath, "utf8"), priors);
@@ -1055,14 +1068,16 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     reserve = prepared.reserve;
     const { pkg, snap, iso, sandboxEnv, priors, leak } = prepared;
     sandboxCfgHome = iso.home; // 异常路径即焚的闭包锚点（外层 catch 引用；null=未达 prepare 面）
-    // 白名单沙盒配置即焚（评审 a1.r1 F-1/a1.r4 F-1/a1.r7 F-2）：prepareSandboxProviderConfig
-    // 落盘的专属配置含明文 apiKey——正常路径在落档前单点焚，异常路径由外层 catch 入口焚，
-    // 两点半覆盖全部 post-prepare 路径（含 spawn 前中止）。「随沙盒清理」的原声称自此有
-    // 实现真身。best-effort：清理失败不回头改已落档运行；转录/输入档不含 key，审计面
-    // 不受损。锁体内 prepare 写盘后的 throw 残余面如实注记：该窗口仅 listReviewRuns/
-    // assertNoLeak 两个健壮读面，覆盖不到即孤儿目录人工回收家族。
+    // 凭据写入前已登记清理；正常路径落档前焚毁，异常/finally 再回收。
+    // 清理失败使运行无效，SIGKILL 遗留通过 doctor 与 review cleanup 恢复。
     pkgHash = pkg.inputPackageHash;
     snapHash = snap.treeHash;
+    if (deps.prepareSandbox) {
+      sandbox = await deps.prepareSandbox({ runDir: reserve.runDir, candidateDir: snap.candidateDir, inputPath: pkg.inputPath, home: iso.home, providerEnv: sandboxEnv });
+    } else {
+      const providerRuntime = prepareReviewProviderRuntime(iso.home, sandboxEnv);
+      sandbox = await createReviewSandbox({ runDir: reserve.runDir, candidateDir: snap.candidateDir, inputPath: pkg.inputPath, home: iso.home, enginePath: findEngine(), ...providerRuntime });
+    }
     if (!leak.ok) {
       failures.push(["leak", `输入包含在先运行标记：${leak.hits.map((h) => `${h.runId}/${h.kind}`).join("、")}（facts-only 违反，拍板 4）`]);
     }
@@ -1082,17 +1097,26 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           cwd: snap.candidateDir,
           home: iso.home,
           extraEnv: sandboxEnv, // 白名单 provider 配置覆盖（null=env 缺席 BUILTIN-only 继承；不可读/不可识别已 fail-closed 拒）
+          ...sandbox.headless,
+          signal: abortController.signal,
           timeoutMs: timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS,
           deps: typeof deps.run === "function" ? { run: deps.run } : null,
         });
         const sid = run.sessionId ?? extractSessionId(run.stdout);
         let tinfo = null;
-        const tp = sid ? findTranscript(iso.home, sid) : null;
-        if (tp) {
-          const t = readFileSync(tp);
-          tinfo = { path: tp.slice(reserve.runDir.length + 1), sha256: createHash("sha256").update(t).digest("hex") };
+        let transcriptBytes = null;
+        try {
+          const found = sid ? (sandbox.metadata.level === "B"
+            ? findReviewTranscript({ home: iso.home, sessionId: sid, sandbox })
+            : (() => { const path = findTranscript(iso.home, sid); return path ? { path, bytes: readFileSync(path) } : null; })()) : null;
+          if (found) {
+            transcriptBytes = found.bytes;
+            tinfo = { path: found.path.slice(reserve.runDir.length + 1), sha256: createHash("sha256").update(transcriptBytes).digest("hex") };
+          }
+        } catch {
+          failures.push(["isolation-breach", `评审产物读取被拒（attempt ${attempt}）`]);
         }
-        sessionMeta.push({ attempt, sessionId: sid, transcript: tinfo, stdout: run.stdout, stderr: run.stderr });
+        sessionMeta.push({ attempt, sessionId: sid, transcript: tinfo, transcriptBytes, stdout: run.stdout, stderr: run.stderr });
         if (attempt === 1) {
           sessionId = sid; // 记录主 sessionId=首轮（gate basis 可读；重跑会话入 metering 注记）
           transcriptInfo = tinfo;
@@ -1102,6 +1126,10 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
         }
         if (run.timedOut) {
           failures.push(["timeout", `墙钟预算耗尽（SIGKILL，${Math.round((timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS) / 1000)}s，attempt ${attempt}）`]);
+          break;
+        }
+        if (run.aborted || (!run.ok && run.error && run.exitCode === 0)) {
+          failures.push(["interrupted", run.error ?? "评审已中断"]);
           break;
         }
         if (run.spawnError) {
@@ -1156,7 +1184,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
         const builtinCfg = process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE;
         if (builtinCfg) enginePrefixes.push(dirname(builtinCfg));
         for (const m of sessionMeta) {
-          const contained = assertReadsContained(readFileSync(join(reserve.runDir, m.transcript.path), "utf8"), [
+          const contained = assertReadsContained(m.transcriptBytes.toString("utf8"), [
             snap.candidateDir,
             reserve.runDir,
             iso.home,
@@ -1206,6 +1234,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           try {
             last = await (deps.querySessionPoints ?? querySessionPoints)(m.sessionId, {
               dbPath: join(iso.home, ".zcode", "cli", "db", "db.sqlite"),
+              ...(sandbox.metadata.level === "B" ? { queryDb: (dbPath, sql) => queryReviewHostDb({ home: iso.home, dbPath, sql, sandbox }) } : {}),
             });
             lastErr = null;
           } catch (e) {
@@ -1273,6 +1302,9 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     }
     // 无 spawn 但 flag 面已按 leak 落 failures；spawn 面各分类已落——validity 取首因
     const validity = failures.length === 0 ? { status: "valid", reason: null, detail: null } : { status: "invalid", reason: failures[0][0], detail: failures.map(([r, d]) => `${r}: ${d}`).join("；") };
+    await sandbox.close();
+    const cleanupState = burnSandboxCfg();
+    if (cleanupState?.state === "failed") { validity.status = "invalid"; validity.reason = "isolation-breach"; validity.detail = failures.map(([r, d]) => `${r}：${d}`).join("；"); }
     const record = {
       slug: goal.slug,
       attempt: goal.attempt,
@@ -1298,8 +1330,8 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       result,
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
+      sandbox: { ...sandbox.metadata, deniedConnections: sandbox.stats?.denied ?? 0, cleanup: cleanupState?.state ?? "unknown" },
     };
-    burnSandboxCfg(); // 正常路径单点即焚（异常路径见外层 catch 入口）
     const out = await finishRun(cwd, reserve, record);    // 明烧落账（0.5.0，2026-10-02 commandcode 暗烧案）：metering.usage 在场的运行（含
     // invalid/unpriced——tokens 已烧）追加进全局沙盒外泄账（~/.zcode/cli/lzy-usage/）。
     // best-effort：账本 IO 失败不回头改已落档运行——计量真值恒以运行档 metering.usage
@@ -1362,12 +1394,17 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       result: null,
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: null,
+      sandbox: sandbox ? { ...sandbox.metadata, cleanup: cleanup()?.state ?? "unknown" } : null,
     };
     try {
       return { ...(await finishRun(cwd, reserve, record)), thrown: err };
     } catch {
       throw err; // 落档也失败（如磁盘满）——原异常上抛
     }
+  } finally {
+    for (const signal of signals) process.off(signal, interrupt);
+    await sandbox?.close();
+    if (sandboxCfgHome) cleanup();
   }
 }
 

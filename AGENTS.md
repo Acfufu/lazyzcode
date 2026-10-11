@@ -54,8 +54,9 @@
 | #47 | 降阶满足语义 | ADR-0037 转正：三禁＋义务阻塞具名收束；收束分类进 status/doctor 列 M2 必落（2026-10-07） |
 | #48 | lz 预算分级 | 任务不变、lz 墙钟 45 分量级（开发集实测定值）；评审/重跑额度单列（2026-10-07） |
 | #49 | 采纳判据 | 主门不动＋产品标准单列：质量不劣＋收束 100%＋完成率≥1/2＋积分不升，不得称质量提升（2026-10-07） |
-| #50 | 评估集重锚 | 全新任务集（三仓×2 独立封存，v3 判据＋新 seed）；M0 六任务＋oracle-v3 转开发材料（2026-10-07） |
-| #51 | M2 冻结面 | M1 deferred 8 条全部候选冻结前修；冻结点=M2 收口，基线=v0.4.1（2026-10-07） |
+| #50 | 评估集重锚 | 三仓×2 新任务独立封存（v3＋新 seed）；M0＋oracle-v3 转开发材料（2026-10-07） |
+| #51 | M2 冻结面 | deferred 8 条冻结前修；冻结点=M2，基线=v0.4.1（2026-10-07） |
+| #52 | 评审 OS 沙盒 | 仅独立评审：补环境/清理，macOS Seatbelt 整引擎+API endpoint 代理；后端缺席拒启动（ADR-0038，2026-10-11，未发布） |
 
 其余 #1-#24 全表 → docs/decisions.md。
 
@@ -86,7 +87,7 @@ docs/
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架
   spikes/p0-day1.md          ← P0 首日三 spike 结果
-  adr/0001..0037-*.md         ← 架构决策原文（§4 摘要/decisions.md 全表）；0035=文书协议、0036=宿主底座、0037=降阶满足
+  adr/0001..0038-*.md         ← 架构决策原文（§4 摘要/decisions.md 全表）
   reviews/ release-checklist.md  ← 评审报告/处置记录 + 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist
   handoffs/ templates/        ← 安装价值校准交接/记录模板
   diagnostics/               ← 运行环境诊断记录（钩子 env/PATH）

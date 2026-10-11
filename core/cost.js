@@ -256,7 +256,7 @@ export function rollingWaterlinePoints() {
 // **0.4.0 M2（N4）：dbPath 参数化**——受控评审 runner 恒传隔离 HOME 子账本路径（计量缝
 // 收口面，M0 发现一）；默认值=宿主账本，既有调用点零变化。SELECT 只读幂等：同 sessionId
 // 二次读不累加（读数无状态，拍板 7 去重语义天然满足）。
-export function querySessionPoints(sessionId, { dbPath = billingDbPath() } = {}) {
+export function querySessionPoints(sessionId, { dbPath = billingDbPath(), queryDb = queryHostDb } = {}) {
   if (typeof sessionId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) return { absent: true, unpriced: [], points: 0, usage: [] };
   const db = dbPath;
   if (!existsSync(db)) return { absent: true, unpriced: [], points: 0, usage: [] };
@@ -267,7 +267,7 @@ export function querySessionPoints(sessionId, { dbPath = billingDbPath() } = {})
     "GROUP BY sid, provider, model, h";
   let rows = null;
   try {
-    rows = queryHostDb(db, sql); // null=sqlite3 缺席/查询失败（降级面）——同 metering-absent 停类
+    rows = queryDb(db, sql); // 评审可注入受限读取；计价仍由本模块单源完成。
   } catch {
     rows = null;
   }

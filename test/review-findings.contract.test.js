@@ -17,7 +17,9 @@ import {
   resolveFindingsScope, listFindings, openBlockingFindings,
   FINDINGS_VERSION, DIAGNOSIS_REQUIRED_THRESHOLD,
 } from "../core/findings.js";
-import { runReview, preflightReview, BASELINE_DUTY_ID, REVIEW_VERSION, dutyTemplateHash, reserveRun, materializeCandidate, saveReviewRun, ReviewPreflightError } from "../core/review.js";
+import { runReview as actualRunReview, preflightReview, BASELINE_DUTY_ID, REVIEW_VERSION, dutyTemplateHash, reserveRun, materializeCandidate, saveReviewRun, ReviewPreflightError } from "../core/review.js";
+import { withInjectedReviewSandbox } from "./helpers/review-sandbox-stub.js";
+const runReview = withInjectedReviewSandbox(actualRunReview);
 import { candidateIdentity } from "../core/verify.js";
 import { createHash } from "node:crypto";
 import { evaluateGate } from "../core/gate.js";

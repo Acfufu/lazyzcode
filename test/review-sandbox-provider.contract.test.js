@@ -15,9 +15,11 @@ import {
   filterProviderConfig,
   prepareSandboxProviderConfig,
   preflightReview,
-  runReview,
+  runReview as actualRunReview,
   sandboxProviderAllowlist,
 } from "../core/review.js";
+import { withInjectedReviewSandbox } from "./helpers/review-sandbox-stub.js";
+const runReview = withInjectedReviewSandbox(actualRunReview);
 
 const FENCE = (obj) => "```json\n" + JSON.stringify(obj) + "\n```";
 const PASS = { duty: BASELINE_DUTY_ID, verdict: "pass", findings: [], summary: "clean" };
@@ -70,6 +72,19 @@ test("filterProviderConfig：只留 enabled+key∩显式允许表 的腿、provi
   assert.deepEqual(out.config.modelConfigRules.providerModelRules, [{ providerId: "cmdcode", modelId: "deepseek/x", config: { enabled: true } }]);
   assert.deepEqual(out.config.modelConfigRules.manualProviderModelRules, [{ providerId: "glm-leg", modelId: "glm/z", config: {} }]);
   assert.equal(out.schemaVersion, 1, "config 之外的顶层键原样保留");
+});
+
+test("filterProviderConfig：丢弃非白名单模型默认与未知配置秘密", () => {
+  const input = BASE_CONFIG();
+  input.hostSecret = "synthetic-secret";
+  input.config.otherCredential = "synthetic-secret";
+  input.config.defaultModelSelection = { providerId: "oauth-leg", modelId: "m" };
+  const out = filterProviderConfig(input, { allow: ["cmdcode"] });
+  assert.equal(out.hostSecret, undefined);
+  assert.equal(out.config.otherCredential, undefined);
+  assert.equal(out.config.defaultModelSelection, undefined);
+  input.config.defaultModelSelection = { providerId: "cmdcode", modelId: "m" };
+  assert.deepEqual(filterProviderConfig(input, { allow: ["cmdcode"] }).config.defaultModelSelection, input.config.defaultModelSelection);
 });
 
 test("filterProviderConfig：允许表收紧语义——表内未列/enabled 腿不换名透传；空表=空（2026-10-08 opencode 腿复发案）", () => {

@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { collectStatus } from "./status.js";
 import { createEngineCli } from "./engine.js";
 import { detectHeadlessAuth } from "./headless.js";
+import { reviewSandboxCapability, reviewSandboxResidues } from "./review-sandbox.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
 import { projectCheck } from "./project.js";
 import { loadMigrationState } from "./migrate.js";
@@ -643,6 +644,31 @@ function checkPolicy(push, cwd) {
     return;
   }
   push("policy", "ok", `策略家族 ${names.length} 件（策略记录 ${records} · 兼容锚 ${compat}）· 形状闸全过`);
+}
+
+// 独立评审能力与清理恢复单列；不改变其他 headless 通道的能力判断。只读零写。
+export function checkReviewSandbox(push, cwd, { capability = reviewSandboxCapability, residues = reviewSandboxResidues } = {}) {
+  const backend = capability();
+  const scope = "仅独立评审强制 B；其他 headless 通道保持现行策略";
+  let found;
+  try {
+    found = residues(cwd);
+  } catch {
+    push("review-sandbox", "warn", `${scope} · ${backend.detail} · 残留记录不可读，请检查评审清理记录后重跑 doctor`);
+    return;
+  }
+  const active = found.filter(r => r.state === "pending" && r.active === true);
+  const stale = found.filter(r => !(r.state === "pending" && r.active === true));
+  const recovery = stale.slice(0, 3).map(r => /^[-\w.]+\.a\d+\.r\d+$/.test(r.runId)
+    ? `lzy review cleanup ${r.runId}`
+    : "运行 ID 异常，请检查评审清理记录");
+  push(
+    "review-sandbox",
+    backend.available && stale.length === 0 ? "ok" : "warn",
+    `${scope} · ${backend.backend ?? "unsupported"} · ${backend.detail}` +
+      (active.length ? ` · 正常在途 ${active.length} 件` : "") +
+      (stale.length ? ` · 待恢复清理 ${stale.length} 件：${recovery.join("；")}${stale.length > 3 ? "；更多运行请逐项检查清理记录" : ""}` : " · 无待恢复清理记录"),
+  );
 }
 
 // 评审运行族诊断（0.4.0 M2）：.lazyzcode/review/ 家族健康巡逻——运行档逐个 loadReviewFile
@@ -1428,6 +1454,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkContract(p, cwd),
     (p) => checkPolicy(p, cwd),
     (p) => checkReview(p, cwd),
+    (p) => checkReviewSandbox(p, cwd),
     (p) => checkFindings(p, cwd),
     (p) => checkReviewScope(p, cwd),
     (p) => checkProjectManifest(p, cwd),

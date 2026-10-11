@@ -1,6 +1,6 @@
 # ADR-0038：独立评审补隔离卫生与 OS 强制边界（2026-10-11）
 
-状态：用户确认，开发中；未发布。决策 #52。仅适用于 lzy 发起的独立评审及复核，不改变 drive/queue 默认执行方式。
+状态：用户确认，开发中；未发布。决策 #52。仅适用于 lzy 发起的独立评审及复核，不改变 drive/queue 默认执行方式。2026-10-11 增修订节（分级保证，用户拍板）。
 
 ## 背景与取舍
 
@@ -17,3 +17,14 @@ ADR-0031 的候选快照、独立 HOME、provider 允许表与转录检查能够
 ## 边界与验收
 
 本决策不建立容器/VM，不保证预算硬帽、评审正确性或其他同权限宿主进程无法篡改账本。既有候选身份、转录、用量与事后复核继续保留。验收须分别记录真实进程下的允许读取/写入/API 请求、拒绝越界文件与网络访问、子进程继承、环境污染排除、正常/中断清理及 SIGKILL 后恢复；未运行或未支持的平台不能计为通过。发布状态与实测结果另行记录，不由本 ADR 宣称。
+
+## 修订节：分级保证（2026-10-11，用户拍板）
+
+**触发**：原契约「OAuth-only 认证仍不可用」与「后端缺席拒启动」叠加后，`lzy review run` 仅在「macOS ∧ Seatbelt 探针通过 ∧ 个人 key 腿在场」单格形态可用。实际分发中仅 start-plan（OAuth 账号认证）是默认形态——统一门义务评审对多数用户物理不可达，goal loop 的 finish 面死锁；这是对 0.5.0 已可用行为（M3 三评审实证）的回归，且 doctor 对该形态无预诊断。
+
+**拍板：B 后端＝增强，不是门槛。** 评审运行分两级，条件由机器钉死、无用户手选降级面：
+
+- **os-sandbox tier**：Seatbelt 探针通过 ∧ 个人 key 腿在场（`prepareSandboxProviderConfig` 同判据：env 在场、可解析、过滤后非空）。本 ADR 上述契约全文适用。
+- **app-layer tier**（任一条件不满足时自动降级）：0.5.0 应用层运行时——隔离 HOME＋envAuth＋facts-only＋读取轨迹与转录复核；不提供 OS 权限边界，威胁模型即 ADR-0031 第 9 行既有声明。运行档增 `isolation {level, backend}` 如实记档，doctor 对当前形态预诊断（不再到评审运行才炸）。
+
+配置错误不降级：provider env 在场但不可读/过滤后零有效腿仍 fail-closed 拒（`provider-config-unreadable`/`no-sandbox-provider` 原判据不变）。「有 key 腿但无 OS 后端」（Linux/Windows）同样落 app-layer tier——后端缺席是平台事实而非用户选择，不再构成拒启动。app-layer tier 不冒充 OS 隔离：评审判决消费面（统一门回执、报告）读到 `isolation.level=app-layer` 时按 0.5.0 保证面口径引用。

@@ -10,9 +10,9 @@ const MARKER = "sandbox-cleanup.json";
 export class ReviewSandboxError extends Error {}
 
 export function reviewSandboxCapability({ platform = process.platform } = {}) {
-  if (platform !== "darwin") return { available: false, backend: null, detail: "受控评审 OS 沙盒暂只支持 macOS；当前平台拒绝裸启动（可在支持的 macOS 环境评审）" };
+  if (platform !== "darwin") return { available: false, backend: null, detail: "OS 沙盒后端仅 macOS；本形态落 app-layer tier（ADR-0038 修订节分级保证）" };
   const r = spawnSync(BACKEND, ["-p", "(version 1)(deny default)(allow process*)(allow file-read*)(allow sysctl-read)", "/usr/bin/true"], { encoding: "utf8", timeout: 3000, env: { PATH: "/usr/bin:/bin" } });
-  return r.status === 0 ? { available: true, backend: "macos-seatbelt", detail: "Seatbelt 启动探针通过；评审必须经受限文件策略与 endpoint 代理" } : { available: false, backend: "macos-seatbelt", detail: "Seatbelt 不可用或宿主拒绝嵌套沙盒；受控评审拒绝裸启动，检查 macOS 运行环境" };
+  return r.status === 0 ? { available: true, backend: "macos-seatbelt", detail: "Seatbelt 启动探针通过；评审必须经受限文件策略与 endpoint 代理" } : { available: false, backend: "macos-seatbelt", detail: "Seatbelt 不可用或宿主拒绝嵌套沙盒；本形态落 app-layer tier（ADR-0038 修订节分级保证）" };
 }
 
 export function reviewEnvironment({ home, proxyUrl, providerEnv = {}, source = process.env }) {

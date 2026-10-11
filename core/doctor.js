@@ -646,10 +646,19 @@ function checkPolicy(push, cwd) {
   push("policy", "ok", `策略家族 ${names.length} 件（策略记录 ${records} · 兼容锚 ${compat}）· 形状闸全过`);
 }
 
-// 独立评审能力与清理恢复单列；不改变其他 headless 通道的能力判断。只读零写。
-export function checkReviewSandbox(push, cwd, { capability = reviewSandboxCapability, residues = reviewSandboxResidues } = {}) {
+// 独立评审隔离 tier 预诊断（ADR-0038 修订节=分级保证）+清理恢复单列；不改变其他 headless
+// 通道的能力判断。只读零写。tier=os-sandbox 须双条件（Seatbelt 探针过∧个人 key 腿在场，
+// prepareSandboxProviderConfig 同判据）；缺一即 app-layer（0.5.0 保证面）——如实显示不告警。
+export function checkReviewSandbox(push, cwd, { capability = reviewSandboxCapability, residues = reviewSandboxResidues, env = process.env } = {}) {
   const backend = capability();
-  const scope = "仅独立评审强制 B；其他 headless 通道保持现行策略";
+  const legPresent = Boolean(env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE);
+  const tier = backend.available && legPresent ? "os-sandbox" : "app-layer";
+  const tierWhy = tier === "os-sandbox"
+    ? "B 后端双条件满足（Seatbelt 探针+key 腿）"
+    : backend.available
+      ? "无个人 key 腿（OAuth-only）——0.5.0 应用层保证面"
+      : "无 OS 沙盒后端——0.5.0 应用层保证面";
+  const scope = `独立评审隔离 tier=${tier}（${tierWhy}，ADR-0038 修订节）；其他 headless 通道保持现行策略`;
   let found;
   try {
     found = residues(cwd);
@@ -664,8 +673,8 @@ export function checkReviewSandbox(push, cwd, { capability = reviewSandboxCapabi
     : "运行 ID 异常，请检查评审清理记录");
   push(
     "review-sandbox",
-    backend.available && stale.length === 0 ? "ok" : "warn",
-    `${scope} · ${backend.backend ?? "unsupported"} · ${backend.detail}` +
+    stale.length === 0 ? "ok" : "warn",
+    `${scope} · ${backend.available ? `后端 ${backend.backend}` : "后端缺席"} · ${backend.detail}` +
       (active.length ? ` · 正常在途 ${active.length} 件` : "") +
       (stale.length ? ` · 待恢复清理 ${stale.length} 件：${recovery.join("；")}${stale.length > 3 ? "；更多运行请逐项检查清理记录" : ""}` : " · 无待恢复清理记录"),
   );

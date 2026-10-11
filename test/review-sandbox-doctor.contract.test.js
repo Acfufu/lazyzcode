@@ -10,27 +10,33 @@ const evidence = resolve(".omo/evidence/review-sandbox-doctor");
 mkdirSync(evidence, { recursive: true });
 const cli = resolve("cli/lzy.js");
 
-function check(capability, residues) {
+function check(capability, residues, env = {}) {
   const rows = [];
   assert.equal(typeof doctor.checkReviewSandbox, "function");
   doctor.checkReviewSandbox((name, state, detail) => rows.push({ name, state, detail }), evidence, {
     capability: () => capability,
     residues: () => residues,
+    env,
   });
   assert.equal(rows.length, 1);
   assert.equal(rows[0].name, "review-sandbox");
   return rows[0];
 }
 
-test("backend availability and unsupported platform are independent of other headless checks", () => {
-  const supported = check({ available: true, backend: "macos-seatbelt", detail: "probe passed" }, []);
-  assert.equal(supported.state, "ok");
-  assert.match(supported.detail, /独立评审.*B/);
-  const unsupported = check(reviewSandboxCapability({ platform: "win32" }), []);
-  assert.equal(unsupported.state, "warn");
-  assert.match(unsupported.detail, /裸启动/);
+test("tier preview: os-sandbox needs both conditions; fallback is app-layer tier, not a warning", () => {
+  const osSandbox = check({ available: true, backend: "macos-seatbelt", detail: "probe passed" }, [], { ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: "/x/p.json" });
+  assert.equal(osSandbox.state, "ok");
+  assert.match(osSandbox.detail, /tier=os-sandbox/);
+  assert.match(osSandbox.detail, /独立评审.*B 后端/);
+  const oauthOnly = check({ available: true, backend: "macos-seatbelt", detail: "probe passed" }, [], {});
+  assert.equal(oauthOnly.state, "ok"); // app-layer 降级是合法形态，如实显示不告警（ADR-0038 修订节）
+  assert.match(oauthOnly.detail, /tier=app-layer/);
+  assert.match(oauthOnly.detail, /OAuth-only/);
+  const unsupported = check(reviewSandboxCapability({ platform: "win32" }), [], { ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: "/x/p.json" });
+  assert.equal(unsupported.state, "ok");
+  assert.match(unsupported.detail, /tier=app-layer/);
   assert.doesNotMatch(unsupported.detail, /所有.*headless.*不可用/);
-  writeFileSync(join(evidence, "capability-cases.json"), JSON.stringify({ supported, unsupported }, null, 2));
+  writeFileSync(join(evidence, "capability-cases.json"), JSON.stringify({ osSandbox, oauthOnly, unsupported }, null, 2));
 });
 
 test("active pending owner is normal; failed, dead pending and unknown require recovery", () => {

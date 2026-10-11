@@ -953,10 +953,10 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
   }
   // 前置四查（拍板 7）：默认真前置；deps.preflight 可注入（CI 无凭据面替换）
   const pre = await (deps.preflight ?? preflightReview)(cwd, goal, { deps });
-  if (!deps.prepareSandbox) {
-    const capability = reviewSandboxCapability();
-    if (!capability.available) throw new ReviewPreflightError(capability.detail, { reason: "sandbox-unavailable" });
-  }
+  // 分级保证（ADR-0038 修订节）：能力探测前置一次供 tier 判定，不再在此拒——非 darwin/
+  // Seatbelt 不可用落 app-layer 降级（0.5.0 保证面），仅 tier 判定后的配置错误才 fail-closed。
+  // deps.sandboxCapability 供离线契约测试注入 tier 判定面（同 queryDb/seam 家法）。
+  const sandboxCapability = deps.sandboxCapability ?? reviewSandboxCapability();
   const startedAt = new Date();
   // 候选固定（拍板 5）：三字段 + 净树断言——脏树=前置拒（评审候选须提交态，先提交再评审）
   const identity = candidateIdentity(cwd);
@@ -1038,6 +1038,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
   // 白名单沙盒配置即焚锚点（评审 a1.r7 F-2）：null=未达 prepare 面（无事可焚）。
   let sandboxCfgHome = null;
   let sandbox = null;
+  let isolation = null; // 分级保证面：{level: "os-sandbox"|"app-layer", backend}——运行档 isolation 字段（ADR-0038 修订节）
   const abortController = new AbortController();
   const interrupt = () => abortController.abort();
   const signals = ["SIGINT", "SIGTERM"];
@@ -1072,11 +1073,21 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     // 清理失败使运行无效，SIGKILL 遗留通过 doctor 与 review cleanup 恢复。
     pkgHash = pkg.inputPackageHash;
     snapHash = snap.treeHash;
-    if (deps.prepareSandbox) {
-      sandbox = await deps.prepareSandbox({ runDir: reserve.runDir, candidateDir: snap.candidateDir, inputPath: pkg.inputPath, home: iso.home, providerEnv: sandboxEnv });
+    // 分级保证（ADR-0038 修订节）：os-sandbox tier 须双条件（Seatbelt 探针过＋个人 key 腿在
+    // 场=sandboxEnv 非 null）；缺一自动降级 app-layer（0.5.0 形态：envAuth+隔离 HOME+facts-only，
+    // 无 Seatbelt/代理），无手选降级面。env 在场但不可读/零有效腿已在 prepareSandboxProviderConfig
+    // 抛 ReviewPreflightError（fail-closed 不降级）；prepareReviewProviderRuntime 的 provider 闸
+    // 只在确走沙盒 tier 时到达。
+    if (deps.prepareSandbox || (sandboxCapability.available && sandboxEnv)) {
+      if (deps.prepareSandbox) {
+        sandbox = await deps.prepareSandbox({ runDir: reserve.runDir, candidateDir: snap.candidateDir, inputPath: pkg.inputPath, home: iso.home, providerEnv: sandboxEnv });
+      } else {
+        const providerRuntime = prepareReviewProviderRuntime(iso.home, sandboxEnv);
+        sandbox = await createReviewSandbox({ runDir: reserve.runDir, candidateDir: snap.candidateDir, inputPath: pkg.inputPath, home: iso.home, enginePath: findEngine(), ...providerRuntime });
+      }
+      isolation = { level: "os-sandbox", backend: sandbox.metadata?.backend ?? sandboxCapability.backend ?? null };
     } else {
-      const providerRuntime = prepareReviewProviderRuntime(iso.home, sandboxEnv);
-      sandbox = await createReviewSandbox({ runDir: reserve.runDir, candidateDir: snap.candidateDir, inputPath: pkg.inputPath, home: iso.home, enginePath: findEngine(), ...providerRuntime });
+      isolation = { level: "app-layer", backend: null };
     }
     if (!leak.ok) {
       failures.push(["leak", `输入包含在先运行标记：${leak.hits.map((h) => `${h.runId}/${h.kind}`).join("、")}（facts-only 违反，拍板 4）`]);
@@ -1097,7 +1108,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           cwd: snap.candidateDir,
           home: iso.home,
           extraEnv: sandboxEnv, // 白名单 provider 配置覆盖（null=env 缺席 BUILTIN-only 继承；不可读/不可识别已 fail-closed 拒）
-          ...sandbox.headless,
+          ...(sandbox?.headless ?? {}),
           signal: abortController.signal,
           timeoutMs: timeoutMs ?? HEADLESS_DEFAULT_TIMEOUT_MS,
           deps: typeof deps.run === "function" ? { run: deps.run } : null,
@@ -1106,7 +1117,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
         let tinfo = null;
         let transcriptBytes = null;
         try {
-          const found = sid ? (sandbox.metadata.level === "B"
+          const found = sid ? (sandbox?.metadata?.level === "B"
             ? findReviewTranscript({ home: iso.home, sessionId: sid, sandbox })
             : (() => { const path = findTranscript(iso.home, sid); return path ? { path, bytes: readFileSync(path) } : null; })()) : null;
           if (found) {
@@ -1234,7 +1245,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           try {
             last = await (deps.querySessionPoints ?? querySessionPoints)(m.sessionId, {
               dbPath: join(iso.home, ".zcode", "cli", "db", "db.sqlite"),
-              ...(sandbox.metadata.level === "B" ? { queryDb: (dbPath, sql) => queryReviewHostDb({ home: iso.home, dbPath, sql, sandbox }) } : {}),
+              ...(sandbox?.metadata?.level === "B" ? { queryDb: (dbPath, sql) => queryReviewHostDb({ home: iso.home, dbPath, sql, sandbox }) } : {}),
             });
             lastErr = null;
           } catch (e) {
@@ -1302,7 +1313,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     }
     // 无 spawn 但 flag 面已按 leak 落 failures；spawn 面各分类已落——validity 取首因
     const validity = failures.length === 0 ? { status: "valid", reason: null, detail: null } : { status: "invalid", reason: failures[0][0], detail: failures.map(([r, d]) => `${r}: ${d}`).join("；") };
-    await sandbox.close();
+    await sandbox?.close();
     const cleanupState = burnSandboxCfg();
     if (cleanupState?.state === "failed") { validity.status = "invalid"; validity.reason = "isolation-breach"; validity.detail = failures.map(([r, d]) => `${r}：${d}`).join("；"); }
     const record = {
@@ -1330,7 +1341,8 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       result,
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
-      sandbox: { ...sandbox.metadata, deniedConnections: sandbox.stats?.denied ?? 0, cleanup: cleanupState?.state ?? "unknown" },
+      isolation,
+      sandbox: sandbox ? { ...sandbox.metadata, deniedConnections: sandbox.stats?.denied ?? 0, cleanup: cleanupState?.state ?? "unknown" } : null,
     };
     const out = await finishRun(cwd, reserve, record);    // 明烧落账（0.5.0，2026-10-02 commandcode 暗烧案）：metering.usage 在场的运行（含
     // invalid/unpriced——tokens 已烧）追加进全局沙盒外泄账（~/.zcode/cli/lzy-usage/）。
@@ -1394,6 +1406,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       result: null,
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: null,
+      isolation,
       sandbox: sandbox ? { ...sandbox.metadata, cleanup: cleanup()?.state ?? "unknown" } : null,
     };
     try {

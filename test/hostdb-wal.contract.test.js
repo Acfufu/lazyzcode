@@ -4,7 +4,7 @@
 // 且**只在库静寂时回退**（-wal 有内容不得读旧快照，宁降级 null）。
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -62,11 +62,19 @@ test("hostdb/WAL 非静寂守卫：-wal 有内容时不读旧快照（宁降级�
     writer = spawn("sqlite3", [db], { stdio: ["pipe", "ignore", "pipe"] });
     writer.stdin.write("PRAGMA journal_mode=wal;\nCREATE TABLE IF NOT EXISTS usage(session_id TEXT, output_tokens INTEGER);\nINSERT INTO usage(session_id, output_tokens) VALUES ('sess-9', 9);\n");
     const wal = `${db}-wal`;
-    for (let i = 0; i < 50 && !(existsSync(wal) && statSync(wal).size > 0); i += 1) await new Promise((r) => setTimeout(r, 100));
-    assert.ok(existsSync(wal) && statSync(wal).size > 0, "-wal 应含未 checkpoint 内容（施工面不成立）");
+    // 等 INSERT 真正落 -wal：以 wal 字节含 'sess-9' 为准（CI ubuntu 实锤——wal 非空≠已提交，
+    // journal_mode/CREATE 先落盘，只等 size>0 会拷到未提交态，读旧快照 3 是拷贝时序假象而非
+    // 守卫失效）。不开第二连接探内容：其退出可能 checkpoint 源库，破坏「新行只在 -wal」构造。
+    let committed = false;
+    for (let i = 0; i < 50 && !committed; i += 1) {
+      await new Promise((r) => setTimeout(r, 100));
+      committed = existsSync(wal) && statSync(wal).size > 0 && readFileSync(wal).includes(Buffer.from("sess-9"));
+    }
+    assert.ok(committed, "-wal 应含已提交的 sess-9（施工面不成立）");
     cpSync(db, join(d2, "crash.sqlite"));
     cpSync(wal, join(d2, "crash.sqlite-wal"));
     assert.equal(existsSync(join(d2, "crash.sqlite-shm")), false, "崩溃态须无 -shm");
+    assert.ok(readFileSync(join(d2, "crash.sqlite-wal")).includes(Buffer.from("sess-9")), "拷贝面须含已提交行（施工面自证）");
     const r = queryHostDb(join(d2, "crash.sqlite"), "SELECT count(*) AS n FROM usage;");
     // 安全不变量：降级 null 或读到含 -wal 的全量（4）皆可；**只有旧快照（3）不可**
     assert.ok(r === null || r[0].n === 4, `非静寂态读了旧快照：${JSON.stringify(r)}`);

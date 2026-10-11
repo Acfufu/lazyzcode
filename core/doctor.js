@@ -9,6 +9,7 @@ import { collectStatus } from "./status.js";
 import { createEngineCli } from "./engine.js";
 import { detectHeadlessAuth } from "./headless.js";
 import { reviewSandboxCapability, reviewSandboxResidues } from "./review-sandbox.js";
+import { resolveSandboxProviderConfig } from "./review.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
 import { projectCheck } from "./project.js";
 import { loadMigrationState } from "./migrate.js";
@@ -658,15 +659,25 @@ function checkPolicy(push, cwd) {
 // 独立评审隔离 tier 预诊断（ADR-0038 修订节=分级保证）+清理恢复单列；不改变其他 headless
 // 通道的能力判断。只读零写。tier=os-sandbox 须双条件（Seatbelt 探针过∧个人 key 腿在场，
 // prepareSandboxProviderConfig 同判据）；缺一即 app-layer（0.5.0 保证面）——如实显示不告警。
-export function checkReviewSandbox(push, cwd, { capability = reviewSandboxCapability, residues = reviewSandboxResidues, env = process.env } = {}) {
+export function checkReviewSandbox(push, cwd, { capability = reviewSandboxCapability, residues = reviewSandboxResidues, env = process.env, resolveLegs = resolveSandboxProviderConfig } = {}) {
   const backend = capability();
-  const legPresent = Boolean(env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE);
-  const tier = backend.available && legPresent ? "os-sandbox" : "app-layer";
+  // 二改：可用腿判定走 resolve（enabled+key∩允许表），不再以配置文件在场充数——全禁腿机器
+  // 如实报 app-layer（OAuth 凭据透传）；不可读配置原样 warn 点名。
+  let usableLeg = false;
+  let legNote = "个人 provider 配置无 enabled+key∩允许表 腿";
+  try {
+    usableLeg = resolveLegs({ source: env }) !== null;
+    if (usableLeg) legNote = "可用 key 腿在场";
+  } catch (e) {
+    push("review-sandbox", "warn", `独立评审 provider 配置不可用：${String(e?.message ?? e).slice(0, 140)}`);
+    return;
+  }
+  const tier = backend.available && usableLeg ? "os-sandbox" : "app-layer";
   const tierWhy = tier === "os-sandbox"
-    ? "B 后端双条件满足（Seatbelt 探针+key 腿）"
+    ? "B 后端双条件满足（Seatbelt 探针+可用 key 腿）"
     : backend.available
-      ? "无个人 key 腿（OAuth-only）——0.5.0 应用层保证面"
-      : "无 OS 沙盒后端——0.5.0 应用层保证面";
+      ? `${legNote}——app-layer（OAuth 凭据透传，暴露中性）`
+      : "无 OS 沙盒后端——app-layer（OAuth 凭据透传）";
   const scope = `独立评审隔离 tier=${tier}（${tierWhy}，ADR-0038 修订节）；其他 headless 通道保持现行策略`;
   let found;
   try {

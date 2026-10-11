@@ -28,3 +28,15 @@ ADR-0031 的候选快照、独立 HOME、provider 允许表与转录检查能够
 - **app-layer tier**（任一条件不满足时自动降级）：0.5.0 应用层运行时——隔离 HOME＋envAuth＋facts-only＋读取轨迹与转录复核；不提供 OS 权限边界，威胁模型即 ADR-0031 第 9 行既有声明。运行档增 `isolation {level, backend}` 如实记档，doctor 对当前形态预诊断（不再到评审运行才炸）。
 
 配置错误不降级：provider env 在场但不可读/过滤后零有效腿仍 fail-closed 拒（`provider-config-unreadable`/`no-sandbox-provider` 原判据不变）。「有 key 腿但无 OS 后端」（Linux/Windows）同样落 app-layer tier——后端缺席是平台事实而非用户选择，不再构成拒启动。app-layer tier 不冒充 OS 隔离：评审判决消费面（统一门回执、报告）读到 `isolation.level=app-layer` 时按 0.5.0 保证面口径引用。
+
+### 二改：OAuth-only 完成面（2026-10-11 深夜，用户追问「OAuth-only 改动呢？」暴露的缺口）
+
+一改的救济没有覆盖它自己的触发主体：app-layer tier 定义为「隔离 HOME＋envAuth」，而评审 preflight 的认证门（M2 N4#8）只认 provider env——**纯 OAuth（仅 start-plan、无可用 key 腿）机器在两个 tier 下都被 no-auth 拒**；且「配置在场但零有效腿」被一改钉成 fail-closed 拒，恰好命中默认形态（标准 provider 配置天然含禁用腿）。本机实弹（p0-ledger-fix 收口）撞线证实。
+
+拍板三项：
+
+1. **空交集≠配置损坏**：provider 配置可解析但零 enabled+key∩允许表 腿＝「无沙盒可用腿」的自然态，落 app-layer tier（不再 `no-sandbox-provider` 硬拒）；仅不可读/结构不可识别维持硬拒（`resolveSandboxProviderConfig` 返 null 语义）。
+2. **app-layer tier 的 OAuth 凭据透传**：tier=app-layer ∧ 宿主 OAuth 凭据（`~/.zcode/v2/credentials.json`）在场 ∧ 无可用 provider 腿 → 复制凭据进隔离 HOME（0600，随 runDir 清理登记焚毁，doctor/residues 与 provider 副本同族点名）。**暴露中性论证**：app-layer 无 OS 边界，评审会话与宿主同 uid，本可直读宿主同权限文件——拒绝透传不减少任何暴露，只把整个默认用户群挡在门外；沙盒 tier 维持 provider-env-only（Seatbelt 内凭据复制=真暴露，`oauthFallback` 只认 app-layer）。运行档 `isolation.auth` 如实记 `oauth-copy|provider-env`。
+3. **认证门语义**：`envAuth` 首判保持（既有夹具面不破）；`oauthFallback` 为增路非替代。auth 判定注入面修正：`deps.sandboxCapability` 为函数时须调用（一改实现漏调用致注入面全部意外走 app-layer——同批契约测试断言同侧未 exposing）。
+
+诚实记录：一改提交信息「仅 start-plan OAuth 评审面恢复可达」系过度声明——一改只恢复了「配置在场但不可沙盒化」机器；本二改才完成触发主体（纯 OAuth）的救济。

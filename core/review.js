@@ -20,7 +20,7 @@ import { findEngine } from "./paths.js";
 import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless, detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
 import { querySessionPoints, appendSandboxUsage } from "./cost.js";
-import { createReviewSandbox, reviewSandboxCapability, registerReviewCleanup, cleanupReviewSandbox, prepareReviewProviderRuntime } from "./review-sandbox.js";
+import { createReviewSandbox, reviewSandboxCapability, registerReviewCleanup, cleanupReviewSandbox, prepareReviewProviderRuntime, copyOAuthCredential } from "./review-sandbox.js";
 import { findReviewTranscript, queryReviewHostDb } from "./review-artifacts.js";
 
 export const REVIEW_VERSION = 1;
@@ -629,12 +629,10 @@ export function filterProviderConfig(cfg, { allow = sandboxProviderAllowlist() }
   };
 }
 
-// 隔离 home 内专属 provider 配置落盘 + spawn 用 extraEnv（覆盖 PERSONAL env 指向白名单文件；
-// BUILTIN env 不动——引擎内置目录，无用户 key）。返回 null=env 缺席（BUILTIN-only，无个人
-// 配置可滤）；文件不可读/非 JSON/结构不可识别=fail-closed 前置拒（不再回落整包透传）。
-// 文件落隔离 home（本就是 ephemeral 凭据面，随沙盒清理），不入 .lazyzcode 主档。
-export function prepareSandboxProviderConfig(home) {
-  const realPath = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+// 配置解析与落盘拆分（ADR-0038 修订节二改）：resolve 只读判定（空交集=null，供 tier 预判定
+// 与 OAuth-only 降级），write 落盘隔离 home。prepare 保留组合语义（既有调用面/测试不变）。
+export function resolveSandboxProviderConfig({ allow = sandboxProviderAllowlist(), source = process.env } = {}) {
+  const realPath = source.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
   if (!realPath || realPath.length === 0) return null;
   let cfg;
   try {
@@ -647,13 +645,28 @@ export function prepareSandboxProviderConfig(home) {
       { reason: "provider-config-unreadable" },
     );
   }
-  const filtered = filterProviderConfig(cfg); // 结构不可识别在此抛（fail-closed 同判据）
-  if (filtered.config.providerConfigRules.providerRules.length === 0) {
-    throw new ReviewPreflightError(SANDBOX_NO_LEG_MSG, { reason: "no-sandbox-provider" });
-  }
+  const filtered = filterProviderConfig(cfg, { allow }); // 结构不可识别在此抛（fail-closed 同判据）
+  // 二改（ADR-0038 修订节）：空交集不再抛 no-sandbox-provider——默认形态的配置天然含禁用腿，
+  // 空交集=「无沙盒可用腿」的自然态，落 app-layer tier（OAuth 凭据透传，暴露中性）；仅
+  // 不可读/结构不可识别维持硬拒。返回 null=无可用腿（env 缺席或空交集）。
+  if (filtered.config.providerConfigRules.providerRules.length === 0) return null;
+  return filtered;
+}
+
+export function writeSandboxProviderConfig(home, filtered) {
   const path = join(home, "provider-config.sandbox.json");
   writeFileSync(path, JSON.stringify(filtered, null, 2), { mode: 0o600 });
   return { ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: path };
+}
+
+// 隔离 home 内专属 provider 配置落盘 + spawn 用 extraEnv（覆盖 PERSONAL env 指向白名单文件；
+// BUILTIN env 不动——引擎内置目录，无用户 key）。返回 null=env 缺席（BUILTIN-only，无个人
+// 配置可滤）；文件不可读/非 JSON/结构不可识别=fail-closed 前置拒（不再回落整包透传）。
+// 文件落隔离 home（本就是 ephemeral 凭据面，随沙盒清理），不入 .lazyzcode 主档。
+export function prepareSandboxProviderConfig(home) {
+  const filtered = resolveSandboxProviderConfig();
+  if (!filtered) return null;
+  return writeSandboxProviderConfig(home, filtered);
 }
 
 // 泄漏断言（拍板 4 机械面）：input 字节不得含同 (slug,attempt) 任一在先运行的 runId／结论
@@ -739,42 +752,26 @@ export class ReviewPreflightError extends Error {
 // ③预算视图（budget-ref 非 none 读预算视图如实记占位——M2 不执法；none=只记事实）
 // ④计量能力（sqlite3 在场可执行——不过=拒，避免烧掉预注册预算后才落 invalid）。
 export function preflightReview(cwd, goal, { deps = {} } = {}) {
-  // N4 #8（M2 自审 F-2）：认证腿按隔离 HOME 会话创建门判——评审会话跑在隔离 HOME（宿主
-  // 凭据文件不可继承），可用腿唯 provider env（引擎前缀文件经 extraEnv 透传）。宿主 OAuth
-  // 在场不再构成「认证 ok」：OAuth-only 机器此前白烧一次会话后才误分类为隔离失败。
+  // N4 #8（M2 自审 F-2）＋二改（ADR-0038 修订节 OAuth-only 完成面）：认证腿按隔离 HOME 会话
+  // 创建门判——可用腿=provider env 有可用交集（usableEnvLeg）或 app-layer tier 的 OAuth 凭据
+  // 透传（暴露中性：app-layer 无 OS 边界，会话与宿主同 uid 本可直读宿主凭据文件；复制在
+  // prepare 面执行并随 runDir 清理登记）。沙盒 tier 不透传 OAuth——Seatbelt 内复制=真暴露
+  //（凭据最小暴露立场不变），故 oauthFallback 只认 app-layer。
   const auth = (deps.detectAuth ?? detectHeadlessAuth)();
-  if (!auth?.envAuth) {
+  // 沙盒白名单腿预检（2026-10-02 暗烧案）：resolve 只读判定——不可读/结构不可识别原样硬拒；
+  // 空交集=无可用腿（默认形态自然态，二改不再拒）。deps.usableEnvLeg 供 runReview 复用预判定。
+  const usableEnvLeg = deps.usableEnvLeg ?? resolveSandboxProviderConfig() !== null;
+  // 二改（OAuth-only 完成面）：envAuth 缺席而 OAuth 在场且 tier=app-layer → 凭据透传放行
+  // （暴露中性，复制在 prepare 面登记清理）；envAuth 在场的空交集机器由锁体 oauth-copy 兜底。
+  const oauthFallback = auth?.oauth === true && deps.reviewTier === "app-layer";
+  if (!auth?.envAuth && !oauthFallback) {
     throw new ReviewPreflightError(
       "无 provider env 认证（隔离 HOME 会话创建门：ZCODE_*_PROVIDER_CONFIG_FILE 须在场且非空文件）" +
-        "——评审会话跑在隔离 HOME，宿主 OAuth 凭据不进入隔离面；" +
-        (auth?.oauth ? "宿主 OAuth 在场但对隔离会话不可用。" : "") +
+        "——评审会话跑在隔离 HOME，宿主 OAuth 凭据不进入隔离面（app-layer tier 例外：OAuth 透传）；" +
+        (auth?.oauth ? "宿主 OAuth 在场但 tier=os-sandbox 不透传（Seatbelt 内凭据复制=真暴露）。" : "") +
         "恢复：注入 provider env 后重跑（lzy doctor 看 headless 行）",
       { reason: "no-auth" },
     );
-  }
-  // 沙盒白名单腿预检（2026-10-02 暗烧案）：与 prepareSandboxProviderConfig 同判据，提前到
-  // reserve 前拒（不落档零孤儿目录）。仅 PERSONAL env 在场且文件实存时判——BUILTIN-only
-  // 机器（个人配置不进沙盒）不新增失败面。
-  const sandboxPersonalPath = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
-  if (sandboxPersonalPath) {
-    // fail-closed（收口①）：不可读/缺席/非 JSON/结构不可识别=前置拒（reserve 前，零孤儿
-    // 目录）——不再 prepare 侧 fail-open 兜底，与 prepareSandboxProviderConfig 同判据
-    //（评审 a1.r1 F-2：原 existsSync 门使「env 在场而文件缺席」绕过预检，reserve 后才拒
-    // 留孤儿目录）。
-    let filtered = null;
-    try {
-      filtered = filterProviderConfig(JSON.parse(readFileSync(sandboxPersonalPath, "utf8")));
-    } catch (e) {
-      if (e instanceof ReviewPreflightError) throw e; // 不可读/不可识别：原样前置拒
-      throw new ReviewPreflightError(
-        `沙盒 provider 配置不可读（${sandboxPersonalPath}）——fail-closed（plan-v050 §4 收口①）；` +
-          "恢复：修复该文件或确认无需个人 provider 配置后移除 ZCODE_PERSONAL_PROVIDER_CONFIG_FILE env 重跑",
-        { reason: "provider-config-unreadable" },
-      );
-    }
-    if (filtered.config.providerConfigRules.providerRules.length === 0) {
-      throw new ReviewPreflightError(SANDBOX_NO_LEG_MSG, { reason: "no-sandbox-provider" });
-    }
   }
   let budget = null;
   if (goal?.contract?.contractHash) {
@@ -1015,12 +1012,14 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     const seqs = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).map((r) => r.seq);
     await withLock(cwd, () => recordMeteringAck(cwd, goal.slug, goal.attempt, seqs.length ? Math.max(...seqs) : 0));
   }
+  // 分级保证（ADR-0038 修订节＋二改）：tier 预判定前置于 preflight——os-sandbox 须 Seatbelt
+  // 探针过∧个人配置过滤后非空（resolve 硬拒仅不可读/不可识别；空交集=默认形态自然态，落
+  // app-layer 走 OAuth 凭据透传）。deps.sandboxCapability/sandboxResolved 供离线契约测试注入。
+  const sandboxCapability = typeof deps.sandboxCapability === "function" ? deps.sandboxCapability() : reviewSandboxCapability();
+  const sandboxResolved = deps.sandboxResolved ?? resolveSandboxProviderConfig();
+  const reviewTier = deps.prepareSandbox ? "os-sandbox" : sandboxCapability.available && sandboxResolved ? "os-sandbox" : "app-layer";
   // 前置四查（拍板 7）：默认真前置；deps.preflight 可注入（CI 无凭据面替换）
-  const pre = await (deps.preflight ?? preflightReview)(cwd, goal, { deps });
-  // 分级保证（ADR-0038 修订节）：能力探测前置一次供 tier 判定，不再在此拒——非 darwin/
-  // Seatbelt 不可用落 app-layer 降级（0.5.0 保证面），仅 tier 判定后的配置错误才 fail-closed。
-  // deps.sandboxCapability 供离线契约测试注入 tier 判定面（同 queryDb/seam 家法）。
-  const sandboxCapability = deps.sandboxCapability ?? reviewSandboxCapability();
+  const pre = await (deps.preflight ?? preflightReview)(cwd, goal, { deps: { ...deps, reviewTier, usableEnvLeg: sandboxResolved !== null } });
   const startedAt = new Date();
   // 候选固定（拍板 5）：三字段 + 净树断言——脏树=前置拒（评审候选须提交态，先提交再评审）
   const identity = candidateIdentity(cwd);
@@ -1125,7 +1124,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       const iso = prepareIsolation(rs.runDir);
       sandboxCfgHome = iso.home;
       registerReviewCleanup(rs.runDir);
-      const sandboxEnv = prepareSandboxProviderConfig(iso.home);
+      const sandboxEnv = sandboxResolved ? writeSandboxProviderConfig(iso.home, sandboxResolved) : null;
       const priors = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).filter((r) => r.seq < rs.seq);
       const leak = assertNoLeak(readFileSync(pkg.inputPath, "utf8"), priors);
       return { reserve: rs, pkg, snap, iso, sandboxEnv, priors, leak };
@@ -1137,21 +1136,23 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     // 清理失败使运行无效，SIGKILL 遗留通过 doctor 与 review cleanup 恢复。
     pkgHash = pkg.inputPackageHash;
     snapHash = snap.treeHash;
-    // 分级保证（ADR-0038 修订节）：os-sandbox tier 须双条件（Seatbelt 探针过＋个人 key 腿在
-    // 场=sandboxEnv 非 null）；缺一自动降级 app-layer（0.5.0 形态：envAuth+隔离 HOME+facts-only，
-    // 无 Seatbelt/代理），无手选降级面。env 在场但不可读/零有效腿已在 prepareSandboxProviderConfig
-    // 抛 ReviewPreflightError（fail-closed 不降级）；prepareReviewProviderRuntime 的 provider 闸
-    // 只在确走沙盒 tier 时到达。
-    if (deps.prepareSandbox || (sandboxCapability.available && sandboxEnv)) {
+    // 分级保证（修订节＋二改）：tier 已预判定（reviewTier）。os-sandbox：白名单副本＋provider
+    // runtime＋Seatbelt 包装（OAuth 不进沙盒——凭据最小暴露）。app-layer：可用配置仍透传
+    // （linux+key 形态）；无可用腿而宿主 OAuth 在场=凭据透传（暴露中性：app-layer 无 OS 边界，
+    // 会话本可直读宿主同权限文件；复制随 runDir 清理登记焚毁）。
+    if (deps.prepareSandbox || reviewTier === "os-sandbox") {
       if (deps.prepareSandbox) {
         sandbox = await deps.prepareSandbox({ runDir: reserve.runDir, candidateDir: snap.candidateDir, inputPath: pkg.inputPath, home: iso.home, providerEnv: sandboxEnv });
       } else {
         const providerRuntime = prepareReviewProviderRuntime(iso.home, sandboxEnv);
         sandbox = await createReviewSandbox({ runDir: reserve.runDir, candidateDir: snap.candidateDir, inputPath: pkg.inputPath, home: iso.home, enginePath: findEngine(), ...providerRuntime });
       }
-      isolation = { level: "os-sandbox", backend: sandbox.metadata?.backend ?? sandboxCapability.backend ?? null };
+      isolation = { level: "os-sandbox", backend: sandbox.metadata?.backend ?? sandboxCapability.backend ?? null, auth: "provider-env" };
     } else {
-      isolation = { level: "app-layer", backend: null };
+      isolation = { level: "app-layer", backend: null, auth: sandboxResolved ? "provider-env" : (pre?.auth?.oauth === true ? "oauth-copy" : null) };
+      if (isolation.auth === "oauth-copy") {
+        (deps.copyOAuth ?? copyOAuthCredential)(iso.home);
+      }
     }
     if (!leak.ok) {
       failures.push(["leak", `输入包含在先运行标记：${leak.hits.map((h) => `${h.runId}/${h.kind}`).join("、")}（facts-only 违反，拍板 4）`]);

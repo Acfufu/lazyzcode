@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync, readFileSync, realpathSync, lstatSync, readdirSync, unlinkSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, writeFileSync, readFileSync, realpathSync, lstatSync, readdirSync, unlinkSync, rmSync } from "node:fs";
 import { dirname, join, resolve, sep, parse } from "node:path";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -6,6 +6,9 @@ import { startReviewProxy } from "./review-proxy.js";
 
 const BACKEND = "/usr/bin/sandbox-exec";
 const CREDENTIAL_FILES = ["provider-config.sandbox.json", "builtin-config.sandbox.json"];
+// OAuth 凭据透传副本（ADR-0038 修订节二改）：app-layer tier 无 OS 边界，宿主同权限会话本可
+// 直读该文件——复制进隔离 HOME 暴露中性，但仍是凭据面：登记清理同族（烧毁面与 provider 副本同）。
+export const OAUTH_CREDENTIAL_RELPATH = join(".zcode", "v2", "credentials.json");
 const MARKER = "sandbox-cleanup.json";
 export class ReviewSandboxError extends Error {}
 
@@ -96,6 +99,17 @@ export function seatbeltPolicy({ home, candidateDir, inputPath, enginePath, poli
   return `(version 1)\n(deny default)\n(allow process-exec process-fork)\n(allow sysctl-read)\n(allow file-read-metadata)\n(allow mach-lookup (global-name "com.apple.system.logger") (global-name "com.apple.trustd.agent"))\n(allow file-read* ${reads.map(p => `(subpath ${quotedPath(p)})`).join(" ")} ${literals.map(p => `(literal ${quotedPath(p)})`).join(" ")})\n(allow file-write* (subpath ${quotedPath(realpathSync(home))}) (literal "/dev/null"))\n(allow network-outbound (remote ip "localhost:${proxyPort}"))\n`;
 }
 
+// OAuth 凭据透传（ADR-0038 修订节二改）：app-layer tier 专用——复制宿主 OAuth 凭据进隔离
+// HOME（0600），引擎按 HOME 相对路径读取。调用前提=preflight 已判 oauthFallback（tier=app-layer
+// ∧ OAuth 在场∧无可用 provider 腿）；沙盒 tier 绝不调用（Seatbelt 内凭据复制=真暴露）。
+export function copyOAuthCredential(isoHome, { source = join(homedir(), ".zcode", "v2", "credentials.json") } = {}) {
+  const dest = join(isoHome, OAUTH_CREDENTIAL_RELPATH);
+  mkdirSync(dirname(dest), { recursive: true });
+  copyFileSync(source, dest);
+  chmodSync(dest, 0o600);
+  return dest;
+}
+
 // Register before the first credential write. SIGKILL recovery is observable, not immediate cleanup.
 export function registerReviewCleanup(runDir) {
   writeFileSync(join(runDir, MARKER), JSON.stringify({ version: 1, ownerPid: process.pid, state: "pending", at: new Date().toISOString() }), { mode: 0o600 });
@@ -110,6 +124,7 @@ export function cleanupReviewSandbox(runDir) {
       for (const name of CREDENTIAL_FILES) {
         try { unlinkSync(join(home, name)); } catch (e) { if (e.code !== "ENOENT") errors.push(`${name}:${e.code ?? "failed"}`); }
       }
+      try { unlinkSync(join(home, OAUTH_CREDENTIAL_RELPATH)); } catch (e) { if (e.code !== "ENOENT") errors.push(`oauth-credentials:${e.code ?? "failed"}`); }
       try { rmSync(join(home, "tmp"), { force: true, recursive: true }); } catch (e) { errors.push(`tmp:${e.code ?? "failed"}`); }
     }
   } catch (e) { errors.push(e instanceof ReviewSandboxError ? e.message : `home:${e.code ?? "failed"}`); }
@@ -130,6 +145,7 @@ export function reviewSandboxResidues(cwd) {
       let active = false;
       if (Number.isInteger(marker.ownerPid) && marker.ownerPid > 0) { try { process.kill(marker.ownerPid, 0); active = true; } catch (e) { active = e.code !== "ESRCH"; } }
       const credentials = CREDENTIAL_FILES.filter(name => existsSync(join(dir, "home", name)));
+      if (existsSync(join(dir, "home", OAUTH_CREDENTIAL_RELPATH))) credentials.push(OAUTH_CREDENTIAL_RELPATH);
       if (marker.state !== "clean" || credentials.length) found.push({ runId: entry.name, active, state: marker.state, credentials });
     } catch { found.push({ runId: entry.name, active: null, state: "unreadable", credentials: [] }); }
   }

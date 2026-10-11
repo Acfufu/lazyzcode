@@ -13,6 +13,7 @@ import {
   BASELINE_DUTY_ID,
   ReviewPreflightError,
   filterProviderConfig,
+  resolveSandboxProviderConfig,
   prepareSandboxProviderConfig,
   preflightReview,
   runReview as actualRunReview,
@@ -216,7 +217,7 @@ test("preflightReview：沙盒配置不可读/结构不可识别 fail-closed 前
   }
 });
 
-test("prepareSandboxProviderConfig：白名单为空=前置型拒（no-sandbox-provider，零消耗不 spawn）", () => {  const home = mkdtempSync(join(tmpdir(), "lzy-sbx-home-"));
+test("prepareSandboxProviderConfig：白名单交集空=null（ADR-0038 二改：默认形态自然态降级信号，不再硬拒）", () => {  const home = mkdtempSync(join(tmpdir(), "lzy-sbx-home-"));
   const dir = mkdtempSync(join(tmpdir(), "lzy-sbx-cfg-"));
   const saved = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
   try {
@@ -226,10 +227,8 @@ test("prepareSandboxProviderConfig：白名单为空=前置型拒（no-sandbox-p
       config: { providerConfigRules: { providerRules: [RULE("oauth-leg", { enabled: true, key: null })] }, providerOrder: ["oauth-leg"] },
     }));
     process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = realPath;
-    assert.throws(
-      () => prepareSandboxProviderConfig(home),
-      (e) => e instanceof ReviewPreflightError && e.reason === "no-sandbox-provider",
-    );
+    assert.equal(prepareSandboxProviderConfig(home), null, "空交集=null（app-layer 降级信号）；OAuth 凭据透传由锁体 oauth-copy 承载");
+    assert.equal(resolveSandboxProviderConfig(), null);
   } finally {
     if (saved === undefined) delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
     else process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = saved;

@@ -314,11 +314,17 @@ test("⑦计量三分类与前置：metered 过/absent invalid/unpriced invalid�
   rmSync(d4, { recursive: true, force: true });
 
   // 真 preflight：批准后过、撤回后拒（真 effectiveAuthorization 面，报文带撤回短码）
-  // N4 #8：认证腿=隔离 HOME 会话创建门（provider env）——OAuth-only 形态拒（宿主 OAuth
-  // 不进入隔离面，白烧前拒绝先行）。
+  // N4 #8＋二改（ADR-0038 修订节）：认证腿=隔离 HOME 会话创建门。OAuth-only 在 app-layer
+  // 已由凭据透传放行（暴露中性）；拒绝面收窄至 os-sandbox tier（Seatbelt 内凭据复制=真暴露）。
   const d5 = fixture();
   recordAuthorization(d5, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-27T00:00:00.000Z" });
-  await assert.rejects(() => runReview(d5, { deps: { detectAuth: () => ({ oauth: true, envAuth: false, ok: true }) } }), (e) => {
+  await assert.rejects(() => runReview(d5, {
+    deps: {
+      detectAuth: () => ({ oauth: true, envAuth: false, ok: true }),
+      sandboxCapability: () => ({ available: true, backend: "macos-seatbelt", detail: "fixture" }),
+      sandboxResolved: { schemaVersion: 1, config: { providerConfigRules: { providerRules: [{ providerId: "fx-leg", enabled: true, config: { apiKey: "synthetic" } }] } } },
+    },
+  }), (e) => {
     return e instanceof ReviewPreflightError && e.reason === "no-auth" && e.message.includes("OAuth");
   });
   const okRun = await runReview(d5, { deps: { detectAuth: () => ({ ok: true, envAuth: true }), spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), sqliteProbe: () => ({ ok: true }) } }); // sqliteProbe 显式补（win 跑者无 sqlite3 CLI——metering-capability 真前置会短路本腿）

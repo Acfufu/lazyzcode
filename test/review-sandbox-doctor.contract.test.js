@@ -24,19 +24,30 @@ function check(capability, residues, env = {}) {
 }
 
 test("tier preview: os-sandbox needs both conditions; fallback is app-layer tier, not a warning", () => {
-  const osSandbox = check({ available: true, backend: "macos-seatbelt", detail: "probe passed" }, [], { ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: "/x/p.json" });
-  assert.equal(osSandbox.state, "ok");
-  assert.match(osSandbox.detail, /tier=os-sandbox/);
-  assert.match(osSandbox.detail, /独立评审.*B 后端/);
-  const oauthOnly = check({ available: true, backend: "macos-seatbelt", detail: "probe passed" }, [], {});
-  assert.equal(oauthOnly.state, "ok"); // app-layer 降级是合法形态，如实显示不告警（ADR-0038 修订节）
-  assert.match(oauthOnly.detail, /tier=app-layer/);
-  assert.match(oauthOnly.detail, /OAuth-only/);
-  const unsupported = check(reviewSandboxCapability({ platform: "win32" }), [], { ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: "/x/p.json" });
-  assert.equal(unsupported.state, "ok");
-  assert.match(unsupported.detail, /tier=app-layer/);
-  assert.doesNotMatch(unsupported.detail, /所有.*headless.*不可用/);
-  writeFileSync(join(evidence, "capability-cases.json"), JSON.stringify({ osSandbox, oauthOnly, unsupported }, null, 2));
+  // resolve 真读配置——os-sandbox 夹具须有 enabled+key 腿的真文件＋允许表 env（二改语义）
+  const cfgPath = join(evidence, "fixture-provider.json");
+  writeFileSync(cfgPath, JSON.stringify({ config: { providerConfigRules: { providerRules: [{ providerId: "doc-leg", enabled: true, config: { apiKey: "synthetic-not-real" } }] } } }));
+  const savedAllow = process.env.LZY_SANDBOX_PROVIDERS;
+  process.env.LZY_SANDBOX_PROVIDERS = "doc-leg";
+  try {
+    const legEnv = { ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: cfgPath };
+    const osSandbox = check({ available: true, backend: "macos-seatbelt", detail: "probe passed" }, [], legEnv);
+    assert.equal(osSandbox.state, "ok");
+    assert.match(osSandbox.detail, /tier=os-sandbox/);
+    assert.match(osSandbox.detail, /独立评审.*B 后端/);
+    const oauthOnly = check({ available: true, backend: "macos-seatbelt", detail: "probe passed" }, [], {});
+    assert.equal(oauthOnly.state, "ok"); // app-layer 降级是合法形态，如实显示不告警（ADR-0038 修订节）
+    assert.match(oauthOnly.detail, /tier=app-layer/);
+    assert.match(oauthOnly.detail, /OAuth 凭据透传/);
+    const unsupported = check(reviewSandboxCapability({ platform: "win32" }), [], legEnv);
+    assert.equal(unsupported.state, "ok");
+    assert.match(unsupported.detail, /tier=app-layer/);
+    assert.doesNotMatch(unsupported.detail, /所有.*headless.*不可用/);
+    writeFileSync(join(evidence, "capability-cases.json"), JSON.stringify({ osSandbox, oauthOnly, unsupported }, null, 2));
+  } finally {
+    if (savedAllow === undefined) delete process.env.LZY_SANDBOX_PROVIDERS;
+    else process.env.LZY_SANDBOX_PROVIDERS = savedAllow;
+  }
 });
 
 test("active pending owner is normal; failed, dead pending and unknown require recovery", () => {

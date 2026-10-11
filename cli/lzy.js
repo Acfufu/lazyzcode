@@ -1534,6 +1534,8 @@ function cmdQueue(args) {
       console.log(`队列预算：积分总额 ${v.pointsLimit ?? "未设"} · 墙钟总额 ${v.wallLimitMs != null ? `${v.wallLimitMs}ms` : "未设"}`);
       console.log(`  已耗：积分 ${Math.round(v.points * 100) / 100} · 墙钟 ${v.wallMs}ms ｜ 未决占用：积分 ${Math.round(v.openPoints * 100) / 100} · 墙钟 ${v.openWallMs}ms（崩溃未决按上限保守计入，绝不当零）`);
       console.log(`  评审分项（N9 独立轴，不入队列派发积分）：评审会话 ${Math.round((v.reviewPoints ?? 0) * 100) / 100} 分（lzy review run|recheck 消耗；budget-ref points 绑定后由评审前置执法）`);
+      if ((v.overrunPoints ?? 0) > 0) console.log(`  超额：${Math.round(v.overrunPoints * 100) / 100} 分（在途越帽单列，不入消费累计——F2）`);
+      if (v.pointsRemaining != null) console.log(`  剩余：${Math.round(v.pointsRemaining * 100) / 100} 分（负值＝已越帽，如实不钳零——F2）`);
       if (v.pointsStopped) console.log("  ⚠ 受积分限额约束的派发已停止（计量缺席/未决占用在案，#32）——人工核对后 --resume-points 恢复");
       return;
     }

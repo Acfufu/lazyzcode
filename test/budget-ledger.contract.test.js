@@ -187,8 +187,12 @@ test("⑤积分轴：逐会话 points 入账+达限停止下一次派发+在途�
     assert.equal(ledger.filter((e) => e.kind === "points").length, 2);
     const overrun = ledger.filter((e) => e.kind === "overrun");
     assert.equal(overrun.length, 1);
-    assert.equal(overrun[0].points, 2); // 12-10：实际超额
+    assert.equal(overrun[0].overrunPoints, 2); // 12-10：实际超额（F2：解释字段单列）
+    assert.equal(overrun[0].points, null); // 不进消费累计（实耗只计一次）
     const v = budgetView(d);
+    assert.equal(v.points, 12); // F2：已耗=实际消费（不再 14——overrun 不入累计）
+    assert.equal(v.overrunPoints, 2); // 超额单列
+    assert.equal(v.pointsRemaining, -2); // 10-12：负值如实（修复前双计显示 -4）
     assert.equal(v.pointsExhausted, true); // 停止下一次派发
     const r2 = await runQueueDispatch(d, {}, { enginePath: "/fake/e", detectAuth: () => ({ ok: true }), drive: async () => ({ ok: true }) });
     assert.match(r2.stop, /无 ready 项|积分总额已尽/);

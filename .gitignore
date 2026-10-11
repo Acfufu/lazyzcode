@@ -35,3 +35,4 @@ pnpm-lock.yaml
 
 # video-agent-kit 插件工件目录（外来插件运行产物，不入库；M4 拍板 12——finish 完整性闸门卫生）
 .video_agent/
+.omo/

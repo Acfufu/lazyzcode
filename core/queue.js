@@ -303,6 +303,7 @@ export function budgetView(cwd) {
   let wallMs = 0;
   let points = 0;
   let reviewPoints = 0;
+  let overrunPoints = 0;
   let openWallMs = 0;
   let openPoints = 0;
   const stopKinds = [];
@@ -310,6 +311,12 @@ export function budgetView(cwd) {
     if (e.kind === "review") {
       // 评审分项（N9）：独立轴单列，不混入队列派发积分（评审会话非队列工人段）
       reviewPoints += Number(e.points) || 0;
+      continue;
+    }
+    if (e.kind === "overrun") {
+      // F2（N2）：超额不入消费累计（实耗只计一次）。历史兼容读——修复前账本的 overrun 条目
+      // 用 points 字段携带超额（盘上既有账不迁移不改写，历史超额不从展示面消失）。
+      overrunPoints += Number(e.overrunPoints ?? e.points) || 0;
       continue;
     }
     wallMs += Number(e.ms) || 0;
@@ -330,7 +337,7 @@ export function budgetView(cwd) {
   return {
     pointsLimit: limit.pointsLimit ?? null,
     wallLimitMs: limit.wallLimitMs ?? null,
-    wallMs, points, reviewPoints, openWallMs, openPoints,
+    wallMs, points, reviewPoints, overrunPoints, openWallMs, openPoints,
     wallRemainingMs: limit.wallLimitMs != null ? limit.wallLimitMs - wallMs - openWallMs : null,
     pointsRemaining: limit.pointsLimit != null ? limit.pointsLimit - points - openPoints : null,
     wallExhausted: limit.wallLimitMs != null && wallMs + openWallMs >= limit.wallLimitMs,
@@ -621,6 +628,7 @@ export function appendLedgerEntry(cwd, entry) {
     authorization: entry.authorization, provenance: entry.provenance ?? null,
     itemId: entry.itemId ?? null, txId: entry.txId ?? null,
     sessionId: entry.sessionId ?? null, ms: entry.ms ?? null, points: entry.points ?? null,
+    overrunPoints: entry.overrunPoints ?? null, // F2（N2）：overrun 条目的超额解释字段（不进消费累计）
     note: entry.note ?? null,
     kind: entry.kind, dedupKey,
   };
@@ -673,14 +681,16 @@ function settleTxLedger(cwd, { tx, item, provenance, queryPoints = querySessionP
           points: m.points,
         });
         if (e.duplicate) out.duplicates += 1; else { out.pointsEntries += 1; out.points += m.points; }
-        // 在途超额如实入账：本段入账后越过总额=overrun 条目（实际值，不为保阈值拒写）
+        // 在途超额如实入账：本段入账后越过总额=overrun 条目（实际值，不为保阈值拒写）。
+        // F2（N2）：超额=解释字段 overrunPoints 单列，不进消费累计（实耗只计一次；budgetView 排除）。
         const v = budgetView(cwd);
         if (v.pointsLimit != null && v.points > v.pointsLimit) {
           appendLedgerEntry(cwd, {
             kind: "overrun", dedupKey: `overrun:${tx.txId}:${sid}`,
             authorization, provenance, itemId: item.id, txId: tx.txId, sessionId: seg.sessionId ?? null,
-            points: v.points - v.pointsLimit,
-            note: `在途超额 ${Math.round((v.points - v.pointsLimit) * 100) / 100}（总额 ${v.pointsLimit}）——实际消耗如实记账，停止下一次派发`,
+            overrunPoints: v.points - v.pointsLimit,
+            points: null,
+            note: `在途超额 ${Math.round((v.points - v.pointsLimit) * 100) / 100}（总额 ${v.pointsLimit}）——实际消耗如实记账（超额单列），停止下一次派发`,
           });
         }
       }

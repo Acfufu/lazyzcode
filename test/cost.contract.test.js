@@ -267,6 +267,42 @@ test("appendSandboxUsage：同 runId 重放幂等不双算、新 runId 照常入
   }
 });
 
+test("appendSandboxUsage：harvest 水位身份——同水位判重放、水位前进即新事件（F4 50→150→250）+跨项目同名 run 分账（F3）", () => {
+  const home = mkdtempSync(join(tmpdir(), "lzy-cost-harvest-"));
+  const savedHome = process.env.HOME;
+  const savedUP = process.env.USERPROFILE;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const delta = (tok) => ({
+      runId: "fx.a1.r1", slug: "fx", attempt: 1, validity: null,
+      metering: { usage: [{ provider: "p", model: "m", inputTokens: tok, cacheReadTokens: 0, outputTokens: 0, points: 0 }] },
+    });
+    const app = (tok, wm) => appendSandboxUsage("/x/y/harv", { ...delta(tok), harvest: { watermark: wm } }, { now: new Date("2026-10-10T03:00:00Z") });
+    assert.equal(app(50, "50|1000"), true);
+    assert.equal(app(50, "50|1000"), false, "同水位=同一来源状态重放→跳过（重放不双计）");
+    assert.equal(app(100, "150|2000"), true, "水位前进=新事件（等额新差量不吞，F4）");
+    assert.equal(app(100, "250|3000"), true, "第三次差量入账");
+    let lines = readSandboxUsageLines().filter((l) => l.project === "/x/y/harv");
+    assert.equal(lines.length, 3);
+    const total = lines.reduce((s2, l) => s2 + l.usage.reduce((x, u) => x + u.inputTokens, 0), 0);
+    assert.equal(total, 250); // 50+100+100：三次补账终值 250（修复前 150）
+    // 跨项目同名 run（F3）：project 入键，各成事件
+    assert.equal(appendSandboxUsage("/other/proj", { ...delta(200), harvest: { watermark: "200|1000" } }, { now: new Date("2026-10-10T03:00:00Z") }), true);
+    lines = readSandboxUsageLines().filter((l) => l.runId === "fx.a1.r1");
+    assert.equal(lines.length, 4);
+    assert.equal(lines.filter((l) => l.project === "/other/proj").length, 1);
+    // 清理重建的等额新运行：同 tokens 但来源状态异（maxDone 前进）→ 水位异 → 不吞
+    assert.equal(app(250, "250|9000"), true, "重建等额新运行不吞");
+  } finally {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedUP === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUP;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("formatCost：宿主账缺席时沙盒外泄账仍独立可达（收口④，宿主降级不短路）", () => {
   const home = mkdtempSync(join(tmpdir(), "lzy-cost-fmtabsent-"));
   const savedHome = process.env.HOME;

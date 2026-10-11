@@ -6,8 +6,9 @@
 // 之前先跑本脚本——账先于删。默认只补 max 运行日 >= LZY_HARVEST_CUTOFF（默认 2026-10-03，
 // 与 0.5.0 明烧账本起点一致）的运行；pre 段结构性不补（那一段 TT 侧已回灌过）。
 //
-// 幂等：复用 core/cost.js appendSandboxUsage 内建去重（(project, runId, points|tokens) 指纹），
-// 重复跑安全；已入账但被截断的「半截账」运行追加差量行（求和口径正确，append-only 不改旧行）。
+// 幂等（N3/F3+F4）：事件身份=(project, runId, 来源状态水位 Σtokens|最新完成时刻)——同水位=
+// 同一来源状态重放（判重跳过）；水位前进=新消耗事件（等额新差量/重建等额新运行均不吞）；
+// 金额/Σtokens 只是载荷不作身份。已入账但被截断的「半截账」运行追加差量行（append-only 不改旧行）。
 //
 // 用法： node scripts/harvest-sandbox-usage.mjs            # 干跑，只列将追加的行
 //        node scripts/harvest-sandbox-usage.mjs --apply    # 实际追加
@@ -90,14 +91,8 @@ const parseRun = (db) => {
   return { root, runId, slug: m ? m[1] : runId, attempt: m ? Number(m[2]) : 1 };
 };
 
-// fp 与 appendSandboxUsage 内部去重键同构（points|Σ(input+cacheRead+output)）
-const fp = (points, usage) =>
-  `${Number(points) || 0}|${(usage ?? []).reduce(
-    (s, u) => s + (Number(u.inputTokens) || 0) + (Number(u.cacheReadTokens) || 0) + (Number(u.outputTokens) || 0),
-    0,
-  )}`;
-
-// per-run 真源：跨多个 db 同 runId 求和（同 run 重建目录也不丢）
+// per-run 真源：跨多个 db 同 (project, runId) 求和（同 run 重建目录也不丢）。
+// N3（F3）：键带 project——两个项目同名 run 不再串账（裸 runId 键曾把 100/200 tok 合并归一项目）。
 const runMap = new Map();
 const seenDbs = new Set(); // 会话根可互相嵌套（父根嵌套搜索会再次命中子根的 .lazyzcode）——全局去重
 let scanned = 0;
@@ -116,11 +111,12 @@ for (const root of roots) {
     ].join(" ")) || [];
     const span = queryHostDb(db, "SELECT MAX(started_at) AS m, MAX(completed_at) AS c FROM model_usage") || [];
     if (rows.length === 0) continue;
-    const e = runMap.get(meta.runId) ?? { ...meta, rows: [], maxStart: 0, maxDone: 0 };
+    const mapKey = `${meta.root}\u0000${meta.runId}`;
+    const e = runMap.get(mapKey) ?? { ...meta, rows: [], maxStart: 0, maxDone: 0 };
     e.rows.push(...rows);
     e.maxStart = Math.max(e.maxStart, Number(span[0]?.m) || 0);
     e.maxDone = Math.max(e.maxDone, Number(span[0]?.c) || 0);
-    runMap.set(meta.runId, e);
+    runMap.set(mapKey, e);
   }
 }
 
@@ -128,23 +124,27 @@ const existingAll = readSandboxUsageLines();
 const byRun = new Map();
 for (const l of existingAll) {
   if (!l?.runId) continue;
-  const arr = byRun.get(l.runId) ?? [];
+  const k = `${l.project ?? ""}\u0000${l.runId}`; // N3（F3）：既存行比对同键带 project
+  const arr = byRun.get(k) ?? [];
   arr.push(l);
-  byRun.set(l.runId, arr);
+  byRun.set(k, arr);
 }
 
 const plan = [];
 let skippedPre = 0;
 let skippedDup = 0;
-for (const [runId, e] of runMap) {
+for (const [, e] of runMap) {
   if (!e.maxStart) continue;
   const day = localDay(e.maxStart);
   if (day < CUTOFF) { skippedPre += 1; continue; }
   const agg = computePoints(e.rows);
   const truth = aggregateUsageRows(e.rows);
-  const existing = byRun.get(runId) ?? [];
-  const truthFp = fp(agg.points, truth);
-  if (existing.some((l) => fp(l.points, l.usage) === truthFp)) { skippedDup += 1; continue; }
+  const existing = byRun.get(`${e.root}\u0000${e.runId}`) ?? [];
+  // N3（F4）：来源状态水位=Σtokens|最新完成时刻——同水位=同一来源状态的重放（判重跳过）；
+  // 水位前进=新消耗事件（等额新差量/清理重建的等额新运行 maxDone 必异，均不吞）。金额只是载荷。
+  const truthTok = truth.reduce((s, u) => s + (Number(u.inputTokens) || 0) + (Number(u.cacheReadTokens) || 0) + (Number(u.outputTokens) || 0), 0);
+  const watermark = `${truthTok}|${e.maxDone}`;
+  if (existing.some((l) => l.harvest?.watermark === watermark)) { skippedDup += 1; continue; }
   // 差量：truth − Σexisting（逐组逐字段，夹 0）
   const exGroups = new Map();
   let exPoints = 0;
@@ -175,7 +175,7 @@ for (const [runId, e] of runMap) {
   }
   const deltaPoints = Math.max(0, agg.points - exPoints);
   if (delta.length === 0 && deltaPoints <= 0) { skippedDup += 1; continue; }
-  plan.push({ ...e, day, delta, deltaTok, deltaPoints, priorRows: existing.length });
+  plan.push({ ...e, day, delta, deltaTok, deltaPoints, priorRows: existing.length, watermark });
 }
 
 plan.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : b.deltaTok - a.deltaTok));
@@ -205,6 +205,7 @@ for (const p of plan) {
     attempt: p.attempt,
     validity: null,
     metering: { usage: p.delta, points: p.deltaPoints },
+    harvest: { watermark: p.watermark }, // N3（F4）：事件身份=来源状态水位（appendSandboxUsage 分流判重）
   };
   const now = new Date(p.maxDone || p.maxStart || Date.now());
   if (appendSandboxUsage(p.root, record, { now })) appended += 1;

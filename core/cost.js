@@ -323,6 +323,7 @@ export function sandboxLedgerLine(cwd, record, now = new Date()) {
     attempt: record.attempt ?? null,
     validity: record.validity?.status ?? null,
     points: Number(record.metering.points) || 0,
+    harvest: record.harvest ?? null, // N3（F4）：增量补账行携带来源状态水位（事件身份面）
     usage,
   };
 }
@@ -330,19 +331,29 @@ export function sandboxLedgerLine(cwd, record, now = new Date()) {
 export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
   const line = sandboxLedgerLine(cwd, record, now);
   if (!line) return false;
-  // 幂等去重（收口③）：同 (project, runId) 且计量内容一致才判重放（评审 a1.r4 F-2）——
-  // runId 茎 <slug>.a<n>.r<n> 在账本（全局，跨 reset 存活）与工作区清空重建后可被新运行
-  // 回收，裸茎撞车会把真实消耗静默跳过；计量内容（points＋tokens 合计）入键：同 run 重放
-  // 内容必然一致，回收 id 的新运行消耗几乎必然不同。语义对齐 core/queue.js dedupKey 写面。
-  // runId 缺席（无法判幂等键）照常追加如实保留。
+  // 幂等去重（收口③＋N3/F4 分流）：
+  // - 增量补账行（harvest.watermark 在场）：事件身份=(project, runId, 来源状态水位)——同水位=
+  //   同一来源状态的重放（判重放跳过）；水位前进=新消耗事件（50→150→250 三次差量各成事件，
+  //   等额新差量不吞；清理重建的等额新运行 maxDone 必异亦不吞）。金额/Σtokens 只是载荷不作身份。
+  // - 评审运行器行：同 (project, runId) 且计量内容一致才判重放（评审 a1.r4 F-2）——runId 茎
+  //   在账本（全局，跨 reset 存活）与工作区清空重建后可被新运行回收，裸茎撞车会把真实消耗
+  //   静默跳过；计量内容（points＋tokens 合计）入键：同 run 重放内容必然一致。语义对齐
+  //   core/queue.js dedupKey 写面。runId 缺席（无法判幂等键）照常追加如实保留。
   // 返回值：true=本次追加；false=无行可记（缺 usage）或同键已在账（幂等跳过）。
   const fp = (l) =>
     `${Number(l.points) || 0}|${(l.usage ?? []).reduce(
       (s, u) => s + (Number(u.inputTokens) || 0) + (Number(u.cacheReadTokens) || 0) + (Number(u.outputTokens) || 0),
       0,
     )}`;
-  if (line.runId && readSandboxUsageLines().some((l) => l.runId === line.runId && l.project === line.project && fp(l) === fp(line))) {
-    return false;
+  if (line.runId) {
+    const lines = readSandboxUsageLines();
+    if (line.harvest?.watermark) {
+      if (lines.some((l) => l.project === line.project && l.runId === line.runId && l.harvest?.watermark === line.harvest.watermark)) {
+        return false;
+      }
+    } else if (lines.some((l) => l.runId === line.runId && l.project === line.project && fp(l) === fp(line))) {
+      return false;
+    }
   }
   const dir = sandboxUsageDir();
   mkdirSync(dir, { recursive: true });

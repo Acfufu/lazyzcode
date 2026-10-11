@@ -1055,7 +1055,9 @@ function printHelp() {
                                             情况+快照哈希；退出码=blocked/身份无效/家族损坏非 0，
                                             v2 全满足 0，v1/无身份 0（接线面 finish/queue/delivery
                                             自动执法，本命令只解释）
-  lzy review run [--duty <id>] [--timeout-ms N]
+  lzy review run [--duty <id>] [--timeout-ms N] [--ack-metering]
+                                             --ack-metering=确认豁免在案计量缺口标记（N1：一次确认只
+                                             豁免确认时点前在案标记，其后新标记重新停）
   lzy review cleanup <runId>                 清理已结束所有者遗留的评审凭据副本和临时目录
                                             受控独立评审运行器（0.4.0 M2）：隔离 HOME+候选快照的
                                             真实评审会话产出结构化判决并落档 .lazyzcode/review/；
@@ -1824,7 +1826,7 @@ async function cmdReview(args) {
     }
     let res;
     try {
-      res = await runReview(cwd, { duty, timeoutMs });
+      res = await runReview(cwd, { duty, timeoutMs, ackMetering: f["ack-metering"] === true });
     } catch (err) {
       if (err instanceof ReviewPreflightError) {
         console.error(`前置不具备（不 spawn、不消耗、不落档）：${err.message}`);
@@ -1836,7 +1838,7 @@ async function cmdReview(args) {
     const r = res.record;
     console.log(
       `评审运行 ${r.runId} · ${r.duty.id} · ${r.validity.status}${r.validity.reason ? `（${r.validity.reason}）` : ""}` +
-        ` · 计量 ${r.metering.status}${r.metering.status === "metered" ? ` ${r.metering.points} 分` : ""}`,
+        ` · 计量 ${r.metering.status}${["metered", "partial"].includes(r.metering.status) ? ` ${r.metering.points} 分` : ""}`,
     );
     if (r.result) {
       console.log(`  判决 ${r.result.verdict} · 发现 ${r.result.findings.length} 条${r.result.normalization ? `（归一化：${String(r.result.normalization).slice(0, 80)}…）` : ""}`);
@@ -1920,7 +1922,7 @@ async function cmdReview(args) {
     const r = res.record;
     console.log(
       `复核运行 ${r.runId} · ${r.validity.status}${r.validity.reason ? `（${r.validity.reason}）` : ""}` +
-        ` · ${r.result ? r.result.verdict : "—"} · 计量 ${r.metering.status}${r.metering.status === "metered" ? ` ${r.metering.points} 分` : ""}`,
+        ` · ${r.result ? r.result.verdict : "—"} · 计量 ${r.metering.status}${["metered", "partial"].includes(r.metering.status) ? ` ${r.metering.points} 分` : ""}`,
     );
     const cands = r.findingsLedger?.closureCandidates;
     const contestedMark = typeof r.recheck?.contestedOf === "string" ? r.recheck.contestedOf : null;
@@ -2043,7 +2045,7 @@ async function cmdReview(args) {
     for (const r of runs) {
       console.log(
         `  ${r.runId} · ${r.duty.id} · ${r.validity.status}${r.validity.reason ? `(${r.validity.reason})` : ""}` +
-          ` · ${r.result ? r.result.verdict : "—"} · ${r.metering.status}${r.metering.status === "metered" ? ` ${r.metering.points} 分` : ""} · ${r.endedAt}`,
+          ` · ${r.result ? r.result.verdict : "—"} · ${r.metering.status}${["metered", "partial"].includes(r.metering.status) ? ` ${r.metering.points} 分` : ""} · ${r.endedAt}`,
       );
     }
     return;
@@ -2072,7 +2074,7 @@ async function cmdReview(args) {
     console.log(`  原始输出 ${r.raw ? `${join(cwd, ".lazyzcode", "review", r.runId, r.raw.path)}（sha256 ${String(r.raw.sha256).slice(0, 12)}… · ${r.raw.bytes}B）` : "null（未 spawn）"}`);
     console.log(`  转录 ${r.transcript ? `${join(cwd, ".lazyzcode", "review", r.runId, r.transcript.path)}（sha256 ${String(r.transcript.sha256).slice(0, 12)}…）` : "null"}`);
     console.log(`  预算 ${r.budget ? `${r.budget.ref}（${r.budget.note}）` : "null"}`);
-    console.log(`  计量 ${r.metering.status}${r.metering.status === "metered" ? ` ${r.metering.points} 分` : ""}${r.metering.note ? ` · ${r.metering.note}` : ""}`);
+    console.log(`  计量 ${r.metering.status}${["metered", "partial"].includes(r.metering.status) ? ` ${r.metering.points} 分` : ""}${r.metering.note ? ` · ${r.metering.note}` : ""}`);
     console.log(`  有效性 ${r.validity.status}${r.validity.reason ? `（${r.validity.reason}）` : ""}${r.validity.detail ? ` · ${r.validity.detail}` : ""}`);
     if (r.result) {
       console.log(`  判决 ${r.result.verdict} · 发现 ${r.result.findings.length} 条${r.result.normalization ? ` · 归一化：${r.result.normalization}` : ""}`);

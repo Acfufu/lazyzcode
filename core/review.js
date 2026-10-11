@@ -37,7 +37,7 @@ export const DUTY_TABLE = [
 ];
 export const SEVERITIES = ["P0", "P1", "P2", "P3"];
 export const VERDICTS = ["pass", "blocked"];
-export const METERING_STATUSES = ["metered", "absent", "unpriced"];
+export const METERING_STATUSES = ["metered", "partial", "absent", "unpriced"];
 // 逐因失败分类（N3 唯一定义；gate 拍板 6 逐因阻塞的码面）。absent/unpriced 两计量因在此与
 // 执行因并列——计量缺席也是「义务不可满足」的 invalid 因，运行本身照常落档（拍板 7）。
 export const INVALID_REASONS = [
@@ -175,14 +175,15 @@ export function assertRunShape(rec, p) {
       if (!Number.isFinite(rec.budget.usedPoints) || rec.budget.usedPoints < 0) bad("budget.usedPoints 须为 ≥0 数（enforced 面）");
     }
   }
-  // 计量面（拍板 7：metered ⇒ points 数；absent/unpriced ⇒ points:null + 非空「不算零」注记）
+  // 计量面（拍板 7＋N1：metered/partial ⇒ points 数；absent/unpriced ⇒ points:null + 非空
+  // 「不算零」注记；partial=已知积分保留的缺口态——完整性与已知数值分离，F1）
   const m = rec.metering;
   if (!m || typeof m !== "object" || Array.isArray(m)) bad("metering 须为对象");
   if (!METERING_STATUSES.includes(m.status)) bad(`metering.status 不识别：${JSON.stringify(m.status ?? null)}`);
   if (m.note !== null && typeof m.note !== "string") bad("metering.note 须为字符串或 null");
-  if (m.status === "metered") {
+  if (m.status === "metered" || m.status === "partial") {
     // points=积分折算值（computePoints 小数，非整数——0.00155 级），有限非负数即可
-    if (!Number.isFinite(m.points) || m.points < 0) bad("metered 记录须 points 为 ≥0 有限数");
+    if (!Number.isFinite(m.points) || m.points < 0) bad(`${m.status} 记录须 points 为 ≥0 有限数`);
   } else if (m.points !== null) {
     bad(`status=${m.status} 须 points:null（缺用量不算零——ADR-0027 修正节口径）`);
   } else if (typeof m.note !== "string" || !m.note) {
@@ -309,7 +310,9 @@ export function loadReviewFile(p) {
 export function listReviewRuns(cwd, { slug, attempt } = {}) {
   let names;
   try {
-    names = readdirSync(reviewDir(cwd)).filter((f) => f.endsWith(".json") && !f.startsWith("."));
+    // 只认运行档茎（<slug>.a<n>.r<n>.json）——同目录非运行 json（metering-ack.json，N1 豁免账）
+    // 不进枚举：loadReviewFile 家族闸会把异形档当损坏拒，毒化整族读。
+    names = readdirSync(reviewDir(cwd)).filter((f) => /\.a\d+\.r\d+\.json$/.test(f) && !f.startsWith("."));
   } catch {
     return [];
   }
@@ -318,6 +321,39 @@ export function listReviewRuns(cwd, { slug, attempt } = {}) {
   return runs
     .filter((r) => (slug == null || r.slug === slug) && (attempt == null || r.attempt === attempt))
     .sort((a, b) => a.slug.localeCompare(b.slug) || a.attempt - b.attempt || a.seq - b.seq);
+}
+
+// ── 评审计量豁免账（N1，ADR-0038 修订节同批）：.lazyzcode/review/metering-ack.json ──
+// 在档运行存在持久计量缺口（partial/absent/unpriced）时显式评审启动即停（preflightReview
+// 执法面）；--ack-metering 一次确认豁免 (attempt, seq) 对——attempt < ack.attempt，或同
+// attempt 且 seq ≤ ack.ackSeq；更高 attempt 的新标记一律重新停（确认不跨 attempt 永久
+// 熄火，语义同 #32 --resume-points）。家族位阶=loop/ 外 reset 不清（familyFile 家法）。
+
+const METERING_ACK_GATE = {
+  versionKey: "schemaVersion",
+  version: 1,
+  label: "评审计量豁免账",
+  shapeFn: (rec, p) => {
+    if (!rec || typeof rec !== "object") throw new ReviewError(`评审计量豁免账形状畸形（须为对象）：${p}`);
+    if (!rec.acks || typeof rec.acks !== "object" || Array.isArray(rec.acks)) throw new ReviewError(`评审计量豁免账形状畸形（acks 须为对象）：${p}`);
+    for (const [slug, a] of Object.entries(rec.acks)) {
+      if (!Number.isInteger(a?.attempt) || a.attempt < 1) throw new ReviewError(`评审计量豁免账形状畸形（acks.${slug}.attempt 须为 ≥1 整数）：${p}`);
+      if (!Number.isInteger(a?.ackSeq) || a.ackSeq < 0) throw new ReviewError(`评审计量豁免账形状畸形（acks.${slug}.ackSeq 须为 ≥0 整数）：${p}`);
+      if (typeof a?.at !== "string" || !a.at) throw new ReviewError(`评审计量豁免账形状畸形（acks.${slug}.at 缺席）：${p}`);
+    }
+  },
+};
+
+export function loadMeteringAck(cwd) {
+  return loadFamilyFile(join(reviewDir(cwd), "metering-ack.json"), METERING_ACK_GATE);
+}
+
+function recordMeteringAck(cwd, slug, attempt, ackSeq) {
+  const p = join(reviewDir(cwd), "metering-ack.json");
+  const rec = loadFamilyFile(p, METERING_ACK_GATE) ?? { schemaVersion: 1, acks: {} };
+  rec.acks[slug] = { attempt, ackSeq, at: new Date().toISOString() };
+  saveFamilyFile(p, rec, METERING_ACK_GATE);
+  return rec.acks[slug];
 }
 
 // ── N2：输入包与隔离（拍板 4：facts-only——不含任何他轮评审结论）──
@@ -794,6 +830,28 @@ export function preflightReview(cwd, goal, { deps = {} } = {}) {
       budget = { ref: budgetRef ?? null, enforced: false, view: null, note: "budget-ref=none——只记事实不执法（如实注记）" };
     }
   }
+  // F1 执法面（N1）：在档运行存在持久计量缺口（partial/absent/unpriced）＝未知消费在案——
+  // 显式评审启动即停（运行档 metering.status 是权威标记面）。豁免=metering-ack 按 (attempt, seq)
+  // 对比较（见豁免账注）；更高 attempt 的新标记一律重新停。deps.listRuns 供离线契约测试。
+  const marks = [];
+  for (let a = 1; a <= (goal?.attempt ?? 1); a += 1) {
+    for (const run of (deps.listRuns ?? listReviewRuns)(cwd, { slug: goal.slug, attempt: a })) {
+      const st = run?.metering?.status;
+      if (st && st !== "metered") marks.push({ attempt: run.attempt, seq: run.seq, status: st, runId: run.runId });
+    }
+  }
+  if (marks.length > 0) {
+    const ack = (deps.loadMeteringAck ?? loadMeteringAck)(cwd)?.acks?.[goal.slug] ?? null;
+    const live = marks.filter((m) => !(ack && (m.attempt < ack.attempt || (m.attempt === ack.attempt && m.seq <= ack.ackSeq))));
+    if (live.length > 0) {
+      const sample = live.slice(0, 3).map((m) => `${m.runId}(${m.status})`).join("、");
+      throw new ReviewPreflightError(
+        `在案评审运行存在持久计量缺口 ${live.length} 件（${sample}${live.length > 3 ? "…" : ""}）——未知消费不算零，启动即停（F1；absent/unpriced 运行虽 invalid 但消费未知不进账）。` +
+          "恢复：核对隔离 HOME 子账本后以「lzy review run --ack-metering」确认豁免重跑（一次确认只豁免确认时点前在案标记；其后新标记重新停）",
+        { reason: "review-metering-unknown" },
+      );
+    }
+  }
   const probe = (deps.sqliteProbe ?? defaultSqliteProbe)();
   if (!probe?.ok) {
     throw new ReviewPreflightError(
@@ -922,7 +980,7 @@ const RETRY_SUFFIX_REASON = (reason) =>
 // 评审运行主入口（拍板 11：deps 注入面=spawnHeadless/detectAuth/querySessionPoints/preflight——
 // CI 无凭据零真引擎可跑）。返回 { record, exitHint }；前置不具备抛 ReviewPreflightError
 //（不 spawn 不落档）；运行后任何失败分类照常落档（失败运行不可改判，F2 判据）。
-export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, recheckOf = null, contestedOf = null, deps = {} } = {}) {
+export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, recheckOf = null, contestedOf = null, deps = {}, ackMetering = false } = {}) {
   // recheck 标记（N2/V06）：recheckOf=null=常规运行；true=复核在案全部未关闭发现；
   // 指纹数组=定向复核。仅作运行档标记与闭候选对账开关，不改变运行本身（同职责新独立会话）。
   // contestedOf（决策 #44，2026-10-01）：异议复判标记——非 null 时隐含对该指纹的定向复核
@@ -950,6 +1008,12 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       `多 subject 目标的评审候选跨仓，M3 不支持（跨仓输入打包列 M5）：${goal.subjects.join("、")}`,
       { reason: "multi-subject" },
     );
+  }
+  // --ack-metering（N1）：显式确认豁免——ackSeq=当前 attempt 在案最大 seq（确认时点），
+  // 豁免谓词边界由 preflight 执法面钉死；确认本身不改变本次运行的其他前置四查。
+  if (ackMetering) {
+    const seqs = listReviewRuns(cwd, { slug: goal.slug, attempt: goal.attempt }).map((r) => r.seq);
+    await withLock(cwd, () => recordMeteringAck(cwd, goal.slug, goal.attempt, seqs.length ? Math.max(...seqs) : 0));
   }
   // 前置四查（拍板 7）：默认真前置；deps.preflight 可注入（CI 无凭据面替换）
   const pre = await (deps.preflight ?? preflightReview)(cwd, goal, { deps });
@@ -1260,6 +1324,8 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       const totalPoints = withRows.reduce((acc, x) => acc + (Number(x.r.points) || 0), 0);
       const anyUnpriced = withRows.some((x) => x.r.points === 0 && Array.isArray(x.r.unpriced) && x.r.unpriced.length > 0);
       const allAbsent = reads.length > 0 && withRows.length === 0;
+      const readFailed = reads.some((x) => x.err && !(x.r && x.r.absent === false));
+      const hasUnpriced = withRows.some((x) => Array.isArray(x.r.unpriced) && x.r.unpriced.length > 0);
       // usage 跨会话归并（0.5.0 明烧面，2026-10-02 暗烧案）：组点由计量原语（computePoints）
       // 算好，此处只求和不重算——计价单源不旁落；unpriced 分支同样透出（tokens 烧了就是烧了）。
       const usageBy = new Map();
@@ -1284,10 +1350,8 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           return `${label}=${val}${x.attempts > 1 ? `（读 ${x.attempts} 次）` : ""}`;
         })
         .join("、");
-      if (reads.some((x) => x.err && !(x.r && x.r.absent === false))) {
-        metering = { status: "absent", points: null, note: `计量读数失败（逐会话：${breakdown}）——缺用量不算零（ADR-0027 修正节）` };
-      } else if (allAbsent) {
-        metering = { status: "absent", points: null, note: `逐会话读数：${breakdown}——缺用量不算零（ADR-0027 修正节）` };
+      if (allAbsent || (readFailed && withRows.length === 0)) {
+        metering = { status: "absent", points: null, note: readFailed ? `计量读数失败（逐会话：${breakdown}）——缺用量不算零（ADR-0027 修正节）` : `逐会话读数：${breakdown}——缺用量不算零（ADR-0027 修正节）` };
       } else if (totalPoints === 0 && anyUnpriced) {
         metering = {
           status: "unpriced",
@@ -1295,13 +1359,21 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           usage,
           note: `模型未计价（表外行；逐会话：${breakdown}）——unpriced 不算零（ADR-0027 修正节）；扩价：lzy loop cost 看未计价行，价表 core/cost.js MODEL_ALIASES（N4 #5）`,
         };
+      } else if (readFailed || reads.length > withRows.length || hasUnpriced) {
+        // F1（计量完整性与已知消费分离）：部分缺口不再冒充完整——已知积分/tokens 如实保留，
+        // status 降档 partial（持久标记；preflight 执法面据此停下下一次启动，metering-ack 豁免）。
+        metering = {
+          status: "partial",
+          points: totalPoints,
+          usage,
+          note: `计量不完整——已知 ${totalPoints} 分如实保留（逐会话：${breakdown}${hasUnpriced ? "；含未计价行" : ""}）；缺口不算零（F1/ADR-0027 修正节）`,
+        };
       } else {
-        const hasUnpriced = reads.some((x) => x.r && Array.isArray(x.r.unpriced) && x.r.unpriced.length > 0);
         metering = {
           status: "metered",
           points: totalPoints,
           usage,
-          note: `逐会话（distinct sessionId 去重）：${breakdown}${hasUnpriced ? "；表外模型行计 0——读数为下界（计价子集口径）" : ""}`,
+          note: `逐会话（distinct sessionId 去重）：${breakdown}`,
         };
       }
     }
@@ -1352,10 +1424,11 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       appendSandboxUsage(cwd, out.record);
     } catch {}
     // N9：评审消耗入账（LEDGER review 类）——契约绑定才写（authorization 形状须 64hex
-    // contractHash；无契约 goal 保持运行档 durable 面）；metered 才写（absent/unpriced
-    // 不算零口径由运行档计量面承载）；dedup=runId（天然唯一，重放幂等）。
+    // contractHash；无契约 goal 保持运行档 durable 面）；metered/partial 才写（N1：partial 的
+    // 已知积分保守入账不丢，缺口由运行档与 preflight 执法面承载；absent/unpriced 不算零口径
+    // 由运行档计量面承载）；dedup=runId（天然唯一，重放幂等）。
     // F-7（M4 N6）：入账=load-modify-save，纳入写前缀短临界（与 prepare 锁时序分离不嵌套）。
-    if (goal.contract?.contractHash && out.record.metering?.status === "metered") {
+    if (goal.contract?.contractHash && (out.record.metering?.status === "metered" || out.record.metering?.status === "partial")) {
       await withLock(cwd, () =>
         appendLedgerEntry(cwd, {
           kind: "review",

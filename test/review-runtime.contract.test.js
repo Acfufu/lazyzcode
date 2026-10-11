@@ -6,6 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename, dirname } from "node:path";
@@ -30,7 +31,11 @@ import {
   reserveRun,
   runReview as actualRunReview,
   saveReviewRun,
+  loadMeteringAck,
+  materializeCandidate,
+  preflightReview,
 } from "../core/review.js";
+import { candidateIdentity } from "../core/verify.js";
 import { withInjectedReviewSandbox } from "./helpers/review-sandbox-stub.js";
 const runReview = withInjectedReviewSandbox(actualRunReview);
 import { ensurePolicyRecord } from "../core/policy.js";
@@ -454,6 +459,110 @@ test("⑩CLI 面：list 空族 0/损坏族 fail-closed 非 0/未知子命令 2�
     writeFileSync(p, JSON.stringify(obj, null, 2));
     assert.equal(lzy(["review", "list"]).code, 1);
     assert.equal(lzy(["review", "show", `fx.a1.r${res.seq}`]).code, 1);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// ── N1 计量完整性与执法面（F1，plan p0-ledger-fix）──
+
+function seedRun(d, { attempt = 1, metering } = {}) {
+  const { seq, runId, runDir } = reserveRun(d, "fx", attempt);
+  const cand = materializeCandidate(d, runDir);
+  writeFileSync(join(runDir, "raw.txt"), "seed raw"); // valid 记录形状闸要求封存 raw（在场+哈希）
+  const rec = {
+    schemaVersion: REVIEW_VERSION, runId, slug: "fx", attempt, seq,
+    duty: { id: BASELINE_DUTY_ID }, dutyTableVersion: 4, templateHash: dutyTemplateHash(BASELINE_DUTY_ID),
+    inputPackageHash: null,
+    candidate: { ...candidateIdentity(d), clean: true },
+    snapshot: { treeHash: cand.treeHash },
+    startedAt: new Date().toISOString(), endedAt: new Date().toISOString(),
+    exit: { code: 0, signal: null }, sessionId: "sess_seed", engine: "/bin/true",
+    raw: { path: "raw.txt", sha256: createHash("sha256").update(readFileSync(join(runDir, "raw.txt"))).digest("hex"), bytes: 9 },
+    transcript: { path: "rollout/seed.jsonl", sha256: "c".repeat(64) },
+    budget: null, metering,
+    validity: { status: "valid", reason: null, detail: null },
+    result: { verdict: "pass", findings: [], summary: "seed", normalization: null },
+    recheck: null, containment: null,
+  };
+  saveReviewRun(d, rec);
+  return rec;
+}
+
+test("N1 partial 聚合：缺行伴已知积分→partial 且 points 保留、validity 不动（红绿对=探针 case A）", async () => {
+  const d = fixture();
+  try {
+    let n = 0;
+    const spawn2 = async ({ cwd, home }) => {
+      n += 1;
+      const sid = `sess_p${n}`;
+      mkdirSync(join(home, ".zcode", "cli", "rollout"), { recursive: true });
+      writeFileSync(join(home, ".zcode", "cli", "rollout", `model-io-${sid}.jsonl`), JSON.stringify({ tool: { file_path: join(cwd, "a.txt") } }) + "\n");
+      const resp = n === 1 ? "no structured result" : FENCE(PASS);
+      return { ok: true, exitCode: 0, signal: null, timedOut: false, durationMs: 5, stdout: resp + "\n" + JSON.stringify({ sessionId: sid, response: resp }) + "\n", stderr: "", response: resp, sessionId: sid };
+    };
+    const qsp = async (sid) => (sid === "sess_p1" ? { absent: true, unpriced: [], points: 0 } : { absent: false, unpriced: [], points: 2.5, usage: [] });
+    const r = await runReview(d, { deps: { preflight: preflightStub, spawnHeadless: spawn2, querySessionPoints: qsp, detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) } });
+    assert.equal(r.record.validity.status, "valid"); // 拍板：validity 语义不动
+    assert.equal(r.record.metering.status, "partial"); // 缺口不再冒充完整（F1）
+    assert.equal(r.record.metering.points, 2.5); // 已知积分保留
+    assert.match(r.record.metering.note, /计量不完整/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("N1 partial 聚合：正积分伴未计价行→partial 且 tokens 下界保留（红绿对=探针 case B）", async () => {
+  const d = fixture();
+  try {
+    const r = await runReview(d, { deps: { ...deps(), querySessionPoints: async () => ({ absent: false, unpriced: ["unknown-model"], points: 3, usage: [{ provider: "fx", model: "priced", inputTokens: 10, cacheReadTokens: 0, outputTokens: 2, points: 3 }, { provider: "fx", model: "unknown-model", inputTokens: 5, cacheReadTokens: 0, outputTokens: 0, points: 0 }] }) } });
+    assert.equal(r.record.validity.status, "valid");
+    assert.equal(r.record.metering.status, "partial");
+    assert.equal(r.record.metering.points, 3);
+    const unknown = r.record.metering.usage.find((u) => u.model === "unknown-model");
+    assert.equal(unknown.inputTokens, 5); // 表外 tokens 如实保留
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("N1 执法面：在档持久计量缺口→启动拒 review-metering-unknown；--ack-metering 豁免后放行；其后新标记重新停", async () => {
+  const d = fixture();
+  try {
+    recordAuthorization(d, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-28T00:00:00.000Z" });
+    seedRun(d, { attempt: 1, metering: { status: "partial", points: 2.5, note: "缺口" } });
+    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) };
+    // 在案标记（无豁免）→ 前置拒（不 spawn 不落档）
+    await assert.rejects(() => runReview(d, { deps: realPreflight }), (e) => e instanceof ReviewPreflightError && e.reason === "review-metering-unknown");
+    assert.equal(listReviewRuns(d, { slug: "fx", attempt: 1 }).length, 1); // 拒不落档
+    // --ack-metering：ackSeq=确认时点在案最大 seq → 放行
+    const r2 = await runReview(d, { deps: realPreflight, ackMetering: true });
+    assert.equal(r2.record.validity.status, "valid");
+    const ack = loadMeteringAck(d)?.acks?.fx;
+    assert.equal(ack.attempt, 1);
+    assert.equal(ack.ackSeq, 1);
+    // 确认后新标记（seq 2 > ackSeq）→ 重新停（不因一次确认永久熄火）
+    seedRun(d, { attempt: 1, metering: { status: "absent", points: null, note: "新缺口" } });
+    await assert.rejects(() => runReview(d, { deps: realPreflight }), (e) => e instanceof ReviewPreflightError && e.reason === "review-metering-unknown");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("N1 豁免谓词跨 attempt：更高 attempt 的新标记不获豁免（确认不跨 attempt 永久熄火）", async () => {
+  const d = fixture({ attempt: 2 });
+  try {
+    recordAuthorization(d, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-28T00:00:00.000Z" });
+    seedRun(d, { attempt: 1, metering: { status: "partial", points: 1, note: "旧 attempt 缺口" } });
+    seedRun(d, { attempt: 2, metering: { status: "absent", points: null, note: "本 attempt 缺口" } });
+    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) };
+    await assert.rejects(() => runReview(d, { deps: realPreflight }), (e) => e.reason === "review-metering-unknown");
+    const r2 = await runReview(d, { deps: realPreflight, ackMetering: true }); // ack={attempt:2, ackSeq:1}
+    assert.equal(r2.record.validity.status, "valid");
+    assert.equal(loadMeteringAck(d).acks.fx.attempt, 2);
+    // 更高 seq（attempt 2 内新标记）→ 停
+    seedRun(d, { attempt: 2, metering: { status: "unpriced", points: null, note: "确认后新缺口" } });
+    await assert.rejects(() => runReview(d, { deps: realPreflight }), (e) => e.reason === "review-metering-unknown");
   } finally {
     rmSync(d, { recursive: true, force: true });
   }

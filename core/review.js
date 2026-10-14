@@ -19,7 +19,7 @@ import { createGit } from "./git.js";
 import { findEngine } from "./paths.js";
 import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless, detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
-import { querySessionPoints, appendSandboxUsage, sandboxUsageInstance } from "./cost.js";
+import { querySessionPoints, appendSandboxUsage, sandboxUsageInstance, sandboxUsageSids } from "./cost.js";
 import { createReviewSandbox, reviewSandboxCapability, registerReviewCleanup, cleanupReviewSandbox, prepareReviewProviderRuntime, copyOAuthCredential } from "./review-sandbox.js";
 import { findReviewTranscript, queryReviewHostDb } from "./review-artifacts.js";
 
@@ -1186,9 +1186,11 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
         let tinfo = null;
         let transcriptBytes = null;
         try {
-          const found = sid ? (sandbox?.metadata?.level === "B"
-            ? findReviewTranscript({ home: iso.home, sessionId: sid, sandbox })
-            : (() => { const path = findTranscript(iso.home, sid); return path ? { path, bytes: readFileSync(path) } : null; })()) : null;
+          // G1（a1.r6 超时路径归因）：SIGKILL 出去 stdout 无 sid——B 级读取器支持「单转录文件」回退
+          // （恰一个 model-io 时按文件取；多文件=歧义仍缺席），不再以 sid 为门死；非 B 级旧面维持 sid 门。
+          const found = sandbox?.metadata?.level === "B"
+            ? findReviewTranscript({ home: iso.home, sessionId: sid ?? undefined, sandbox })
+            : (sid ? (() => { const path = findTranscript(iso.home, sid); return path ? { path, bytes: readFileSync(path) } : null; })() : null);
           if (found) {
             transcriptBytes = found.bytes;
             tinfo = { path: found.path.slice(reserve.runDir.length + 1), sha256: createHash("sha256").update(transcriptBytes).digest("hex") };
@@ -1299,8 +1301,17 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     } else {
       const reads = [];
       const seenSids = new Set();
+      // G2（a1.r6 超时路径归因）：会话身份缺席（SIGKILL 无 stdout sid）时，子库是 run 私有面——
+      // 按 distinct sid 直读补归因（db 作用域=本 run，无混淆风险；缺列/读取失败=null 走原缺席口径）。
+      // deps.querySids 供离线契约测试注入。
+      const dbPathForSids = join(iso.home, ".zcode", "cli", "db", "db.sqlite");
+      const doorDb = sandbox?.metadata?.level === "B"
+        ? (dbPath2, sql) => queryReviewHostDb({ home: iso.home, dbPath: dbPath2, sql, sandbox })
+        : null;
+      const knownSids = (deps.querySids ?? ((dbPath2) => sandboxUsageSids(dbPath2, doorDb ? { queryDb: doorDb } : {})))(dbPathForSids) ?? [];
       for (const m of sessionMeta) {
         if (!m.sessionId) {
+          if (knownSids.length > 0) continue; // 归因面已由子库 sid 全集承载——null 会话条目不再另计
           reads.push({ sessionId: null, r: null, err: null, attempts: 0, detail: "会话身份缺席" });
           continue;
         }
@@ -1324,6 +1335,28 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
           if (i < METERING_READ_RETRIES) await new Promise((res) => setTimeout(res, METERING_RETRY_DELAY_MS));
         }
         reads.push({ sessionId: m.sessionId, r: last, err: lastErr, attempts });
+      }
+      for (const s of knownSids) {
+        if (seenSids.has(s)) continue;
+        seenSids.add(s);
+        let last = null;
+        let lastErr = null;
+        let attempts = 0;
+        for (let i = 0; i <= METERING_READ_RETRIES; i += 1) {
+          attempts = i + 1;
+          try {
+            last = await (deps.querySessionPoints ?? querySessionPoints)(s, {
+              dbPath: dbPathForSids,
+              ...(sandbox?.metadata?.level === "B" ? { queryDb: doorDb } : {}),
+            });
+            lastErr = null;
+          } catch (e) {
+            lastErr = String(e?.message ?? e).slice(0, 80);
+          }
+          if (last && last.absent === false) break;
+          if (i < METERING_READ_RETRIES) await new Promise((res) => setTimeout(res, METERING_RETRY_DELAY_MS));
+        }
+        reads.push({ sessionId: s, r: last, err: lastErr, attempts });
       }
       const withRows = reads.filter((x) => x.r && x.r.absent === false);
       const totalPoints = withRows.reduce((acc, x) => acc + (Number(x.r.points) || 0), 0);

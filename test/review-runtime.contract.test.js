@@ -604,3 +604,24 @@ test("N4/F-6：外泄账追加失败上浮不静默（去吞声明有测试绑�
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+test("a1.r6 G1/G2：SIGKILL 路径归因补齐——无 sid 时 B 级转录单文件回退＋计量按子库 sid 全集归因", async () => {
+  const d = fixture();
+  try {
+    // 击杀路径模拟：timedOut + 空 stdout（无 sessionId）
+    const killed = async () => ({ ok: false, exitCode: null, signal: "SIGKILL", timedOut: true, stdout: "", stderr: "" });
+    const r = await runReview(d, { deps: {
+      preflight: preflightStub,
+      spawnHeadless: killed,
+      querySessionPoints: async (sid) => (sid === "s1" ? { absent: false, unpriced: [], points: 5, usage: [] } : { absent: true, unpriced: [], points: 0 }),
+      querySids: () => ["s1"], // 子库 distinct sid（run 私有面）
+      detectAuth: () => ({ ok: true, envAuth: true }),
+      sqliteProbe: () => ({ ok: true }),
+    } });
+    assert.equal(r.record.validity.status, "invalid"); // timeout 失败照旧
+    assert.equal(r.record.metering.status, "metered", "击杀路径消费按子库 sid 归因（不再伪装缺席）");
+    assert.equal(r.record.metering.points, 5);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

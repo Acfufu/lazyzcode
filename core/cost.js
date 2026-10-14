@@ -318,15 +318,21 @@ export function instanceDigest(sids) {
   return createHash("sha256").update(set.join("\u0000")).digest("hex").slice(0, 16);
 }
 
-// 读来源库实例摘要（越界/缺列/空集 → null，调用方按旧口径兼容）。
-export function sandboxUsageInstance(dbPath, { queryDb = queryHostDb } = {}) {
+// 读来源库已结算会话集（越界/缺列 → null，调用方按旧口径兼容）。
+export function sandboxUsageSids(dbPath, { queryDb = queryHostDb } = {}) {
   try {
     const rows = queryDb(dbPath, "SELECT DISTINCT sid FROM model_usage WHERE status = 'completed'");
     if (!Array.isArray(rows)) return null;
-    return instanceDigest(rows.map((r) => r?.sid));
+    return rows.map((r) => r?.sid).filter((x) => typeof x === "string" && x);
   } catch {
     return null;
   }
+}
+
+// 读来源库实例摘要（越界/缺列/空集 → null，调用方按旧口径兼容）。
+export function sandboxUsageInstance(dbPath, { queryDb = queryHostDb } = {}) {
+  const sids = sandboxUsageSids(dbPath, { queryDb });
+  return sids === null ? null : instanceDigest(sids);
 }
 
 // 纯函数（可测）：运行档 → 账本行。无 usage 的运行（未 spawn/计量读数失败）不产行——

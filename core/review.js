@@ -19,7 +19,7 @@ import { createGit } from "./git.js";
 import { findEngine } from "./paths.js";
 import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless, detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
-import { querySessionPoints, appendSandboxUsage } from "./cost.js";
+import { querySessionPoints, appendSandboxUsage, sandboxUsageInstance } from "./cost.js";
 import { createReviewSandbox, reviewSandboxCapability, registerReviewCleanup, cleanupReviewSandbox, prepareReviewProviderRuntime, copyOAuthCredential } from "./review-sandbox.js";
 import { findReviewTranscript, queryReviewHostDb } from "./review-artifacts.js";
 
@@ -348,7 +348,7 @@ export function loadMeteringAck(cwd) {
   return loadFamilyFile(join(reviewDir(cwd), "metering-ack.json"), METERING_ACK_GATE);
 }
 
-function recordMeteringAck(cwd, slug, attempt, ackSeq) {
+export function recordMeteringAck(cwd, slug, attempt, ackSeq) {
   const p = join(reviewDir(cwd), "metering-ack.json");
   const rec = loadFamilyFile(p, METERING_ACK_GATE) ?? { schemaVersion: 1, acks: {} };
   rec.acks[slug] = { attempt, ackSeq, at: new Date().toISOString() };
@@ -834,12 +834,16 @@ export function preflightReview(cwd, goal, { deps = {} } = {}) {
   for (let a = 1; a <= (goal?.attempt ?? 1); a += 1) {
     for (const run of (deps.listRuns ?? listReviewRuns)(cwd, { slug: goal.slug, attempt: a })) {
       const st = run?.metering?.status;
-      if (st && st !== "metered") marks.push({ attempt: run.attempt, seq: run.seq, status: st, runId: run.runId });
+      if (st && st !== "metered") marks.push({ attempt: run.attempt, seq: run.seq, status: st, runId: run.runId, endedAt: run.endedAt ?? null });
     }
   }
   if (marks.length > 0) {
     const ack = (deps.loadMeteringAck ?? loadMeteringAck)(cwd)?.acks?.[goal.slug] ?? null;
-    const live = marks.filter((m) => !(ack && (m.attempt < ack.attempt || (m.attempt === ack.attempt && m.seq <= ack.ackSeq))));
+    // F-4 修复（a1.r2）：豁免谓词按**落档时刻**判——「确认时点前在案」的字面语义就是
+    // endedAt ≤ ack.at；按 (attempt,seq) 对比较会把「确认前已预留、确认后才落档」的标记
+    // 误豁免（长运行跨确认点/同 attempt 先留 seq 后落序倒置两形态）。attempt/ackSeq 留档
+    // 供人工读面，判据只认时刻。
+    const live = marks.filter((m) => !(ack && typeof ack.at === "string" && typeof m.endedAt === "string" && m.endedAt <= ack.at));
     if (live.length > 0) {
       const sample = live.slice(0, 3).map((m) => `${m.runId}(${m.status})`).join("、");
       throw new ReviewPreflightError(
@@ -1386,6 +1390,20 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     }
     // 无 spawn 但 flag 面已按 leak 落 failures；spawn 面各分类已落——validity 取首因
     const validity = failures.length === 0 ? { status: "valid", reason: null, detail: null } : { status: "invalid", reason: failures[0][0], detail: failures.map(([r, d]) => `${r}: ${d}`).join("；") };
+    // F-1/F-2 修复（a1.r2）：实例身份=来源子库 distinct sid 集摘要（引擎会话全局唯一——
+    // 重建同名 run 必异、同 run 推进保持）；沙盒 tier 下经 sandbox 门读取。失败=null（行不携
+    // 实例，去重回退 watermark/旧形口径，诚实降级）。
+    let harvestInstance = null;
+    if (spawned) {
+      try {
+        harvestInstance = sandboxUsageInstance(join(iso.home, ".zcode", "cli", "db", "db.sqlite"), {
+          ...(sandbox?.metadata?.level === "B" ? { queryDb: (dbPath, sql) => queryReviewHostDb({ home: iso.home, dbPath, sql, sandbox }) } : {}),
+          ...(deps.dbSids ? { queryDb: deps.dbSids } : {}),
+        });
+      } catch {
+        harvestInstance = null;
+      }
+    }
     await sandbox?.close();
     const cleanupState = burnSandboxCfg();
     if (cleanupState?.state === "failed") { validity.status = "invalid"; validity.reason = "isolation-breach"; validity.detail = failures.map(([r, d]) => `${r}：${d}`).join("；"); }
@@ -1415,6 +1433,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
       isolation,
+      harvest: harvestInstance ? { instance: harvestInstance } : null, // 事件身份面（exports 落账行同携）
       sandbox: sandbox ? { ...sandbox.metadata, deniedConnections: sandbox.stats?.denied ?? 0, cleanup: cleanupState?.state ?? "unknown" } : null,
     };
     const out = await finishRun(cwd, reserve, record);    // 明烧落账（0.5.0，2026-10-02 commandcode 暗烧案）：metering.usage 在场的运行（含
@@ -1423,7 +1442,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     // 为准，此处只喂聚合面（lzy loop cost / doctor / TokenTracker）。
     // N4/F5：追加失败不再静默吞——外泄账缺行=观测面缺口，如实上浮（运行档与补账通道仍在）。
     try {
-      appendSandboxUsage(cwd, out.record);
+      (deps.appendUsage ?? appendSandboxUsage)(cwd, out.record);
     } catch (e) {
       console.error(`[lzy] 沙盒外泄账追加失败（用量以运行档 metering.usage 为准，可重跑 harvest 补账）：${String(e?.message ?? e).slice(0, 160)}`);
     }

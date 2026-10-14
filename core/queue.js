@@ -303,7 +303,6 @@ export function budgetView(cwd) {
   let wallMs = 0;
   let points = 0;
   let reviewPoints = 0;
-  let overrunPoints = 0;
   let openWallMs = 0;
   let openPoints = 0;
   const stopKinds = [];
@@ -314,9 +313,9 @@ export function budgetView(cwd) {
       continue;
     }
     if (e.kind === "overrun") {
-      // F2（N2）：超额不入消费累计（实耗只计一次）。历史兼容读——修复前账本的 overrun 条目
-      // 用 points 字段携带超额（盘上既有账不迁移不改写，历史超额不从展示面消失）。
-      overrunPoints += Number(e.overrunPoints ?? e.points) || 0;
+      // F2（N2）：超额不入消费累计（实耗只计一次）。F-3 修复（a1.r2）：条目降纯注记（越帽
+      // 事件审计痕迹）——逐条「结算时点累计」求和在多次越帽时放大、同 sid 多段折叠；读数
+      // 改从 first principles 派生（见循环后 overrunPoints）。
       continue;
     }
     wallMs += Number(e.ms) || 0;
@@ -328,6 +327,8 @@ export function budgetView(cwd) {
     openWallMs += Number(t.limits?.wallMs) || 0;
     openPoints += Number(t.limits?.points) || 0;
   }
+  // F-3：超额读数=实际消耗越帽额（派生单点）——注记条目只作审计痕迹不进任何累计。
+  const overrunPoints = limit.pointsLimit != null ? Math.max(0, points - limit.pointsLimit) : 0;
   const pointsLimited = limit.pointsLimit != null;
   // 人工确认（--resume-points）只豁免确认时账本 seq 之前的在案记录；其后新增计量缺席/
   // 未决占用重新停止（#32 的停派语义不因一次确认永久熄火）。

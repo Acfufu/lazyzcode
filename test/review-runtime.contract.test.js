@@ -34,6 +34,7 @@ import {
   loadMeteringAck,
   materializeCandidate,
   preflightReview,
+  recordMeteringAck,
 } from "../core/review.js";
 import { candidateIdentity } from "../core/verify.js";
 import { withInjectedReviewSandbox } from "./helpers/review-sandbox-stub.js";
@@ -472,7 +473,7 @@ test("⑩CLI 面：list 空族 0/损坏族 fail-closed 非 0/未知子命令 2�
 
 // ── N1 计量完整性与执法面（F1，plan p0-ledger-fix）──
 
-function seedRun(d, { attempt = 1, metering } = {}) {
+function seedRun(d, { attempt = 1, metering, endedAt = new Date().toISOString() } = {}) {
   const { seq, runId, runDir } = reserveRun(d, "fx", attempt);
   const cand = materializeCandidate(d, runDir);
   writeFileSync(join(runDir, "raw.txt"), "seed raw"); // valid 记录形状闸要求封存 raw（在场+哈希）
@@ -482,7 +483,7 @@ function seedRun(d, { attempt = 1, metering } = {}) {
     inputPackageHash: null,
     candidate: { ...candidateIdentity(d), clean: true },
     snapshot: { treeHash: cand.treeHash },
-    startedAt: new Date().toISOString(), endedAt: new Date().toISOString(),
+    startedAt: endedAt, endedAt,
     exit: { code: 0, signal: null }, sessionId: "sess_seed", engine: "/bin/true",
     raw: { path: "raw.txt", sha256: createHash("sha256").update(readFileSync(join(runDir, "raw.txt"))).digest("hex"), bytes: 9 },
     transcript: { path: "rollout/seed.jsonl", sha256: "c".repeat(64) },
@@ -570,6 +571,36 @@ test("N1 豁免谓词跨 attempt：更高 attempt 的新标记不获豁免（确
     seedRun(d, { attempt: 2, metering: { status: "unpriced", points: null, note: "确认后新缺口" } });
     await assert.rejects(() => runReview(d, { deps: realPreflight }), (e) => e.reason === "review-metering-unknown");
   } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("N1 执法 a1.r2 F-4：豁免谓词按落档时刻——seq 在 ackSeq 内但晚于确认落档的缺口标记仍停", async () => {
+  const d = fixture();
+  try {
+    recordAuthorization(d, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-28T00:00:00.000Z" });
+    // ack（ackSeq 高置 9，确认时刻=now）＋晚于确认落档的标记（endedAt 未来戳）——seq ≤ ackSeq
+    // 但落档晚于确认，旧 (attempt,seq) 谓词会误豁免，新时刻谓词须停
+    recordMeteringAck(d, "fx", 1, 9);
+    seedRun(d, { attempt: 1, metering: { status: "partial", points: 1, note: "晚于确认落档的缺口" }, endedAt: "2030-01-01T00:00:00.000Z" });
+    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) };
+    await assert.rejects(() => runReview(d, { deps: realPreflight }), (e) => e instanceof ReviewPreflightError && e.reason === "review-metering-unknown");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("N4/F-6：外泄账追加失败上浮不静默（去吞声明有测试绑定）", async () => {
+  const d = fixture();
+  const captured = [];
+  const origErr = console.error;
+  console.error = (...args) => captured.push(args.join(" "));
+  try {
+    const r = await runReview(d, { deps: { ...deps(), appendUsage: () => { throw new Error("disk full (fixture)"); } } });
+    assert.equal(r.record.validity.status, "valid", "追加失败不回头改已落档运行");
+    assert.ok(captured.some((l) => l.includes("沙盒外泄账追加失败") && l.includes("disk full")), `上浮报文须在场：${JSON.stringify(captured)}`);
+  } finally {
+    console.error = origErr;
     rmSync(d, { recursive: true, force: true });
   }
 });

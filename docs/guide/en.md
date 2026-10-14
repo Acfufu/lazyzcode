@@ -451,7 +451,7 @@ lzy dag stale                           # invalidation preview vs current finger
 lzy attest comparator --file <json>     # comparator verdicts as attestation (HEAVY finish enforces MATCH)
 lzy policy show|explain                 # policy identity & obligation set explainer (0.4.0 M1; v1 goals print "not applicable")
 lzy gate explain                        # unified read-only gate: per-obligation verdicts + snapshot hash (blocked exits non-zero)
-lzy review run [--duty <id>] [--timeout-ms N]   # controlled independent review runner (0.4.0 M2): isolated HOME +
+lzy review run [--duty <id>] [--timeout-ms N] [--ack-metering]   # controlled independent review runner (0.4.0 M2): isolated HOME +
                                         # candidate snapshot, structured verdict on record; 0=pass&valid / 1=blocked·invalid / 2=usage / 3=precondition (no spawn)
 lzy review cleanup <runId>             # development: reclaim dead-owner credential copies/tmp; keep transcripts/usage DB
 lzy review list                         # enumerate review runs on record (read-only; corrupt family fails closed non-zero)

@@ -164,7 +164,7 @@ test("CLI：lzy loop cost 无账本降级输出退出码 0（ISOLATED_HOME，零
 });
 
 // ── 沙盒外泄账（0.5.0 明烧面，2026-10-02 commandcode 暗烧案收口）──
-import { aggregateUsageRows, sandboxLedgerLine, appendSandboxUsage, readSandboxUsageLines, readSandboxUsageWithDiag, sandboxUsageDir, summarizeSandboxUsage, querySessionPoints, formatCost } from "../core/cost.js";
+import { aggregateUsageRows, sandboxLedgerLine, appendSandboxUsage, readSandboxUsageLines, readSandboxUsageWithDiag, sandboxUsageDir, summarizeSandboxUsage, querySessionPoints, formatCost, instanceDigest } from "../core/cost.js";
 
 test("aggregateUsageRows：按 (provider,model) 归组、tokens 求和、未计价组保留 tokens 计 0 分", () => {
   const dayH = H("2026-10-02T08:00:00+08:00"); // 周五白昼非高峰 → 常设 ×0.5
@@ -278,28 +278,32 @@ test("appendSandboxUsage：harvest 水位身份——同水位判重放、水位
       runId: "fx.a1.r1", slug: "fx", attempt: 1, validity: null,
       metering: { usage: [{ provider: "p", model: "m", inputTokens: tok, cacheReadTokens: 0, outputTokens: 0, points: 0 }] },
     });
-    const app = (tok, wm) => appendSandboxUsage("/x/y/harv", { ...delta(tok), harvest: { watermark: wm } }, { now: new Date("2026-10-10T03:00:00Z") });
-    assert.equal(app(50, "50|1000"), true);
-    assert.equal(app(50, "50|1000"), false, "同水位=同一来源状态重放→跳过（重放不双计）");
-    assert.equal(app(100, "150|2000"), true, "水位前进=新事件（等额新差量不吞，F4）");
-    assert.equal(app(100, "250|3000"), true, "第三次差量入账");
+    // 事件身份=(instance, watermark) 四元组（a1.r2 F-1/F-2：实例= sid 集摘要为主判轴）
+    const app = (tok, wm, inst) => appendSandboxUsage("/x/y/harv", { ...delta(tok), harvest: { watermark: wm, instance: inst } }, { now: new Date("2026-10-10T03:00:00Z") });
+    assert.equal(app(50, "50|1000", "i1"), true);
+    assert.equal(app(50, "50|1000", "i1"), false, "同实例同水位=同一事件重放→跳过（重放不双计）");
+    assert.equal(app(100, "150|2000", "i1"), true, "同实例水位前进=新事件（等额新差量不吞，F4）");
+    assert.equal(app(100, "250|3000", "i1"), true, "第三次差量入账");
     let lines = readSandboxUsageLines().filter((l) => l.project === "/x/y/harv");
     assert.equal(lines.length, 3);
     const total = lines.reduce((s2, l) => s2 + l.usage.reduce((x, u) => x + u.inputTokens, 0), 0);
     assert.equal(total, 250); // 50+100+100：三次补账终值 250（修复前 150）
     // 跨项目同名 run（F3）：project 入键，各成事件
-    assert.equal(appendSandboxUsage("/other/proj", { ...delta(200), harvest: { watermark: "200|1000" } }, { now: new Date("2026-10-10T03:00:00Z") }), true);
+    assert.equal(appendSandboxUsage("/other/proj", { ...delta(200), harvest: { watermark: "200|1000", instance: "i1" } }, { now: new Date("2026-10-10T03:00:00Z") }), true);
     lines = readSandboxUsageLines().filter((l) => l.runId === "fx.a1.r1");
     assert.equal(lines.length, 4);
     assert.equal(lines.filter((l) => l.project === "/other/proj").length, 1);
-    // 清理重建的等额新运行：同 tokens 但来源状态异（maxDone 前进）→ 水位异 → 不吞
-    assert.equal(app(250, "250|9000"), true, "重建等额新运行不吞");
+    // 清理重建的等额新运行（a1.r2 F-1 强化形）：水位与既存行**全等**、仅实例异（sid 集变）
+    // → instance 为主判轴 → 不吞
+    assert.equal(app(250, "250|3000", "i2"), true, "重建等额新运行不着吞（实例异=新事件）");
   } finally {
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;
     if (savedUP === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = savedUP;
     rmSync(home, { recursive: true, force: true });
+  }
+});
 
 test("readSandboxUsageWithDiag：坏行/异 kind/目录缺席诊断；formatCost 对坏行上浮不冒充 ok（F5）", () => {
   const home = mkdtempSync(join(tmpdir(), "lzy-cost-diag-"));
@@ -331,7 +335,12 @@ test("readSandboxUsageWithDiag：坏行/异 kind/目录缺席诊断；formatCost
     rmSync(home, { recursive: true, force: true });
   }
 });
-  }
+
+test("instanceDigest：集合确定性（序无关去重）、空集=null（a1.r2 F-1/F-2 身份面）", () => {
+  assert.equal(instanceDigest(["b", "a", "b"]), instanceDigest(["a", "b"]));
+  assert.notEqual(instanceDigest(["a"]), instanceDigest(["a", "b"]));
+  assert.equal(instanceDigest([]), null);
+  assert.equal(instanceDigest([null, undefined, ""]), null);
 });
 
 test("formatCost：宿主账缺席时沙盒外泄账仍独立可达（收口④，宿主降级不短路）", () => {

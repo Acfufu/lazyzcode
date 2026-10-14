@@ -321,15 +321,17 @@ oracle 判定交付仓。0.4.0 批次报告（含如实质量门读数：不满�
 本节描述当前开发契约，已发布 0.5.0 的隔离能力不据此升级。`lzy review run` 和
 `recheck` 使用 macOS Seatbelt 包住评审引擎及其后代：候选快照、事实输入只读，
 隔离 HOME 和 tmp 可写。路径元数据查询仍允许，不隐藏文件存在性；环境白名单不继承宿主 secret、NODE_OPTIONS、DYLD 或代理。
-PERSONAL 配置仍须显式 provider 允许表，BUILTIN 模板也复制到隔离面；OAuth-only
-认证仍不可用。
+PERSONAL 配置仍须显式 provider 允许表，BUILTIN 模板也复制到隔离面。分级保证
+（ADR-0038 修订节+二改）：Seatbelt 探针过且个人 key 腿在场=os-sandbox tier（上述契约全文）；
+缺一（含 OAuth-only 机器、Linux/Windows、空交集配置）自动降级 app-layer 运行时——隔离
+HOME+facts-only 不变，认证走 envAuth 或 OAuth 凭据透传（暴露中性：无 OS 边界时会话本可
+直读宿主文件），运行档 isolation {level,backend,auth} 如实记档、doctor 预诊断。
 
 网络仅能经父进程代理访问已允许 provider 的 API endpoint，取 PERSONAL 的
 `api.baseUrl` 或 BUILTIN 模板默认值。普通 HTTP 精确核 origin；HTTPS 仅准入配置的
 hostname:port CONNECT，不核隧道内 TLS SNI、HTTP Host 或路径。启动时固定 DNS
 解析地址，本 run 不随请求重新解析；显式准入的本地/内网 API 仍可达。endpoint
 不可解析或代理不可用即拒绝启动。
-缺 OS 后端或探针失败不回退裸启动，Linux/Windows 暂不支持该评审入口。
 其他 drive/queue 默认行为不变。
 
 正常结束、超时与可捕获中断回收受管进程组及凭据副本/tmp；恶意 `setsid` 后代仍受
@@ -358,7 +360,7 @@ lzy dag stale                           # 失效预览：对照现行复合指�
 lzy attest comparator --file <json>     # 对照判决落 attestation（HEAVY finish 强制 MATCH）
 lzy policy show|explain                 # 策略身份与义务集解释（0.4.0 M1；v1 目标显示「政策裁决不适用」）
 lzy gate explain                        # 统一只读门逐义务解释+快照哈希（blocked 退出码非 0）
-lzy review run [--duty <id>] [--timeout-ms N]   # 受控独立评审运行器（0.4.0 M2）：隔离 HOME+候选快照，
+lzy review run [--duty <id>] [--timeout-ms N] [--ack-metering]   # 受控独立评审运行器（0.4.0 M2）：隔离 HOME+候选快照，
                                         # 结构化判决落档；0=pass 且有效 / 1=blocked·invalid / 2=用法 / 3=前置不具备（不 spawn）
 lzy review cleanup <runId>             # 开发中：回收死 owner 的登记凭据副本/tmp，保留转录/用量库
 lzy review list                         # 在案评审运行枚举（只读；家族损坏 fail-closed 非 0）

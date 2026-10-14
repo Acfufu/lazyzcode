@@ -6,9 +6,11 @@
 // 之前先跑本脚本——账先于删。默认只补 max 运行日 >= LZY_HARVEST_CUTOFF（默认 2026-10-03，
 // 与 0.5.0 明烧账本起点一致）的运行；pre 段结构性不补（那一段 TT 侧已回灌过）。
 //
-// 幂等（N3/F3+F4）：事件身份=(project, runId, 来源状态水位 Σtokens|最新完成时刻)——同水位=
-// 同一来源状态重放（判重跳过）；水位前进=新消耗事件（等额新差量/重建等额新运行均不吞）；
-// 金额/Σtokens 只是载荷不作身份。已入账但被截断的「半截账」运行追加差量行（append-only 不改旧行）。
+// 幂等（N3＋a1.r2 F-1/F-2 修复）：事件身份=(project, runId, 实例 sid 集摘要, 来源水位 Σtokens|
+// 最新完成时刻)——同实例同水位=重放（跳过）；水位前进=同实例新差量（追加）；实例异=重建同名
+// run 的新运行（等额不吞）；差量只对**同实例**既存行抵消（跨实例不抵消）。金额/Σtokens 不作
+// 身份。已入账但被截断的「半截账」运行追加差量行（append-only 不改旧行）；sid 列缺席的旧库
+// 实例=null → 回退同缺实例口径（诚实降级）。
 //
 // 用法： node scripts/harvest-sandbox-usage.mjs            # 干跑，只列将追加的行
 //        node scripts/harvest-sandbox-usage.mjs --apply    # 实际追加
@@ -17,7 +19,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { queryHostDb } from "../core/hostdb.js";
-import { aggregateUsageRows, computePoints, appendSandboxUsage, readSandboxUsageLines } from "../core/cost.js";
+import { aggregateUsageRows, computePoints, appendSandboxUsage, readSandboxUsageLines, instanceDigest } from "../core/cost.js";
 
 const APPLY = process.argv.includes("--apply");
 const CUTOFF = process.env.LZY_HARVEST_CUTOFF || "2026-10-03";
@@ -111,9 +113,11 @@ for (const root of roots) {
     ].join(" ")) || [];
     const span = queryHostDb(db, "SELECT MAX(started_at) AS m, MAX(completed_at) AS c FROM model_usage") || [];
     if (rows.length === 0) continue;
+    const sidRows = queryHostDb(db, "SELECT DISTINCT sid FROM model_usage WHERE status = 'completed'") || [];
     const mapKey = `${meta.root}\u0000${meta.runId}`;
-    const e = runMap.get(mapKey) ?? { ...meta, rows: [], maxStart: 0, maxDone: 0 };
+    const e = runMap.get(mapKey) ?? { ...meta, rows: [], sids: [], maxStart: 0, maxDone: 0 };
     e.rows.push(...rows);
+    e.sids.push(...sidRows.map((r) => r?.sid)); // F-1/F-2：实例身份=distinct sid 集（跨多库并集）
     e.maxStart = Math.max(e.maxStart, Number(span[0]?.m) || 0);
     e.maxDone = Math.max(e.maxDone, Number(span[0]?.c) || 0);
     runMap.set(mapKey, e);
@@ -144,11 +148,16 @@ for (const [, e] of runMap) {
   // 水位前进=新消耗事件（等额新差量/清理重建的等额新运行 maxDone 必异，均不吞）。金额只是载荷。
   const truthTok = truth.reduce((s, u) => s + (Number(u.inputTokens) || 0) + (Number(u.cacheReadTokens) || 0) + (Number(u.outputTokens) || 0), 0);
   const watermark = `${truthTok}|${e.maxDone}`;
-  if (existing.some((l) => l.harvest?.watermark === watermark)) { skippedDup += 1; continue; }
-  // 差量：truth − Σexisting（逐组逐字段，夹 0）
+  const instance = instanceDigest(e.sids); // F-1/F-2：实例身份（sid 集摘要；空集=null 回退旧口径）
+  // 重放判定（a1.r2 F-1 修复）：同实例同水位=同一来源状态（跳过）；instance 异=重建同名 run
+  // 的新运行（等额不吞）；水位前进=同实例新差量（追加）。
+  if (existing.some((l) => (l.harvest?.instance ?? null) === instance && l.harvest?.watermark === watermark)) { skippedDup += 1; continue; }
+  // 差量：truth − Σexisting——**只减同实例（或同缺实例的旧形）行**（a1.r2 F-1：旧 db 已删的
+  // 重建运行与被旧行等额抵消的病根在此；跨实例行不参与抵消，等额新消耗照常入账）。
+  const subtractable = existing.filter((l) => (l.harvest?.instance ?? null) === instance);
   const exGroups = new Map();
   let exPoints = 0;
-  for (const l of existing) {
+  for (const l of subtractable) {
     exPoints += Number(l.points) || 0;
     for (const u of l.usage ?? []) {
       const k = `${u.provider ?? ""}|${u.model ?? ""}`;
@@ -175,7 +184,7 @@ for (const [, e] of runMap) {
   }
   const deltaPoints = Math.max(0, agg.points - exPoints);
   if (delta.length === 0 && deltaPoints <= 0) { skippedDup += 1; continue; }
-  plan.push({ ...e, day, delta, deltaTok, deltaPoints, priorRows: existing.length, watermark });
+  plan.push({ ...e, day, delta, deltaTok, deltaPoints, priorRows: existing.length, watermark, instance });
 }
 
 plan.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : b.deltaTok - a.deltaTok));
@@ -205,7 +214,7 @@ for (const p of plan) {
     attempt: p.attempt,
     validity: null,
     metering: { usage: p.delta, points: p.deltaPoints },
-    harvest: { watermark: p.watermark }, // N3（F4）：事件身份=来源状态水位（appendSandboxUsage 分流判重）
+    harvest: { instance: p.instance, watermark: p.watermark }, // 事件身份=实例（F-1/F-2 主判）+水位（读面注记）
   };
   const now = new Date(p.maxDone || p.maxStart || Date.now());
   if (appendSandboxUsage(p.root, record, { now })) appended += 1;

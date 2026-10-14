@@ -3,6 +3,7 @@
 // 归因用「简化 OR + 人工复核」（红队 R4 否决过巧公式）：目标时间窗 ∩（会话目录=本仓 ∪
 // 认领会话集）。spawn 豁免声明：本模块经 hostdb 查 sqlite3——plan-v2 §4-2 明示豁免，
 // loop.js 零 spawn 纪律不受影响。
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, realpathSync, mkdirSync, appendFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
@@ -308,6 +309,26 @@ export function sandboxUsageDir() {
   return join(homedir(), ".zcode", "cli", "lzy-usage");
 }
 
+// 实例身份摘要（F-1/F-2 修复）：来源库 distinct sid 集 → 16 hex。引擎会话 id 全局唯一，
+// 重建同名 run 必得新 sid 集 ⇒ 异实例；同实例推进（增段/补差）保持或扩展旧集 ⇒ 可判谱系。
+// 两侧同源共用（评审运行器取子库、补账脚本取扫描库），摘要算法单点。
+export function instanceDigest(sids) {
+  const set = [...new Set((sids ?? []).filter((s) => typeof s === "string" && s))].sort();
+  if (set.length === 0) return null;
+  return createHash("sha256").update(set.join("\u0000")).digest("hex").slice(0, 16);
+}
+
+// 读来源库实例摘要（越界/缺列/空集 → null，调用方按旧口径兼容）。
+export function sandboxUsageInstance(dbPath, { queryDb = queryHostDb } = {}) {
+  try {
+    const rows = queryDb(dbPath, "SELECT DISTINCT sid FROM model_usage WHERE status = 'completed'");
+    if (!Array.isArray(rows)) return null;
+    return instanceDigest(rows.map((r) => r?.sid));
+  } catch {
+    return null;
+  }
+}
+
 // 纯函数（可测）：运行档 → 账本行。无 usage 的运行（未 spawn/计量读数失败）不产行——
 // 「缺用量不算零」口径由运行档 metering 面承载，账本只收真实烧掉的 tokens。
 // project=仓库根全路径（收口③身份面）：basename 在两个同名项目间不可判，聚合面不混账。
@@ -323,7 +344,8 @@ export function sandboxLedgerLine(cwd, record, now = new Date()) {
     attempt: record.attempt ?? null,
     validity: record.validity?.status ?? null,
     points: Number(record.metering.points) || 0,
-    harvest: record.harvest ?? null, // N3（F4）：增量补账行携带来源状态水位（事件身份面）
+    sessionId: record.sessionId ?? null, // F-2 修复：宿主真实身份字段随行保留（原被丢弃）
+    harvest: record.harvest ?? null, // 事件身份面：{instance（F-1/F-2 主判）, watermark（读面注记）}
     usage,
   };
 }
@@ -331,14 +353,14 @@ export function sandboxLedgerLine(cwd, record, now = new Date()) {
 export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
   const line = sandboxLedgerLine(cwd, record, now);
   if (!line) return false;
-  // 幂等去重（收口③＋N3/F4 分流）：
-  // - 增量补账行（harvest.watermark 在场）：事件身份=(project, runId, 来源状态水位)——同水位=
-  //   同一来源状态的重放（判重放跳过）；水位前进=新消耗事件（50→150→250 三次差量各成事件，
-  //   等额新差量不吞；清理重建的等额新运行 maxDone 必异亦不吞）。金额/Σtokens 只是载荷不作身份。
-  // - 评审运行器行：同 (project, runId) 且计量内容一致才判重放（评审 a1.r4 F-2）——runId 茎
-  //   在账本（全局，跨 reset 存活）与工作区清空重建后可被新运行回收，裸茎撞车会把真实消耗
-  //   静默跳过；计量内容（points＋tokens 合计）入键：同 run 重放内容必然一致。语义对齐
-  //   core/queue.js dedupKey 写面。runId 缺席（无法判幂等键）照常追加如实保留。
+  // 幂等去重（收口③＋N3/F4＋a1.r2 F-1/F-2 修复）：
+  // - 携事件身份行（harvest.instance 或 watermark 在场）＝评审运行器行（instance）/补账行
+  //  （instance+watermark）：重放判定=(project, runId, instance, watermark) 四元组全等——
+  //   同实例同水位=同一事件重放（跳过）；水位前进=同实例新差量（追加）；instance 异=重建
+  //   同名 run 的新运行（追加，等额不吞）。**金额/Σtokens 不作身份**（a1.r2 F-2：数值指纹
+  //   不区分模型构成且 runId 可回收）。
+  // - 无 harvest 旧形行（兼容面）：同 (project, runId) 且计量内容一致才判重放（评审 a1.r4
+  //  F-2 原语义）；runId 缺席照常追加如实保留。
   // 返回值：true=本次追加；false=无行可记（缺 usage）或同键已在账（幂等跳过）。
   const fp = (l) =>
     `${Number(l.points) || 0}|${(l.usage ?? []).reduce(
@@ -347,10 +369,13 @@ export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
     )}`;
   if (line.runId) {
     const lines = readSandboxUsageLines();
-    if (line.harvest?.watermark) {
-      if (lines.some((l) => l.project === line.project && l.runId === line.runId && l.harvest?.watermark === line.harvest.watermark)) {
-        return false;
-      }
+    if (line.harvest?.instance || line.harvest?.watermark) {
+      const sameEvent = (l) =>
+        l.project === line.project &&
+        l.runId === line.runId &&
+        (l.harvest?.instance ?? null) === (line.harvest?.instance ?? null) &&
+        (l.harvest?.watermark ?? null) === (line.harvest?.watermark ?? null);
+      if (lines.some(sameEvent)) return false;
     } else if (lines.some((l) => l.runId === line.runId && l.project === line.project && fp(l) === fp(line))) {
       return false;
     }

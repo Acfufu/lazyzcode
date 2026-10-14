@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process";
 
-const LIMIT = 16 * 1024 * 1024;
+// 转录读取上限（ADR-0038 三改：首射活体标定 16→64 MiB）——16MiB 系设计期估值、未经真会话
+// 检验：2026-10-15 沙盒首射，duty 会话主转录 9.6MiB 在限、recheck 深验证会话 24–25.5MiB
+// 被上限误拒（fail-closed 落 invalid，单轮 14–16 分）。64MiB=4× 观测峰值余量；同族守卫
+// （regular 文件/拒链接/读取期变化检测/路径边界）全部不变。
+const LIMIT = 64 * 1024 * 1024;
 
 export class ReviewArtifactError extends Error {
   constructor() {
@@ -19,7 +23,7 @@ import { spawnSync } from 'node:child_process';
 const [request] = process.argv.slice(1);
 const { home, path, sessionId, sql, operation } = JSON.parse(request);
 const root = resolve(home);
-const limit = 16 * 1024 * 1024;
+const limit = ${LIMIT};
 function check(target, directory = false, optional = false) {
   const full = resolve(target);
   const rel = relative(root, full);

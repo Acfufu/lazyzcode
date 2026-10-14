@@ -11,7 +11,7 @@ ADR-0031 的候选快照、独立 HOME、provider 允许表与转录检查能够
 - 启动环境使用白名单：HOME、XDG 与临时目录均落隔离面，不继承宿主 secret、NODE_OPTIONS、DYLD 或代理设置。PERSONAL 仍使用显式 provider 允许表；BUILTIN 模板也复制到隔离面，不直接读取用户配置目录。OAuth-only 认证仍不可用。
 - macOS 使用 Seatbelt 包住整个评审引擎及其后代，候选与事实输入只读，隔离 HOME（包括 tmp）可写；允许引擎运行所需的系统/安装文件读取和全局路径元数据查询，不承诺隐藏文件存在性。后端缺席、平台不支持或探针失败都拒绝裸启动；Linux/Windows 暂无 B 后端。
 - 来宾只能连接父进程的受控代理。准入 endpoint 来自已允许 PERSONAL 的 `api.baseUrl` 或其 BUILTIN 模板默认值；endpoint 无法解析或代理不可用即拒绝。普通 HTTP 转发精确核验 origin；HTTPS 仅准入配置的 hostname:port 对应 CONNECT。启动代理时固定 DNS 解析地址，本 run 不随请求重新解析；显式准入的本地/内网 API 仍可达。HTTPS 隧道不核验 TLS SNI、HTTP Host 或路径，因此不能宣称 HTTPS 精确 origin 隔离。已准入 API 凭据对来宾可读，该 endpoint 也允许传输评审内容，因此 B 不承诺阻止所有外泄。
-- 来宾产物的转录发现、字节读取与 SQLite 用量查询也在同一 Seatbelt 边界内执行，父进程不直接跟随来宾链接。读取仅接受 regular 文件，拒绝符号链接、FIFO 与读取期间检测到的文件变化；转录读取上限 16 MiB。无法安全读取的用量保持 unknown，不能记为零。
+- 来宾产物的转录发现、字节读取与 SQLite 用量查询也在同一 Seatbelt 边界内执行，父进程不直接跟随来宾链接。读取仅接受 regular 文件，拒绝符号链接、FIFO 与读取期间检测到的文件变化；转录读取上限 64 MiB（三改标定，原 16 MiB——见修订节）。无法安全读取的用量保持 unknown，不能记为零。
 - 正常结束、超时和可捕获中断回收同一 POSIX 进程组，并删除登记的凭据副本与 tmp。恶意 `setsid` 后代仍继承 OS 权限限制，但不能宣称全部回收。SIGKILL 无法即时清理：doctor 提示残留，`lzy review cleanup <runId>` 只回收已无活 owner 的登记配置副本和 tmp，保留会话转录与用量 DB。
 
 ## 边界与验收
@@ -40,3 +40,7 @@ ADR-0031 的候选快照、独立 HOME、provider 允许表与转录检查能够
 3. **认证门语义**：`envAuth` 首判保持（既有夹具面不破）；`oauthFallback` 为增路非替代。auth 判定注入面修正：`deps.sandboxCapability` 为函数时须调用（一改实现漏调用致注入面全部意外走 app-layer——同批契约测试断言同侧未 exposing）。
 
 诚实记录：一改提交信息「仅 start-plan OAuth 评审面恢复可达」系过度声明——一改只恢复了「配置在场但不可沙盒化」机器；本二改才完成触发主体（纯 OAuth）的救济。
+
+### 三改：转录读限标定（2026-10-15，沙盒首射活体证伪）
+
+16 MiB 读取上限系设计期估值、从未经真会话检验（0.5.0 期评审全在无上限的 app-layer）。沙盒首射数据：duty 会话主转录 9.6 MiB 在限内通过；recheck 深验证会话（90+ 轮模型调用，转录尺寸 ∝ 轮数×上下文载荷）24–25.5 MiB 被上限按合同拒——fail-closed 落 invalid（isolation-breach），单轮烧 14–16 分且修复语义无从判读。标定：**上限 16→64 MiB**（4× 观测峰值余量）；读取守卫族（regular 文件/拒链接/读取期变化检测/路径边界/maxBuffer 2×LIMIT 同步）全部不变。

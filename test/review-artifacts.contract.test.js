@@ -44,9 +44,13 @@ test("real sandbox readers accept regular artifacts and deny links, FIFOs and co
     const fifo = join(home, "fifo"); assert.equal(spawnSync("/usr/bin/mkfifo", [fifo]).status, 0);
     assert.throws(() => readReviewArtifact({ home, path: fifo, sandbox }), ReviewArtifactError);
     t.diagnostic("green: outside path, leaf link, intermediate directory link, FIFO all rejected");
-    const oversized = join(home, "oversized"); writeFileSync(oversized, Buffer.alloc(16 * 1024 * 1024 + 1));
+    // 47MiB 夹具：旧限（16MiB）下拒、标定后（64MiB，ADR-0038 三改）应可读——边界迁移断言
+    const withinCap = join(home, "within-cap"); writeFileSync(withinCap, Buffer.alloc(20 * 1024 * 1024, 0x61));
+    assert.equal(readReviewArtifact({ home, path: withinCap, sandbox }).length, 20 * 1024 * 1024);
+    t.diagnostic("green: 20 MiB artifact readable after 16→64 MiB calibration (was rejected pre-三改)");
+    const oversized = join(home, "oversized"); writeFileSync(oversized, Buffer.alloc(64 * 1024 * 1024 + 1));
     assert.throws(() => readReviewArtifact({ home, path: oversized, sandbox }), ReviewArtifactError);
-    t.diagnostic("green: 16 MiB + 1 byte artifact rejected");
+    t.diagnostic("green: 64 MiB + 1 byte artifact rejected");
 
     const db = join(home, "db.sqlite");
     assert.equal(spawnSync("/usr/bin/sqlite3", [db, "CREATE TABLE usage(tokens INTEGER); INSERT INTO usage VALUES(42);"]).status, 0);

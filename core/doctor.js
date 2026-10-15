@@ -708,7 +708,9 @@ function checkReview(push, cwd) {
   const dir = join(cwd, ".lazyzcode", "review");
   let names;
   try {
-    names = readdirSync(dir).filter((f) => f.endsWith(".json") && !f.startsWith("."));
+    // a1.r7 F-1：只认运行档茎（与 listReviewRuns 同款过滤）——同目录 metering-ack.json 等
+    // 非运行档不得进形状闸（异形档被当损坏=fail 级假报且翻转退出码）。
+    names = readdirSync(dir).filter((f) => /\.a\d+\.r\d+\.json$/.test(f) && !f.startsWith("."));
   } catch {
     push("review", "skip", "无评审运行族（尚无 lzy review run——0.4.0 M2 面未启用）");
     return;

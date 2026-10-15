@@ -375,7 +375,7 @@ export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
     )}`;
   if (line.runId) {
     const lines = readSandboxUsageLines();
-    if (line.harvest?.instance || line.harvest?.watermark) {
+    if (line.harvest) { // a1.r7 F-3：携身份对象即走事件身份四元组（instance/watermark 缺一也判，不落回数值指纹）；无对象=旧形行才走 fp 兼容路
       const sameEvent = (l) =>
         l.project === line.project &&
         l.runId === line.runId &&

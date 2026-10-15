@@ -325,9 +325,9 @@ export function listReviewRuns(cwd, { slug, attempt } = {}) {
 
 // ── 评审计量豁免账（N1，ADR-0038 修订节同批）：.lazyzcode/review/metering-ack.json ──
 // 在档运行存在持久计量缺口（partial/absent/unpriced）时显式评审启动即停（preflightReview
-// 执法面）；--ack-metering 一次确认豁免 (attempt, seq) 对——attempt < ack.attempt，或同
-// attempt 且 seq ≤ ack.ackSeq；更高 attempt 的新标记一律重新停（确认不跨 attempt 永久
-// 熄火，语义同 #32 --resume-points）。家族位阶=loop/ 外 reset 不清（familyFile 家法）。
+// 执法面）；--ack-metering 一次确认豁免**落档时刻 ≤ ack.at 的在案标记**（a1.r2 F-4 后为
+// 时刻谓词；attempt/ackSeq 留档供人工读面）——其后落档的新标记一律重新停（确认永久熄火
+// 不可，语义同 #32 --resume-points）。家族位阶=loop/ 外 reset 不清（familyFile 家法）。
 
 const METERING_ACK_GATE = {
   versionKey: "schemaVersion",
@@ -828,13 +828,15 @@ export function preflightReview(cwd, goal, { deps = {} } = {}) {
     }
   }
   // F1 执法面（N1）：在档运行存在持久计量缺口（partial/absent/unpriced）＝未知消费在案——
-  // 显式评审启动即停（运行档 metering.status 是权威标记面）。豁免=metering-ack 按 (attempt, seq)
-  // 对比较（见豁免账注）；更高 attempt 的新标记一律重新停。deps.listRuns 供离线契约测试。
+  // 显式评审启动即停（运行档 metering.status 是权威标记面）。豁免=落档时刻 ≤ ack.at（a1.r2
+  // F-4 时刻谓词）；其后落档的新标记一律重新停。未 spawn 未消耗运行不作标记（a1.r7 F-2）。
+  // deps.listRuns 供离线契约测试。
   const marks = [];
   for (let a = 1; a <= (goal?.attempt ?? 1); a += 1) {
     for (const run of (deps.listRuns ?? listReviewRuns)(cwd, { slug: goal.slug, attempt: a })) {
       const st = run?.metering?.status;
-      if (st && st !== "metered") marks.push({ attempt: run.attempt, seq: run.seq, status: st, runId: run.runId, endedAt: run.endedAt ?? null });
+      // a1.r7 F-2：未 spawn 运行（未消耗，metering.spawned=false）不作缺口标记——不误停派。
+      if (st && st !== "metered" && run?.metering?.spawned !== false) marks.push({ attempt: run.attempt, seq: run.seq, status: st, runId: run.runId, endedAt: run.endedAt ?? null });
     }
   }
   if (marks.length > 0) {
@@ -1297,7 +1299,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     //（M0 实测落库有滞后——末轮行未落库即被压低点数）；注记改逐会话分解（去「两会话合计」断言）。
     let metering;
     if (!spawned) {
-      metering = { status: "absent", points: null, note: "未 spawn——无计量可读（未消耗；不算零口径不适用）" };
+      metering = { status: "absent", points: null, spawned: false, note: "未 spawn——无计量可读（未消耗；不算零口径不适用）" }; // a1.r7 F-2：显式未消耗标记——执法面不当作未知消费
     } else {
       const reads = [];
       const seenSids = new Set();
@@ -1466,7 +1468,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
       isolation,
-      harvest: harvestInstance ? { instance: harvestInstance } : null, // 事件身份面（exports 落账行同携）
+      harvest: spawned ? { instance: harvestInstance } : null, // 事件身份面（a1.r7 F-3：spawned 即携对象——身份缺失也不落回数值指纹判重）
       sandbox: sandbox ? { ...sandbox.metadata, deniedConnections: sandbox.stats?.denied ?? 0, cleanup: cleanupState?.state ?? "unknown" } : null,
     };
     const out = await finishRun(cwd, reserve, record);    // 明烧落账（0.5.0，2026-10-02 commandcode 暗烧案）：metering.usage 在场的运行（含

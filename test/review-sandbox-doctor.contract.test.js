@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import * as doctor from "../core/doctor.js";
@@ -96,4 +96,22 @@ test("real doctor CLI JSON exposes dead-owner residue without reading or printin
   assert.equal(row.detail.includes(runDir), false);
   assert.equal(readFileSync(join(runDir, "home", "provider-config.sandbox.json"), "utf8"), secret, "doctor is read-only");
   writeFileSync(join(evidence, "doctor-cli-observable.json"), JSON.stringify({ exitCode: result.status, schemaVersion: parsed.schemaVersion, row, secretOmitted: true, credentialPreserved: true }, null, 2));
+});
+
+test("a1.r7 F-1：metering-ack.json 共存不毒化 doctor 评审族巡逻（茎过滤）", () => {
+  const cwd = join(evidence, "ack-coexist");
+  const home = join(evidence, "ack-home");
+  rmSync(cwd, { recursive: true, force: true });
+  mkdirSync(join(cwd, ".lazyzcode", "review"), { recursive: true });
+  mkdirSync(home, { recursive: true });
+  writeFileSync(join(cwd, ".lazyzcode", "review", "metering-ack.json"), JSON.stringify({ schemaVersion: 1, acks: { fx: { attempt: 1, ackSeq: 1, at: "2026-10-15T00:00:00.000Z" } } }));
+  const result = spawnSync(process.execPath, [cli, "doctor", "--json"], {
+    cwd, encoding: "utf8", timeout: 30000,
+    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, LZY_ZCODE_ENGINE: join(home, "disabled-engine.cjs") },
+  });
+  const parsed = JSON.parse(result.stdout);
+  const row = parsed.checks.find(x => x.name === "review");
+  assert.ok(row, "review 检查行在场");
+  assert.notEqual(row.state, "fail", `ack 文件不得被当坏档：${JSON.stringify(row)}`);
+  assert.doesNotMatch(result.stdout, /metering-ack/, "ack 文件不得出现在任何诊断点名里"); // 空夹具其他行可 fail（无关面），只钉 review 族行为
 });

@@ -180,7 +180,7 @@ for (const [, e] of runMap) {
     const pts = Math.max(0, u.points - ex.points);
     if (it + crt + ot <= 0 && pts <= 0) continue;
     delta.push({ provider: u.provider, model: u.model, inputTokens: it, cacheReadTokens: crt, outputTokens: ot, points: pts });
-    deltaTok += it + ot;
+    deltaTok += it + crt + ot; // a1.r7 F-5：口径与相邻行/全仓一致（含 cacheRead）
   }
   const deltaPoints = Math.max(0, agg.points - exPoints);
   if (delta.length === 0 && deltaPoints <= 0) { skippedDup += 1; continue; }

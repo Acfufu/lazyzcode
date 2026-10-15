@@ -625,3 +625,16 @@ test("a1.r6 G1/G2：SIGKILL 路径归因补齐——无 sid 时 B 级转录单�
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+test("a1.r7 F-2：未 spawn 运行（spawned:false）不作计量缺口标记——未消耗不误停派", async () => {
+  const d = fixture();
+  try {
+    recordAuthorization(d, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-28T00:00:00.000Z" });
+    seedRun(d, { attempt: 1, metering: { status: "absent", points: null, spawned: false, note: "未 spawn——无计量可读（未消耗；不算零口径不适用）" } });
+    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) };
+    const r = await runReview(d, { deps: realPreflight }); // 不得以 review-metering-unknown 拒
+    assert.equal(r.record.validity.status, "valid");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});

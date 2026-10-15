@@ -97,7 +97,7 @@ const stubSpawn = (response) => async ({ cwd, home }) => {
   writeFileSync(join(home, ".zcode", "cli", "rollout", "model-io-sess_x.jsonl"), JSON.stringify({ tool: { file_path: join(cwd, "a.txt") } }) + "\n");
   return { ok: true, exitCode: 0, signal: null, timedOut: false, durationMs: 5, stdout: FENCE(response) + "\n" + JSON.stringify({ sessionId: "sess_x", response: FENCE(response) }) + "\n", stderr: "", response: FENCE(response), sessionId: "sess_x" };
 };
-const deps = (response, points = 1) => ({ preflight: async () => ({ budget: null }), spawnHeadless: stubSpawn(response), querySessionPoints: async () => ({ absent: false, unpriced: [], points }) });
+const deps = (response, points = 1) => ({ preflight: async () => ({ budget: null }), spawnHeadless: stubSpawn(response), querySessionPoints: async () => ({ absent: false, unpriced: [], points }), appendUsage: () => false /* a1.r12 F-1：测试不写真实用量账本 */ });
 const SIGHT = (title = "授权撤回可绕过") => ({ severity: "P1", title, location: "auth.js:12" });
 const at = (h, m) => `2026-09-28T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00.000Z`;
 
@@ -327,7 +327,7 @@ describe("⑦评审预算执法（N9）：入账/分项/超限拒/无契约不�
       assert.ok(Math.abs(budgetView(d1).reviewPoints - 1.2) < 1e-9);
       // 自审 F-1 修正：CI/无凭据机器可跑——真前置的凭据依赖（detectAuth/sqliteProbe）注入替身，
       // budget-exhausted 判因因此不被 no-auth 抢先。
-      await assert.rejects(() => runReview(d1, { deps: { ...deps(PASS, 0.1), preflight: preflightReview, detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) } }), (e) => e.reason === "budget-exhausted");
+      await assert.rejects(() => runReview(d1, { deps: { ...deps(PASS, 0.1), preflight: preflightReview, detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }), appendUsage: () => false } }), (e) => e.reason === "budget-exhausted");
       // dedup：同 runId 重复入账不双计
       const dup = appendLedgerEntry(d1, { kind: "review", dedupKey: `review:${r1.record.runId}`, authorization: { slug: "fx", contractHash: "c".repeat(64) }, points: 999 });
       assert.equal(dup.duplicate, true);

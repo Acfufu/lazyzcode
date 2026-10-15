@@ -4,7 +4,7 @@ import { test } from "node:test";
 process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -258,6 +258,38 @@ test("appendSandboxUsage：同 runId 重放幂等不双算、新 runId 照常入
       "同 (project,runId) 不同计量内容=回收 id 的新运行照常入账",
     );
     assert.equal(readSandboxUsageLines().length, 6);
+  } finally {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedUP === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUP;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("appendSandboxUsage 写点守卫（a1.r12 F-2）：预置符号链接=拒写不跟随（链接目标字节零改动）", () => {
+  const home = mkdtempSync(join(tmpdir(), "lzy-cost-linkguard-"));
+  const savedHome = process.env.HOME;
+  const savedUP = process.env.USERPROFILE;
+  const outside = join(home, "outside-target.txt"); // 链接目标：守卫拒写后须逐字节原样
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const rec = {
+      runId: "fx.a1.r1", slug: "fx", attempt: 1, validity: { status: "valid" },
+      metering: { status: "metered", points: 3, usage: [{ provider: "p", model: "m", inputTokens: 5, cacheReadTokens: 0, outputTokens: 1, points: 3 }] },
+    };
+    const now = new Date("2026-10-10T00:00:00Z");
+    const month = new Date(now.getTime() + 8 * 3_600_000).toISOString().slice(0, 7); // 与写点同口径 UTC+8
+    mkdirSync(sandboxUsageDir(), { recursive: true });
+    writeFileSync(outside, "original\n");
+    symlinkSync(outside, join(sandboxUsageDir(), `${month}.jsonl`));
+    assert.throws(() => appendSandboxUsage("/x/y/linkguard", rec, { now }), /非普通文件/);
+    assert.equal(readFileSync(outside, "utf8"), "original\n", "拒跟随：链接目标零改动");
+    // spool 侧同守卫（best-effort 面：失败返回 false 不抛，pending 观测缺口由在档读数承载）
+    symlinkSync(outside, join(sandboxUsageDir(), ".spool-pending-fx.a1.r1.json"));
+    assert.equal(spoolPendingAppend("/x/y/linkguard", rec, new Error("x"), now), false);
+    assert.equal(readFileSync(outside, "utf8"), "original\n");
   } finally {
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;

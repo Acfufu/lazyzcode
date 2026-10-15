@@ -102,7 +102,7 @@ function stubSpawn({ response = FENCE(PASS), during = null, timedOut = false, ex
     };
   };
 }
-const deps = (extra = {}) => ({ preflight: preflightStub, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }), ...extra }); // detectAuth/sqliteProbe 缺省替身（CI 发布修复）：win 跑者无 provider env 也无 sqlite3 CLI——no-auth/metering-capability 真前置短路会让 stub 语义测试失真；显式注入者照常覆盖
+const deps = (extra = {}) => ({ preflight: preflightStub, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }), appendUsage: () => false /* a1.r12 F-1：测试不写真实用量账本 */, ...extra }); // detectAuth/sqliteProbe 缺省替身（CI 发布修复）：win 跑者无 provider env 也无 sqlite3 CLI——no-auth/metering-capability 真前置短路会让 stub 语义测试失真；显式注入者照常覆盖
 
 function recordPayload(d, { attempt = 1, seq = 1, overrides = {} } = {}) {
   return {
@@ -509,7 +509,7 @@ test("N1 partial 聚合：缺行伴已知积分→partial 且 points 保留、va
       return { ok: true, exitCode: 0, signal: null, timedOut: false, durationMs: 5, stdout: resp + "\n" + JSON.stringify({ sessionId: sid, response: resp }) + "\n", stderr: "", response: resp, sessionId: sid };
     };
     const qsp = async (sid) => (sid === "sess_p1" ? { absent: true, unpriced: [], points: 0 } : { absent: false, unpriced: [], points: 2.5, usage: [] });
-    const r = await runReview(d, { deps: { preflight: preflightStub, spawnHeadless: spawn2, querySessionPoints: qsp, detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) } });
+    const r = await runReview(d, { deps: { preflight: preflightStub, spawnHeadless: spawn2, querySessionPoints: qsp, detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }), appendUsage: () => false } });
     assert.equal(r.record.validity.status, "valid"); // 拍板：validity 语义不动
     assert.equal(r.record.metering.status, "partial"); // 缺口不再冒充完整（F1）
     assert.equal(r.record.metering.points, 2.5); // 已知积分保留
@@ -538,7 +538,7 @@ test("N1 执法面：在档持久计量缺口→启动拒 review-metering-unknow
   try {
     recordAuthorization(d, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-28T00:00:00.000Z" });
     seedRun(d, { attempt: 1, metering: { status: "partial", points: 2.5, note: "缺口" } });
-    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) };
+    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }), appendUsage: () => false };
     // 在案标记（无豁免）→ 前置拒（不 spawn 不落档）
     await assert.rejects(() => runReview(d, { deps: realPreflight }), (e) => e instanceof ReviewPreflightError && e.reason === "review-metering-unknown");
     assert.equal(listReviewRuns(d, { slug: "fx", attempt: 1 }).length, 1); // 拒不落档
@@ -562,7 +562,7 @@ test("N1 豁免谓词跨 attempt：更高 attempt 的新标记不获豁免（确
     recordAuthorization(d, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-28T00:00:00.000Z" });
     seedRun(d, { attempt: 1, metering: { status: "partial", points: 1, note: "旧 attempt 缺口" } });
     seedRun(d, { attempt: 2, metering: { status: "absent", points: null, note: "本 attempt 缺口" } });
-    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) };
+    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }), appendUsage: () => false };
     await assert.rejects(() => runReview(d, { deps: realPreflight }), (e) => e.reason === "review-metering-unknown");
     const r2 = await runReview(d, { deps: realPreflight, ackMetering: true }); // ack={attempt:2, ackSeq:1}
     assert.equal(r2.record.validity.status, "valid");
@@ -583,7 +583,7 @@ test("N1 执法 a1.r2 F-4：豁免谓词按落档时刻——seq 在 ackSeq 内�
     // 但落档晚于确认，旧 (attempt,seq) 谓词会误豁免，新时刻谓词须停
     recordMeteringAck(d, "fx", 1, 9);
     seedRun(d, { attempt: 1, metering: { status: "partial", points: 1, note: "晚于确认落档的缺口" }, endedAt: "2030-01-01T00:00:00.000Z" });
-    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) };
+    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }), appendUsage: () => false };
     await assert.rejects(() => runReview(d, { deps: realPreflight }), (e) => e instanceof ReviewPreflightError && e.reason === "review-metering-unknown");
   } finally {
     rmSync(d, { recursive: true, force: true });
@@ -631,7 +631,7 @@ test("a1.r7 F-2：未 spawn 运行（spawned:false）不作计量缺口标记—
   try {
     recordAuthorization(d, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: "2026-09-28T00:00:00.000Z" });
     seedRun(d, { attempt: 1, metering: { status: "absent", points: null, spawned: false, note: "未 spawn——无计量可读（未消耗；不算零口径不适用）" } });
-    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }) };
+    const realPreflight = { preflight: preflightReview, spawnHeadless: stubSpawn({}), querySessionPoints: async () => ({ ...METERED }), detectAuth: () => ({ ok: true, envAuth: true }), sqliteProbe: () => ({ ok: true }), appendUsage: () => false };
     const r = await runReview(d, { deps: realPreflight }); // 不得以 review-metering-unknown 拒
     assert.equal(r.record.validity.status, "valid");
   } finally {

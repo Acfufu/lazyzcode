@@ -17,6 +17,7 @@ mkdirSync(evidence, { recursive: true });
 const PASS = { duty: BASELINE_DUTY_ID, verdict: "pass", findings: [], summary: "clean" };
 const fence = (obj) => "```json\n" + JSON.stringify(obj) + "\n```";
 const metered = async () => ({ absent: false, unpriced: [], points: 0.5, usage: [] });
+const noLedger = () => false; // a1.r12 F-1：测试不写真实用量账本
 
 function fixture() {
   const d = mkdtempSync(join(tmpdir(), "lzy-tier-"));
@@ -60,7 +61,7 @@ test("OAuth-only（无个人 key 腿）自动落 app-layer tier：无 Seatbelt/l
   const restore = setPersonalEnv(undefined);
   const { calls, fn } = observingSpawn();
   try {
-    const r = await runReview(d, { deps: { preflight: async () => ({ budget: null }), spawnHeadless: fn, querySessionPoints: metered } });
+    const r = await runReview(d, { deps: { preflight: async () => ({ budget: null }), spawnHeadless: fn, querySessionPoints: metered, appendUsage: noLedger } });
     assert.equal(r.record.isolation.level, "app-layer");
     assert.equal(r.record.isolation.backend, null);
     assert.equal(r.record.sandbox, null); // 无沙盒面（0.5.0 形态）
@@ -83,7 +84,7 @@ test("deps.prepareSandbox 注入＝os-sandbox tier：isolation 记注入 backend
   const restore = setPersonalEnv(undefined); // 宿主 shell 可能带着个人 provider env——测试显式钉空
   const { calls, fn } = observingSpawn();
   try {
-    const r = await runReview(d, { deps: { preflight: async () => ({ budget: null }), spawnHeadless: fn, querySessionPoints: metered, prepareSandbox: testReviewSandbox } });
+    const r = await runReview(d, { deps: { preflight: async () => ({ budget: null }), spawnHeadless: fn, querySessionPoints: metered, prepareSandbox: testReviewSandbox, appendUsage: noLedger } });
     assert.equal(r.record.isolation.level, "os-sandbox");
     assert.equal(r.record.isolation.backend, "injected");
     assert.ok(r.record.sandbox && r.record.sandbox.level === "test");

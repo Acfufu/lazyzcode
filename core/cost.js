@@ -4,7 +4,7 @@
 // 认领会话集）。spawn 豁免声明：本模块经 hostdb 查 sqlite3——plan-v2 §4-2 明示豁免，
 // loop.js 零 spawn 纪律不受影响。
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import { queryHostDb } from "./hostdb.js";
@@ -390,8 +390,19 @@ export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
   const dir = sandboxUsageDir();
   mkdirSync(dir, { recursive: true });
   const month = new Date(now.getTime() + 8 * 3_600_000).toISOString().slice(0, 7);
+  assertRegularTarget(join(dir, `${month}.jsonl`)); // a1.r12 F-2：写点防预置符号链接/非普通文件（同仓守卫家法）
   appendFileSync(join(dir, `${month}.jsonl`), `${JSON.stringify(line)}\n`, { mode: 0o600 });
   return true;
+}
+
+// 写点守卫（a1.r12 F-2）：目标在场且非 regular 文件=拒（拒跟随符号链接/设备/FIFO）。
+function assertRegularTarget(p) {
+  try {
+    const st = lstatSync(p);
+    if (!st.isFile()) throw new Error(`用量账本目标非普通文件（拒跟随链接）：${p}`);
+  } catch (e) {
+    if (e?.code !== "ENOENT") throw e;
+  }
 }
 
 // 追加失败持久回执（a1.r5 F-3）：runDir 面不在手时给观测面留 pending 标记——下次 append 成功
@@ -401,6 +412,7 @@ export function spoolPendingAppend(cwd, record, err, now = new Date()) {
     const dir = sandboxUsageDir();
     mkdirSync(dir, { recursive: true });
     const rid = String(record?.runId ?? "unknown").replace(/[^\w.-]/g, "_");
+    assertRegularTarget(join(dir, `.spool-pending-${rid}.json`));
     writeFileSync(join(dir, `.spool-pending-${rid}.json`), `${JSON.stringify({ at: now.toISOString(), project: String(cwd ?? "") || null, runId: record?.runId ?? null, error: String(err?.message ?? err).slice(0, 200) })}\n`, { mode: 0o600 });
     return true;
   } catch {

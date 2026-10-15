@@ -177,6 +177,15 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
 | F8 | 迁移提交点 | §7（journal+备份→导入→对账→原子安装→backend 标记最后写=提交点） | ADR-0029 先例 |
 | F9 | 版本冲突与回退能力 | §8（前向单向；writer_version；不支持自动回退明示） | plan §6 明文姿态 |
 
-## 12. 后续实施面（非本批）
+## 12. 后续实施面（非本批）与 P1→P2 交接注记
 
-P2：按 §3–§5 实现存储层并把 queue/review/CLI/钩子接线（仍不接管用户现有状态）；夹具按后端重建（八测试文件+scripts/v031|v040 清单见 goal 计划 N5 交接注记）。P3：§7/§8 的显式迁移与单权威切换。P4：真实 CLI 平台面（含 win32 VM）与最低运行时验证。
+**P1→P2 交接清单（P1 侦察实证，P2 逐条消费）**：
+1. **锁外写四点（须事务化）**：`runQueueDispatch` 内 core/queue.js:1143（槽位冲突 patchTx）、:1190（drive 后 segments patchTx）、:1202-1203（失败路径 saveQueue+patchTx+settleTxLedger）、:1235（交付在途标记 patchTx）——现行跨文件写在这些点存在撕裂窗（§5）。
+2. **写序不一致**：`reconcileDispatch` 尾写 queue（queue.js:916）vs `abortDelivery` 首写 queue（queue.js:966）——事务化消解写序问题，锁内/锁外归属须逐点定案（§5）。
+3. **夹具重建清单（按后端）**：test/ 八件=queue-state、budget-ledger、queue-metering、queue-delivery、dispatch-recovery、unified-gate、delivery-hook（混合真 CLI 驱动）、review-findings（经 core 间接写 ledger）；scripts/ 侧 v031（evidence-probe.sh、closeout-qa.mjs、queue-bridge-e2e.mjs）与 v040（qa.mjs 的 sha256 字节保留断言、m1-gate-harness.mjs）；ablation 族的 ledger.jsonl 与本三件无关（勿混改）。
+4. **checksumOf 六份逐字复制面**（core/delivery.js:53、core/runtime.js:41、core/verify.js:33、core/dag.js:28、core/attempt.js:27 + trigger.js:66 内联第七份）——「逐字同源」只是注释约定；存储契约单源化时这是现成漂移面清单（本批不动）。
+5. **迁移机器（core/migrate.js）的 BACKUP_FAMILIES 不含三族**（只含 loop/goal.json、approvals、snapshots、salvage、attestations、evidence、plans）——P3 迁移的备份语义需新设计，不能复用 v040 QA 的「迁移前后 sha256 不变」断言（那是「不碰」证明，非备份机制）。
+6. **trigger.js 不校验 queueVersion**（只校验 checksum；core 有版本闸）——钩子权威读路径改造时须补版本/形状门归属（§10）。
+7. **hook 读面在 DB 缺席时的分支**：「非工作区」与「迁移未做」须区分（P3 接线设计面，P1 原型把库缺席当落回信号）。
+
+**P2**：按 §3–§5 实现存储层并把 queue/review/CLI/钩子接线（仍不接管用户现有状态；夹具按上表重建）。**P3**：§7/§8 的显式迁移与单权威切换。**P4**：真实 CLI 平台面（含 win32 VM）与最低运行时验证。

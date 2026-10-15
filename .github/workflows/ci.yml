@@ -42,3 +42,16 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/check-docs-links.mjs
+
+  # SQLite 迁移地板腿（P1 N4，ADR-0039 拍板地板 2026-10-16）：钉 24.0.0 实跑
+  # 能力探针（必需面全过）+ 试点契约测试（五面/双读者；<24 环境在其它腿自然具名 skip）。
+  sqlite-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.0.0
+      - run: node scripts/sqlite-capability-probe.mjs
+      - run: node --test test/statedb.contract.test.js test/statedb-readers.contract.test.js
+

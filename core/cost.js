@@ -4,7 +4,7 @@
 // 认领会话集）。spawn 豁免声明：本模块经 hostdb 查 sqlite3——plan-v2 §4-2 明示豁免，
 // loop.js 零 spawn 纪律不受影响。
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, realpathSync, mkdirSync, appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import { queryHostDb } from "./hostdb.js";
@@ -321,7 +321,8 @@ export function instanceDigest(sids) {
 // 读来源库已结算会话集（越界/缺列 → null，调用方按旧口径兼容）。
 export function sandboxUsageSids(dbPath, { queryDb = queryHostDb } = {}) {
   try {
-    const rows = queryDb(dbPath, "SELECT DISTINCT sid FROM model_usage WHERE status = 'completed'");
+    // a1.r5 9ca842b4：真列名 session_id（规范查询同别名 AS sid 家法）——直查 sid 恒失败。
+    const rows = queryDb(dbPath, "SELECT DISTINCT session_id AS sid FROM model_usage WHERE status = 'completed'");
     if (!Array.isArray(rows)) return null;
     return rows.map((r) => r?.sid).filter((x) => typeof x === "string" && x);
   } catch {
@@ -393,16 +394,32 @@ export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
   return true;
 }
 
+// 追加失败持久回执（a1.r5 F-3）：runDir 面不在手时给观测面留 pending 标记——下次 append 成功
+// 不自动清（人工核对后删除；「恢复只记一次」由去重面承载，pending 是缺口可见性面）。
+export function spoolPendingAppend(cwd, record, err, now = new Date()) {
+  try {
+    const dir = sandboxUsageDir();
+    mkdirSync(dir, { recursive: true });
+    const rid = String(record?.runId ?? "unknown").replace(/[^\w.-]/g, "_");
+    writeFileSync(join(dir, `.spool-pending-${rid}.json`), `${JSON.stringify({ at: now.toISOString(), project: String(cwd ?? "") || null, runId: record?.runId ?? null, error: String(err?.message ?? err).slice(0, 200) })}\n`, { mode: 0o600 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // 读面带完整性诊断（N4/F5）：坏行数与目录态（ok|absent|unreadable）随行返回——「完整无消费」
 // 与「未能读取/读到坏账」在读面上不可再混淆；追加失败由调用点如实上浮（review.js 去 catch 吞）。
 export function readSandboxUsageWithDiag({ dir = sandboxUsageDir() } = {}) {
-  let names;
+  let entries;
   try {
-    names = readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort();
+    entries = readdirSync(dir);
   } catch (e) {
     const absent = e?.code === "ENOENT";
-    return { lines: [], diag: { files: 0, corruptLines: 0, dirState: absent ? "absent" : "unreadable" } };
+    return { lines: [], diag: { files: 0, corruptLines: 0, pending: 0, dirState: absent ? "absent" : "unreadable" } };
   }
+  const pending = entries.filter((f) => /^\.spool-pending-.+\.json$/.test(f)).length; // a1.r5 F-3
+  const names = entries.filter((f) => f.endsWith(".jsonl")).sort();
   const lines = [];
   let corruptLines = 0;
   for (const f of names) {
@@ -424,7 +441,7 @@ export function readSandboxUsageWithDiag({ dir = sandboxUsageDir() } = {}) {
       }
     }
   }
-  return { lines, diag: { files: names.length, corruptLines, dirState: "ok" } };
+  return { lines, diag: { files: names.length, corruptLines, pending, dirState: "ok" } };
 }
 
 export function readSandboxUsageLines({ dir } = {}) {
@@ -520,6 +537,9 @@ export function formatCost(cwd, goal, now = new Date()) {
   }
   if (sbRead.diag.dirState === "ok" && sbRead.diag.corruptLines > 0) {
     lines.push(`  ⚠ 沙盒外泄账含 ${sbRead.diag.corruptLines} 条坏行（已跳过）——读数为不完整下界，核对后可重跑 harvest 补账（F5）`);
+  }
+  if (sbRead.diag.dirState === "ok" && sbRead.diag.pending > 0) {
+    lines.push(`  ⚠ 待补账回执 ${sbRead.diag.pending} 件（追加失败在案，pending）——核对后重跑 harvest 补账并删除 .spool-pending-* 回执（F3）`);
   }
   if (rows !== null) {
     const pts = computePoints(rows);

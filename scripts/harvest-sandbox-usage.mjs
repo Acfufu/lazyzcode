@@ -85,7 +85,9 @@ function walkSandboxDbs(root) {
 }
 
 const parseRun = (db) => {
-  const i = db.indexOf("/.lazyzcode/");
+  // a1.r5 F-5：取**最后一个** /.lazyzcode/（home 之前最深的那层）——路径上游含祖先 .lazyzcode
+  // （嵌套仓/夹具布局）时首个匹配会把 root/runId 解析到上级。
+  const i = db.lastIndexOf("/.lazyzcode/");
   const root = db.slice(0, i);
   const seg = db.slice(i + "/.lazyzcode/".length).split("/");
   const runId = seg[1] ?? seg[0]; // <kind>/<runId>/home/... ；home 在 <runId> 下、kind 可能嵌套
@@ -98,6 +100,7 @@ const parseRun = (db) => {
 const runMap = new Map();
 const seenDbs = new Set(); // 会话根可互相嵌套（父根嵌套搜索会再次命中子根的 .lazyzcode）——全局去重
 let scanned = 0;
+let unreadable = 0; // a1.r5 F-6：db 在场但查询失败（sqlite3 缺席/库损坏）——不得与「无可补运行」静默归零
 const roots = hostSessionRoots();
 for (const root of roots) {
   for (const db of walkSandboxDbs(root)) {
@@ -105,15 +108,17 @@ for (const root of roots) {
     seenDbs.add(db);
     scanned += 1;
     const meta = parseRun(db);
-    const rows = queryHostDb(db, [
+    const rowsRaw = queryHostDb(db, [
       "SELECT provider_id AS provider, model_id AS model, started_at/3600000 AS h,",
       "SUM(input_tokens) AS it, SUM(cache_read_input_tokens) AS crt, SUM(output_tokens) AS ot",
       "FROM model_usage WHERE status = 'completed'",
       "GROUP BY provider, model, h",
-    ].join(" ")) || [];
+    ].join(" "));
+    if (rowsRaw === null && existsSync(db)) { unreadable += 1; continue; } // 查询失败≠空
+    const rows = rowsRaw || [];
     const span = queryHostDb(db, "SELECT MAX(started_at) AS m, MAX(completed_at) AS c FROM model_usage") || [];
     if (rows.length === 0) continue;
-    const sidRows = queryHostDb(db, "SELECT DISTINCT sid FROM model_usage WHERE status = 'completed'") || [];
+    const sidRows = queryHostDb(db, "SELECT DISTINCT session_id AS sid FROM model_usage WHERE status = 'completed'") || []; // 真列名 session_id（a1.r5 P1）
     const mapKey = `${meta.root}\u0000${meta.runId}`;
     const e = runMap.get(mapKey) ?? { ...meta, rows: [], sids: [], maxStart: 0, maxDone: 0 };
     e.rows.push(...rows);
@@ -152,9 +157,10 @@ for (const [, e] of runMap) {
   // 重放判定（a1.r2 F-1 修复）：同实例同水位=同一来源状态（跳过）；instance 异=重建同名 run
   // 的新运行（等额不吞）；水位前进=同实例新差量（追加）。
   if (existing.some((l) => (l.harvest?.instance ?? null) === instance && l.harvest?.watermark === watermark)) { skippedDup += 1; continue; }
-  // 差量：truth − Σexisting——**只减同实例（或同缺实例的旧形）行**（a1.r2 F-1：旧 db 已删的
-  // 重建运行与被旧行等额抵消的病根在此；跨实例行不参与抵消，等额新消耗照常入账）。
-  const subtractable = existing.filter((l) => (l.harvest?.instance ?? null) === instance);
+  // 差量：truth − Σexisting——减**同实例行 + 无身份旧形行**（a1.r2 F-1：跨实例行不参与抵消，
+  // 等额新消耗照常入账；a1.r5 F-2：无 harvest 字段的历史行（0.5.0 期跑出来的运行器行）仍须
+  // 参与抵消，否则同运行会被补账双计——旧形行无实例无从判跨，保守减）。
+  const subtractable = existing.filter((l) => !l.harvest || (l.harvest.instance ?? null) === instance);
   const exGroups = new Map();
   let exPoints = 0;
   for (const l of subtractable) {
@@ -188,7 +194,7 @@ for (const [, e] of runMap) {
 }
 
 plan.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : b.deltaTok - a.deltaTok));
-console.log(`扫描 db ${scanned} | 运行 ${runMap.size} | 跳过 pre-${CUTOFF} ${skippedPre} | 已入账 ${skippedDup} | 待追加 ${plan.length}`);
+console.log(`扫描 db ${scanned} | 运行 ${runMap.size} | 跳过 pre-${CUTOFF} ${skippedPre} | 已入账 ${skippedDup} | 待追加 ${plan.length}${unreadable ? ` | ⚠ 不可读 db ${unreadable}（完整性存疑，勿当全量）` : ""}`);
 let sumTok = 0;
 let sumPts = 0;
 for (const p of plan) {

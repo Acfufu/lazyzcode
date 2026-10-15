@@ -1063,7 +1063,7 @@ function printHelp() {
                                             真实评审会话产出结构化判决并落档 .lazyzcode/review/；
                                             退出码：0=pass 且有效，1=blocked/invalid（已落档，
                                             失败不可改判），2=用法错，3=前置不具备（不 spawn 不消耗）
-  lzy review recheck [--fingerprint <前8>] [--contested <前8>] [--duty <id>]
+  lzy review recheck [--fingerprint <前8>] [--contested <前8>] [--duty <id>] [--ack-metering]
                                             独立复核运行（0.4.0 M3）：同职责新会话 facts-only
                                             重跑，对账产出闭候选读数（关闭仍须 finding close
                                             显式落账）；--contested=异议复判（决策 #44：
@@ -1912,7 +1912,7 @@ async function cmdReview(args) {
     }
     let res;
     try {
-      res = await runReview(cwd, { duty: f.duty, timeoutMs: f["timeout-ms"] != null ? Number(f["timeout-ms"]) : undefined, recheckOf, contestedOf });
+      res = await runReview(cwd, { duty: f.duty, timeoutMs: f["timeout-ms"] != null ? Number(f["timeout-ms"]) : undefined, recheckOf, contestedOf, ackMetering: f["ack-metering"] === true }); // a1.r5 F-4：关闭通道同带 ack 腿
     } catch (err) {
       if (err instanceof ReviewPreflightError) {
         console.error(`前置不具备（不 spawn、不消耗、不落档）：${err.message}`);

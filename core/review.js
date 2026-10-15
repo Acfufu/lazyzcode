@@ -19,7 +19,7 @@ import { createGit } from "./git.js";
 import { findEngine } from "./paths.js";
 import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless, detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
-import { querySessionPoints, appendSandboxUsage, sandboxUsageInstance, sandboxUsageSids } from "./cost.js";
+import { querySessionPoints, appendSandboxUsage, sandboxUsageInstance, sandboxUsageSids, spoolPendingAppend } from "./cost.js";
 import { createReviewSandbox, reviewSandboxCapability, registerReviewCleanup, cleanupReviewSandbox, prepareReviewProviderRuntime, copyOAuthCredential } from "./review-sandbox.js";
 import { findReviewTranscript, queryReviewHostDb } from "./review-artifacts.js";
 
@@ -1480,6 +1480,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       (deps.appendUsage ?? appendSandboxUsage)(cwd, out.record);
     } catch (e) {
       console.error(`[lzy] 沙盒外泄账追加失败（用量以运行档 metering.usage 为准，可重跑 harvest 补账）：${String(e?.message ?? e).slice(0, 160)}`);
+      (deps.spoolPending ?? spoolPendingAppend)(cwd, out.record, e); // a1.r5 F-3：pending 持久回执
     }
     // N9：评审消耗入账（LEDGER review 类）——契约绑定才写（authorization 形状须 64hex
     // contractHash；无契约 goal 保持运行档 durable 面）；metered/partial 才写（N1：partial 的

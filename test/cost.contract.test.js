@@ -164,7 +164,7 @@ test("CLI：lzy loop cost 无账本降级输出退出码 0（ISOLATED_HOME，零
 });
 
 // ── 沙盒外泄账（0.5.0 明烧面，2026-10-02 commandcode 暗烧案收口）──
-import { aggregateUsageRows, sandboxLedgerLine, appendSandboxUsage, readSandboxUsageLines, readSandboxUsageWithDiag, sandboxUsageDir, summarizeSandboxUsage, querySessionPoints, formatCost, instanceDigest } from "../core/cost.js";
+import { aggregateUsageRows, sandboxLedgerLine, appendSandboxUsage, readSandboxUsageLines, readSandboxUsageWithDiag, sandboxUsageDir, summarizeSandboxUsage, querySessionPoints, formatCost, instanceDigest, spoolPendingAppend } from "../core/cost.js";
 
 test("aggregateUsageRows：按 (provider,model) 归组、tokens 求和、未计价组保留 tokens 计 0 分", () => {
   const dayH = H("2026-10-02T08:00:00+08:00"); // 周五白昼非高峰 → 常设 ×0.5
@@ -495,5 +495,27 @@ test("CLI：lzy loop cost 沙盒外泄账段（真 db+真落账目录，双源�
   } finally {
     rmSync(home, { recursive: true, force: true });
     rmSync(cwd0, { recursive: true, force: true });
+  }
+});
+
+test("a1.r5 F-3：追加失败 spool pending 回执——诊断面 pending 计数与 formatCost 上浮", () => {
+  const home = mkdtempSync(join(tmpdir(), "lzy-cost-pending-"));
+  const savedHome = process.env.HOME;
+  const savedUP = process.env.USERPROFILE;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    assert.equal(spoolPendingAppend("/p/x", { runId: "fx.a1.r1" }, new Error("disk full")), true);
+    const { diag } = readSandboxUsageWithDiag();
+    assert.equal(diag.pending, 1);
+    const out = formatCost("/p/x", null);
+    assert.match(out, /待补账回执 1 件/);
+    assert.match(out, /spool-pending/);
+  } finally {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedUP === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUP;
+    rmSync(home, { recursive: true, force: true });
   }
 });

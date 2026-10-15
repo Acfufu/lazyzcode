@@ -8,6 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from "node:
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   SCHEMA_VERSION, StatedbBusyError, StatedbError, StatedbUnsupportedError,
@@ -69,7 +70,7 @@ test("①唯一事件约束：同 dedupKey 二次入账=duplicate no-op；等额
     assert.deepEqual(e3, { duplicate: false, seq: 2 });
     assert.equal(db.prepare("SELECT COUNT(*) c FROM budget_events").get().c, 2);
     db.close();
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("②占用事务：登记+置 running 同窗可见；同条目重复占用=拒（不重复认领）", { skip: FLOOR_SKIP }, () => {
@@ -94,7 +95,7 @@ test("②占用事务：登记+置 running 同窗可见；同条目重复占用=
     assert.equal(agg.openWallMs, 1000);
     assert.equal(agg.pointsRemaining, 8);
     db.close();
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("③结算事务：三面同窗/重复结算幂等不双计/overrun 派生单列", { skip: FLOOR_SKIP }, () => {
@@ -140,7 +141,7 @@ test("③结算事务：三面同窗/重复结算幂等不双计/overrun 派生�
     setBudget(db, { pointsLimit: 3, wallLimitMs: 60000, notes: [], ack: { at: "2026-01-02T00:00:00.000Z", ackSeq: maxSeq, note: "人工恢复" } });
     assert.equal(readBudgetAggregate(db).pointsStopped, false);
     db.close();
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("④并发冲突：持锁期间竞争者 busy_timeout 等待后具名 StatedbBusyError（errcode 5）", { skip: FLOOR_SKIP }, async () => {
@@ -165,7 +166,7 @@ test("④并发冲突：持锁期间竞争者 busy_timeout 等待后具名 State
     assert.match(busyErr.message, /errcode 5/);
     assert.ok(elapsed >= 150, `busy 等待过短（${elapsed}ms）——未走 busy_timeout`);
     assert.ok(elapsed <= 5000, `busy 等待过长（${elapsed}ms）`);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("⑤崩溃恢复：写事务中 kill -9 → 已提交在/未提交无/open 占用持续可见/integrity ok", { skip: FLOOR_SKIP }, async () => {
@@ -174,7 +175,7 @@ test("⑤崩溃恢复：写事务中 kill -9 → 已提交在/未提交无/open 
     const dbPath = stateDbPath(dir);
     mkdirSync(join(dir, ".lazyzcode"), { recursive: true });
     const ready = join(dir, "child-ready");
-    const child = spawn(process.execPath, [new URL(import.meta.url).pathname], {
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url)], {
       env: { ...process.env, STATEDB_CHILD: "crash-midtx", STATEDB_CHILD_DB: dbPath, STATEDB_CHILD_READY: ready },
       stdio: "ignore",
     });
@@ -193,7 +194,7 @@ test("⑤崩溃恢复：写事务中 kill -9 → 已提交在/未提交无/open 
     const agg = readBudgetAggregate(db);
     assert.equal(agg.openPoints, 1); // 占用上限保守计入
     db.close();
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("⑥WAL 回读拒面：≠wal → 具名 StatedbUnsupportedError（不静默降级）", () => {

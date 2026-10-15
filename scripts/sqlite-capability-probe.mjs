@@ -9,6 +9,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createRequire } from "node:module";
@@ -16,7 +17,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const FLOOR_MAJOR = 24;
 const NODE = process.execPath;
-const SELF = new URL(import.meta.url).pathname;
+const SELF = fileURLToPath(import.meta.url);
 const workdir = process.argv[2] ?? mkdtempSync(join(tmpdir(), "lzy-sqlite-probe-"));
 mkdirSync(workdir, { recursive: true });
 

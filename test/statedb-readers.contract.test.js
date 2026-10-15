@@ -50,7 +50,7 @@ function buildCase({ items, contractBodies = {} }) {
   ensureSchema(db);
   for (const it of items) putQueueItem(db, it);
   db.close();
-  return { dirJ, dirD, db: openStore(stateDbPath(dirD), { readOnly: true }) };
+  return { dirJ, dirD };
 }
 
 function run(side, dir, prompt, { apply = true } = {}) {
@@ -91,7 +91,7 @@ test("A/B①approve：判定与记录形状两侧一致", { skip: FLOOR_SKIP }, 
     const rd = record(dirD, records(dirD)[0]);
     assert.deepEqual(Object.keys(rj).sort(), Object.keys(rd).sort());
     assert.deepEqual({ version: rd.version, kind: rd.kind, slug: rd.slug, contractHash: rd.contractHash }, { version: 1, kind: "approval", slug: "goal-q-ab-1", contractHash: sha(body) });
-  } finally { rmSync(dirJ, { recursive: true, force: true }); rmSync(dirD, { recursive: true, force: true }); }
+  } finally { rmSync(dirJ, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); rmSync(dirD, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("A/B②void：契约入队后漂移=短码作废，两侧零记录", { skip: FLOOR_SKIP }, () => {
@@ -107,7 +107,7 @@ test("A/B②void：契约入队后漂移=短码作废，两侧零记录", { skip
     assert.match(j.parsed.additionalContext, /short code is void/);
     assert.equal(records(dirJ).length, 0);
     assert.equal(records(dirD).length, 0);
-  } finally { rmSync(dirJ, { recursive: true, force: true }); rmSync(dirD, { recursive: true, force: true }); }
+  } finally { rmSync(dirJ, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); rmSync(dirD, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("A/B③refuse-multi：同短码多命中=拒猜，两侧零记录", { skip: FLOOR_SKIP }, () => {
@@ -126,7 +126,7 @@ test("A/B③refuse-multi：同短码多命中=拒猜，两侧零记录", { skip:
     assert.match(j.parsed.additionalContext, /refusing to guess/);
     assert.equal(records(dirJ).length, 0);
     assert.equal(records(dirD).length, 0);
-  } finally { rmSync(dirJ, { recursive: true, force: true }); rmSync(dirD, { recursive: true, force: true }); }
+  } finally { rmSync(dirJ, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); rmSync(dirD, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("A/B④candidates-no-match：有候选零命中=诊断列短码，两侧零记录", { skip: FLOOR_SKIP }, () => {
@@ -141,7 +141,7 @@ test("A/B④candidates-no-match：有候选零命中=诊断列短码，两侧零
     assert.match(j.parsed.additionalContext, /No pending approval matches this code/);
     assert.equal(records(dirJ).length, 0);
     assert.equal(records(dirD).length, 0);
-  } finally { rmSync(dirJ, { recursive: true, force: true }); rmSync(dirD, { recursive: true, force: true }); }
+  } finally { rmSync(dirJ, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); rmSync(dirD, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("A/B⑤write-failed：记录写失败=零记录且门保持关闭，两侧一致", { skip: FLOOR_SKIP }, () => {
@@ -164,7 +164,7 @@ test("A/B⑤write-failed：记录写失败=零记录且门保持关闭，两侧�
     assert.match(j.parsed.additionalContext, /queue gate stays closed/);
     assert.equal(records(dirJ).length, 0);
     assert.equal(records(dirD).length, 0);
-  } finally { rmSync(dirJ, { recursive: true, force: true }); rmSync(dirD, { recursive: true, force: true }); }
+  } finally { rmSync(dirJ, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); rmSync(dirD, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("A/B⑥unreadable：库/文件损坏=零记录+exit 0；DB 侧具名诊断（JSON 侧落既有诊断支）", { skip: FLOOR_SKIP }, () => {
@@ -186,7 +186,7 @@ test("A/B⑥unreadable：库/文件损坏=零记录+exit 0；DB 侧具名诊断�
     assert.match(j.parsed.additionalContext, /no goal loop is registered/); // JSON 侧 fail-open 落既有诊断支（差异如实断言）
     assert.equal(records(dirJ).length, 0);
     assert.equal(records(dirD).length, 0);
-  } finally { rmSync(dirJ, { recursive: true, force: true }); rmSync(dirD, { recursive: true, force: true }); }
+  } finally { rmSync(dirJ, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); rmSync(dirD, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("A/B⑦none：零候选=落回信号（DB {}），两侧零记录+exit 0", { skip: FLOOR_SKIP }, () => {
@@ -200,15 +200,16 @@ test("A/B⑦none：零候选=落回信号（DB {}），两侧零记录+exit 0", 
     assert.match(j.parsed.additionalContext, /no goal loop is registered/);
     assert.equal(records(dirJ).length, 0);
     assert.equal(records(dirD).length, 0);
-  } finally { rmSync(dirJ, { recursive: true, force: true }); rmSync(dirD, { recursive: true, force: true }); }
+  } finally { rmSync(dirJ, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); rmSync(dirD, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });
 
 test("A/B⑧一致性：dry 判定与 readSnapshot 同读数（且 dry 零写）", { skip: FLOOR_SKIP }, () => {
   const body = "task: delivery B\n";
-  const { dirD, db } = buildCase({
+  const { dirD } = buildCase({
     items: [item("q-ab-8", { delivery: { B: { path: "contracts/b.md", hash: sha(body) } } })],
     contractBodies: { "contracts/b.md": body },
   });
+  const db = openStore(stateDbPath(dirD), { readOnly: true });
   try {
     const short = sha(body).slice(0, 8);
     const d = run("db", dirD, `批准 ${short}`, { apply: false }); // dry
@@ -220,5 +221,5 @@ test("A/B⑧一致性：dry 判定与 readSnapshot 同读数（且 dry 零写）
     assert.equal(d.parsed.ep, "B");
     assert.equal(d.parsed.hash, snap.items[0].delivery.B.hash); // 与 readSnapshot 同读数一致
     assert.equal(d.parsed.hash, sha(body));
-  } finally { rmSync(dirD, { recursive: true, force: true }); }
+  } finally { db.close(); rmSync(dirD, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });

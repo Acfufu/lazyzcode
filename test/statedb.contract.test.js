@@ -17,6 +17,7 @@ import {
   SCHEMA_VERSION, StatedbBusyError, StatedbError, StatedbUnsupportedError,
   openStore, ensureSchema, putQueueItem, setBudget, occupyDispatch, settleDispatch,
   appendBudgetEvent, readSnapshot, readBudgetAggregate, assertWal, runtimeSupport, stateDbPath,
+  replaceDispatchTxs, patchDispatchTx,
 } from "../core/statedb.js";
 
 const MAJOR = Number(process.versions.node.split(".")[0]);
@@ -232,6 +233,38 @@ test("⑧结构性不嵌套：既有事务在途时再开操作=具名拒（不�
     db.exec("ROLLBACK"); // 外层事务收束
     const after = appendBudgetEvent(db, { kind: "wall", dedupKey: "after-rollback", ms: 2, authorization: AUTH });
     assert.equal(after.duplicate, false, "回滚后应恢复可写");
+    db.close();
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+});
+
+test("⑨段行往返与结算自读：replaceDispatchTxs 写段（extra 保形）→ settleDispatch 缺省自读成事件；patchDispatchTx 单事务合补+未知字段拒", { skip: FLOOR_SKIP }, () => {
+  const dir = freshDir();
+  try {
+    const db = openStore(stateDbPath(dir));
+    ensureSchema(db);
+    putItem(db);
+    replaceDispatchTxs(db, [{
+      txId: "t-sr", itemId: "q-1", goalSlug: "fixture-goal", phase: "open",
+      openedAt: "2026-01-01T00:00:00.000Z", settledAt: null, limits: { wallMs: 1000, points: 1 },
+      segments: [
+        { sessionId: "s-a", durationMs: 10, exitCode: 0, endedAt: "2026-01-01T00:00:01.000Z" },
+        { sessionId: "s-b", durationMs: 20 },
+      ],
+    }]);
+    const back = readSnapshot(db).segments;
+    assert.deepEqual(back.map((g) => ({ sessionId: g.sessionId, durationMs: g.durationMs, ...(g.extra ?? {}) })),
+      [{ sessionId: "s-a", durationMs: 10, exitCode: 0, endedAt: "2026-01-01T00:00:01.000Z" }, { sessionId: "s-b", durationMs: 20 }]);
+    const out = settleDispatch(db, { txId: "t-sr", queryPoints: () => ({ absent: false, unpriced: [], points: 0 }) });
+    assert.equal(out.wallEntries, 2, "缺省 segments=自读段行（不得静默零段）");
+    assert.deepEqual(readSnapshot(db).events.map((e) => e.dedupKey).sort(), ["wall:t-sr:s-a", "wall:t-sr:s-b"]);
+    // patchDispatchTx：tx+item 单事务合补；未知字段=具名拒
+    patchDispatchTx(db, { txId: "t-sr", tx: { phase: "killed", note: "合补" }, itemId: "q-1", item: { state: "failed", blockedReason: "冒烟" } });
+    const snap = readSnapshot(db);
+    assert.equal(snap.txs[0].phase, "killed");
+    assert.equal(snap.txs[0].note, "合补");
+    assert.equal(snap.items[0].state, "failed");
+    assert.equal(snap.items[0].blockedReason, "冒烟");
+    assert.throws(() => patchDispatchTx(db, { txId: "t-sr", tx: { nope: 1 } }), (e) => e instanceof StatedbError && /未知 tx 字段/.test(e.message));
     db.close();
   } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });

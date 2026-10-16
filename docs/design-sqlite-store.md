@@ -130,6 +130,8 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
 - **两处核心事务**（P2 实施）：①派发占用=登记 tx(open)+item→running 一次提交；②结算=逐段事件+tx settled+item 应达态一次提交（保留失败回 ready 的现行恢复路径）。
 - **P2 输入（现行撕裂窗清单，须逐一事务化）**：`runQueueDispatch` 四处锁外写（queue.js:1143、:1190、:1202-1203、:1235）；写序不一致（reconcile 尾写 queue:916 vs abortDelivery 首写 queue:966）——事务化后写序问题消解，但锁内/锁外归属须逐点定案。
 
+**P2 锁内/锁外归属定案（2026-10-17，goal p2-sqlite-tx#N3；DB 后端）**：①派发占用=门序锁内**单事务**{insert tx(open)+item→running(+updated_at)}（提交后才进入 goal 生命周期与 drive——外部动作在事务提交后启动）；②槽位冲突分支（现行 :1143 锁外 patchTx + :1144 锁内 saveQueue）=并入既有相邻 withLock 的**单事务**{tx→reconciled-orphan+item→failed}（dispatch 写从锁外挪进锁内——不新增无锁 queue_items 写）；③drive 后段记录（:1190）=保持锁外**单事务**{段行整体替换}；④drive 失败路径（现行 :1194 锁内 saveQueue + 锁外 :1202-1203 patchTx/settleTxLedger）=并入既有相邻 withLock 的**单事务**{item→failed〔含 refreshStates 级联全量队列〕+逐段事件+tx→settled}；⑤交付在途标记（:1235）=保持锁外**单事务**，提交后才进交付链。写序：reconcile 尾写（:916）与 abortDelivery 首写（:966）各自独立事务、原子性消解——**无需统一写序**。JSON 后端各点原路径逐字不动。
+
 ## 6. WAL、备份与恢复
 
 - **打开即校验**：`PRAGMA journal_mode=WAL` 后**回读**；≠wal＝拒绝进入 DB 模式（具名诊断，不静默降级到 delete 模式）。不支持 WAL 的文件系统（网络盘等）按拒启处理——P4 平台面验证前不承诺替代策略。

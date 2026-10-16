@@ -285,20 +285,71 @@ export function occupyDispatch(db, { txId, itemId, goalSlug, limits, itemState =
 
 const DEFAULT_QUERY_POINTS = () => ({ absent: false, unpriced: [], points: 0 }); // P2 接线 cost.querySessionPoints
 
-// 结算事务（A2）：逐段 U 族入账 + overrun 派生（事务内读聚合）+ tx settled + 条目终态一次提交。
-// 重复结算=全 dedupKey duplicate（幂等，不双计）。
-export function settleDispatch(db, { txId, segments, queryPoints = DEFAULT_QUERY_POINTS, itemFinalState, provenance = null }) {
+// 段记录写入 helper（tx 的段行整体替换；{sessionId, durationMs, ...extra} 逐字保形）。
+function writeSegments(db, txId, segments) {
+  db.prepare("DELETE FROM dispatch_segments WHERE tx_id=?").run(txId);
+  segments.forEach((seg, i) => {
+    const extra = {};
+    for (const [k, v] of Object.entries(seg ?? {})) if (k !== "sessionId" && k !== "durationMs") extra[k] = v;
+    db.prepare("INSERT INTO dispatch_segments (tx_id,seg_index,session_id,duration_ms,extra_json) VALUES (?,?,?,?,?)")
+      .run(txId, i, seg?.sessionId ?? null, seg?.durationMs ?? 0, Object.keys(extra).length > 0 ? JSON.stringify(extra) : null);
+  });
+}
+
+// 事务补丁（P2 N3：patchTx 的 DB 侧；JSON 侧字段名 → 列名的显式映射，未知字段=拒）。
+// 单事务内可同时补 tx 行、条目行与段集（调用方据此把跨文件写收成一笔）。
+const TX_PATCH_COLS = { phase: "phase", settledAt: "settled_at", deliveringSinceMs: "delivering_since_ms", deliveringPid: "delivering_pid", note: "note" };
+const ITEM_PATCH_COLS = { state: "state", blockedReason: "blocked_reason", completedEndpoint: "completed_endpoint", updatedAt: "updated_at" };
+
+export function patchDispatchTx(db, { txId, tx = null, itemId = null, item = null, segments = null }) {
+  return withWriteTx(db, () => {
+    const exists = db.prepare("SELECT tx_id FROM dispatch_txs WHERE tx_id=?").get(txId);
+    if (!exists) throw new StatedbError(`派发事务缺失：${txId}（事件账与内存态不一致，拒绝写）`);
+    if (tx && Object.keys(tx).length > 0) {
+      const sets = []; const vals = [];
+      for (const [k, v] of Object.entries(tx)) {
+        const col = TX_PATCH_COLS[k];
+        if (!col) throw new StatedbError(`patchDispatchTx 未知 tx 字段：${k}`);
+        sets.push(`${col}=?`); vals.push(v ?? null);
+      }
+      db.prepare(`UPDATE dispatch_txs SET ${sets.join(",")} WHERE tx_id=?`).run(...vals, txId);
+    }
+    if (itemId && item && Object.keys(item).length > 0) {
+      const sets = []; const vals = [];
+      for (const [k, v] of Object.entries(item)) {
+        const col = ITEM_PATCH_COLS[k];
+        if (!col) throw new StatedbError(`patchDispatchTx 未知 item 字段：${k}`);
+        sets.push(`${col}=?`); vals.push(v ?? null);
+      }
+      const r = db.prepare(`UPDATE queue_items SET ${sets.join(",")} WHERE id=?`).run(...vals, itemId);
+      if (r.changes === 0) throw new StatedbError(`条目不存在：${itemId}（事务补丁与队列状态不一致，拒绝写）`);
+    }
+    if (Array.isArray(segments)) writeSegments(db, txId, segments);
+    return { txId };
+  });
+}
+
+// 结算事务（A2 + P2 N3/N4）：逐段 U 族入账 + overrun 派生（事务内读聚合）+ tx settled + 条目/全量队列
+// 应达态一次提交。重复结算=全 dedupKey duplicate（幂等，不双计）。
+// segments=null → 从 dispatch_segments 行自读（DB 侧调用缺省）；queueItems=refreshStates 级联后的
+// 全量队列（整集 upsert，同事务——取代「锁内 saveQueue(refreshStates(q))」）；itemFinalState=兼容简写。
+export function settleDispatch(db, {
+  txId, segments = null, queryPoints = DEFAULT_QUERY_POINTS, provenance = null,
+  itemFinalState = null, queueItems = null, txNote = null, at = null,
+}) {
   return withWriteTx(db, () => {
     const tx = db.prepare("SELECT * FROM dispatch_txs WHERE tx_id=?").get(txId);
     if (!tx) throw new StatedbError(`派发事务缺失：${txId}（事件账与内存态不一致，拒绝写）`);
     const authorization = { slug: tx.goal_slug, contractHash: undefined };
     const item = db.prepare("SELECT contract_hash FROM queue_items WHERE id=?").get(tx.item_id);
     authorization.contractHash = item?.contract_hash;
-    const at = new Date().toISOString();
+    const sealedAt = at ?? new Date().toISOString();
+    const segs = segments ?? db.prepare("SELECT session_id, duration_ms FROM dispatch_segments WHERE tx_id=? ORDER BY seg_index").all(txId)
+      .map((r) => ({ sessionId: r.session_id, durationMs: r.duration_ms }));
     const out = { wallEntries: 0, pointsEntries: 0, absentEntries: 0, duplicates: 0, points: 0 };
-    segments.forEach((seg, i) => {
+    segs.forEach((seg, i) => {
       const sid = seg.sessionId ?? `seg-${i}`;
-      const base = { authorization, provenance, itemId: tx.item_id, txId, sessionId: seg.sessionId ?? null, at };
+      const base = { authorization, provenance, itemId: tx.item_id, txId, sessionId: seg.sessionId ?? null, at: sealedAt };
       const wall = insertEvent(db, { ...base, kind: "wall", dedupKey: `wall:${txId}:${sid}`, ms: seg.durationMs ?? 0 });
       if (wall.duplicate) out.duplicates += 1; else out.wallEntries += 1;
       const m = queryPoints(seg.sessionId);
@@ -324,8 +375,20 @@ export function settleDispatch(db, { txId, segments, queryPoints = DEFAULT_QUERY
         }
       }
     });
-    db.prepare("UPDATE dispatch_txs SET phase='settled', settled_at=? WHERE tx_id=?").run(at, txId);
-    if (itemFinalState) db.prepare("UPDATE queue_items SET state=?, updated_at=? WHERE id=?").run(itemFinalState, at, tx.item_id);
+    if (txNote != null) {
+      db.prepare("UPDATE dispatch_txs SET phase='settled', settled_at=?, note=? WHERE tx_id=?").run(sealedAt, txNote, txId);
+    } else {
+      db.prepare("UPDATE dispatch_txs SET phase='settled', settled_at=? WHERE tx_id=?").run(sealedAt, txId);
+    }
+    if (queueItems != null) {
+      const keep = new Set();
+      for (const it of queueItems) { upsertQueueItemRow(db, it); keep.add(it.id); }
+      for (const r of db.prepare("SELECT id FROM queue_items").all()) {
+        if (!keep.has(r.id)) db.prepare("DELETE FROM queue_items WHERE id=?").run(r.id);
+      }
+    } else if (itemFinalState) {
+      db.prepare("UPDATE queue_items SET state=?, updated_at=? WHERE id=?").run(itemFinalState, sealedAt, tx.item_id);
+    }
     return out;
   });
 }
@@ -453,13 +516,7 @@ export function replaceDispatchTxs(db, txs) {
     for (const t of txs) {
       upsertTxRow(db, t);
       keep.add(t.txId);
-      db.prepare("DELETE FROM dispatch_segments WHERE tx_id=?").run(t.txId);
-      (t.segments ?? []).forEach((seg, i) => {
-        const extra = {};
-        for (const [k, v] of Object.entries(seg ?? {})) if (k !== "sessionId" && k !== "durationMs") extra[k] = v;
-        db.prepare("INSERT INTO dispatch_segments (tx_id,seg_index,session_id,duration_ms,extra_json) VALUES (?,?,?,?,?)")
-          .run(t.txId, i, seg?.sessionId ?? null, seg?.durationMs ?? 0, Object.keys(extra).length > 0 ? JSON.stringify(extra) : null);
-      });
+      writeSegments(db, t.txId, t.segments ?? []);
     }
     for (const r of db.prepare("SELECT tx_id FROM dispatch_txs").all()) {
       if (!keep.has(r.tx_id)) {

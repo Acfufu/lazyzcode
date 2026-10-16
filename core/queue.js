@@ -29,8 +29,9 @@ import { loadRuntime, holderPidAlive, reclaimLease } from "./runtime.js";
 import { evaluateGate } from "./gate.js"; // 0.4.0 M1 N5②③：done 分支/reconcile 追认统一门
 import { createGit } from "./git.js";
 import {
-  stateDbPath, openStore, readSnapshot, replaceQueueFamily, replaceDispatchTxs, replaceBudgetEvents, StatedbError,
-} from "./statedb.js"; // P2 N2：双后端 seam 的 DB 侧引擎（JSON 侧=本模块现行路径，逐字不动）
+  stateDbPath, openStore, readSnapshot, replaceQueueFamily, replaceDispatchTxs, replaceBudgetEvents,
+  occupyDispatch, patchDispatchTx, settleDispatch, StatedbError,
+} from "./statedb.js"; // P2 N2/N3：双后端 seam 的 DB 侧引擎（JSON 侧=本模块现行路径，逐字不动）
 
 // ── 双后端 seam（P2 N2，设计 docs/design-sqlite-store.md §7 判据冻结）──
 // 判据=库在场（presence）：`.lazyzcode/state.sqlite` 在场且可读且 schema_version=1 且六表在场
@@ -720,6 +721,30 @@ function patchTx(cwd, txId, patch) {
   return tx;
 }
 
+// ── DB 侧事务化写点（P2 N3，仅 DB 后端可达）──
+// 每点=单事务一次提交（跨文件写收成一笔；锁拓扑按 N3⑦ 定案：见各调用点）。
+
+function dbOccupyItem(cwd, tx) {
+  return backendCall(cwd, {
+    json: () => { throw new QueueError("内部错误：dbOccupyItem 仅 DB 后端可达"); },
+    db: (db) => occupyDispatch(db, { txId: tx.txId, itemId: tx.itemId, goalSlug: tx.goalSlug, limits: tx.limits, at: tx.openedAt }),
+  });
+}
+
+function dbPatchTx(cwd, txId, { tx = null, itemId = null, item = null, segments = null }) {
+  return backendCall(cwd, {
+    json: () => { throw new QueueError("内部错误：dbPatchTx 仅 DB 后端可达"); },
+    db: (db) => patchDispatchTx(db, { txId, tx, itemId, item, segments }),
+  });
+}
+
+function dbSettle(cwd, opts) {
+  return backendCall(cwd, {
+    json: () => { throw new QueueError("内部错误：dbSettle 仅 DB 后端可达"); },
+    db: (db) => settleDispatch(db, opts),
+  });
+}
+
 export function appendLedgerEntry(cwd, entry) {
   const l = loadLedger(cwd) ?? { entries: [] };
   const dedupKey = entry.dedupKey;
@@ -1221,6 +1246,23 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
       if (v.pointsExhausted || v.pointsStopped) {
         return { stop: "积分总额已尽或计量在案（#32）——停止下一次派发", kind: "budget" };
       }
+      if (stateBackend(cwd) === "sqlite") {
+        // DB：占用登记=单事务{insert tx(open)+item→running(+updated_at)}一次提交（N3①；
+        // 提交后才进入 goal 生命周期与 drive——外部动作在事务提交后启动）
+        const at = new Date().toISOString();
+        const dbTx = {
+          txId: newId("t"),
+          itemId: item.id, goalSlug: item.goalSlug,
+          phase: "open",
+          openedAt: at, settledAt: null,
+          limits: { wallMs, points: v.pointsLimit },
+          segments: [], note: null,
+        };
+        dbOccupyItem(cwd, dbTx);
+        item.state = "running";
+        item.updatedAt = at;
+        return { item: { ...item }, tx: dbTx };
+      }
       const tx = openTx(cwd, item, { wallMs, points: v.pointsLimit });
       item.state = "running";
       item.updatedAt = new Date().toISOString();
@@ -1243,15 +1285,27 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
       }
     })();
     if (slot && slot.slug !== item.goalSlug && slot.status === "executing") {
-      patchTx(cwd, tx.txId, { phase: "reconciled-orphan", settledAt: new Date().toISOString(), note: "现行 goal 为另一活跃目标——队列绝不越权处置" });
-      withLock(cwd, () => {
-        const q = loadQueue(cwd);
-        const it = q.items.find((x) => x.id === item.id);
-        it.state = "failed";
-        it.blockedReason = `槽位被另一活跃目标占用（${slot.slug}）——人工核对后处置`;
-        it.updatedAt = new Date().toISOString();
-        saveQueue(cwd, q);
-      });
+      if (stateBackend(cwd) === "sqlite") {
+        // DB：并入既有相邻 withLock 的**单事务**{tx→reconciled-orphan + item→failed}（N3②；
+        // dispatch 写从锁外挪进锁内——不新增无锁 queue_items 写，写序问题由原子性消解）
+        withLock(cwd, () => {
+          dbPatchTx(cwd, tx.txId, {
+            tx: { phase: "reconciled-orphan", settledAt: new Date().toISOString(), note: "现行 goal 为另一活跃目标——队列绝不越权处置" },
+            itemId: item.id,
+            item: { state: "failed", blockedReason: `槽位被另一活跃目标占用（${slot.slug}）——人工核对后处置`, updatedAt: new Date().toISOString() },
+          });
+        });
+      } else {
+        patchTx(cwd, tx.txId, { phase: "reconciled-orphan", settledAt: new Date().toISOString(), note: "现行 goal 为另一活跃目标——队列绝不越权处置" });
+        withLock(cwd, () => {
+          const q = loadQueue(cwd);
+          const it = q.items.find((x) => x.id === item.id);
+          it.state = "failed";
+          it.blockedReason = `槽位被另一活跃目标占用（${slot.slug}）——人工核对后处置`;
+          it.updatedAt = new Date().toISOString();
+          saveQueue(cwd, q);
+        });
+      }
       results.push({ item: item.id, outcome: "failed", cause: "槽位被他目标占用" });
       break;
     }
@@ -1290,20 +1344,36 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
       const driveRes = await (deps.drive
         ? deps.drive(cwd, { wallMs: tx.limits.wallMs ?? undefined, maxSegments: opts.maxSegments, mode: opts.mode, segmentRecords }, deps)
         : runDrive(cwd, { wallMs: tx.limits.wallMs ?? undefined, maxSegments: opts.maxSegments, mode: opts.mode, segmentRecords }, deps));
-      patchTx(cwd, tx.txId, { segments: segmentRecords });
+      if (stateBackend(cwd) === "sqlite") dbPatchTx(cwd, tx.txId, { tx: {}, segments: segmentRecords }); // N3③：段记录=锁外单事务
+      else patchTx(cwd, tx.txId, { segments: segmentRecords });
       const git = createGit(cwd);
       // 5) 收束：windDown(false)=item failed；ok→finish；finish 拒=未竟（回 ready 不假完成）
       if (!driveRes.ok) {
-        withLock(cwd, () => {
-          const q = loadQueue(cwd);
-          const it = q.items.find((x) => x.id === item.id);
-          it.state = "failed";
-          it.blockedReason = `drive 失败：${String(driveRes.cause ?? "未知").slice(0, 200)}`;
-          it.updatedAt = new Date().toISOString();
-          saveQueue(cwd, refreshStates(cwd, q));
-        });
-        patchTx(cwd, tx.txId, { phase: "settled", settledAt: new Date().toISOString(), note: `drive 失败收束（${String(driveRes.cause ?? "").slice(0, 120)}）——消耗如实结算` });
-        settleTxLedger(cwd, { tx: patchTx(cwd, tx.txId, {}), item, provenance: `tx:${tx.txId}`, queryPoints });
+        const failNote = `drive 失败收束（${String(driveRes.cause ?? "").slice(0, 120)}）——消耗如实结算`;
+        if (stateBackend(cwd) === "sqlite") {
+          // DB：并入既有相邻 withLock 的**单事务**{item→failed（含 refreshStates 级联载荷）
+          // + 逐段事件 + tx→settled}（N3④；dispatch/ledger 写从锁外挪进锁内）
+          withLock(cwd, () => {
+            const q = loadQueue(cwd);
+            const it = q.items.find((x) => x.id === item.id);
+            it.state = "failed";
+            it.blockedReason = `drive 失败：${String(driveRes.cause ?? "未知").slice(0, 200)}`;
+            it.updatedAt = new Date().toISOString();
+            const refreshed = refreshStates(cwd, q);
+            dbSettle(cwd, { txId: tx.txId, queryPoints, provenance: `tx:${tx.txId}`, txNote: failNote, queueItems: refreshed.items });
+          });
+        } else {
+          withLock(cwd, () => {
+            const q = loadQueue(cwd);
+            const it = q.items.find((x) => x.id === item.id);
+            it.state = "failed";
+            it.blockedReason = `drive 失败：${String(driveRes.cause ?? "未知").slice(0, 200)}`;
+            it.updatedAt = new Date().toISOString();
+            saveQueue(cwd, refreshStates(cwd, q));
+          });
+          patchTx(cwd, tx.txId, { phase: "settled", settledAt: new Date().toISOString(), note: failNote });
+          settleTxLedger(cwd, { tx: patchTx(cwd, tx.txId, {}), item, provenance: `tx:${tx.txId}`, queryPoints });
+        }
         results.push({ item: item.id, outcome: "failed", cause: String(driveRes.cause ?? "") });
         // 队列自有 goal 随失败项终态而成死工作——腾槽（queue-owned 家务，非「另一目标」；
         // A4 红线保护的是队列不拥有的 goal，⑧ 分支已挡）
@@ -1335,7 +1405,12 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
       let deliveryNote = null;
       let deliveryAborted = false;
       if (finishOk && declaredEps.length > 0) {
-        patchTx(cwd, tx.txId, { note: "delivery-in-flight", deliveringSinceMs: Date.now(), deliveringPid: process.pid });
+        if (stateBackend(cwd) === "sqlite") {
+          // N3⑤：交付在途标记=锁外单事务，提交后才进交付链（外部动作在事务提交后启动）
+          dbPatchTx(cwd, tx.txId, { tx: { note: "delivery-in-flight", deliveringSinceMs: Date.now(), deliveringPid: process.pid } });
+        } else {
+          patchTx(cwd, tx.txId, { note: "delivery-in-flight", deliveringSinceMs: Date.now(), deliveringPid: process.pid });
+        }
         const outcome = runDeliveryChain(cwd, { item, txId: tx.txId, queryPoints, deps });
         if (outcome.abort) {
           // 基建中止：捕获点已落（failed+「基建中止」+tx killed+墙钟条目+drive 段结算）——跳过完成写入

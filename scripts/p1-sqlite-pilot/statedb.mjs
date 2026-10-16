@@ -1,4 +1,6 @@
 // LazyZCode P1 隔离试点：SQLite 存储层原型（**不入 npm 包**——scripts/ 不在 files 白名单；P2 晋升 core/）
+// ⚠ 历史档案（P2 N1）：实现已晋升 core/statedb.js（结构性不嵌套/统一 busy=5000 等硬化在彼）；
+//   本文件保留为 P1 冻结期证据档案，勿新增引用（测试与生产一律 core/statedb.js）。
 // 实施依据：docs/design-sqlite-store.md（schema 定案/语义对账/锁序/迁移协议）。
 // 纪律（ADR-0039）：地板 Node ≥24.0.0；只用 SQL 层操作（PRAGMA/VACUUM INTO/纯 SQL 事务），
 // 构造器唯一例外 {readOnly}；节点内禁取目录锁/网络/spawn（本模块全部同步短事务）；

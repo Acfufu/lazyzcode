@@ -1,6 +1,9 @@
-// P1 N2：SQLite 隔离试点五面契约测试（tmp 目录隔离；地板守卫具名 skip；零宿主依赖）
+// P1 N2 起：SQLite 存储层契约测试（P2 N1 晋升 core/statedb.js——本文件自 P2 起测生产模块，
+// 不再是试点原型；tmp 目录隔离；地板守卫具名 skip；零宿主依赖）
 // 五面=①唯一事件约束 ②占用事务 ③结算事务（含幂等/overrun）④并发冲突（busy 具名）⑤崩溃恢复（SIGKILL）
-// 另：⑥WAL 回读拒面单测（stub 注入）⑦地板守卫语义。
+// 另：⑥WAL 回读拒面单测（stub 注入）⑦地板守卫语义 ⑧结构性不嵌套（P2 N1 纪律句：每操作恰一个
+// 顶层事务；既有事务在途时再开操作=具名拒，不静默加入——④/⑤ 的构造随之改为「BEGIN 独占持锁」
+// 与「SQL 层未提交行」，不再依赖旧的原型级事务合并行为，如实记档于 N1）。
 // 契约：docs/design-sqlite-store.md §3–§6；拍板地板 Node ≥24.0.0（22 线不入支持面）。
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -14,7 +17,7 @@ import {
   SCHEMA_VERSION, StatedbBusyError, StatedbError, StatedbUnsupportedError,
   openStore, ensureSchema, putQueueItem, setBudget, occupyDispatch, settleDispatch,
   appendBudgetEvent, readSnapshot, readBudgetAggregate, assertWal, runtimeSupport, stateDbPath,
-} from "../scripts/p1-sqlite-pilot/statedb.mjs";
+} from "../core/statedb.js";
 
 const MAJOR = Number(process.versions.node.split(".")[0]);
 const FLOOR_SKIP = MAJOR >= 24 ? false : `地板 Node ≥24.0.0（拍板 2026-10-16；22 线不入支持面）；当前 v${process.versions.node} 跳过`;
@@ -49,8 +52,11 @@ if (process.env.STATEDB_CHILD === "crash-midtx") {
   putItem(db, "q-crash");
   occupyDispatch(db, { txId: "t-committed", itemId: "q-crash", goalSlug: "fixture-goal", limits: { wallMs: 1000, points: 1 } });
   appendBudgetEvent(db, { kind: "wall", dedupKey: "committed-marker", ms: 500, authorization: AUTH });
+  // 未提交行=SQL 层直写（结构性不嵌套：不在手动事务内再调存储操作——旧原型级合并行为已移除）
   db.exec("BEGIN IMMEDIATE");
-  appendBudgetEvent(db, { kind: "wall", dedupKey: "uncommitted-marker", ms: 999, authorization: AUTH }); // 事务内未提交
+  db.prepare(`INSERT INTO budget_events (seq,at,kind,authorization_json,dedup_key,ms)
+    VALUES ((SELECT COALESCE(MAX(seq),0)+1 FROM budget_events),?,?,?,?,?)`)
+    .run(new Date().toISOString(), "wall", JSON.stringify(AUTH), "uncommitted-marker", 999);
   writeFileSync(ready, "1");
   await sleep(60000); // 悬挂等待父进程 SIGKILL
   process.exit(0);
@@ -154,8 +160,7 @@ test("④并发冲突：持锁期间竞争者 busy_timeout 等待后具名 State
     const a = openStore(dbPath);
     const b = openStore(dbPath);
     b.exec("PRAGMA busy_timeout=300");
-    a.exec("BEGIN IMMEDIATE");
-    appendBudgetEvent(a, { kind: "wall", dedupKey: "holder", ms: 100, authorization: AUTH }); // 持锁进程（未提交）
+    a.exec("BEGIN IMMEDIATE"); // 持写锁（未提交）——独占持锁即可，不再依赖原型级事务合并
     const t0 = Date.now();
     let busyErr = null;
     try { appendBudgetEvent(b, { kind: "wall", dedupKey: "challenger", ms: 100, authorization: AUTH }); } catch (e) { busyErr = e; }
@@ -209,4 +214,24 @@ test("⑦地板守卫语义：地板与模块检查在职；schema 版本常量=
   if (MAJOR >= 24) assert.equal(sup.supported, true, `Node ${process.versions.node} 应支持`);
   else assert.equal(sup.supported, false);
   assert.equal(SCHEMA_VERSION, 1);
+});
+
+test("⑧结构性不嵌套：既有事务在途时再开操作=具名拒（不静默加入）；回滚后恢复可写", { skip: FLOOR_SKIP }, () => {
+  const dir = freshDir();
+  try {
+    const db = openStore(stateDbPath(dir));
+    ensureSchema(db);
+    const plain = appendBudgetEvent(db, { kind: "wall", dedupKey: "first", ms: 1, authorization: AUTH });
+    assert.equal(plain.duplicate, false);
+    db.exec("BEGIN IMMEDIATE"); // 手动事务在途
+    assert.throws(
+      () => appendBudgetEvent(db, { kind: "wall", dedupKey: "nested", ms: 1, authorization: AUTH }),
+      (e) => e instanceof StatedbError && !(e instanceof StatedbBusyError) && /结构性不嵌套/.test(e.message),
+    );
+    assert.equal(db.prepare("SELECT COUNT(*) c FROM budget_events").get().c, 1, "被拒操作不得留残行");
+    db.exec("ROLLBACK"); // 外层事务收束
+    const after = appendBudgetEvent(db, { kind: "wall", dedupKey: "after-rollback", ms: 2, authorization: AUTH });
+    assert.equal(after.duplicate, false, "回滚后应恢复可写");
+    db.close();
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });

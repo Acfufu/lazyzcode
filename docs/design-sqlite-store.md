@@ -24,6 +24,7 @@ SQLite 不改变 OS 沙盒边界，不等于供应商余额，不能把逐段消
 
 - **最低运行时＝Node ≥24.0.0**；22 线不入支持面（实证：22.12 及以下无 node:sqlite；22.13 起模块可用但构造器 `{timeout}` 被静默忽略、每次进程加载打一条 experimental 告警；24.0.0 全探针通过）。engines 字段与安装文案的机制收紧随 P3 切换窗口落地（切换前 JSON 面现行 ≥22 全额可用，不做虚假收窄）；运行时能力探针（`scripts/sqlite-capability-probe.mjs`）在 DB 面拒启非法环境并具名诊断。
 - **只用 SQL 层操作**：`PRAGMA journal_mode`/`busy_timeout`/`integrity_check`、`VACUUM INTO`、纯 SQL 事务。构造器选项**唯一例外**＝`{readOnly:true}`（经探针矩阵验证：只读打开成功、写尝试必败）；其余构造器选项与高阶 API 不用（跨版本行为面未穷举）。
+- **结构性不嵌套（P2 N1 落实）**：每个存储操作恰一个顶层事务，多写面在同一事务内展开；不用 `db.isTransaction` 之类高阶属性窥探事务态——既有事务在途时再开操作＝SQLite 拒（包为具名 `StatedbError`，不静默加入/不静默降级）。`busy_timeout=5000` 全连接统一（含 readOnly——P1 原型 1000 为临时偏差，已消除）。
 - **零新增根依赖**：只用内建 `node:sqlite`；不引 ORM/服务进程/驱动包。
 
 ## 3. schema（DDL 定案）

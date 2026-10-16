@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // P1 N3 钩子读器原型（**不入 npm 包**）：自包含内联——**不 import core 与 statedb**，
 // 镜像 plugin/hooks/trigger.js 的钩子纪律；读试点库 `.lazyzcode/state.sqlite` 解析交付批准短码。
+// ⚠ 历史档案（P2 N6）：生产接线已落 plugin/hooks/trigger.js 的 DB 分支（内联读器家法同源）；
+//   本文件保留为 P1 可行性证据档案，勿新增引用（其 --apply 写面为原型专用，非生产写者面）。
 // 七支与 trigger.js:61-131（queueDeliveryVerdict）逐一对齐：
 //   approve / void（契约漂移）/ refuse-multi（多命中拒猜）/ candidates-no-match（有候选零命中）
 //   / write-failed（写记录失败）/ unreadable（库不可读/schema 不识别）/ none（真零命中=落回信号）

@@ -114,7 +114,12 @@ export function openStore(dbPath, { readOnly = false } = {}) {
   if (!sup.supported) throw new StatedbUnsupportedError(sup.reason);
   const { DatabaseSync } = require("node:sqlite");
   if (!readOnly) mkdirSync(dirname(dbPath), { recursive: true });
-  const db = new DatabaseSync(dbPath, readOnly ? { readOnly: true } : {});
+  let db;
+  try {
+    db = new DatabaseSync(dbPath, readOnly ? { readOnly: true } : {});
+  } catch (e) {
+    throw new StatedbError(`打开失败（${e?.code ?? e?.errstr ?? e?.message ?? e}）：${dbPath}`, { cause: e });
+  }
   try {
     if (!readOnly) {
       db.exec("PRAGMA journal_mode=WAL");
@@ -134,7 +139,8 @@ export function openStore(dbPath, { readOnly = false } = {}) {
     return db;
   } catch (e) {
     try { db.close(); } catch {}
-    throw e;
+    if (e instanceof StatedbError) throw e;
+    throw new StatedbError(`打开校验失败（${e?.code ?? e?.message ?? e}——库损坏/非本存储格式？）：${dbPath}`, { cause: e });
   }
 }
 
@@ -389,6 +395,96 @@ export function readSnapshot(db) {
     notes: JSON.parse(b.notes_json), pointsStoppedAck: b.ack_json ? JSON.parse(b.ack_json) : null,
   } : null;
   return { items, txs, segments, events, budget };
+}
+
+// ── 整集写（P2 N2：saveQueue/saveDispatch/saveLedger 的 DB 侧映射）──
+// 语义=JSON「整本重写」的事务化等价：全集中缺席的行删除、在场行 upsert、随事务字段逐列随写。
+// 这些是保 API 面的兼容写面（测试夹具与少数据面工具）；生产业务路径走占用/结算/追加等操作面。
+
+function upsertQueueItemRow(db, it) {
+  db.prepare(`INSERT OR REPLACE INTO queue_items
+    (id,goal_slug,contract_hash,endpoint,state,created_at,updated_at,title,contract_path,plan_path,
+     blocked_reason,completed_endpoint,tier,risk,seq,plan_hash,deps_json,delivery_json,plan_review_json)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    it.id, it.goalSlug, it.contractHash, it.endpoint, it.state, it.createdAt, it.updatedAt, it.title,
+    it.contractPath, it.planPath, it.blockedReason ?? null, it.completedEndpoint ?? null, it.tier ?? null,
+    it.risk ?? null, it.seq ?? null, it.planHash ?? null, JSON.stringify(it.deps ?? []),
+    it.delivery != null ? JSON.stringify(it.delivery) : null,
+    it.planReview != null ? JSON.stringify(it.planReview) : null,
+  );
+}
+
+function writeBudgetRow(db, budget) {
+  const b = budget ?? {};
+  db.prepare(`INSERT INTO queue_budget (id,points_limit,wall_limit_ms,notes_json,ack_json) VALUES (1,?,?,?,?)
+    ON CONFLICT(id) DO UPDATE SET points_limit=excluded.points_limit, wall_limit_ms=excluded.wall_limit_ms,
+      notes_json=excluded.notes_json, ack_json=excluded.ack_json`).run(
+    b.pointsLimit ?? null, b.wallLimitMs ?? null, JSON.stringify(b.notes ?? []),
+    b.pointsStoppedAck != null ? JSON.stringify(b.pointsStoppedAck) : null,
+  );
+}
+
+export function replaceQueueFamily(db, { items, budget = null }) {
+  return withWriteTx(db, () => {
+    const keep = new Set();
+    for (const it of items) { upsertQueueItemRow(db, it); keep.add(it.id); }
+    for (const r of db.prepare("SELECT id FROM queue_items").all()) {
+      if (!keep.has(r.id)) db.prepare("DELETE FROM queue_items WHERE id=?").run(r.id);
+    }
+    writeBudgetRow(db, budget);
+    return { items: items.length };
+  });
+}
+
+function upsertTxRow(db, t) {
+  db.prepare(`INSERT OR REPLACE INTO dispatch_txs
+    (tx_id,item_id,goal_slug,phase,opened_at,settled_at,limits_json,delivering_since_ms,delivering_pid,note)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    t.txId, t.itemId, t.goalSlug, t.phase, t.openedAt, t.settledAt ?? null,
+    JSON.stringify(t.limits ?? {}), t.deliveringSinceMs ?? null, t.deliveringPid ?? null, t.note ?? null,
+  );
+}
+
+// 段记录逐字保形：sessionId/durationMs 上列，其余键（exitCode/endedAt/…）进 extra_json，
+// 读面按 {sessionId, durationMs, ...extra} 还原（drive.js 段记录形态的往返保全）。
+export function replaceDispatchTxs(db, txs) {
+  return withWriteTx(db, () => {
+    const keep = new Set();
+    for (const t of txs) {
+      upsertTxRow(db, t);
+      keep.add(t.txId);
+      db.prepare("DELETE FROM dispatch_segments WHERE tx_id=?").run(t.txId);
+      (t.segments ?? []).forEach((seg, i) => {
+        const extra = {};
+        for (const [k, v] of Object.entries(seg ?? {})) if (k !== "sessionId" && k !== "durationMs") extra[k] = v;
+        db.prepare("INSERT INTO dispatch_segments (tx_id,seg_index,session_id,duration_ms,extra_json) VALUES (?,?,?,?,?)")
+          .run(t.txId, i, seg?.sessionId ?? null, seg?.durationMs ?? 0, Object.keys(extra).length > 0 ? JSON.stringify(extra) : null);
+      });
+    }
+    for (const r of db.prepare("SELECT tx_id FROM dispatch_txs").all()) {
+      if (!keep.has(r.tx_id)) {
+        db.prepare("DELETE FROM dispatch_segments WHERE tx_id=?").run(r.tx_id);
+        db.prepare("DELETE FROM dispatch_txs WHERE tx_id=?").run(r.tx_id);
+      }
+    }
+    return { txs: txs.length };
+  });
+}
+
+export function replaceBudgetEvents(db, entries) {
+  return withWriteTx(db, () => {
+    db.prepare("DELETE FROM budget_events").run();
+    entries.forEach((e, i) => {
+      db.prepare(`INSERT INTO budget_events
+        (seq,at,kind,authorization_json,provenance,item_id,tx_id,session_id,ms,points,overrun_points,note,dedup_key)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        Number.isInteger(e.seq) ? e.seq : i + 1, e.at ?? new Date().toISOString(), e.kind,
+        JSON.stringify(e.authorization), e.provenance ?? null, e.itemId ?? null, e.txId ?? null,
+        e.sessionId ?? null, e.ms ?? null, e.points ?? null, e.overrunPoints ?? null, e.note ?? null, e.dedupKey,
+      );
+    });
+    return { events: entries.length };
+  });
 }
 
 // 备份（VACUUM INTO；不复制主文件冒充 WAL 快照）+ 完整性核验。

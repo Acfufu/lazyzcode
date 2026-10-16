@@ -28,6 +28,81 @@ import { computePoints, querySessionPoints } from "./cost.js";
 import { loadRuntime, holderPidAlive, reclaimLease } from "./runtime.js";
 import { evaluateGate } from "./gate.js"; // 0.4.0 M1 N5②③：done 分支/reconcile 追认统一门
 import { createGit } from "./git.js";
+import {
+  stateDbPath, openStore, readSnapshot, replaceQueueFamily, replaceDispatchTxs, replaceBudgetEvents, StatedbError,
+} from "./statedb.js"; // P2 N2：双后端 seam 的 DB 侧引擎（JSON 侧=本模块现行路径，逐字不动）
+
+// ── 双后端 seam（P2 N2，设计 docs/design-sqlite-store.md §7 判据冻结）──
+// 判据=库在场（presence）：`.lazyzcode/state.sqlite` 在场且可读且 schema_version=1 且六表在场
+// → SQLite 权威（同目录旧 JSON 保留不读不写不删）；库缺席 → 现行 JSON 后端；在场不可读/
+// 异版本/异 schema → 具名拒（绝不回落 JSON——「不回落到旧 JSON 继续派发或批准」）。
+// meta.backend 保持预留（设计原文「P3 切换窗口写」，本批读侧不依赖该键）。
+const STORE_TABLES = ["meta", "queue_items", "queue_budget", "dispatch_txs", "dispatch_segments", "budget_events"];
+
+function dbError(e, p) {
+  if (e instanceof QueueError) return e;
+  const name = e?.name ?? "Error";
+  return new QueueError(
+    `state.sqlite 不可用（${name}）：${p}——库在场即 DB 权威（设计 §7：不回落旧 JSON）。` +
+    `诊断：${String(e?.message ?? e).slice(0, 300)}。恢复：核对库文件与权限，或用 VACUUM INTO 备份恢复；勿手改 JSON 期望回落`,
+    { cause: e },
+  );
+}
+
+// 打开判据库（缺席=null；在场=已校验句柄；失败=具名 QueueError）。调用方负责 close。
+function openDb(cwd) {
+  const p = stateDbPath(cwd);
+  if (!existsSync(p)) return null;
+  let db;
+  try {
+    db = openStore(p);
+    const have = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name));
+    const missing = STORE_TABLES.filter((t) => !have.has(t));
+    if (missing.length > 0) {
+      throw new StatedbError(`库在场面 schema 不识别（缺表：${missing.join(",")}）——拒启（P3 迁移前的库或缺描述件的异物库）`);
+    }
+  } catch (e) {
+    try { db?.close(); } catch {}
+    throw dbError(e, p);
+  }
+  return db;
+}
+
+export function stateBackend(cwd) {
+  const db = openDb(cwd);
+  if (!db) return "json";
+  db.close();
+  return "sqlite";
+}
+
+// 后端分派：json 侧走现行原路径；db 侧在受控句柄上执行并把 Statedb* 映射为 QueueError。
+function backendCall(cwd, { json, db: dbFn }) {
+  const db = openDb(cwd);
+  if (!db) return json();
+  try {
+    return dbFn(db);
+  } catch (e) {
+    throw dbError(e, stateDbPath(cwd));
+  } finally {
+    try { db.close(); } catch {}
+  }
+}
+
+function dbQueueOf(db) {
+  const s = readSnapshot(db);
+  return { items: s.items, budget: s.budget };
+}
+
+// 段记录逐字保形还原：{sessionId, durationMs, ...extra}（drive.js 段记录形态的往返）。
+function dbDispatchOf(db) {
+  const s = readSnapshot(db);
+  const segs = new Map();
+  for (const g of s.segments) {
+    if (!segs.has(g.txId)) segs.set(g.txId, []);
+    segs.get(g.txId).push({ sessionId: g.sessionId, durationMs: g.durationMs, ...(g.extra ?? {}) });
+  }
+  return { txs: s.txs.map((t) => ({ ...t, segments: segs.get(t.txId) ?? [] })) };
+}
 
 export const QUEUE_VERSION = 1;
 export const ITEM_STATES = ["proposed", "authorized", "ready", "running", "completed", "blocked", "failed", "cancelled"];
@@ -189,33 +264,61 @@ function assertLedgerShape(l, p) {
 }
 
 export function loadQueue(cwd) {
-  return loadFamilyFile(familyPath(cwd, "queue.json"), {
-    versionKey: "queueVersion", version: QUEUE_VERSION, label: "队列状态", shapeFn: assertQueueShape,
+  return backendCall(cwd, {
+    json: () => loadFamilyFile(familyPath(cwd, "queue.json"), {
+      versionKey: "queueVersion", version: QUEUE_VERSION, label: "队列状态", shapeFn: assertQueueShape,
+    }),
+    db: (db) => dbQueueOf(db),
   });
 }
 export function saveQueue(cwd, q) {
-  saveFamilyFile(familyPath(cwd, "queue.json"), q, {
-    versionKey: "queueVersion", version: QUEUE_VERSION, label: "队列状态", shapeFn: assertQueueShape,
+  return backendCall(cwd, {
+    json: () => saveFamilyFile(familyPath(cwd, "queue.json"), q, {
+      versionKey: "queueVersion", version: QUEUE_VERSION, label: "队列状态", shapeFn: assertQueueShape,
+    }),
+    db: (db) => {
+      assertQueueShape(q, "memory(写入前)"); // 写侧形状门同现行（DB 后端不降低毒化防护）
+      return replaceQueueFamily(db, { items: q.items, budget: q.budget ?? null });
+    },
   });
 }
 export function loadDispatch(cwd) {
-  return loadFamilyFile(familyPath(cwd, "dispatch.json"), {
-    versionKey: "dispatchVersion", version: 1, label: "派发事件账", shapeFn: assertDispatchShape,
+  return backendCall(cwd, {
+    json: () => loadFamilyFile(familyPath(cwd, "dispatch.json"), {
+      versionKey: "dispatchVersion", version: 1, label: "派发事件账", shapeFn: assertDispatchShape,
+    }),
+    db: (db) => dbDispatchOf(db),
   });
 }
 export function saveDispatch(cwd, d) {
-  saveFamilyFile(familyPath(cwd, "dispatch.json"), d, {
-    versionKey: "dispatchVersion", version: 1, label: "派发事件账", shapeFn: assertDispatchShape,
+  return backendCall(cwd, {
+    json: () => saveFamilyFile(familyPath(cwd, "dispatch.json"), d, {
+      versionKey: "dispatchVersion", version: 1, label: "派发事件账", shapeFn: assertDispatchShape,
+    }),
+    db: (db) => {
+      assertDispatchShape(d, "memory(写入前)");
+      return replaceDispatchTxs(db, d.txs);
+    },
   });
 }
 export function loadLedger(cwd) {
-  return loadFamilyFile(familyPath(cwd, "ledger.json"), {
-    versionKey: "ledgerVersion", version: 1, label: "预算账本", shapeFn: assertLedgerShape,
+  return backendCall(cwd, {
+    json: () => loadFamilyFile(familyPath(cwd, "ledger.json"), {
+      versionKey: "ledgerVersion", version: 1, label: "预算账本", shapeFn: assertLedgerShape,
+    }),
+    db: (db) => ({ entries: readSnapshot(db).events }),
   });
 }
 export function saveLedger(cwd, l) {
-  saveFamilyFile(familyPath(cwd, "ledger.json"), l, {
-    versionKey: "ledgerVersion", version: 1, label: "预算账本", shapeFn: assertLedgerShape,
+  return backendCall(cwd, {
+    json: () => saveFamilyFile(familyPath(cwd, "ledger.json"), l, {
+      versionKey: "ledgerVersion", version: 1, label: "预算账本", shapeFn: assertLedgerShape,
+    }),
+    db: (db) => {
+      assertLedgerShape(l, "memory(写入前)");
+      // 整集写=单事务全删全插（等价于 JSON 整本重写；生产业务路径走 appendBudgetEvent 操作面）
+      return replaceBudgetEvents(db, l.entries);
+    },
   });
 }
 

@@ -19,7 +19,8 @@ import {
   writeSessionState,
 } from "./hook-lib.js";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve, join } from "node:path";
 
 // 锚 `^[ \t\r]*` 而非 `^\s*`（V021-ADJ-68）：`\s` 含换行，空行开头的多行 prompt 会把第 2 行
@@ -53,12 +54,80 @@ const WITHDRAW_NEG_RE =
   /(?:不要?|不准|别|未|请勿|拒绝|勿|don['’]?t|do\s+not|not)\s*[^。！？\n，,、；;.?!]{0,6}(?:撤回|withdraw|revoke)/i;
 
 // queue-pending 批准解析（0.3.1 棒1，ADR-0030 修正节）：入队时 goal 尚不存在，UPS 批准
-// 解析需第三个来源——扫 `.lazyzcode/queue/queue.json` 的已声明交付契约（delivery[ep].hash
-// 前 8 位）。自包含 inline（钩子不 import core，家族校验和算法与 core/queue.js checksumOf
-// 逐字同形：strip checksum → JSON.stringify(rest) → sha256）。返回 null=零命中或读面异常
-// （fail-open，落回既有诊断支，绝不炸钩子）；返回对象=恰一次 emit。文案零时间戳零文件名。
-// 写入面=同族同目录（.lazyzcode/authorizations/，记录形状与 contractPending 支逐字同构）。
+// 解析需第三个来源——扫队列条目的已声明交付契约（delivery[ep].hash 前 8 位）。
+// 双后端（P2 N6，设计 docs/design-sqlite-store.md §7/§10）：`.lazyzcode/state.sqlite` 在场
+// → DB 权威（只读读面；createRequire 同步取 node:sqlite——不引入 async；major<24/模块缺席/
+// 不可读/异版本=零记录+具名诊断+exit 0，**不回落旧 JSON 批准**）；库缺席 → 现行 JSON 路径
+// 逐字不变（自包含 inline，家族校验和算法与 core/queue.js checksumOf 逐字同形：strip
+// checksum → JSON.stringify(rest) → sha256）。返回 null=零命中或读面异常（fail-open，落回
+// 既有诊断支，绝不炸钩子）；返回对象=恰一次 emit。文案零时间戳零文件名。
+// 写入面=同族同目录（.lazyzcode/authorizations/，记录形状与 contractPending 支逐字同构；
+// 唯一写者不变——DB 分支只读不写，r4-F1）。
 function queueDeliveryVerdict(cwd, short, sessionId) {
+  const dbPath = join(cwd, ".lazyzcode", "state.sqlite");
+  if (!existsSync(dbPath)) return queueDeliveryVerdictJson(cwd, short, sessionId); // 无库=JSON 路径逐字
+  const read = readQueueItemsFromDb(dbPath);
+  if (!read.ok) {
+    return {
+      additionalContext:
+        `[lzy] state.sqlite 在场但读面不可用（${read.diag}）——库在场即 DB 权威（不回落旧 JSON 批准），本次批准未记录，门保持关闭。` +
+        `恢复：核对库文件与权限（lzy doctor 诊断），或用 VACUUM INTO 备份恢复后，重新发送批准句。`,
+    };
+  }
+  return queueDeliveryVerdictItems(cwd, short, sessionId, read.items);
+}
+
+// DB 只读读面（P2 N6①）：地板与模块探针（与 core runtimeSupport 口径一致）→ readOnly 打开 →
+// busy_timeout=5000 → meta.schema_version 校验（异版本=当不可读）→ 非终态行组装候选（delivery_json
+// 解析；行级形状门，坏行=整面当不可读——fail-closed）。全程不写。
+function readQueueItemsFromDb(dbPath) {
+  const major = Number(process.versions.node.split(".")[0]);
+  if (!(major >= 24)) {
+    return { ok: false, diag: `Node ${process.versions.node} 低于地板 ≥24.0.0（ADR-0039；22 线不入支持面）` };
+  }
+  let db;
+  try {
+    const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite"); // 同步取模块（24.19 实测可行）
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    db.exec("PRAGMA busy_timeout=5000");
+    const meta = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='meta'").get();
+    if (meta) {
+      const row = db.prepare("SELECT value FROM meta WHERE key='schema_version'").get();
+      if (row && String(row.value) !== "1") {
+        return { ok: false, diag: `schema_version=${row.value} 不识别（本代 1）——拒读` };
+      }
+    }
+    const rows = db
+      .prepare("SELECT id, goal_slug, state, delivery_json FROM queue_items WHERE state NOT IN ('completed','failed','cancelled')")
+      .all();
+    const items = [];
+    for (const r of rows) {
+      if (typeof r.id !== "string" || r.id === "" || typeof r.state !== "string") {
+        return { ok: false, diag: `行级形状不符（id/state；item ${String(r.id).slice(0, 24)}）` };
+      }
+      let delivery = null;
+      if (r.delivery_json != null) {
+        try {
+          delivery = JSON.parse(r.delivery_json);
+        } catch {
+          return { ok: false, diag: `行级 delivery_json 损坏（item ${r.id.slice(0, 24)}）` };
+        }
+      }
+      if (delivery != null && (typeof delivery !== "object" || Array.isArray(delivery))) {
+        return { ok: false, diag: `行级 delivery 形状不符（item ${r.id.slice(0, 24)}）` };
+      }
+      items.push({ id: r.id, state: r.state, goalSlug: r.goal_slug, delivery });
+    }
+    return { ok: true, items };
+  } catch (e) {
+    return { ok: false, diag: String(e?.code ?? e?.message ?? e).slice(0, 120) };
+  } finally {
+    try { db?.close(); } catch {}
+  }
+}
+
+// 无库 JSON 路径（P2 N6 前的现行实现，逐字不动；仅 fail-open 语义不同：读面异常=静默落回）。
+function queueDeliveryVerdictJson(cwd, short, sessionId) {
   let q;
   try {
     const obj = JSON.parse(readFileSync(join(cwd, ".lazyzcode", "queue", "queue.json"), "utf8"));
@@ -69,6 +138,11 @@ function queueDeliveryVerdict(cwd, short, sessionId) {
     return null; // 缺席/损坏/校验和不符：fail-open
   }
   const items = Array.isArray(q?.items) ? q.items : [];
+  return queueDeliveryVerdictItems(cwd, short, sessionId, items);
+}
+
+// 裁决体（双后端共享；输入=条目数组，形状 {id, state, goalSlug, delivery{B,C:{hash,path}}}）。
+function queueDeliveryVerdictItems(cwd, short, sessionId, items) {
   const hits = [];
   const pendingCands = [];
   for (const it of items) {

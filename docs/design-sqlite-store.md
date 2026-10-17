@@ -162,9 +162,11 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
 
 ## 10. 钩子权威读路径（冻结形态）
 
-- 形态：**自包含内联读器**（不 import core——现行钩子家法），`{readOnly:true}` 打开，读面等价 `queueDeliveryVerdict`（trigger.js:61-131 全七支：approve/void/refuse-multi/candidates-no-match/write-failed/unreadable/none）。
+- 形态：**自包含内联读器**（不 import core——现行钩子家法），`{readOnly:true}` 打开，读面等价 `queueDeliveryVerdict`（全七支：approve/void/refuse-multi/candidates-no-match/write-failed/unreadable/none）。
 - `schema_version` 不识别＝当不可读；库不可读/损坏＝**零记录 + 具名诊断 + 不阻断会话**（fail-open 家族纪律）；授权门由「没写批准记录」保持关闭（与现行语义同构，非钩子显式阻断）。
-- P1 可行性证据：`scripts/p1-sqlite-pilot/hook-reader.mjs` 原型 + stdin 驱动契约测试（A/B 对照真 trigger.js）；生产接线（trigger.js 改读 DB）属 P2/P3。
+- **版本/形状门归属（P2 N6④ 落定）**：DB 分支实现 schema_version 校验（异版本=当不可读）+ 行级形状门（id/state/delivery_json 坏行=整面当不可读，fail-closed）+ 地板探针（major≥24 先于 require——22.13+ 模块在而不在支持面与 core runtimeSupport 口径一致；模块缺席=require 抛同落具名诊断）；JSON 分支维持现状（checksum-only，不校验 queueVersion——本批零变更，§12-6 的归属就此闭合）。库在场判据同 core（`state.sqlite` 存在性）；**库在场即 DB 权威，失败支不回落旧 JSON 批准**（零记录+具名诊断+exit 0，22.12/22.13/24.19 三运行时实跑取证在 artifacts/p2-baseline/out-n6check/probe-node22-hook.txt）。
+- 批准记录唯一写者不变（r4-F1）：UPS 钩子写 `.lazyzcode/authorizations/`、形状不变；DB 分支只读不写。
+- P1 可行性证据：`scripts/p1-sqlite-pilot/hook-reader.mjs` 原型 + stdin 驱动契约测试（A/B 对照真 trigger.js）；P2 已生产接线（trigger.js 双后端：无库=JSON 路径逐字不变，库在场=DB 只读读面，`createRequire` 同步取 `node:sqlite` 不引入 async），pilot reader 面退役为历史档案。
 
 ## 11. 九项冻结表（P1 出口）
 

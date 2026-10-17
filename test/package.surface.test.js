@@ -10,6 +10,11 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 
+// r3-F1（P1 评审非阻塞发现）：下条断言隐式依赖外层 git 树——无 .git 形态（拷贝分发/打包）具名 skip；有 .git 时断言不弱化
+const GIT_SKIP = existsSync(join(ROOT, ".git"))
+  ? false
+  : "无外层 git 树（.git 缺席）：git ls-files 跟踪面断言不适用，具名 skip";
+
 test("package.json：版本三方一致 + MIT + 零依赖 + files 排除 .mimosa + bin shebang", () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
   const manifest = JSON.parse(
@@ -27,7 +32,7 @@ test("package.json：版本三方一致 + MIT + 零依赖 + files 排除 .mimosa
   assert.ok(readFileSync(binPath, "utf8").startsWith("#!/usr/bin/env node"));
 });
 
-test("git 跟踪文件不含 .mimosa 残留", () => {
+test("git 跟踪文件不含 .mimosa 残留", { skip: GIT_SKIP }, () => {
   const r = spawnSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" });
   assert.equal(r.status, 0);
   const tracked = (r.stdout ?? "").split("\n").filter(Boolean);

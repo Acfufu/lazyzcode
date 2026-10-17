@@ -1,6 +1,6 @@
 # 局部状态 SQLite 存储契约（P1 冻结）
 
-日期：2026-10-16 · 状态：**P1 冻结（未发布任何机制；P2 依据本文件实现，P3 显式迁移）**
+日期：2026-10-16 · 状态：**P1 冻结；P2 已实施**（2026-10-18，goal p2-sqlite-tx：存储层生产化与四调用面接线，未发布任何机制；处置表与 P2→P3 交接=§12；P3 显式迁移未启动）
 依据：`docs/plan-lzy-sqlite-state.md` §4（P1 批=范围/schema/存储契约/能力矩阵/试点及故障证据）；`docs/adr/0039-sqlite-store-boundary.md`（边界与地板定案）；能力矩阵与逐版本原始证据=goal `p1-sqlite-pilot` 的 F 证据面（探针脚本 `scripts/sqlite-capability-probe.mjs`，P1 N4 入库）。
 本文件是存储层单一实施依据：P1 只冻结，不接线；任何与现行 `core/queue.js` 语义的偏差都在 §3 对账表逐条声明。
 
@@ -22,7 +22,7 @@ SQLite 不改变 OS 沙盒边界，不等于供应商余额，不能把逐段消
 
 ## 2. 运行时地板与操作纪律（拍板 2026-10-16）
 
-- **最低运行时＝Node ≥24.0.0**；22 线不入支持面（实证：22.12 及以下无 node:sqlite；22.13 起模块可用但构造器 `{timeout}` 被静默忽略、每次进程加载打一条 experimental 告警；24.0.0 全探针通过）。engines 字段与安装文案的机制收紧随 P3 切换窗口落地（切换前 JSON 面现行 ≥22 全额可用，不做虚假收窄）；运行时能力探针（`scripts/sqlite-capability-probe.mjs`）在 DB 面拒启非法环境并具名诊断。
+- **最低运行时＝Node ≥24.0.0**；22 线不入支持面（实证：22.12 及以下无 node:sqlite；22.13 起模块可用但构造器 `{timeout}` 被静默忽略、每次进程加载打一条 experimental 告警；24.0.0 全探针通过）。P2 实测复核（r2-F2）：22.12.0/22.13.0/24.19.0 三运行时钩子读面实跑原始输出在档 `artifacts/p2-baseline/out-n6check/probe-node22-hook.txt`——22.12/22.13 零记录+具名诊断 exit 0（诊断文案=「低于地板 ≥24.0.0」），24.19 正常记录一条；实测与本文及 ADR-0039 文本相符（地板拍板不动）。engines 字段与安装文案的机制收紧随 P3 切换窗口落地（切换前 JSON 面现行 ≥22 全额可用，不做虚假收窄）；运行时能力探针（`scripts/sqlite-capability-probe.mjs`）在 DB 面拒启非法环境并具名诊断。
 - **只用 SQL 层操作**：`PRAGMA journal_mode`/`busy_timeout`/`integrity_check`、`VACUUM INTO`、纯 SQL 事务。构造器选项**唯一例外**＝`{readOnly:true}`（经探针矩阵验证：只读打开成功、写尝试必败）；其余构造器选项与高阶 API 不用（跨版本行为面未穷举）。
 - **结构性不嵌套（P2 N1 落实）**：每个存储操作恰一个顶层事务，多写面在同一事务内展开；不用 `db.isTransaction` 之类高阶属性窥探事务态——既有事务在途时再开操作＝SQLite 拒（包为具名 `StatedbError`，不静默加入/不静默降级）。`busy_timeout=5000` 全连接统一（含 readOnly——P1 原型 1000 为临时偏差，已消除）。
 - **零新增根依赖**：只用内建 `node:sqlite`；不引 ORM/服务进程/驱动包。
@@ -172,7 +172,7 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
 
 | # | 冻结项 | 定案 | 依据/出处 |
 |---|---|---|---|
-| F1 | 真实源事件身份 | (project, runId, 来源水位) + 评审行 instance 摘要/内容指纹；DB 落列+唯一约束；历史缺口保留不改写 | P0 已实施（p0-ledger-fix），本库承接 |
+| F1 | 真实源事件身份 | 承接声明=**事件身份语义沿用 P0**（project/runId/来源水位落全局用量账单列，不在本库）；本库只落三族、**DDL 不含 project/runId/水位列**——判重唯一=dedup_key（UNIQUE 冲突=duplicate no-op，含评审行 instance 摘要/内容指纹沿 P0 语义的组成）；历史缺口保留不改写（r2-F1 文书修订 2026-10-18：原「DB 落列」表述与 §1 范围表自相矛盾，就此对齐） | P0 已实施（p0-ledger-fix）；本库承接=判重语义（§3/§4） |
 | F2 | schema 与数值表示 | §3（五表+meta；REAL/INTEGER/TEXT-ISO；dedup_key UNIQUE；seq 显式） | 本文件 §3/§4 |
 | F3 | 最低运行时 | Node ≥24.0.0 + 运行时探针拒启；engines 收紧随 P3 窗口 | ADR-0039；能力矩阵 |
 | F4 | 钩子权威读路径 | §10（自包含只读读器；不可读=零记录门关闭） | hook-failopen 先例；P1 原型证据 |
@@ -193,4 +193,27 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
 6. **trigger.js 不校验 queueVersion**（只校验 checksum；core 有版本闸）——钩子权威读路径改造时须补版本/形状门归属（§10）。
 7. **hook 读面在 DB 缺席时的分支**：「非工作区」与「迁移未做」须区分（P3 接线设计面，P1 原型把库缺席当落回信号）。
 
-**P2**：按 §3–§5 实现存储层并把 queue/review/CLI/钩子接线（仍不接管用户现有状态；夹具按上表重建）。**P3**：§7/§8 的显式迁移与单权威切换。**P4**：真实 CLI 平台面（含 win32 VM）与最低运行时验证。
+**P1 评审发现处置表（P2 N8 落档 2026-10-18；八条全非阻塞，逐条处置面引用可核）**：
+
+| 发现 | 等级 | 处置 | 落点 |
+|---|---|---|---|
+| r2-F1（§11 F1 行与 §1 范围表自相矛盾） | 非阻塞 | F1 行文书修订：明示「承接声明=事件身份语义沿用 P0（全局用量账单列），本库只落三族、DDL 不含 project/runId/水位列」 | 本文件 §11 F1 行（2026-10-18 修订） |
+| r2-F2（地板依据证据缺口） | 非阻塞 | 22.12.0/22.13.0/24.19.0 三运行时实跑原始输出入档；实测与 ADR 文本相符，地板拍板不动 | 本文件 §2 指针；`artifacts/p2-baseline/out-n6check/probe-node22-hook.txt` |
+| r2-F3（测试断言强度） | 非阻塞 | N6⑥ 落：全失败分支 exit 码断言 + write-failed「authDir 可读不可写」真实构造（POSIX chmod 555；win32 具名 skip 记档） | `test/statedb-readers.contract.test.js` |
+| r2-F4（isTransaction 白名单+readOnly timeout） | 非阻塞 | N1 落：结构性不嵌套（不用高阶事务窥探）+ busy_timeout=5000 全连接统一（含 readOnly） | 本文件 §2 |
+| r3-F1（package.surface 隐式依赖外层 git 树） | 非阻塞 | 加「无 .git 具名 skip」守卫；有 .git 时断言不弱化 | `test/package.surface.test.js` git 残留断言 |
+| r3-F2（backup-replay 不在回路） | 非阻塞 | N7④ 落：重写指向 `core/statedb.js` + 纳入契约测试回路（⑩ 电路腿） | `scripts/backup-replay.mjs` + `test/statedb.contract.test.js` |
+| r4-F1（pilot 原型写生产形状/单写者纪律） | 非阻塞 | N6⑤ 落：生产读器只读不写；批准记录唯一写者不变 | 本文件 §10；`plugin/hooks/trigger.js` DB 分支 |
+| r4-F2（backup-replay 破坏性） | 非阻塞 | N7④ 落：目标目录已存在 state.sqlite 时拒绝（exit 2）+ 用法行明示覆盖面 | `scripts/backup-replay.mjs` 守卫段 |
+
+**P2→P3 交接注记（P2 收官 2026-10-18，goal p2-sqlite-tx）**：
+
+- **P2 已实施面**（无库工作区逐字零变更；不建库、不迁移、不发版）：存储层 `core/statedb.js`（五表 DDL+单事务操作面+五面契约测试）；双后端 seam `stateBackend`/`backendCall`（库在场判据=`state.sqlite` 存在且可读且 `meta.schema_version=1`，库在场即 DB 权威绝不回落 JSON）；两核心事务（占用单事务、结算单事务含级联视图 `readBudgetAggregate({excludeTxId})`→`refreshStates(view)` 等价补偿）+ 派发四点锁外写事务化（§5 定案五点）+ reconcile/abortDelivery 写点；CLI 六访问器与 review 三调用点 DB 化；钩子权威读路径 DB 分支（只读、失败不回落，§10）；八件测试双后端参数化 + scripts 五件适配 + backup-replay 回路。
+- **P3 输入面**：
+  1. **meta.backend 提交点语义**：P2 从不写 `meta.backend`（仅 `writer_version` 随写更新；backend 判定用文件在场判据）——§7.5「backend 标记最后写=提交点」的写入者是 P3 迁移机器，其与库在场判据的衔接（标记先行还是文件先行、并存歧义期读向）是 P3 定案面。
+  2. **迁移机器不受本批影响面**：`core/migrate.js` BACKUP_FAMILIES 不含三族（交接清单 5）——P3 备份语义需新设计（§6 VACUUM INTO+integrity_check 路线），不能复用「迁移前后 sha256 不变」断言（那是「不碰」证明）；迁移导入的形状核对面=P2 的 `ensureSchema`/`schema_version` 已定 DDL。
+  3. **JSON 分支现行门现状**：checksum-only（不校验 queueVersion）保持零变更（§10 归属闭合句）——P3 切换窗口若给 JSON 面加版本闸属新语义变更，须走契约与评审流程，不得搭车。
+  4. **engines 收紧窗口**：P2 维持 `package.json` engines 不动（JSON 面 ≥22 现行承诺不变）；机制收紧随 P3 切换窗口一次性落（§2/§11-F3）；钩子侧 major≥24 地板探针已在 P2 先行（库在场才生效，无库工作区不受影响）。
+  5. **夹具/脚本面**：八件参数化（`KINDS=["json","sqlite"]` 循环）与 scripts 五件适配随 P3 全量切换须再核对（届时 DB kind 或转为主断言体，JSON kind 收缩为迁移回放面）；P2 证据面=`artifacts/p2-baseline/`。
+
+**P2**：已实施（见上「P2→P3 交接注记」；设计依据 §3–§5，出口=九项冻结表逐项可核 + P1 八发现全处置）。**P3**：§7/§8 的显式迁移与单权威切换。**P4**：真实 CLI 平台面（含 win32 VM）与最低运行时验证。

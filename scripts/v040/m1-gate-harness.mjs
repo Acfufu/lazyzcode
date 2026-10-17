@@ -22,6 +22,7 @@
 // 的核心模块，故两半读数互不污染。
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { openStore, ensureSchema, stateDbPath } from "../../core/statedb.js"; // P2 N7③：DB 后端夹具面（LZY_TEST_BACKEND=sqlite 时建库；仅测试态显式动作）
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -87,6 +88,11 @@ function fixture(label) {
   writeFileSync(join(d, "p.md"), "- [N1] x\n");
   g(["add", "-A"]);
   g(["commit", "-qm", "fixture"]);
+  if (process.env.LZY_TEST_BACKEND === "sqlite") {
+    const db = openStore(stateDbPath(d)); // 建库=显式动作（条目直落 DB；JSON 家族零生成）
+    ensureSchema(db);
+    db.close();
+  }
   const env = { HOME: home, USERPROFILE: home };
   const reg = lzy(d, ["loop", "register", "qh", "--title", "t"], env);
   if (reg.exit !== 0) throw new Error(`register 失败：${reg.out}`);

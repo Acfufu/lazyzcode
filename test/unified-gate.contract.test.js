@@ -23,6 +23,7 @@ import { recordAuthorization } from "../core/contract.js";
 import { bindDeliveryContract } from "../core/loop.js";
 import { actDeliveryB, loadIntents, validateDeliveryContract } from "../core/delivery.js";
 import { addQueueItem, loadDispatch, loadQueue, reconcileDispatch, refreshQueue, runQueueDispatch, saveDispatch } from "../core/queue.js";
+import { openStore, ensureSchema, stateDbPath } from "../core/statedb.js";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const CLI = join(ROOT, "cli", "lzy.js");
@@ -292,6 +293,14 @@ test("真 CLI 面：finish 过统一门（v2 拒且非零）；gate explain 退�
 // ── done 旧记录不免核两缝（queue 1182 / reconcile 853-858）─────────────────────
 // 队列夹具：条目 endpoint A（无交付链）+ 项目清单就绪 + 已授权主契约；goal 槽位按需造
 // 「done」态（v2=现行格式带策略记录；v1=demote 对照半）。
+// ── P2 N7：缝测试双后端参数化（queueFixture 吃队列家族；纯门面测试与后端无关留 loop 外）──
+const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
+const DB_OK = NODE_MAJOR >= 24; // ADR-0039 地板
+const KINDS = DB_OK ? ["json", "sqlite"] : ["json"];
+
+for (const KIND of KINDS) {
+const t = (name, fn) => test(`[${KIND}] ${name}`, fn);
+
 function queueFixture(prefix) {
   const d = mkdtempSync(join(tmpdir(), prefix));
   const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
@@ -304,6 +313,11 @@ function queueFixture(prefix) {
   writeFileSync(join(d, "p.md"), "- [N1] x\n");
   g(["add", "-A"]);
   g(["commit", "-qm", "fixture"]);
+  if (KIND === "sqlite") {
+    const db = openStore(stateDbPath(d)); // 建库=显式动作（条目直落 DB）
+    ensureSchema(db);
+    db.close();
+  }
   const it = addQueueItem(d, { title: "ugate-item", contractFile: join(d, "c-main.md"), planFile: join(d, "p.md"), goalSlug: "ugateq", endpoint: "A" });
   recordAuthorization(d, { kind: "approval", slug: "ugateq", contractHash: it.contractHash, sessionId: "t", at: new Date().toISOString() });
   refreshQueue(d);
@@ -325,7 +339,7 @@ function doneGoalSlot(d, { v1 = false } = {}) {
   writeFileSync(gp, `${JSON.stringify(g, null, 2)}\n`);
 }
 
-test("缝 queue 1182：done 旧记录不免核——v2 blocked 回 ready；v1 对照半照常 completed", async () => {
+t("缝 queue 1182：done 旧记录不免核——v2 blocked 回 ready；v1 对照半照常 completed", async () => {
   for (const v1 of [false, true]) {
     const { d, it } = queueFixture(v1 ? "lzy-ugate-q1-" : "lzy-ugate-q2-");
     try {
@@ -351,7 +365,7 @@ test("缝 queue 1182：done 旧记录不免核——v2 blocked 回 ready；v1 �
   }
 });
 
-test("缝 reconcile 853-858：done 追认前过门——v2 不追认（条目保持未决+trace 原因）；v1 对照半 settled", () => {
+t("缝 reconcile 853-858：done 追认前过门——v2 不追认（条目保持未决+trace 原因）；v1 对照半 settled", () => {
   for (const v1 of [false, true]) {
     const { d, it } = queueFixture(v1 ? "lzy-ugate-r1-" : "lzy-ugate-r2-");
     try {
@@ -389,7 +403,7 @@ test("缝 reconcile 853-858：done 追认前过门——v2 不追认（条目保
   }
 });
 
-test("缝 delivery beginAct：v2 阻塞不落 acting 且 contractPending 不动；v1 对照半外发放行", () => {
+t("缝 delivery beginAct：v2 阻塞不落 acting 且 contractPending 不动；v1 对照半外发放行", () => {
   const d = approvedGoal("lzy-ugate-act-");
   try {
     writeFileSync(join(d, "cb.md"), "task: 交付B\nendpoint: B\nscope: .\nrecipe: none\n\n- [A1] x\n");
@@ -463,3 +477,5 @@ test("缝 delivery beginAct：v2 阻塞不落 acting 且 contractPending 不动�
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+}

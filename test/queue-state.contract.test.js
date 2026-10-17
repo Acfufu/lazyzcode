@@ -26,6 +26,7 @@ import {
 import { createHash } from "node:crypto";
 import { recordAuthorization } from "../core/contract.js";
 import { countLoopResidueTmp } from "../core/loop.js";
+import { openStore, ensureSchema, stateDbPath } from "../core/statedb.js";
 
 process.env.LZY_ABLATE_HUMAN_GATE = "1";
 const HOME = mkdtempSync(join(tmpdir(), "lzy-qstate-home-"));
@@ -34,6 +35,15 @@ process.env.USERPROFILE = HOME;
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
+
+// ── P2 N7：双后端参数化（同一断言体跑 JSON/DB 双 kind；DB kind=建库后条目直落 state.sqlite，
+// JSON 家族文件永不生成；win32 雷回避=DB 句柄先 close 再删目录）──
+const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
+const DB_OK = NODE_MAJOR >= 24; // ADR-0039 地板；不满足=DB kind 具名 skip（JSON kind 照跑）
+const KINDS = DB_OK ? ["json", "sqlite"] : ["json"];
+
+for (const KIND of KINDS) {
+const t = (name, fn) => test(`[${KIND}] ${name}`, fn);
 
 function qrepo(prefix) {
   const d = mkdtempSync(join(tmpdir(), prefix));
@@ -53,12 +63,18 @@ function qrepo(prefix) {
   writeFileSync(join(d, "p.md"), "- [N1] x\n- [F1] marker\naccepts: A1\n");
   g(["add", "-A"]);
   g(["commit", "-qm", "fixture"]); // finish 完整性闸门要求树净——夹具文件先落提交
+  if (KIND === "sqlite") {
+    const db = openStore(stateDbPath(d)); // 建库=显式动作（库在场即 DB 权威；JSON 家族零生成）
+    ensureSchema(db);
+    db.close();
+  }
   return d;
 }
 
 const itemState = (d, id) => loadQueue(d).items.find((x) => x.id === id).state;
 
-test("①add→proposed；未授权提案永不 ready（授权缺席=首因），批准落账后 refresh→authorized→ready", () => {
+
+t("①add→proposed；未授权提案永不 ready（授权缺席=首因），批准落账后 refresh→authorized→ready", () => {
   const d = qrepo("lzy-qstate-1-");
   try {
     const it = addQueueItem(d, { title: "第一项", contractFile: join(d, "c.md"), planFile: join(d, "p.md"), goalSlug: "qi-one" });
@@ -80,7 +96,7 @@ test("①add→proposed；未授权提案永不 ready（授权缺席=首因）�
   }
 });
 
-test("②撤回→blocked(authorization)；重新批准→恢复 authorized→ready（恢复路径诚实）", () => {
+t("②撤回→blocked(authorization)；重新批准→恢复 authorized→ready（恢复路径诚实）", () => {
   const d = qrepo("lzy-qstate-2-");
   try {
     const it = addQueueItem(d, { title: "第二项", contractFile: join(d, "c.md"), planFile: join(d, "p.md"), goalSlug: "qi-two" });
@@ -100,7 +116,7 @@ test("②撤回→blocked(authorization)；重新批准→恢复 authorized→re
   }
 });
 
-test("③deps：未知 id/自指一律拒（add 即拒）；深链合法（经 add 不可能成环——新 id 尚无入边，环检查为防御面）", () => {
+t("③deps：未知 id/自指一律拒（add 即拒）；深链合法（经 add 不可能成环——新 id 尚无入边，环检查为防御面）", () => {
   const d = qrepo("lzy-qstate-3-");
   try {
     addQueueItem(d, { title: "a", contractFile: join(d, "c.md"), planFile: join(d, "p.md"), goalSlug: "qi-a" });
@@ -116,7 +132,7 @@ test("③deps：未知 id/自指一律拒（add 即拒）；深链合法（经 a
   }
 });
 
-test("④endpoint 矩阵四态（0.3.1 棒1 改写；旧拒语「endpoint 仅支持 A」已退役）", () => {
+t("④endpoint 矩阵四态（0.3.1 棒1 改写；旧拒语「endpoint 仅支持 A」已退役）", () => {
   // 旧态对照记录（评审 R2-MF-5 申报）：改前此断言为 /endpoint 仅支持 A/ 且 B/C 全拒
   // （core/queue.js:351-353 拒语「B/C 外部交付归 M4」）。0.3.1 棒1 起矩阵化：
   // A⇒禁交付契约 / B⇒须 B / C⇒须 B∧C；另加 endpoint 与主契约交叉校验。
@@ -153,7 +169,7 @@ test("④endpoint 矩阵四态（0.3.1 棒1 改写；旧拒语「endpoint 仅支
   }
 });
 
-test("⑤终态不可逆：completed/failed/cancelled 拒再取消；cancel 保留工件（goal 树零触碰）", () => {
+t("⑤终态不可逆：completed/failed/cancelled 拒再取消；cancel 保留工件（goal 树零触碰）", () => {
   const d = qrepo("lzy-qstate-5-");
   try {
     addQueueItem(d, { title: "x", contractFile: join(d, "c.md"), planFile: join(d, "p.md"), goalSlug: "qi-x" });
@@ -170,7 +186,7 @@ test("⑤终态不可逆：completed/failed/cancelled 拒再取消；cancel 保�
   }
 });
 
-test("⑥CLI 接线：queue list/show 面活体（批准→ready 全链经 CLI 可见）+show 事务账零条", () => {
+t("⑥CLI 接线：queue list/show 面活体（批准→ready 全链经 CLI 可见）+show 事务账零条", () => {
   const d = qrepo("lzy-qstate-6-");
   try {
     const env = { ...process.env };
@@ -190,7 +206,7 @@ test("⑥CLI 接线：queue list/show 面活体（批准→ready 全链经 CLI �
   }
 });
 
-test("⑦家族 tmp 登记：queue/ 与 budget/ 顶层孤儿 tmp 进 doctor 计数（ANY_TMP_SCAN_DIRS 观测面）", () => {
+t("⑦家族 tmp 登记：queue/ 与 budget/ 顶层孤儿 tmp 进 doctor 计数（ANY_TMP_SCAN_DIRS 观测面）", () => {
   const d = qrepo("lzy-qstate-7-");
   try {
     addQueueItem(d, { title: "x", contractFile: join(d, "c.md"), planFile: join(d, "p.md"), goalSlug: "qi-tmp" });
@@ -206,7 +222,7 @@ test("⑦家族 tmp 登记：queue/ 与 budget/ 顶层孤儿 tmp 进 doctor 计�
   }
 });
 
-test("⑧list 文本面：未授权项标注未就绪首因；预算视图行渲染", () => {
+t("⑧list 文本面：未授权项标注未就绪首因；预算视图行渲染", () => {
   const d = qrepo("lzy-qstate-8-");
   try {
     addQueueItem(d, { title: "x", contractFile: join(d, "c.md"), planFile: join(d, "p.md"), goalSlug: "qi-l" });
@@ -220,7 +236,7 @@ test("⑧list 文本面：未授权项标注未就绪首因；预算视图行渲
 });
 
 // ── 0.3.1 棒1（ADR-0030 §一.C/G）：HEAVY 入队门 / risk 车道门 / 契约必填键矩阵 ──
-test("⑨HEAVY 门：无 PASS 拒、含 REVISE 拒、缺 planHash 拒；齐备通过且字段落盘", () => {
+t("⑨HEAVY 门：无 PASS 拒、含 REVISE 拒、缺 planHash 拒；齐备通过且字段落盘", () => {
   const d = qrepo("lzy-qstate-9-");
   try {
     const plan = join(d, "p.md");
@@ -247,7 +263,7 @@ test("⑨HEAVY 门：无 PASS 拒、含 REVISE 拒、缺 planHash 拒；齐备�
   }
 });
 
-test("⑩risk 车道门：high/restricted 入队即拒；low/med 通过", () => {
+t("⑩risk 车道门：high/restricted 入队即拒；low/med 通过", () => {
   const d = qrepo("lzy-qstate-10-");
   try {
     const plan = join(d, "p.md");
@@ -264,7 +280,7 @@ test("⑩risk 车道门：high/restricted 入队即拒；low/med 通过", () => 
   }
 });
 
-test("⑪交付契约必填键矩阵：B 缺 pr-title 拒、C 缺 expect-marker 拒（对齐动作面硬要求）", () => {
+t("⑪交付契约必填键矩阵：B 缺 pr-title 拒、C 缺 expect-marker 拒（对齐动作面硬要求）", () => {
   const d = qrepo("lzy-qstate-11-");
   try {
     const plan = join(d, "p.md");
@@ -295,17 +311,25 @@ test("⑪交付契约必填键矩阵：B 缺 pr-title 拒、C 缺 expect-marker 
   }
 });
 
-test("⑫形状矩阵写侧同判（手改防御两层）：文件级=校验和恒拒；对象级=saveQueue 形状门拒", () => {
+t("⑫形状矩阵写侧同判（手改防御两层）：文件级=校验和恒拒；对象级=saveQueue 形状门拒", () => {
   const d = qrepo("lzy-qstate-12-");
   try {
     const plan = join(d, "p.md");
     const it = addQueueItem(d, { title: "x", contractFile: join(d, "c.md"), planFile: plan, goalSlug: "qz" });
-    const p = join(d, ".lazyzcode", "queue", "queue.json");
-    // 第一层：直接手改文件 → 校验和不符恒拒（合法手改不存在的机器证据）
-    const raw = readFileSync(p, "utf8");
-    writeFileSync(p, raw.replace('"endpoint": "A"', '"endpoint": "B"'));
-    assert.throws(() => loadQueue(d), /校验和不符/);
-    writeFileSync(p, raw); // 复原
+    // 第一层：直接手改存储 → 具名拒（合法手改不存在的机器证据）；DB kind=库损坏孪生（绝不回落 JSON）
+    if (KIND === "json") {
+      const p = join(d, ".lazyzcode", "queue", "queue.json");
+      const raw = readFileSync(p, "utf8");
+      writeFileSync(p, raw.replace('"endpoint": "A"', '"endpoint": "B"'));
+      assert.throws(() => loadQueue(d), /校验和不符/);
+      writeFileSync(p, raw); // 复原
+    } else {
+      const pdb = stateDbPath(d);
+      const rawdb = readFileSync(pdb);
+      writeFileSync(pdb, Buffer.from("corrupted-not-a-database"));
+      assert.throws(() => loadQueue(d), /state\.sqlite 不可用/);
+      writeFileSync(pdb, rawdb); // 复原
+    }
     // 第二层：对象级变异经写侧形状门拒（assertItem 矩阵；防绕过 API 的写入）
     const h64 = "a".repeat(64);
     const expectBad = (mutate, re) => {
@@ -324,7 +348,7 @@ test("⑫形状矩阵写侧同判（手改防御两层）：文件级=校验和�
 });
 
 // ── 0.3.1 棒1（ADR-0030 §一.D）：交付授权折叠进就绪门（未批准交付=不可 ready） ──
-test("⑬交付授权折叠：主契约批准+交付未批准→不 ready（reasons 含短码指路）；交付批准→ready；撤回→blocked→再批准恢复", () => {
+t("⑬交付授权折叠：主契约批准+交付未批准→不 ready（reasons 含短码指路）；交付批准→ready；撤回→blocked→再批准恢复", () => {
   const d = qrepo("lzy-qstate-13-");
   try {
     writeFileSync(join(d, "c-main-b.md"), "task: main B\nendpoint: B\nscope: .\nrecipe: none\n\n- [A1] x\n");
@@ -361,3 +385,5 @@ test("⑬交付授权折叠：主契约批准+交付未批准→不 ready（reas
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+}

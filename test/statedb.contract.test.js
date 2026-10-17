@@ -8,7 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -267,4 +267,24 @@ test("⑨段行往返与结算自读：replaceDispatchTxs 写段（extra 保形�
     assert.throws(() => patchDispatchTx(db, { txId: "t-sr", tx: { nope: 1 } }), (e) => e instanceof StatedbError && /未知 tx 字段/.test(e.message));
     db.close();
   } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+});
+
+test("⑩备份恢复重放回路（N7④）：scripts/backup-replay.mjs 全链 exit 0（VACUUM INTO→删→恢复→integrity ok+行数一致）+破坏性守卫（已存在 state.sqlite=exit 2）", { skip: FLOOR_SKIP }, () => {
+  const r = spawnSync(process.execPath, [join(fileURLToPath(new URL("../scripts/backup-replay.mjs", import.meta.url)))], { encoding: "utf8", timeout: 60000 });
+  assert.equal(r.status, 0, (r.stderr || r.stdout).slice(0, 300));
+  const receipt = JSON.parse(r.stdout);
+  assert.equal(receipt.ok, true);
+  assert.ok(receipt.steps.every((s) => s.ok), JSON.stringify(receipt.steps));
+  const verify = receipt.steps.find((s) => s.step === "只读恢复核验");
+  assert.equal(verify.integrity, "ok");
+  assert.equal(verify.sameItems && verify.sameEvents && verify.sameAgg, true);
+  // 破坏性守卫：已存在库的目标目录=拒（exit 2，不覆盖用户数据）
+  const guardDir = freshDir();
+  try {
+    mkdirSync(join(guardDir, ".lazyzcode"), { recursive: true });
+    writeFileSync(stateDbPath(guardDir), "x");
+    const g = spawnSync(process.execPath, [join(fileURLToPath(new URL("../scripts/backup-replay.mjs", import.meta.url))), guardDir], { encoding: "utf8", timeout: 60000 });
+    assert.equal(g.status, 2, `守卫须 exit 2（得 ${g.status}）`);
+    assert.match(g.stderr, /已存在 state\.sqlite/);
+  } finally { rmSync(guardDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });

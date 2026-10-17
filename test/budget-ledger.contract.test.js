@@ -21,6 +21,7 @@ import {
   describeReadiness,
 } from "../core/queue.js";
 import { recordAuthorization } from "../core/contract.js";
+import { openStore, ensureSchema, stateDbPath } from "../core/statedb.js";
 
 process.env.LZY_ABLATE_HUMAN_GATE = "1";
 const HOME = mkdtempSync(join(tmpdir(), "lzy-qbudget-home-"));
@@ -29,6 +30,14 @@ process.env.USERPROFILE = HOME;
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
+
+// ── P2 N7：双后端参数化（同一断言体跑 JSON/DB 双 kind；DB kind=建库后直落 state.sqlite）──
+const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
+const DB_OK = NODE_MAJOR >= 24; // ADR-0039 地板
+const KINDS = DB_OK ? ["json", "sqlite"] : ["json"];
+
+for (const KIND of KINDS) {
+const t = (name, fn) => test(`[${KIND}] ${name}`, fn);
 
 function qrepo(prefix) {
   const d = mkdtempSync(join(tmpdir(), prefix));
@@ -47,6 +56,11 @@ function qrepo(prefix) {
   writeFileSync(join(d, "p.md"), "- [N1] x\n- [F1] marker\naccepts: A1\n");
   g(["add", "-A"]);
   g(["commit", "-qm", "fixture"]); // finish 完整性闸门要求树净——夹具文件先落提交
+  if (KIND === "sqlite") {
+    const db = openStore(stateDbPath(d)); // 建库=显式动作（库在场即 DB 权威）
+    ensureSchema(db);
+    db.close();
+  }
   return d;
 }
 
@@ -77,7 +91,7 @@ const markSteps = (cwd) => {
   spawnSync(process.execPath, [CLI, "step", "done", "F1", "--evidence", "fake drive 完成"], { cwd, encoding: "utf8", env: { ...process.env } });
 };
 
-test("①dedup：同 dedupKey 第二次入账=duplicate（相同运行回执不重复扣账）", () => {
+t("①dedup：同 dedupKey 第二次入账=duplicate（相同运行回执不重复扣账）", () => {
   const d = qrepo("lzy-qbudget-1-");
   try {
     const a = AUTH();
@@ -91,21 +105,29 @@ test("①dedup：同 dedupKey 第二次入账=duplicate（相同运行回执不�
   }
 });
 
-test("②损坏 fail-closed：篡改 ledger.json 字节→读面拒绝（校验和家法）", () => {
+t("②损坏 fail-closed：篡改 ledger.json 字节→读面拒绝（校验和家法）", () => {
   const d = qrepo("lzy-qbudget-2-");
   try {
     appendLedgerEntry(d, { kind: "points", dedupKey: "points:tx1:s1", authorization: AUTH(), points: 3 });
-    const p = join(d, ".lazyzcode", "budget", "ledger.json");
-    const raw = JSON.parse(readFileSync(p, "utf8"));
-    raw.entries[0].points = 999; // 篡改实际消耗
-    writeFileSync(p, `${JSON.stringify(raw, null, 2)}\n`);
-    assert.throws(() => budgetView(d), /校验和不符/);
+    if (KIND === "json") {
+      const p = join(d, ".lazyzcode", "budget", "ledger.json");
+      const raw = JSON.parse(readFileSync(p, "utf8"));
+      raw.entries[0].points = 999; // 篡改实际消耗
+      writeFileSync(p, `${JSON.stringify(raw, null, 2)}\n`);
+      assert.throws(() => budgetView(d), /校验和不符/);
+    } else {
+      const pdb = stateDbPath(d);
+      const rawdb = readFileSync(pdb);
+      writeFileSync(pdb, Buffer.from("corrupted-not-a-database"));
+      assert.throws(() => budgetView(d), /state\.sqlite 不可用/); // 库在场即 DB 权威，绝不回落 JSON
+      writeFileSync(pdb, rawdb); // 复原（win32：句柄已关，覆盖安全）
+    }
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
 });
 
-test("③未决占用不假零：drive 异常留 open tx→按登记上限保守计入墙钟→预算尽不 ready", async () => {
+t("③未决占用不假零：drive 异常留 open tx→按登记上限保守计入墙钟→预算尽不 ready", async () => {
   const d = qrepo("lzy-qbudget-3-");
   try {
     const it = addQueueItem(d, { title: "w", contractFile: join(d, "c.md"), planFile: join(d, "p.md"), goalSlug: "qi-w" });
@@ -131,7 +153,7 @@ test("③未决占用不假零：drive 异常留 open tx→按登记上限保守
   }
 });
 
-test("④跨 reset/换 goal 累计不刷新：两项各自 finish+reset→ledger 两段墙钟同账本累计", async () => {
+t("④跨 reset/换 goal 累计不刷新：两项各自 finish+reset→ledger 两段墙钟同账本累计", async () => {
   const d = qrepo("lzy-qbudget-4-");
   try {
     twoItemQueue(d);
@@ -163,7 +185,7 @@ test("④跨 reset/换 goal 累计不刷新：两项各自 finish+reset→ledger
   }
 });
 
-test("⑤积分轴：逐会话 points 入账+达限停止下一次派发+在途超额如实 overrun", async () => {
+t("⑤积分轴：逐会话 points 入账+达限停止下一次派发+在途超额如实 overrun", async () => {
   const d = qrepo("lzy-qbudget-5-");
   try {
     twoItemQueue(d, ["qi-p1", "qi-p2"]);
@@ -201,7 +223,7 @@ test("⑤积分轴：逐会话 points 入账+达限停止下一次派发+在途�
   }
 });
 
-test("⑥--resume-points 只豁免确认时点前的在案记录；其后新增重新停止", () => {
+t("⑥--resume-points 只豁免确认时点前的在案记录；其后新增重新停止", () => {
   const d = qrepo("lzy-qbudget-6-");
   try {
     addQueueItem(d, { title: "w", contractFile: join(d, "c.md"), planFile: join(d, "p.md"), goalSlug: "qi-r" });
@@ -218,7 +240,7 @@ test("⑥--resume-points 只豁免确认时点前的在案记录；其后新增�
   }
 });
 
-test("⑦预算设定校验：非正 points/非整 wall-ms 拒；注记追加不覆写", () => {
+t("⑦预算设定校验：非正 points/非整 wall-ms 拒；注记追加不覆写", () => {
   const d = qrepo("lzy-qbudget-7-");
   try {
     addQueueItem(d, { title: "w", contractFile: join(d, "c.md"), planFile: join(d, "p.md"), goalSlug: "qi-v" });
@@ -233,3 +255,5 @@ test("⑦预算设定校验：非正 points/非整 wall-ms 拒；注记追加不
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+}

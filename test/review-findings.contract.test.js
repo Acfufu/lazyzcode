@@ -26,6 +26,7 @@ import { evaluateGate } from "../core/gate.js";
 import { appendLedgerEntry, budgetView, reviewLedgerPoints } from "../core/queue.js";
 import { recordAuthorization } from "../core/contract.js";
 import { saveFamilyFile } from "../core/queue.js";
+import { openStore, ensureSchema, stateDbPath } from "../core/statedb.js";
 
 // 沙盒 provider 前置固定为 BUILTIN-only 形态（2026-10-08 显式允许表案）：本文件测 gate/运行时
 // 语义，不测 provider 白名单——机器 env 在场会让「允许表为空」前置拒生效，测试须自洽。
@@ -313,9 +314,24 @@ describe("⑥CLI 退出码（真子进程；finding 面零 spawn）", () => {
   });
 });
 
-describe("⑦评审预算执法（N9）：入账/分项/超限拒/无契约不写", () => {
+// ── P2 N7：评审预算执法块双后端参数化（runReview 入账/执法面吃队列家族；findings 家族与后端无关）──
+const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
+const DB_OK = NODE_MAJOR >= 24; // ADR-0039 地板
+const KINDS = DB_OK ? ["json", "sqlite"] : ["json"];
+
+for (const KIND of KINDS) {
+describe(`⑦评审预算执法（N9）[${KIND}]：入账/分项/超限拒/无契约不写`, () => {
+  const fx = (opts) => {
+    const d = fixture(opts);
+    if (KIND === "sqlite") {
+      const db = openStore(stateDbPath(d)); // 建库=显式动作（ledger 直落 DB）
+      ensureSchema(db);
+      db.close();
+    }
+    return d;
+  };
   test("ledger review 类与 preflight 执法", async () => {
-    const d1 = fixture({ contractText: CONTRACT_POINTS });
+    const d1 = fx({ contractText: CONTRACT_POINTS });
     try {
       recordAuthorization(d1, { kind: "approval", slug: "fx", contractHash: "c".repeat(64), sessionId: "t", at: at(0, 0) });
       const r1 = await runReview(d1, { deps: deps(PASS, 0.4) });
@@ -352,6 +368,8 @@ describe("⑦评审预算执法（N9）：入账/分项/超限拒/无契约不�
     }
   });
 });
+
+}
 
 // ── 收口自审 r4（a4.r2 P1）锁忙作用域回归：catch 引用的 spawned 曾声明在 try 块内
 // ⇒ 锁忙路径 ReferenceError，exit 3 前置拒与 F-7 落档语义不可达。声明上提后，预置

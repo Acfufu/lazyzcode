@@ -94,6 +94,37 @@ mkdirSync(outDir, { recursive: true });
 const sha256 = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
 const sha256text = (s) => createHash("sha256").update(s).digest("hex");
 const nowIso = () => new Date().toISOString();
+// P2 N7③：队列家族双后端（LZY_TEST_BACKEND=sqlite 时夹具显式建库；读面=库在场只读快照，
+// 否则 v031 queue.json 原样）。建库=测试态显式动作；生产零创建。
+const LZY_TEST_BACKEND = process.env.LZY_TEST_BACKEND === "sqlite" ? "sqlite" : "json";
+async function maybeSeedDb(dir) {
+  if (LZY_TEST_BACKEND !== "sqlite") return;
+  const { openStore, ensureSchema, stateDbPath } = await import("../../core/statedb.js");
+  const db = openStore(stateDbPath(dir));
+  ensureSchema(db);
+  db.close();
+}
+async function readLedgerFace(dir) {
+  if (LZY_TEST_BACKEND === "sqlite") {
+    const { openStore, readSnapshot, stateDbPath } = await import("../../core/statedb.js");
+    const db = openStore(stateDbPath(dir), { readOnly: true });
+    const s = readSnapshot(db);
+    db.close();
+    return { entries: s.events };
+  }
+  return readJsonMaybe(join(dir, ".lazyzcode", "budget", "ledger.json"));
+}
+
+async function readQueueFace(dir) {
+  if (LZY_TEST_BACKEND === "sqlite") {
+    const { openStore, readSnapshot, stateDbPath } = await import("../../core/statedb.js");
+    const db = openStore(stateDbPath(dir), { readOnly: true });
+    const s = readSnapshot(db);
+    db.close();
+    return { items: s.items, budget: s.budget };
+  }
+  return readJsonMaybe(join(dir, ".lazyzcode", "queue", "queue.json"));
+}
 const readJsonMaybe = (p) => {
   try {
     return JSON.parse(readFileSync(p, "utf8"));
@@ -368,6 +399,7 @@ async function queueLedgerTier(outDir) {
     "c-main.md": "task: qa\nendpoint: A\nscope: .\nrecipe: none\n\n- [A1] x\n",
     ".lazyzcode/plans/qa-q.md": planBody,
   });
+  await maybeSeedDb(runRoot);
   const steps = [];
   const add = cli(["queue", "add", "qa-ledger", "--contract", "c-main.md", "--plan", ".lazyzcode/plans/qa-q.md", "--goal-slug", "qa-q"], { cwd: runRoot });
   steps.push({ step: "queue add", ...add });
@@ -407,14 +439,14 @@ async function queueLedgerTier(outDir) {
   const recSettle = cli(["queue", "reconcile"], { cwd: runRoot });
   steps.push({ step: "reconcile(settle)", ...recSettle });
 
-  const ledger1 = readJsonMaybe(join(runRoot, ".lazyzcode", "budget", "ledger.json"));
+  const ledger1 = await readLedgerFace(runRoot);
   const show = cli(["queue", "show", it.id], { cwd: runRoot });
   steps.push({ step: "queue show", ...show });
   // 停派读数面：queue budget 无旗标=只读（completd 项的 show 不列就绪理由）
   const budgetRead = cli(["queue", "budget"], { cwd: runRoot });
   steps.push({ step: "queue budget(read)", ...budgetRead });
   steps.push({ step: "loop reset", ...cli(["loop", "reset"], { cwd: runRoot }) });
-  const ledger2 = readJsonMaybe(join(runRoot, ".lazyzcode", "budget", "ledger.json"));
+  const ledger2 = await readLedgerFace(runRoot);
   const kinds = (ledger1?.entries ?? []).map((e) => e.kind);
   const count = (k) => kinds.filter((x) => x === k).length;
   writeFileSync(join(outDir, "budget-queue-reconcile.stdout.txt"), [
@@ -632,6 +664,7 @@ async function deliveryCompletionCase(outDir) {
       "cc.md": "task: qa-dc C\nendpoint: C\nscope: .\nrecipe: none\nrepo: Acfufu/lazyzcode\nexpect-marker: v0.3.1\n\n- [A1] x\n",
       "p.md": "- [N1] x\n- [F1] y\naccepts: A1\n",
     });
+    await maybeSeedDb(dir);
     // 交付契约声明 branch: v031 ⇒ 夹具须有该本地分支（act B 的 push 目标）
     const mkBranch = run("git", ["branch", "v031"], { cwd: dir });
     if (mkBranch.code !== 0) return { blocked: `夹具分支 v031 建失败（${g}）：${mkBranch.stderr}`, assertions: [], steps };
@@ -643,7 +676,7 @@ async function deliveryCompletionCase(outDir) {
     }
     const add = cli(["queue", "add", "qa-dc", "--contract", "c-main-b.md", "--plan", "p.md", "--endpoint", "B", "--delivery-b", "cb.md", "--delivery-c", "cc.md", "--goal-slug", "qa-dc"], { cwd: dir });
     steps.push({ step: `${g}:queue add`, ...add });
-    const q = readJsonMaybe(join(dir, ".lazyzcode", "queue", "queue.json"));
+    const q = await readQueueFace(dir);
     const item = q?.items?.[0] ?? null;
     if (!item) return { blocked: `queue add 未落条目（${g}）：${add.stdout}${add.stderr}`, assertions: [], steps };
     const bShort = String(item.delivery?.B?.hash ?? "").slice(0, 8);

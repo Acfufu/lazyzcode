@@ -19,7 +19,9 @@ const page404 = process.argv.includes("--page-404");
 const markerMissing = process.argv.includes("--marker-missing");
 const ciIdx = process.argv.indexOf("--merge-ci");
 const mergeCi = ciIdx >= 0 ? String(process.argv[ciIdx + 1] ?? "green") : "green";
-if (!d) throw new Error("用法：queue-bridge-e2e.mjs <fixtureDir> [--merge-fails] [--merge-ci <mode>]");
+if (!d) throw new Error("用法：queue-bridge-e2e.mjs <fixtureDir> [--merge-fails] [--merge-ci <mode>] [--db]");
+// P2 N7③：--db=夹具内显式建库（条目直落 state.sqlite；缺省=JSON 家族）——同一 harness 双后端可跑
+const wantDb = process.argv.includes("--db");
 if (!["green", "pending", "failed", "query-fail"].includes(mergeCi)) {
   throw new Error(`--merge-ci 非法：${mergeCi}（green|pending|failed|query-fail）`);
 }
@@ -83,6 +85,12 @@ chmodSync(fakeCurl, 0o755);
 process.env.LZY_GH_BIN = fakeGh;
 process.env.LZY_CURL_BIN = fakeCurl;
 
+if (wantDb) {
+  const { openStore, ensureSchema, stateDbPath } = await import(join(REPO, "core", "statedb.js"));
+  const db = openStore(stateDbPath(d)); // 建库=显式动作（库在场即 DB 权威）
+  ensureSchema(db);
+  db.close();
+}
 const { runQueueDispatch, loadQueue, loadDispatch, loadLedger } = await import(join(REPO, "core", "queue.js"));
 const { loadIntents } = await import(join(REPO, "core", "delivery.js"));
 

@@ -23,6 +23,10 @@
 //   3. win32 未核（spawn 信号语义差异）；本工具按 unix/macOS QA 面使用。
 import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+// P2 N7③：DB 后端夹具面（LZY_TEST_BACKEND=sqlite 时夹具显式建库——条目/账本直落 state.sqlite；
+// 建库=测试态显式动作，生产零创建）。MR 迁移腿保持 legacy-JSON 形态（0.3.1 物化树字节保留面，
+// 迁移机属 P3——本批不迁、如实记档）。
+import { openStore, ensureSchema, stateDbPath } from "../../core/statedb.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -882,6 +886,11 @@ async function gateMatrixCase() {
     g(["add", "-A"]);
     g(["commit", "-qm", "fixture"]);
     g(["remote", "add", "origin", "https://github.com/Acfufu/lazyzcode.git"]);
+    if (process.env.LZY_TEST_BACKEND === "sqlite") {
+      const db = openStore(stateDbPath(d)); // 建库=显式动作（条目直落 DB）
+      ensureSchema(db);
+      db.close();
+    }
     const lzy = (args, extra = {}) => {
       const r = spawnSync(process.execPath, [CLI, ...args], { cwd: d, encoding: "utf8", timeout: 120_000, env: { ...baseEnv, HOME: home, USERPROFILE: home, ...extra } });
       return { exit: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };

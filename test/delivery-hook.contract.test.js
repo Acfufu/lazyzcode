@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { effectiveAuthorization, loadAuthorizations, loadContract, recordAuthorization } from "../core/contract.js";
 import { bindDeliveryContract } from "../core/loop.js";
+import { openStore, ensureSchema, stateDbPath } from "../core/statedb.js";
 
 const HOME = mkdtempSync(join(tmpdir(), "lzy-dhook-home-"));
 process.env.HOME = HOME;
@@ -134,6 +135,15 @@ test("⑤零命中：mismatch 诊断列出全部合法短码且零记录", () =>
 // ── 0.3.1 棒1（ADR-0030 修正节，N5）：钩子 queue-pending 批准解析支 ──
 // 夹具：真 CLI queue add（endpoint B + delivery 契约）→ 入队时 goal 尚不存在，
 // 批准须由队列待批准面解析（同短语/同记录形状/同目录）。
+// ── P2 N7：queue-pending 支双后端参数化（⑥⑦ 经真 CLI queue add 落队列家族；①–⑤ 契约
+// goal 面与队列后端无关留 loop 外）──
+const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
+const DB_OK = NODE_MAJOR >= 24; // ADR-0039 地板
+const KINDS = DB_OK ? ["json", "sqlite"] : ["json"];
+
+for (const KIND of KINDS) {
+const t = (name, fn) => test(`[${KIND}] ${name}`, fn);
+
 function queueDeliveryRepo(prefix, { twoItems = false } = {}) {
   const d = mkdtempSync(join(tmpdir(), prefix));
   const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
@@ -151,6 +161,11 @@ function queueDeliveryRepo(prefix, { twoItems = false } = {}) {
   writeFileSync(join(d, "p.md"), "- [N1] x\n- [F1] marker\n");
   g(["add", "-A"]);
   g(["commit", "-qm", "fixture"]);
+  if (KIND === "sqlite") {
+    const db = openStore(stateDbPath(d)); // 建库=显式动作（CLI queue add 直落 DB）
+    ensureSchema(db);
+    db.close();
+  }
   const args = ["queue", "add", "b-item", "--contract", "c-main-b.md", "--plan", "p.md", "--endpoint", "B", "--delivery-b", "cb.md", "--delivery-c", "cc.md", "--goal-slug", "qb1"];
   const r1 = lzyIn(d, args);
   if (r1.status !== 0) throw new Error(`queue add 失败：${r1.out}`);
@@ -164,7 +179,7 @@ function queueDeliveryRepo(prefix, { twoItems = false } = {}) {
 
 const authTotal = (d) => loadAuthorizations(d).length;
 
-test("⑥queue-pending 批准：短码命中→同族记录（slug=条目 goalSlug/hash=交付契约）+确认文案含 item/ep；双跑字节一致", () => {
+t("⑥queue-pending 批准：短码命中→同族记录（slug=条目 goalSlug/hash=交付契约）+确认文案含 item/ep；双跑字节一致", () => {
   const { d, hash, short } = queueDeliveryRepo("lzy-dhook-6-");
   try {
     const before = authTotal(d);
@@ -184,7 +199,7 @@ test("⑥queue-pending 批准：短码命中→同族记录（slug=条目 goalSl
   }
 });
 
-test("⑦错码：有候选不匹配→列出待批准短码且零记录（可诊断不出刀）", () => {
+t("⑦错码：有候选不匹配→列出待批准短码且零记录（可诊断不出刀）", () => {
   const { d, short } = queueDeliveryRepo("lzy-dhook-7-");
   try {
     const before = authTotal(d);
@@ -230,10 +245,16 @@ test("⑩queue.json 损坏/缺席：fail-open 落回既有诊断支（零记录�
   const { d, short } = queueDeliveryRepo("lzy-dhook-10-");
   try {
     const before = authTotal(d);
-    writeFileSync(join(d, ".lazyzcode", "queue", "queue.json"), "{ 坏 JSON");
+    if (KIND === "json") {
+      writeFileSync(join(d, ".lazyzcode", "queue", "queue.json"), "{ 坏 JSON");
+    } else {
+      // DB kind 损坏孪生：库在场即权威——零记录+具名诊断（不回落旧 JSON；详断言在 statedb-readers ⑥）
+      writeFileSync(stateDbPath(d), "corrupted-not-a-database");
+    }
     const r = hookRun(d, `批准 ${short}`);
     assert.equal(r.status, 0, "损坏面不得炸钩子");
-    assert.match(r.out, /no goal loop is registered/);
+    if (KIND === "json") assert.match(r.out, /no goal loop is registered/);
+    else assert.match(r.out, /state\.sqlite 在场但读面不可用/);
     assert.equal(authTotal(d), before, "损坏零记录");
   } finally {
     rmSync(d, { recursive: true, force: true });
@@ -262,3 +283,5 @@ test("⑪优先级钉子：goal 侧 approvalPending 在场时 queue 支不得抢
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+}

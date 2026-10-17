@@ -26,10 +26,26 @@ mkfloor() {
   printf -- '- [N1] x\n- [F1] y\naccepts: A1\n' > p.md
   git add -A && git commit -qm fix
   BARE="$HOME_ISO/origin-$(basename "$D").git"; git init -q --bare "$BARE"; git remote add origin "$BARE"; git branch v031 >/dev/null 2>&1
+  if [ "${LZY_TEST_BACKEND:-json}" = "sqlite" ]; then
+    node --input-type=module -e "const m=await import('file://$REPO/core/statedb.js');const db=m.openStore('$D/.lazyzcode/state.sqlite');m.ensureSchema(db);db.close();console.log('[backend=sqlite 建库]');"
+  fi
 }
 run() { echo; echo "\$ lzy $*"; node "$CLI" "$@" 2>&1; echo "EXIT=$?"; }
 hook() { echo; echo "\$ trigger <$1>"; printf '{"prompt":"%s","cwd":"%s","session_id":"ev"}' "$1" "$PWD" | node "$TRIGGER"; echo; }
-shortof() { node -e 'const fs=require("fs");const q=JSON.parse(fs.readFileSync(".lazyzcode/queue/queue.json","utf8"));const [a,b]=process.argv[1].split(".");const v=a==="main"?q.items[0].contractHash:q.items[0].delivery[a].hash;process.stdout.write(v.slice(0,8))' "$1"; }
+# P2 N7③：队列读面双后端（state.sqlite 在场=只读快照组装同构形状；否则 v031 queue.json 原样）
+readq() { node -e '
+const fs=require("fs");const p=".lazyzcode/state.sqlite";
+let items;
+if (fs.existsSync(p)) {
+  const {DatabaseSync}=require("node:sqlite");
+  const db=new DatabaseSync(p,{readOnly:true});db.exec("PRAGMA busy_timeout=5000");
+  items=db.prepare("SELECT id,goal_slug,contract_hash,endpoint,state,delivery_json,blocked_reason,completed_endpoint,tier,risk FROM queue_items ORDER BY COALESCE(seq,999999),id").all()
+    .map(r=>({id:r.id,goalSlug:r.goal_slug,contractHash:r.contract_hash,endpoint:r.endpoint,state:r.state,blockedReason:r.blocked_reason,completedEndpoint:r.completed_endpoint,tier:r.tier,risk:r.risk,delivery:r.delivery_json?JSON.parse(r.delivery_json):null}));
+  db.close();
+} else { items=JSON.parse(fs.readFileSync(".lazyzcode/queue/queue.json","utf8")).items; }
+process.stdout.write(JSON.stringify({items}));
+'; }
+shortof() { readq | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>{const q=JSON.parse(s);const [a,b]=process.argv[1].split(".");const v=a==="main"?q.items[0].contractHash:q.items[0].delivery[a].hash;process.stdout.write(v.slice(0,8))})' "$1"; }
 approveall() {
   hook "批准 $(shortof B.b)"
   hook "批准 $(shortof C.c)"
@@ -52,14 +68,16 @@ F1|F3|F5)
   echo; echo "--- dispatch（harness 夹具驱动 + 假外部注入）$MODE ---"
   node "$REPO/scripts/v031/queue-bridge-e2e.mjs" "$D" $MODE 2>&1 | tail -40
   echo; echo "--- 文件面 ---"
-  node -e '
+  readq | node -e '
+let sin="";process.stdin.on("data",(d)=>sin+=d).on("end",()=>{
 const fs=require("fs");
-const q=JSON.parse(fs.readFileSync(".lazyzcode/queue/queue.json","utf8"));
-console.log("queue.json item:",JSON.stringify({state:q.items[0].state,endpoint:q.items[0].endpoint,completedEndpoint:q.items[0].completedEndpoint,blockedReason:String(q.items[0].blockedReason).slice(0,140)}));
+const q=JSON.parse(sin);
+console.log("queue item:",JSON.stringify({state:q.items[0].state,endpoint:q.items[0].endpoint,completedEndpoint:q.items[0].completedEndpoint,blockedReason:String(q.items[0].blockedReason).slice(0,140)}));
 try{const it=JSON.parse(fs.readFileSync(".lazyzcode/delivery/intents.json","utf8"));
 console.log("intents:",JSON.stringify(it.intents.map(x=>({ep:x.endpoint,status:x.status,origin:x.origin,mergeSha:!!x.observed?.mergeSha,pages:(x.observed?.pages??[]).map(p=>p.path)}))));}catch(e){console.log("intents 缺席");}
 try{const dj=JSON.parse(fs.readFileSync(".lazyzcode/queue/dispatch.json","utf8"));
 console.log("txs:",JSON.stringify(dj.txs.map(t=>({phase:t.phase,note:String(t.note).slice(0,90)}))));}catch(e){console.log("dispatch 缺席");}
+});
 '
   if [ "$FID" = "F5" ]; then
     echo; echo "--- 人工修复（真 CLI：delivery act B；假 gh 注入）---"
@@ -86,10 +104,11 @@ GH
     run delivery act C --origin-item q1 --repo Acfufu/lazyzcode --expect-marker v0.3.1
     echo; echo "--- 追认（真 CLI：queue reconcile）---"
     run queue reconcile
-    node -e '
-const fs=require("fs");
-const q=JSON.parse(fs.readFileSync(".lazyzcode/queue/queue.json","utf8"));
+    readq | node -e '
+let sin="";process.stdin.on("data",(d)=>sin+=d).on("end",()=>{
+const q=JSON.parse(sin);
 console.log("追认后 item:",JSON.stringify({state:q.items[0].state,completedEndpoint:q.items[0].completedEndpoint}));
+});
 '
   fi
   ;;
@@ -104,7 +123,7 @@ F4)
   run queue add x1 --contract c-main-a.md --plan p.md --endpoint B --delivery-b cb.md --delivery-c cc.md
   run queue add h1 --contract c-main-b.md --plan p.md --endpoint B --delivery-b cb.md --delivery-c cc.md --tier heavy
   run queue add r1 --contract c-main-b.md --plan p.md --endpoint B --delivery-b cb.md --delivery-c cc.md --risk high
-  node -e 'const fs=require("fs");try{const q=JSON.parse(fs.readFileSync(".lazyzcode/queue/queue.json","utf8"));console.log("登记项:",JSON.stringify(q.items.map(i=>({id:i.id,endpoint:i.endpoint,tier:i.tier??null,risk:i.risk??null,delivery:i.delivery?Object.keys(i.delivery):null}))));}catch(e){console.log("queue.json 无（全拒）");}'
+  readq | node -e 'let sin="";process.stdin.on("data",(d)=>sin+=d).on("end",()=>{const q=JSON.parse(sin);console.log("登记项:",JSON.stringify(q.items.map(i=>({id:i.id,endpoint:i.endpoint,tier:i.tier??null,risk:i.risk??null,delivery:i.delivery?Object.keys(i.delivery):null}))));});'
   ;;
 F2)
   mkfloor
@@ -113,7 +132,7 @@ F2)
   hook "批准 $SHORT"
   hook "批准 deadbeef"
   echo; echo "--- authorizations 记录数 ---"; ls .lazyzcode/authorizations 2>/dev/null | wc -l | tr -d ' '
-  node -e 'const fs=require("fs");try{const q=JSON.parse(fs.readFileSync(".lazyzcode/queue/queue.json","utf8"));console.log("条目态:",q.items[0].state);}catch(e){console.log("queue.json 缺");}'
+  readq | node -e 'let sin="";process.stdin.on("data",(d)=>sin+=d).on("end",()=>{const q=JSON.parse(sin);console.log("条目态:",q.items[0].state);});'
   ;;
 *)
   echo "未知 FID：$FID"; exit 2;;

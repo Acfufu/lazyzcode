@@ -32,6 +32,7 @@ import {
   saveQueue,
 } from "../core/queue.js";
 import { recordAuthorization } from "../core/contract.js";
+import { openStore, ensureSchema, stateDbPath } from "../core/statedb.js";
 import { resetLoop } from "../core/loop.js";
 import { createGit } from "../core/git.js";
 import { runDrive } from "../core/drive.js";
@@ -43,6 +44,14 @@ process.env.USERPROFILE = HOME;
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
+
+// ── P2 N7：双后端参数化（同一断言体跑 JSON/DB 双 kind；goal/lease 族=loop 文件与后端无关）──
+const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
+const DB_OK = NODE_MAJOR >= 24; // ADR-0039 地板
+const KINDS = DB_OK ? ["json", "sqlite"] : ["json"];
+
+for (const KIND of KINDS) {
+const t = (name, fn) => test(`[${KIND}] ${name}`, fn);
 
 function qrepo(prefix) {
   const d = mkdtempSync(join(tmpdir(), prefix));
@@ -61,6 +70,11 @@ function qrepo(prefix) {
   writeFileSync(join(d, "p.md"), "- [N1] x\n- [F1] marker\naccepts: A1\n");
   g(["add", "-A"]);
   g(["commit", "-qm", "fixture"]); // finish 完整性闸门要求树净——夹具文件先落提交
+  if (KIND === "sqlite") {
+    const db = openStore(stateDbPath(d)); // 建库=显式动作（库在场即 DB 权威）
+    ensureSchema(db);
+    db.close();
+  }
   return d;
 }
 
@@ -82,7 +96,7 @@ const crashingDeps = {
   },
 };
 
-test("①判定表(a)：未决 tx×goal executing→killed+killed-inflight 显式申报+item 回 ready（不重注册）", async () => {
+t("①判定表(a)：未决 tx×goal executing→killed+killed-inflight 显式申报+item 回 ready（不重注册）", async () => {
   const d = qrepo("lzy-qrecov-1-");
   try {
     approvedItem(d, "qi-ra");
@@ -102,7 +116,7 @@ test("①判定表(a)：未决 tx×goal executing→killed+killed-inflight 显�
   }
 });
 
-test("②判定表(b)：未决 tx×goal done→补结算诚实归账+item completed（崩溃在归档与确认之间）", async () => {
+t("②判定表(b)：未决 tx×goal done→补结算诚实归账+item completed（崩溃在归档与确认之间）", async () => {
   const d = qrepo("lzy-qrecov-2-");
   try {
     approvedItem(d, "qi-rb");
@@ -122,7 +136,7 @@ test("②判定表(b)：未决 tx×goal done→补结算诚实归账+item comple
   }
 });
 
-test("③判定表(c)：未决 tx×goal 缺失→reconciled-orphan+item failed 带人工指路（不静默重注册）", async () => {
+t("③判定表(c)：未决 tx×goal 缺失→reconciled-orphan+item failed 带人工指路（不静默重注册）", async () => {
   const d = qrepo("lzy-qrecov-3-");
   try {
     approvedItem(d, "qi-rc");
@@ -139,7 +153,7 @@ test("③判定表(c)：未决 tx×goal 缺失→reconciled-orphan+item failed �
   }
 });
 
-test("④不重复派发/不越权核销：租约在握的 open tx→busy-live 不核销；无 ready 项止步零新事务", async () => {
+t("④不重复派发/不越权核销：租约在握的 open tx→busy-live 不核销；无 ready 项止步零新事务", async () => {
   const d = qrepo("lzy-qrecov-4-");
   try {
     approvedItem(d, "qi-rd");
@@ -164,7 +178,7 @@ test("④不重复派发/不越权核销：租约在握的 open tx→busy-live �
   }
 });
 
-test("⑤腾槽时序：两项串行→两项各自完成后槽位腾空（确认后才 reset，全程零执行态残留）", async () => {
+t("⑤腾槽时序：两项串行→两项各自完成后槽位腾空（确认后才 reset，全程零执行态残留）", async () => {
   const d = qrepo("lzy-qrecov-5-");
   try {
     approvedItem(d, "qi-re1");
@@ -192,7 +206,7 @@ const markSteps = (cwd) => {
   spawnSync(process.execPath, [CLI, "step", "done", "F1", "--evidence", "fake drive 完成"], { cwd, encoding: "utf8", env: { ...process.env } });
 };
 
-test("⑥撤回批次停：withdrawal→blocked(authorization)→dispatch 拒且零执行（goal 未注册）", async () => {
+t("⑥撤回批次停：withdrawal→blocked(authorization)→dispatch 拒且零执行（goal 未注册）", async () => {
   const d = qrepo("lzy-qrecov-6-");
   try {
     const it = approvedItem(d, "qi-rf");
@@ -209,7 +223,7 @@ test("⑥撤回批次停：withdrawal→blocked(authorization)→dispatch 拒且
   }
 });
 
-test("⑦失败依赖阻塞+独立 ready 项续推：q1 失败→q2 blocked(deps)→q3 独立完成（下次派发）", async () => {
+t("⑦失败依赖阻塞+独立 ready 项续推：q1 失败→q2 blocked(deps)→q3 独立完成（下次派发）", async () => {
   const d = qrepo("lzy-qrecov-7-");
   try {
     approvedItem(d, "qi-rg1"); // q1
@@ -237,7 +251,7 @@ test("⑦失败依赖阻塞+独立 ready 项续推：q1 失败→q2 blocked(deps
   }
 });
 
-test("⑧槽位被他活跃目标占用：队列不越权处置——tx orphan+item failed+他目标原样", async () => {
+t("⑧槽位被他活跃目标占用：队列不越权处置——tx orphan+item failed+他目标原样", async () => {
   const d = qrepo("lzy-qrecov-8-");
   try {
     approvedItem(d, "qi-rh");
@@ -261,7 +275,7 @@ test("⑧槽位被他活跃目标占用：队列不越权处置——tx orphan+i
   }
 });
 
-test("⑨真实 runDrive 协同：段记录 sink 逐段外报（队列结算输入面，假引擎零触网）", async () => {
+t("⑨真实 runDrive 协同：段记录 sink 逐段外报（队列结算输入面，假引擎零触网）", async () => {
   const d = qrepo("lzy-qrecov-9-");
   try {
     spawnSync(process.execPath, [CLI, "loop", "register", "drv-q", "--title", "t"], { cwd: d, encoding: "utf8", env: { ...process.env } });
@@ -284,3 +298,5 @@ test("⑨真实 runDrive 协同：段记录 sink 逐段外报（队列结算输�
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+}

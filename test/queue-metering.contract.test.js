@@ -20,6 +20,7 @@ import {
   setQueueBudget,
 } from "../core/queue.js";
 import { recordAuthorization } from "../core/contract.js";
+import { openStore, ensureSchema, stateDbPath } from "../core/statedb.js";
 
 process.env.LZY_ABLATE_HUMAN_GATE = "1";
 const HOME = mkdtempSync(join(tmpdir(), "lzy-qmeter-home-"));
@@ -28,6 +29,14 @@ process.env.USERPROFILE = HOME;
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
+
+// ── P2 N7：双后端参数化（同一断言体跑 JSON/DB 双 kind；⑥ 计量面与队列后端无关，留 loop 外）──
+const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
+const DB_OK = NODE_MAJOR >= 24; // ADR-0039 地板
+const KINDS = DB_OK ? ["json", "sqlite"] : ["json"];
+
+for (const KIND of KINDS) {
+const t = (name, fn) => test(`[${KIND}] ${name}`, fn);
 
 function qrepo(prefix) {
   const d = mkdtempSync(join(tmpdir(), prefix));
@@ -46,6 +55,11 @@ function qrepo(prefix) {
   writeFileSync(join(d, "p.md"), "- [N1] x\n- [F1] marker\naccepts: A1\n");
   g(["add", "-A"]);
   g(["commit", "-qm", "fixture"]); // finish 完整性闸门要求树净——夹具文件先落提交
+  if (KIND === "sqlite") {
+    const db = openStore(stateDbPath(d)); // 建库=显式动作（库在场即 DB 权威）
+    ensureSchema(db);
+    db.close();
+  }
   return d;
 }
 
@@ -77,7 +91,7 @@ const okDriveDeps = {
   },
 };
 
-test("①真实缺席路径：HOME 隔离→宿主 db 缺席→querySessionPoints=absent（不算零）；派发结算记 metering-absent", async () => {
+t("①真实缺席路径：HOME 隔离→宿主 db 缺席→querySessionPoints=absent（不算零）；派发结算记 metering-absent", async () => {
   const d = qrepo("lzy-qmeter-1-");
   try {
     assert.deepEqual(querySessionPoints("sess-abc"), { absent: true, unpriced: [], points: 0, usage: [] });
@@ -94,7 +108,7 @@ test("①真实缺席路径：HOME 隔离→宿主 db 缺席→querySessionPoint
   }
 });
 
-test("②纯墙钟批次不因计量缺席停（#32 停派语义限定「受积分限额约束」）", async () => {
+t("②纯墙钟批次不因计量缺席停（#32 停派语义限定「受积分限额约束」）", async () => {
   const d = qrepo("lzy-qmeter-2-");
   try {
     approvedItem(d, "qi-m2");
@@ -108,7 +122,7 @@ test("②纯墙钟批次不因计量缺席停（#32 停派语义限定「受积�
   }
 });
 
-test("③未计价模型=同停类：unpriced 记录 metering-absent 条目+pointsStopped", async () => {
+t("③未计价模型=同停类：unpriced 记录 metering-absent 条目+pointsStopped", async () => {
   const d = qrepo("lzy-qmeter-3-");
   try {
     approvedItem(d, "qi-m3");
@@ -126,7 +140,7 @@ test("③未计价模型=同停类：unpriced 记录 metering-absent 条目+poin
   }
 });
 
-test("④sessionId 白名单净化：引号/分号/越界字符→absent（不触 db，注入面防御）", () => {
+t("④sessionId 白名单净化：引号/分号/越界字符→absent（不触 db，注入面防御）", () => {
   const d = qrepo("lzy-qmeter-4-");
   try {
     for (const evil of ["'; DROP TABLE model_usage;--", 'x"y', "a b", "中文名", ""]) {
@@ -140,7 +154,7 @@ test("④sessionId 白名单净化：引号/分号/越界字符→absent（不�
   }
 });
 
-test("⑤killed-inflight 申报在积分限批次下触发停派；墙钟批次不触发", async () => {
+t("⑤killed-inflight 申报在积分限批次下触发停派；墙钟批次不触发", async () => {
   const d = qrepo("lzy-qmeter-5-");
   try {
     approvedItem(d, "qi-m5");
@@ -161,6 +175,8 @@ test("⑤killed-inflight 申报在积分限批次下触发停派；墙钟批次�
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+}
 
 // 0.4.0 M2 N4：querySessionPoints dbPath 参数化（计量缝收口面，M0 发现一）——默认值=宿主
 // 账本（既有调用点零变化），runner 恒传隔离 HOME 子账本路径。HAS_SQLITE3 分腿（sqlite3

@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { addQueueItem, loadDispatch, loadLedger, loadQueue, refreshQueue, reconcileDispatch, runQueueDispatch, saveDispatch } from "../core/queue.js";
 import { recordAuthorization } from "../core/contract.js";
+import { openStore, ensureSchema, stateDbPath } from "../core/statedb.js";
 import { loadIntents, actDeliveryB } from "../core/delivery.js";
 import { bindDeliveryContract } from "../core/loop.js";
 
@@ -19,6 +20,14 @@ process.env.HOME = HOME;
 process.env.USERPROFILE = HOME;
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const CLI = join(ROOT, "cli", "lzy.js");
+
+// ── P2 N7：双后端参数化（同一断言体跑 JSON/DB 双 kind；意图账本/授权族=文件面与后端无关）──
+const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
+const DB_OK = NODE_MAJOR >= 24; // ADR-0039 地板
+const KINDS = DB_OK ? ["json", "sqlite"] : ["json"];
+for (const KIND of KINDS) {
+const t = (name, fn) => test(`[${KIND}] ${name}`, fn);
+
 
 const HEAD = "a".repeat(40);
 const MERGE = "b".repeat(40);
@@ -43,6 +52,11 @@ function bridgeRepo(prefix, { endpoint = "C", delivery } = {}) {
   writeFileSync(join(d, "p.md"), "- [N1] x\n- [F1] marker\n");
   g(["add", "-A"]);
   g(["commit", "-qm", "fixture"]);
+  if (KIND === "sqlite") {
+    const db = openStore(stateDbPath(d)); // 建库=显式动作（条目直落 DB）
+    ensureSchema(db);
+    db.close();
+  }
   const it = addQueueItem(d, {
     title: "bridge-item",
     contractFile: join(d, "c-main.md"),
@@ -142,7 +156,7 @@ function pushManualTx(d, tx) {
 const itemOf = (d, id) => loadQueue(d).items.find((x) => x.id === id);
 const mineIntents = (d, id) => (loadIntents(d)?.intents ?? []).filter((x) => x.origin?.itemId === id);
 
-test("①桥全链（endpoint C）：drive→finish→B act/readback→C act/readback→completed(endpoint=C)，意图带 origin，交付墙钟入账", async () => {
+t("①桥全链（endpoint C）：drive→finish→B act/readback→C act/readback→completed(endpoint=C)，意图带 origin，交付墙钟入账", async () => {
   const { d, it } = bridgeRepo("lzy-qbridge-1-");
   try {
     const ext = fakeExt();
@@ -164,7 +178,7 @@ test("①桥全链（endpoint C）：drive→finish→B act/readback→C act/rea
   }
 });
 
-test("②交付未竟（endpoint B，PR 不合并）：item failed+指路、不动 goal、tx settled、零假完成", async () => {
+t("②交付未竟（endpoint B，PR 不合并）：item failed+指路、不动 goal、tx settled、零假完成", async () => {
   const { d, it } = bridgeRepo("lzy-qbridge-2-", { endpoint: "B", delivery: { B: "./cb.md", C: "./cc.md" } });
   try {
     // 修正夹具：endpoint B 只声明 B 契约
@@ -186,7 +200,7 @@ test("②交付未竟（endpoint B，PR 不合并）：item failed+指路、不�
   }
 });
 
-test("③两处派发前拒绝：契约改后 / 计划改后 → item failed+指路、零 openTx、零 killed-inflight", async () => {
+t("③两处派发前拒绝：契约改后 / 计划改后 → item failed+指路、零 openTx、零 killed-inflight", async () => {
   const { d, it } = bridgeRepo("lzy-qbridge-3-");
   try {
     // 契约改后：改 cc.md（C 契约）→ 现字节哈希 != 入队值
@@ -203,7 +217,7 @@ test("③两处派发前拒绝：契约改后 / 计划改后 → item failed+指
   }
 });
 
-test("④在途不改判：delivery-in-flight 且持有进程存活且在界内 → reconcile 判 delivering，item 不动", async () => {
+t("④在途不改判：delivery-in-flight 且持有进程存活且在界内 → reconcile 判 delivering，item 不动", async () => {
   const { d, it } = bridgeRepo("lzy-qbridge-4-");
   try {
     makeDoneGoal(d);
@@ -220,7 +234,7 @@ test("④在途不改判：delivery-in-flight 且持有进程存活且在界内 
   }
 });
 
-test("⑤死亡不死锁：超上界或持有进程已死 → reconcile 落账本判定+tx 收束+墙钟（观测上界）", async () => {
+t("⑤死亡不死锁：超上界或持有进程已死 → reconcile 落账本判定+tx 收束+墙钟（观测上界）", async () => {
   const { d, it } = bridgeRepo("lzy-qbridge-5-");
   try {
     makeDoneGoal(d);
@@ -242,7 +256,7 @@ test("⑤死亡不死锁：超上界或持有进程已死 → reconcile 落账�
   }
 });
 
-test("⑥交付追认：failed 条目经人工 act/readback 修复后 reconcile 翻 completed；deps 链解锁", async () => {
+t("⑥交付追认：failed 条目经人工 act/readback 修复后 reconcile 翻 completed；deps 链解锁", async () => {
   const { d, it } = bridgeRepo("lzy-qbridge-6-", { endpoint: "B", delivery: { B: "./cb.md", C: "./cc.md" } });
   try {
     // 先自然跑出「交付未竟」failed（PR 不合并）
@@ -263,7 +277,7 @@ test("⑥交付追认：failed 条目经人工 act/readback 修复后 reconcile 
   }
 });
 
-test("⑦基建分流：意图账本损坏 → item failed+「基建中止」（非交付失败）+tx killed+墙钟；再跑一轮终局不变", async () => {
+t("⑦基建分流：意图账本损坏 → item failed+「基建中止」（非交付失败）+tx killed+墙钟；再跑一轮终局不变", async () => {
   const { d, it } = bridgeRepo("lzy-qbridge-7-");
   try {
     const ip = join(d, ".lazyzcode", "delivery", "intents.json");
@@ -286,7 +300,7 @@ test("⑦基建分流：意图账本损坏 → item failed+「基建中止」（
   }
 });
 
-test("⑧幂等续跑：B 已 done（同来源）→ 重派时跳过 B 只补 C", async () => {
+t("⑧幂等续跑：B 已 done（同来源）→ 重派时跳过 B 只补 C", async () => {
   const { d, it } = bridgeRepo("lzy-qbridge-8-");
   try {
     // 第一轮：drive 不完成步骤 → finish 拒 → item 回 ready（goal 仍 executing，契约已绑）
@@ -311,7 +325,7 @@ test("⑧幂等续跑：B 已 done（同来源）→ 重派时跳过 B 只补 C"
   }
 });
 
-test("⑨HEAVY 计划改后拒绝：planHash 不符 → failed+「评审作废」、零 openTx（拒绝先于任何 goal 写）", async () => {
+t("⑨HEAVY 计划改后拒绝：planHash 不符 → failed+「评审作废」、零 openTx（拒绝先于任何 goal 写）", async () => {
   const d = mkdtempSync(join(tmpdir(), "lzy-qbridge-9-"));
   try {
     const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
@@ -339,7 +353,7 @@ test("⑨HEAVY 计划改后拒绝：planHash 不符 → failed+「评审作废�
   }
 });
 
-test("⑩HEAVY 入队透传：dispatch 注册后 goal.json tier=heavy/risk=med 读面（register+adopt 即采，无需 finish）", async () => {
+t("⑩HEAVY 入队透传：dispatch 注册后 goal.json tier=heavy/risk=med 读面（register+adopt 即采，无需 finish）", async () => {
   const d = mkdtempSync(join(tmpdir(), "lzy-qbridge-10-"));
   try {
     const g = (args) => spawnSync("git", args, { cwd: d, encoding: "utf8" });
@@ -375,7 +389,7 @@ test("⑩HEAVY 入队透传：dispatch 注册后 goal.json tier=heavy/risk=med �
 // 0.4.0 M1 N8 回归对（v2 阻断面；v1 成功面=本文件⑤⑦既有绿，makeDoneGoal 降级夹具）：
 // done 旧记录不免核——queue.js 收口前的统一门把 done 目标照拦（授权撤回/契约漂移/义务失效
 // 不得因「已 done」而免检）：item 回 ready、tx 记 killed 未竟、finishCause 带门原因，绝不假完成。
-test("⑧0.4.0 M1 N8 v2 阻断：done 记录不免核——item 回 ready、tx killed、不假完成", async () => {
+t("⑧0.4.0 M1 N8 v2 阻断：done 记录不免核——item 回 ready、tx killed、不假完成", async () => {
   // 自造 endpoint A 夹具（无交付契约=declaredEps 空，交付绑定不介入本断言面）
   const d = mkdtempSync(join(tmpdir(), "lzy-qbridge-m1-"));
   try {
@@ -422,3 +436,5 @@ test("⑧0.4.0 M1 N8 v2 阻断：done 记录不免核——item 回 ready、tx k
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+}

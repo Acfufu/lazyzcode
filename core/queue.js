@@ -30,8 +30,8 @@ import { evaluateGate } from "./gate.js"; // 0.4.0 M1 N5②③：done 分支/rec
 import { createGit } from "./git.js";
 import {
   stateDbPath, openStore, readSnapshot, replaceQueueFamily, replaceDispatchTxs, replaceBudgetEvents,
-  occupyDispatch, patchDispatchTx, settleDispatch, StatedbError,
-} from "./statedb.js"; // P2 N2/N3：双后端 seam 的 DB 侧引擎（JSON 侧=本模块现行路径，逐字不动）
+  occupyDispatch, patchDispatchTx, settleDispatch, appendBudgetEvent, readBudgetAggregate, StatedbError,
+} from "./statedb.js"; // P2 N2/N3/N4：双后端 seam 的 DB 侧引擎（JSON 侧=本模块现行路径，逐字不动）
 
 // ── 双后端 seam（P2 N2，设计 docs/design-sqlite-store.md §7 判据冻结）──
 // 判据=库在场（presence）：`.lazyzcode/state.sqlite` 在场且可读且 schema_version=1 且六表在场
@@ -399,7 +399,16 @@ function projectReady(cwd) {
 
 // 预算门（联合判定）：已耗实值（ledger）∪ 未决占用（open tx 登记上限，保守计入——
 // 绝不当零）对队列总额；metering 停派旗单独判（#32：停「受积分限额约束」的派发）。
+// DB 后端=单连接 readBudgetAggregate（P2 N4③ 逐字对齐：三轴求和/overrun 排除/open tx 保守
+// 计入/stopKinds=seq>ackSeq 全事件保形/remaining 与 exhausted 公式同式）；JSON 侧原路径逐字不动。
 export function budgetView(cwd) {
+  return backendCall(cwd, {
+    json: () => budgetViewJson(cwd),
+    db: (db) => readBudgetAggregate(db),
+  });
+}
+
+function budgetViewJson(cwd) {
   const q = loadQueue(cwd);
   const ledger = loadLedger(cwd);
   const dispatch = loadDispatch(cwd);
@@ -476,7 +485,9 @@ export function describeReadiness(cwd, it, view = null) {
 // 刷新派生状态（authorized/ready/blocked(authorization) 重估；终态不可逆）。写入须持锁
 //（调用方 withLock）。deps 失败的阻塞是终局性的（failed 依赖不可逆）；撤回批次在重新
 // 批准（fresh approval record）后回到 authorized——恢复路径诚实。
-function refreshStates(cwd, q) {
+// view=预算视图注入（P2 N4①：结算级联按「本 tx 相位翻转后」口径评估；缺省 null=自行
+// budgetView 现算——全部既有调用逐字不变）。
+function refreshStates(cwd, q, view = null) {
   const byId = new Map(q.items.map((x) => [x.id, x]));
   for (const it of q.items) {
     if (TERMINAL_STATES.includes(it.state)) continue;
@@ -509,14 +520,14 @@ function refreshStates(cwd, q) {
       it.updatedAt = new Date().toISOString();
     }
     if (it.state === "authorized") {
-      const { ready } = describeReadiness(cwd, it);
+      const { ready } = describeReadiness(cwd, it, view);
       if (ready) {
         it.state = "ready";
         it.updatedAt = new Date().toISOString();
       }
     }
     if (it.state === "ready") {
-      const { ready } = describeReadiness(cwd, it);
+      const { ready } = describeReadiness(cwd, it, view);
       if (!ready) {
         it.state = "authorized"; // 就绪条件失而复得可逆（租约/预算动态轴），降回 authorized 等待
         it.updatedAt = new Date().toISOString();
@@ -745,25 +756,74 @@ function dbSettle(cwd, opts) {
   });
 }
 
+// 结算级联视图（P2 N4①）：按「本 tx 相位翻转后」口径计未决占用（excludeTxId 读选项）。
+// JSON 家法=patchTx 先于 refreshStates；DB 单事务内级联只能取翻转前快照，故视图显式排除本 tx
+// 的未决占用（否则占用全额保守计入恒判预算耗尽，回 ready 支被降 authorized——与 JSON 不等价）。
+function budgetViewForCascade(cwd, excludeTxId) {
+  return backendCall(cwd, {
+    json: () => { throw new QueueError("内部错误：budgetViewForCascade 仅 DB 结算级联可达"); },
+    db: (db) => readBudgetAggregate(db, { excludeTxId }),
+  });
+}
+
+// tx 补丁的后端分派（P2 N4④⑤：reconcile 判定表与 abortDelivery 的写点=各自独立事务）。
+// DB 侧=patchDispatchTx 单事务列映射补丁；JSON 侧=现行 patchTx 逐字不动。返回值不同构
+// （JSON=tx 对象，DB={txId}）——需读全量 tx 的调用方自行经 loadDispatch 读取（见 abortDelivery）。
+function patchTxSeam(cwd, txId, patch) {
+  if (stateBackend(cwd) === "sqlite") return dbPatchTx(cwd, txId, { tx: patch });
+  return patchTx(cwd, txId, patch);
+}
+
 export function appendLedgerEntry(cwd, entry) {
-  const l = loadLedger(cwd) ?? { entries: [] };
-  const dedupKey = entry.dedupKey;
-  if (l.entries.some((e) => e.dedupKey === dedupKey)) {
-    return { duplicate: true, entry: null }; // 相同运行回执不重复扣账（契约 A2）
-  }
-  const seq = l.entries.length + 1;
-  const full = {
-    seq, at: new Date().toISOString(),
-    authorization: entry.authorization, provenance: entry.provenance ?? null,
-    itemId: entry.itemId ?? null, txId: entry.txId ?? null,
-    sessionId: entry.sessionId ?? null, ms: entry.ms ?? null, points: entry.points ?? null,
-    overrunPoints: entry.overrunPoints ?? null, // F2（N2）：overrun 条目的超额解释字段（不进消费累计）
-    note: entry.note ?? null,
-    kind: entry.kind, dedupKey,
-  };
-  l.entries.push(full);
-  saveLedger(cwd, l);
-  return { duplicate: false, entry: full };
+  return backendCall(cwd, {
+    json: () => {
+      const l = loadLedger(cwd) ?? { entries: [] };
+      const dedupKey = entry.dedupKey;
+      if (l.entries.some((e) => e.dedupKey === dedupKey)) {
+        return { duplicate: true, entry: null }; // 相同运行回执不重复扣账（契约 A2）
+      }
+      const seq = l.entries.length + 1;
+      const full = {
+        seq, at: new Date().toISOString(),
+        authorization: entry.authorization, provenance: entry.provenance ?? null,
+        itemId: entry.itemId ?? null, txId: entry.txId ?? null,
+        sessionId: entry.sessionId ?? null, ms: entry.ms ?? null, points: entry.points ?? null,
+        overrunPoints: entry.overrunPoints ?? null, // F2（N2）：overrun 条目的超额解释字段（不进消费累计）
+        note: entry.note ?? null,
+        kind: entry.kind, dedupKey,
+      };
+      l.entries.push(full);
+      saveLedger(cwd, l);
+      return { duplicate: false, entry: full };
+    },
+    db: (db) => {
+      // P2 N4②：单事务 INSERT + dedup UNIQUE 判重（2067/1555→duplicate no-op），seq=MAX+1。
+      // provenance 列为 TEXT：非字符串（评审面 runId 对象）以 JSON 文本落列——返回值 entry
+      // 仍按调用方原对象回呈（与 JSON 侧返回形状逐字同构）。
+      const at = new Date().toISOString();
+      const prov = entry.provenance == null || typeof entry.provenance === "string"
+        ? entry.provenance ?? null
+        : JSON.stringify(entry.provenance);
+      const r = appendBudgetEvent(db, {
+        at, kind: entry.kind, dedupKey: entry.dedupKey,
+        authorization: entry.authorization, provenance: prov,
+        itemId: entry.itemId ?? null, txId: entry.txId ?? null, sessionId: entry.sessionId ?? null,
+        ms: entry.ms ?? null, points: entry.points ?? null, overrunPoints: entry.overrunPoints ?? null,
+        note: entry.note ?? null,
+      });
+      if (r.duplicate) return { duplicate: true, entry: null };
+      const full = {
+        seq: r.seq, at,
+        authorization: entry.authorization, provenance: entry.provenance ?? null,
+        itemId: entry.itemId ?? null, txId: entry.txId ?? null,
+        sessionId: entry.sessionId ?? null, ms: entry.ms ?? null, points: entry.points ?? null,
+        overrunPoints: entry.overrunPoints ?? null,
+        note: entry.note ?? null,
+        kind: entry.kind, dedupKey: entry.dedupKey,
+      };
+      return { duplicate: false, entry: full };
+    },
+  });
 }
 
 // 逐会话计量（#32 逐请求完成检测）：**0.3.1 棒2 起实体迁 core/cost.js**（计量原语单源，
@@ -917,7 +977,7 @@ export function reconcileDispatch(cwd, deps = {}) {
           verdicts.push({ txId: tx.txId, verdict: "busy-live（租约在握且持租进程存活——派发可能仍活跃，不核销）", goalSlug: tx.goalSlug });
           continue;
         }
-        patchTx(cwd, tx.txId, {
+        patchTxSeam(cwd, tx.txId, {
           phase: "killed", settledAt: new Date().toISOString(),
           note: "驱动进程死于段中（crash/SIGKILL，租约已消亡）——goal 仍 executing，item 回 ready 重驱续跑",
         });
@@ -973,7 +1033,7 @@ export function reconcileDispatch(cwd, deps = {}) {
             tx, item, ms: since != null ? Date.now() - since : null,
             note: `交付链墙钟（观测上界）；死亡收束：${v.allDone ? "账本全 done 追认 completed" : `未收束 ${v.missing.join("/")}`}`,
           });
-          patchTx(cwd, tx.txId, {
+          patchTxSeam(cwd, tx.txId, {
             phase: "settled", settledAt: new Date().toISOString(),
             note: `交付链进程死亡（超 ${DELIVERY_CHAIN_MAX_MS}ms 上界或持有进程已死）——按账本判定收束（${v.allDone ? "completed" : "failed"}），不死锁`,
           });
@@ -994,7 +1054,7 @@ export function reconcileDispatch(cwd, deps = {}) {
             item.blockedReason = `交付未竟：goal 已 done 而交付链未收束（缺 ${v.missing.join("/")}${v.unreadable ? "；账本不可读" : ""}）——恢复=lzy delivery act <ep> --origin-item ${item.id}（或 readback 复验）后 lzy queue reconcile 追认`;
             item.updatedAt = new Date().toISOString();
           }
-          patchTx(cwd, tx.txId, {
+          patchTxSeam(cwd, tx.txId, {
             phase: "settled", settledAt: new Date().toISOString(),
             note: `goal 已 done 而事务未决——交付感知收束（${v.allDone ? "账本全 done ⇒ completed" : "未全 done ⇒ failed+指路"}）`,
           });
@@ -1010,7 +1070,7 @@ export function reconcileDispatch(cwd, deps = {}) {
           if (gateVerdict.applicable && gateVerdict.blocked) {
             item.blockedReason = `reconcile 追认被统一门拒绝（gate ${gateVerdict.snapshotHash.slice(0, 8)}）：${gateVerdict.blockedReasons[0] ?? "见 lzy gate explain"}`;
             item.updatedAt = new Date().toISOString();
-            patchTx(cwd, tx.txId, { note: "统一门阻塞——不追认（lzy gate explain 看逐条原因）；根因处置后重跑 reconcile" });
+            patchTxSeam(cwd, tx.txId, { note: "统一门阻塞——不追认（lzy gate explain 看逐条原因）；根因处置后重跑 reconcile" });
             verdicts.push({ txId: tx.txId, verdict: `blocked（统一门：${gateVerdict.blockedReasons[0]?.slice(0, 120) ?? "见 explain"}）`, goalSlug: tx.goalSlug });
             continue;
           }
@@ -1019,13 +1079,13 @@ export function reconcileDispatch(cwd, deps = {}) {
           item.completedEndpoint = item.completedEndpoint ?? item.endpoint;
           item.updatedAt = new Date().toISOString();
         }
-        patchTx(cwd, tx.txId, {
+        patchTxSeam(cwd, tx.txId, {
           phase: "settled", settledAt: new Date().toISOString(),
           note: "goal 已 done 而事务未决——补结算诚实归账（崩溃发生于完成归档与队列确认之间）",
         });
         verdicts.push({ txId: tx.txId, verdict: `settled（补结算：wall ${settled?.wallEntries ?? 0} 条）`, goalSlug: tx.goalSlug });
       } else {
-        patchTx(cwd, tx.txId, {
+        patchTxSeam(cwd, tx.txId, {
           phase: "reconciled-orphan", settledAt: new Date().toISOString(),
           note: goal
             ? `现行 goal=${goal.slug}（${goal.status}）与事务 goal=${tx.goalSlug} 不符——不 reset 另一目标，条目转 failed 待人工核查`
@@ -1091,20 +1151,24 @@ function abortDelivery(cwd, txId, item, cause, queryPoints) {
       it.state = "failed";
       it.blockedReason = `基建中止：${String(cause).slice(0, 160)}——非交付失败；处置根因后重新入队`;
       it.updatedAt = new Date().toISOString();
-      saveQueue(cwd, q);
+      saveQueue(cwd, q); // 首写（:966 家法位次）：DB 后端=整集单事务 diff-upsert（N2③），JSON 逐字不动
     }
-    const txNow = patchTx(cwd, txId, {});
-    if (Array.isArray(txNow.segments) && txNow.segments.length > 0) {
-      settleTxLedger(cwd, { tx: txNow, item, provenance: `tx:${txId}`, queryPoints });
+    // 读 tx 现值（段结算基准）：JSON 侧 patchTx({}) 读带整集重写；DB 侧经访问器直读（不触发整集写，
+    // 段行/tx 列随后续独立事务落——N4⑤ 逐点事务化，锁拓扑不变）。
+    const txNow = stateBackend(cwd) === "sqlite"
+      ? ((loadDispatch(cwd)?.txs ?? []).find((t) => t.txId === txId) ?? null)
+      : patchTx(cwd, txId, {});
+    if (Array.isArray(txNow?.segments) && txNow.segments.length > 0) {
+      settleTxLedger(cwd, { tx: txNow, item, provenance: `tx:${txId}`, queryPoints }); // DB 侧=逐事件单事务（N4②）
     }
     appendLedgerEntry(cwd, {
       kind: "wall", dedupKey: `wall:${txId}:delivery`,
       authorization: { slug: item.goalSlug, contractHash: item.contractHash },
       provenance: `tx:${txId}:delivery`, itemId: item.id, txId, sessionId: null,
-      ms: Math.max(0, Date.now() - (txNow.deliveringSinceMs ?? Date.now())),
+      ms: Math.max(0, Date.now() - (txNow?.deliveringSinceMs ?? Date.now())),
       note: `交付链墙钟（观测上界）；基建中止：${String(cause).slice(0, 100)}`,
     });
-    patchTx(cwd, txId, { phase: "killed", settledAt: new Date().toISOString(), note: `交付链基建中止（${String(cause).slice(0, 120)}）——终局稳定；不回 ready（回 ready 是死环）` });
+    patchTxSeam(cwd, txId, { phase: "killed", settledAt: new Date().toISOString(), note: `交付链基建中止（${String(cause).slice(0, 120)}）——终局稳定；不回 ready（回 ready 是死环）` });
   });
   return { ok: false, abort: true, note: `基建中止：${String(cause).slice(0, 160)}` };
 }
@@ -1425,6 +1489,47 @@ export async function runQueueDispatch(cwd, opts = {}, deps = {}) {
       withLock(cwd, () => {
         const q = loadQueue(cwd);
         const it = q.items.find((x) => x.id === item.id);
+        if (stateBackend(cwd) === "sqlite") {
+          // N4①：结算=单事务{逐段事件（wall 恒入/metering-absent 两族/points）+ overrun 派生
+          //（事务内读聚合）+ 交付墙钟（declaredEps 时；dedup wall:<tx>:delivery 幂等；ms 事务内按
+          // delivering_since_ms 派生）+ tx 相位（settled/killed 三支）+ item 终态 + 全量队列应达态
+          //（refreshStates 级联）}一次提交——取代 JSON 侧「patchTx+settleTxLedger+墙钟+相位+saveQueue」五段。
+          if (finishOk && deliveryOk) {
+            it.state = "completed";
+            it.completedEndpoint = item.endpoint;
+            it.updatedAt = new Date().toISOString();
+          } else if (finishOk && !deliveryOk) {
+            it.state = "failed";
+            it.blockedReason = `交付未竟：${deliveryNote ?? "未知"}——goal 已 done 且 attestation 在案；恢复=lzy delivery act <ep> --origin-item ${item.id}（或 readback 复验）后 lzy queue reconcile 追认，勿重跑目标`;
+            it.updatedAt = new Date().toISOString();
+          } else {
+            it.state = "ready"; // 未竟：回 ready 待续（重驱同 goal 续跑）——不以假完成收场
+            it.updatedAt = new Date().toISOString();
+          }
+          const refreshed = refreshStates(cwd, q, budgetViewForCascade(cwd, tx.txId));
+          const settled = dbSettle(cwd, {
+            txId: tx.txId, queryPoints, provenance: `tx:${tx.txId}`,
+            txPhase: finishOk && deliveryOk ? "settled" : finishOk && !deliveryOk ? "settled" : "killed",
+            deliveryWall: declaredEps.length > 0
+              ? { note: deliveryOk ? "交付链墙钟（观测；成功）" : "交付链墙钟（观测；交付未竟）" }
+              : null,
+            txNote: (out) =>
+              finishOk && deliveryOk
+                ? `完成（endpoint ${item.endpoint}）：wall ${out.wallEntries} 段/积分 ${Math.round(out.points * 100) / 100}`
+                : finishOk && !deliveryOk
+                  ? `交付未竟（${String(deliveryNote ?? "").slice(0, 120)}）——消耗如实结算`
+                  : `未竟（finish 未过：${finishCause ?? "未知"}）——消耗如实结算，item 回 ready`,
+            queueItems: refreshed.items,
+          });
+          if (finishOk && deliveryOk) {
+            console.log(`[queue] ${item.id} 完成（endpoint ${item.endpoint}）：墙钟 ${settled.wallEntries} 段 · 积分 ${Math.round(settled.points * 100) / 100}`);
+          } else if (finishOk && !deliveryOk) {
+            console.log(`[queue] ${item.id} 交付未竟（${String(deliveryNote ?? "").slice(0, 120)}）——failed+指路，勿重跑目标`);
+          } else {
+            console.log(`[queue] ${item.id} 未竟（${finishCause ?? "finish 未过"}）——消耗已结算，item 回 ready 待续`);
+          }
+          return;
+        }
         // 结算（消耗事实账，幂等）
         const txNow = patchTx(cwd, tx.txId, {});
         const settled = settleTxLedger(cwd, { tx: txNow, item: it, provenance: `tx:${tx.txId}`, queryPoints });

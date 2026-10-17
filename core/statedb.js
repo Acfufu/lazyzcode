@@ -329,13 +329,16 @@ export function patchDispatchTx(db, { txId, tx = null, itemId = null, item = nul
   });
 }
 
-// 结算事务（A2 + P2 N3/N4）：逐段 U 族入账 + overrun 派生（事务内读聚合）+ tx settled + 条目/全量队列
-// 应达态一次提交。重复结算=全 dedupKey duplicate（幂等，不双计）。
+// 结算事务（A2 + P2 N3/N4）：逐段 U 族入账 + overrun 派生（事务内读聚合）+ 交付墙钟事件 +
+// tx 相位（settled/killed）+ 条目/全量队列应达态一次提交。重复结算=全 dedupKey duplicate（幂等，不双计）。
 // segments=null → 从 dispatch_segments 行自读（DB 侧调用缺省）；queueItems=refreshStates 级联后的
-// 全量队列（整集 upsert，同事务——取代「锁内 saveQueue(refreshStates(q))」）；itemFinalState=兼容简写。
+// 全量队列（整集 upsert，同事务——取代「锁内 saveQueue(refreshStates(q))」）；itemFinalState=兼容简写；
+// deliveryWall={ms?,note} → 交付段墙钟事件（dedup wall:<txId>:delivery，与 JSON 侧同键；ms 缺省=
+// 事务内按 tx.delivering_since_ms 派生，基准缺位=0）；
+// txNote=字符串或 (out)=>字符串（完成注记含结算读数——同事务内成文）。
 export function settleDispatch(db, {
   txId, segments = null, queryPoints = DEFAULT_QUERY_POINTS, provenance = null,
-  itemFinalState = null, queueItems = null, txNote = null, at = null,
+  itemFinalState = null, queueItems = null, txNote = null, txPhase = "settled", deliveryWall = null, at = null,
 }) {
   return withWriteTx(db, () => {
     const tx = db.prepare("SELECT * FROM dispatch_txs WHERE tx_id=?").get(txId);
@@ -346,7 +349,7 @@ export function settleDispatch(db, {
     const sealedAt = at ?? new Date().toISOString();
     const segs = segments ?? db.prepare("SELECT session_id, duration_ms FROM dispatch_segments WHERE tx_id=? ORDER BY seg_index").all(txId)
       .map((r) => ({ sessionId: r.session_id, durationMs: r.duration_ms }));
-    const out = { wallEntries: 0, pointsEntries: 0, absentEntries: 0, duplicates: 0, points: 0 };
+    const out = { wallEntries: 0, pointsEntries: 0, absentEntries: 0, duplicates: 0, points: 0, deliveryWalls: 0 };
     segs.forEach((seg, i) => {
       const sid = seg.sessionId ?? `seg-${i}`;
       const base = { authorization, provenance, itemId: tx.item_id, txId, sessionId: seg.sessionId ?? null, at: sealedAt };
@@ -375,10 +378,24 @@ export function settleDispatch(db, {
         }
       }
     });
+    if (deliveryWall != null) {
+      // 交付段墙钟基准=事务内读 tx 行（delivering_since_ms；JSON 侧同式 Math.max(0, now−基准)，
+      // 基准缺位=0）；ms 显式传入时优先。计数单列 deliveryWalls 不入 wallEntries——完成注记的
+      // 「wall N 段」口径与 JSON settleTxLedger 逐字对齐（交付段不入段墙钟计数）。
+      const baseMs = tx.delivering_since_ms != null ? Math.max(0, Date.now() - tx.delivering_since_ms) : 0;
+      const e = insertEvent(db, {
+        authorization, provenance: `${provenance ?? ""}:delivery` || null, itemId: tx.item_id, txId,
+        sessionId: null, at: sealedAt, kind: "wall", dedupKey: `wall:${txId}:delivery`,
+        ms: Number.isFinite(deliveryWall.ms) ? deliveryWall.ms : baseMs, note: deliveryWall.note ?? null,
+      });
+      if (e.duplicate) out.duplicates += 1; else out.deliveryWalls += 1;
+    }
+    const phase = txPhase === "killed" ? "killed" : "settled";
     if (txNote != null) {
-      db.prepare("UPDATE dispatch_txs SET phase='settled', settled_at=?, note=? WHERE tx_id=?").run(sealedAt, txNote, txId);
+      const note = typeof txNote === "function" ? txNote(out) : txNote;
+      db.prepare("UPDATE dispatch_txs SET phase=?, settled_at=?, note=? WHERE tx_id=?").run(phase, sealedAt, note, txId);
     } else {
-      db.prepare("UPDATE dispatch_txs SET phase='settled', settled_at=? WHERE tx_id=?").run(sealedAt, txId);
+      db.prepare("UPDATE dispatch_txs SET phase=?, settled_at=? WHERE tx_id=?").run(phase, sealedAt, txId);
     }
     if (queueItems != null) {
       const keep = new Set();
@@ -394,21 +411,30 @@ export function settleDispatch(db, {
 }
 
 // 预算聚合（对齐 budgetView 语义：overrun 不入消费累计、评审独立轴、未决占用保守计入、ack-by-seq）。
-export function readBudgetAggregate(db) {
+// stopKinds=全事件对象保形（N4③ 逐字对齐：JSON 侧 push 整条 ledger entry，读数面双后端同构）。
+// excludeTxId=结算级联专用读选项：该 tx 相位随结算事务翻转，级联视图按翻转后口径计未决占用
+//（JSON 家法：patchTx 先于 refreshStates——缺此排除，占用全额保守计入会把回 ready 的条目恒判预算耗尽）。
+export function readBudgetAggregate(db, { excludeTxId = null } = {}) {
   const limitRow = db.prepare("SELECT points_limit, wall_limit_ms, ack_json FROM queue_budget WHERE id=1").get();
   const ack = limitRow?.ack_json ? JSON.parse(limitRow.ack_json) : null;
   const ackSeq = Number(ack?.ackSeq) || 0;
   let wallMs = 0, points = 0, reviewPoints = 0, overrunPointsDerived = 0;
   const stopKinds = [];
-  for (const e of db.prepare("SELECT seq, kind, ms, points FROM budget_events ORDER BY seq").all()) {
+  for (const r of db.prepare("SELECT * FROM budget_events ORDER BY seq").all()) {
+    const e = {
+      seq: r.seq, at: r.at, kind: r.kind, authorization: JSON.parse(r.authorization_json), provenance: r.provenance,
+      itemId: r.item_id, txId: r.tx_id, sessionId: r.session_id, ms: r.ms, points: r.points,
+      overrunPoints: r.overrun_points, note: r.note, dedupKey: r.dedup_key,
+    };
     if (e.kind === "review") { reviewPoints += Number(e.points) || 0; continue; }
     if (e.kind === "overrun") continue; // 超额只作审计痕迹/派生读数
     wallMs += Number(e.ms) || 0;
     points += Number(e.points) || 0;
-    if (["metering-absent", "killed-inflight"].includes(e.kind) && (Number(e.seq) || 0) > ackSeq) stopKinds.push({ seq: e.seq, kind: e.kind });
+    if (["metering-absent", "killed-inflight"].includes(e.kind) && (Number(e.seq) || 0) > ackSeq) stopKinds.push(e);
   }
   let openWallMs = 0, openPoints = 0;
-  for (const t of db.prepare("SELECT limits_json FROM dispatch_txs WHERE phase='open'").all()) {
+  for (const t of db.prepare("SELECT tx_id, limits_json FROM dispatch_txs WHERE phase='open'").all()) {
+    if (excludeTxId != null && t.tx_id === excludeTxId) continue;
     const l = JSON.parse(t.limits_json);
     openWallMs += Number(l?.wallMs) || 0;
     openPoints += Number(l?.points) || 0;

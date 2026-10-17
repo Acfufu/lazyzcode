@@ -183,7 +183,7 @@ test("A/B⑤write-failed（跨平台构造）：authorizations 路径被文件�
   } finally { rmCase(dirJ, dirD); }
 });
 
-test("A/B⑤b write-failed（r2-F3 可读不可写构造）：authDir chmod 555=真实可读目录上零记录", { skip: FLOOR_SKIP ?? WIN32_SKIP }, () => {
+test("A/B⑤b write-failed（r2-F3 可读不可写构造）：authDir chmod 555=真实可读目录上零记录", { skip: FLOOR_SKIP || WIN32_SKIP }, () => {
   const body = "task: delivery B\n";
   const { dirJ, dirD } = buildCase({
     items: [item("q-ab-5b", { delivery: { B: { path: "contracts/b.md", hash: sha(body) } } })],

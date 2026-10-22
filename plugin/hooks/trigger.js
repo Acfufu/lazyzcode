@@ -65,7 +65,27 @@ const WITHDRAW_NEG_RE =
 // 唯一写者不变——DB 分支只读不写，r4-F1）。
 function queueDeliveryVerdict(cwd, short, sessionId) {
   const dbPath = join(cwd, ".lazyzcode", "state.sqlite");
-  if (!existsSync(dbPath)) return queueDeliveryVerdictJson(cwd, short, sessionId); // 无库=JSON 路径逐字
+  // P3 读向闸（自包含内联 marker 读，不 import core；判据同 core/statedb.js readBackendMarker）：
+  // marker（.lazyzcode/state.backend.json）在场=迁移已做 → DB 必须，库缺席/不可读=零记录+具名
+  // 诊断+exit 0（绝不回落旧 JSON 批准）；marker 缺席=迁移未做 → 现行判据（无库=JSON 路径逐字）。
+  // marker 损坏/不可读（非 ENOENT）=fail-closed 当迁移态处理（库在场照读 DB；库缺席落诊断支）。
+  let markerPresent = false;
+  try {
+    const m = JSON.parse(readFileSync(join(cwd, ".lazyzcode", "state.backend.json"), "utf8"));
+    markerPresent = !!(m && m.backend === "sqlite" && m.format === 1);
+  } catch (err) {
+    if (err && err.code !== "ENOENT") markerPresent = true;
+  }
+  if (!existsSync(dbPath)) {
+    if (markerPresent) {
+      return {
+        additionalContext:
+          "[lzy] 迁移已完成（读向标记在场）而 state.sqlite 缺席——零记录处理，不回落旧 JSON（本次批准未记录，门保持关闭）。" +
+          "恢复：从 .lazyzcode/migration/sqlite/<runId>/backup/ 备份与 journal 核对后重新发送批准句。",
+      };
+    }
+    return queueDeliveryVerdictJson(cwd, short, sessionId); // 无库无 marker=JSON 路径逐字
+  }
   const read = readQueueItemsFromDb(dbPath);
   if (!read.ok) {
     return {

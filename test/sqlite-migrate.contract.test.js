@@ -17,14 +17,16 @@ const ROOT = join(HERE, "..");
 const MAJOR = Number(process.versions.node.split(".")[0]);
 const FLOOR_SKIP = MAJOR >= 24 ? false : `地板 Node ≥24.0.0（ADR-0039；22 线不入 DB 支持面）；当前 v${process.versions.node} 跳过`;
 
-const { saveQueue, saveDispatch, saveLedger } = await import(
+const { saveQueue, saveDispatch, saveLedger, loadQueue } = await import(
   pathToFileURL(join(ROOT, "core", "queue.js")).href
 );
 // 迁移机器（N2 建）——本文件落盘时模块缺席，import 即红（F3 红半形态）。
 const { migrateToSqlite, assertNoJsonMiswrite } = await import(
   pathToFileURL(join(ROOT, "core", "sqlite-migrate.js")).href
 );
-const { openStore, stateDbPath } = await import(pathToFileURL(join(ROOT, "core", "statedb.js")).href);
+const { openStore, stateDbPath, ensureSchema, replaceQueueFamily } = await import(
+  pathToFileURL(join(ROOT, "core", "statedb.js")).href
+);
 
 const FIXED = "2026-03-01T00:00:00.000Z";
 const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
@@ -151,5 +153,50 @@ test("③误写检测：篡改源 JSON=拒/恢复=放行/删除备份=不违例"
   rmSync(fam.queue);
   assert.doesNotThrow(() => assertNoJsonMiswrite(d, dbRO), "缺席备份=不违例（删备份是用户权利）");
   dbRO.close();
+  rmSync(d, { recursive: true, force: true });
+});
+
+test("④marker 读向闸：迁移态删库=具名拒不回落/无 marker=JSON 照常/marker 损坏=fail-closed", { skip: FLOOR_SKIP }, () => {
+  // 迁移态删库：具名拒不回落（红半 n958 的绿面）
+  const d1 = mkdtempSync(join(tmpdir(), "lzy-mig-gate-"));
+  seedSource(d1);
+  migrateToSqlite(d1);
+  rmSync(stateDbPath(d1));
+  assert.throws(() => loadQueue(d1), /迁移已完成（读向标记在场）而库缺席/);
+  assert.ok(existsSync(join(d1, ".lazyzcode", "state.backend.json")), "marker 不被读路径改动");
+  rmSync(d1, { recursive: true, force: true });
+
+  // 无 marker（未迁移）删库：JSON 路径照常（P2 判据逐字）
+  const d2 = mkdtempSync(join(tmpdir(), "lzy-mig-nomarker-"));
+  seedSource(d2);
+  const d2db = openStore(stateDbPath(d2));
+  ensureSchema(d2db);
+  d2db.close();
+  rmSync(stateDbPath(d2));
+  const q2 = loadQueue(d2);
+  assert.equal(q2.items.length, 3, "无 marker 删库=JSON 语义（条目在场）");
+
+  // marker 损坏 + 库在场：照读 DB（fail-closed 不静默当缺席）
+  writeFileSync(join(d2, ".lazyzcode", "state.backend.json"), "{broken");
+  const d2db2 = openStore(stateDbPath(d2));
+  ensureSchema(d2db2);
+  replaceQueueFamily(d2db2, { items: [{ ...q2.items[0], id: "db-only" }], budget: null });
+  d2db2.close();
+  const q3 = loadQueue(d2);
+  assert.ok(q3.items.some((it) => it.id === "db-only"), "marker 损坏库在场=读 DB");
+  rmSync(d2, { recursive: true, force: true });
+});
+
+test("⑤r6-F2 安全性质：打开前已在场的缺表文件（旧占位/异物）=具名拒不误删", { skip: FLOOR_SKIP }, () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-mig-r6f2-"));
+  seedSource(d);
+  // 预存 0 字节占位（birthtime 早于本次打开入口）——安全性质：保留文件+具名拒，绝不 unlink
+  writeFileSync(stateDbPath(d), "");
+  assert.throws(
+    () => loadQueue(d),
+    /库在场面 schema 不识别|state\.sqlite 不可用/,
+    "缺表预存文件=具名拒",
+  );
+  assert.ok(existsSync(stateDbPath(d)), "预存占位文件不被误删");
   rmSync(d, { recursive: true, force: true });
 });

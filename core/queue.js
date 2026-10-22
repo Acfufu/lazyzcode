@@ -17,7 +17,7 @@
 // PASS + planHash 入队）。依赖方向 queue.js → loop/drive/contract/delivery/project/
 // cost/hostdb/runtime/git 单向（delivery 边=0.3.1 棒1 桥接新增，免循环）。
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { LoopError, readGoal, registerGoal, adoptPlan, startLoop, finishLoop, resetLoop, withLock, bindDeliveryContract } from "./loop.js";
 import { runDrive } from "./drive.js";
@@ -31,13 +31,15 @@ import { createGit } from "./git.js";
 import {
   stateDbPath, openStore, readSnapshot, replaceQueueFamily, replaceDispatchTxs, replaceBudgetEvents,
   occupyDispatch, patchDispatchTx, settleDispatch, appendBudgetEvent, readBudgetAggregate, StatedbError,
-} from "./statedb.js"; // P2 N2/N3/N4：双后端 seam 的 DB 侧引擎（JSON 侧=本模块现行路径，逐字不动）
+  readBackendMarker,
+} from "./statedb.js"; // P2 N2/N3/N4：双后端 seam 的 DB 侧引擎（JSON 侧=本模块现行路径，逐字不动）；P3 N3：读向 marker 原语
 
-// ── 双后端 seam（P2 N2，设计 docs/design-sqlite-store.md §7 判据冻结）──
-// 判据=库在场（presence）：`.lazyzcode/state.sqlite` 在场且可读且 schema_version=1 且六表在场
-// → SQLite 权威（同目录旧 JSON 保留不读不写不删）；库缺席 → 现行 JSON 后端；在场不可读/
-// 异版本/异 schema → 具名拒（绝不回落 JSON——「不回落到旧 JSON 继续派发或批准」）。
-// meta.backend 保持预留（设计原文「P3 切换窗口写」，本批读侧不依赖该键）。
+// ── 双后端 seam（P2 N2；P3 N3 增读向 marker 闸，设计 docs/design-sqlite-store.md §7/§10）──
+// 判据分态（P3 定案②）：marker（.lazyzcode/state.backend.json）在场=迁移已做 → DB 必须
+// （库缺席/不可读=具名拒，绝不回落 JSON）；marker 缺席=迁移未做 → P2 现行判据逐字：
+// 库在场且可读且 schema_version=1 且六表在场 → SQLite 权威（同目录旧 JSON 保留不读不写不删）、
+// 库缺席 → 现行 JSON 后端、在场不可读/异版本/异 schema → 具名拒。marker 损坏=fail-closed 具名拒。
+// meta.backend=迁移机器提交点标记（机器与续跑判据，非运行时读门）。
 const STORE_TABLES = ["meta", "queue_items", "queue_budget", "dispatch_txs", "dispatch_segments", "budget_events"];
 
 function dbError(e, p) {
@@ -50,16 +52,50 @@ function dbError(e, p) {
   );
 }
 
+function missingDbAfterMigrate(p) {
+  return new QueueError(
+    `迁移已完成（读向标记在场）而库缺席：${p}——DB 为唯一权威，不回落旧 JSON。` +
+    `恢复：从 .lazyzcode/migration/sqlite/<runId>/backup/ 备份与 journal 核对（重迁前先清理该残缺态）；勿手改 JSON 期望回落`,
+  );
+}
+
 // 打开判据库（缺席=null；在场=已校验句柄；失败=具名 QueueError）。调用方负责 close。
 function openDb(cwd) {
   const p = stateDbPath(cwd);
+  // 亚毫秒墙钟（performance.timeOrigin+now()）：birthtimeMs 带小数，Date.now() 取整会在
+  // 同毫秒窗口把「打开前一瞬创建的预存文件」误判为自建（r6-F2 契约腿实证）。
+  const openedAt = performance.timeOrigin + performance.now();
   if (!existsSync(p)) return null;
+  // r6-F2 双信号（比计划文案的 size 臂更保守）：①existsSync 后、openStore 前再 stat 一次
+  // （在场性）；②缺表时核对现文件 birthtime≥openedAt——两信号合取才判「本进程打开序列内
+  // SQLite 自建空库」，close+unlink 后按库缺席继续。打开前已在场且 birthtime 早于入口的
+  // 文件（旧占位/异物库）恒走原具名拒，绝不误删；unlink 失败=保留走原拒，不静默。
+  let existedAtOpen = true;
+  try {
+    statSync(p);
+  } catch {
+    existedAtOpen = false;
+  }
   let db;
   try {
     db = openStore(p);
     const have = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name));
     const missing = STORE_TABLES.filter((t) => !have.has(t));
     if (missing.length > 0) {
+      let bornDuringOpen = false;
+      try {
+        bornDuringOpen = statSync(p).birthtimeMs >= openedAt;
+      } catch {}
+      if (!existedAtOpen || bornDuringOpen) {
+        try { db.close(); } catch {}
+        try {
+          rmSync(p, { force: true });
+          for (const suf of ["-wal", "-shm"]) rmSync(p + suf, { force: true });
+        } catch (e) {
+          throw new StatedbError(`自建空库清理失败（unlink 被拒：${e?.code ?? e?.message ?? e}）——保留文件走具名拒`, { cause: e });
+        }
+        return null;
+      }
       throw new StatedbError(`库在场面 schema 不识别（缺表：${missing.join(",")}）——拒启（P3 迁移前的库或缺描述件的异物库）`);
     }
   } catch (e) {
@@ -69,17 +105,36 @@ function openDb(cwd) {
   return db;
 }
 
+// marker 态读取（容错形态）：marker 只在「库缺席」时有判别意义——损坏=当迁移态处理
+//（库在场照读 DB；库缺席具名拒不回落），与钩子内联口径一致；健康库永不被损坏侧车挡住。
+function markerState(cwd) {
+  try {
+    return { present: readBackendMarker(cwd) != null };
+  } catch (e) {
+    if (e instanceof StatedbError) return { present: true, corrupt: true };
+    throw e;
+  }
+}
+
 export function stateBackend(cwd) {
+  const marker = markerState(cwd);
   const db = openDb(cwd);
-  if (!db) return "json";
+  if (!db) {
+    if (marker.present) throw missingDbAfterMigrate(stateDbPath(cwd));
+    return "json";
+  }
   db.close();
   return "sqlite";
 }
 
 // 后端分派：json 侧走现行原路径；db 侧在受控句柄上执行并把 Statedb* 映射为 QueueError。
 function backendCall(cwd, { json, db: dbFn }) {
+  const marker = markerState(cwd);
   const db = openDb(cwd);
-  if (!db) return json();
+  if (!db) {
+    if (marker.present) throw missingDbAfterMigrate(stateDbPath(cwd));
+    return json();
+  }
   try {
     return dbFn(db);
   } catch (e) {

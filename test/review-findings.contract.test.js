@@ -317,10 +317,12 @@ describe("⑥CLI 退出码（真子进程；finding 面零 spawn）", () => {
 // ── P2 N7：评审预算执法块双后端参数化（runReview 入账/执法面吃队列家族；findings 家族与后端无关）──
 const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
 const DB_OK = NODE_MAJOR >= 24; // ADR-0039 地板
-const KINDS = DB_OK ? ["json", "sqlite"] : ["json"];
+// r8-F1（P2 评审备忘；N5）：<24 不再静默缺席——[sqlite] 腿恒在，以具名 skip 保持输出可审计
+const DB_SKIP = DB_OK ? false : `地板 Node ≥24.0.0（ADR-0039；22 线不入 DB 支持面）；当前 v${process.versions.node}，[sqlite] 腿具名跳过`;
+const KINDS = ["json", "sqlite"];
 
 for (const KIND of KINDS) {
-describe(`⑦评审预算执法（N9）[${KIND}]：入账/分项/超限拒/无契约不写`, () => {
+describe(`⑦评审预算执法（N9）[${KIND}]：入账/分项/超限拒/无契约不写`, { skip: KIND === "sqlite" ? DB_SKIP : false }, () => {
   const fx = (opts) => {
     const d = fixture(opts);
     if (KIND === "sqlite") {

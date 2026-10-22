@@ -7,7 +7,7 @@
 set -u
 export PATH="$HOME/.nvm/versions/node/v24.19.0/bin:$PATH"
 FID="${1:?用法：evidence-probe.sh <F1|F2|F3|F4|F5>}"
-REPO=/Users/acfufu/Codehub/lazyzcode
+REPO="${LZY_PROBE_REPO:-/Users/acfufu/Codehub/lazyzcode}" # r8-F2（P2 评审备忘；N5）：跨机/异树重放取证须可注入，勿读入外来树
 CLI="${LZY_PROBE_CLI:-$REPO/cli/lzy.js}"
 TRIGGER="${LZY_PROBE_TRIGGER:-$REPO/plugin/hooks/trigger.js}"
 HOME_ISO=$(mktemp -d /tmp/v031b1-ev.XXXXXX); export HOME="$HOME_ISO" USERPROFILE="$HOME_ISO" LZY_ZCODE_ENGINE=/nonexistent-lzy-probe

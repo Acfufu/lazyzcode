@@ -40,10 +40,12 @@ const CLI = join(ROOT, "cli", "lzy.js");
 // JSON 家族文件永不生成；win32 雷回避=DB 句柄先 close 再删目录）──
 const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
 const DB_OK = NODE_MAJOR >= 24; // ADR-0039 地板；不满足=DB kind 具名 skip（JSON kind 照跑）
-const KINDS = DB_OK ? ["json", "sqlite"] : ["json"];
+// r8-F1（P2 评审备忘；N5）：<24 不再静默缺席——[sqlite] 腿恒在，以具名 skip 保持输出可审计
+const DB_SKIP = DB_OK ? false : `地板 Node ≥24.0.0（ADR-0039；22 线不入 DB 支持面）；当前 v${process.versions.node}，[sqlite] 腿具名跳过`;
+const KINDS = ["json", "sqlite"];
 
 for (const KIND of KINDS) {
-const t = (name, fn) => test(`[${KIND}] ${name}`, fn);
+const t = (name, fn) => test(`[${KIND}] ${name}`, { skip: KIND === "sqlite" ? DB_SKIP : false }, fn);
 
 function qrepo(prefix) {
   const d = mkdtempSync(join(tmpdir(), prefix));

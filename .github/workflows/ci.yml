@@ -13,7 +13,8 @@ jobs:
   test:
     strategy:
       matrix:
-        node: [22, 24]
+        # P3 engines 收紧（goal p3-sqlite-switch；ADR-0039 地板 ≥24.0.0）：node 22 腿退出矩阵
+        node: [24]
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     # scheduleAdvisory 断言「UTC+8 宿主下的本地小时渲染」（core/ratelimit.js 双轴：
@@ -33,14 +34,14 @@ jobs:
       - run: node --test "test/**/*.test.js"
       - run: node cli/lzy.js --help
 
-  # docs 断链/锚点检查（0.4.0 M5 N3，M4 输入 9①）——独立轻量 job，不入 4 腿矩阵重复跑。
+  # docs 断链/锚点检查（0.4.0 M5 N3，M4 输入 9①）——独立轻量 job，不入矩阵重复跑。
   docs-links:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - run: node scripts/check-docs-links.mjs
 
   # SQLite 迁移地板腿（P1 N4，ADR-0039 拍板地板 2026-10-16）：钉 24.0.0 实跑

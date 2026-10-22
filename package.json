@@ -30,7 +30,7 @@
     "lzy": "cli/lzy.js"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24.0.0"
   },
   "files": [
     "cli/",

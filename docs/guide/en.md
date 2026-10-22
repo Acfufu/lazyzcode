@@ -27,7 +27,7 @@ One package installs both halves of LazyZCode: the `lazyzcode:zw` plugin
   `%LOCALAPPDATA%\Programs\ZCode`); nothing is guessed.
 - **ZCode desktop app**, installed and logged in. LazyZCode runs *inside*
   ZCode; there is no separate login.
-- **Node.js ≥ 22** — any maintained LTS. Installed via nvm or Homebrew both
+- **Node.js ≥ 24** — the sqlite storage floor (ADR-0039). Installed via nvm or Homebrew both
   work: the bundled hook launcher scans both locations when the engine's hook
   environment lacks `node` (Windows resolves via nvm-windows/Program Files;
   see [Hooks & lifecycle](#hooks--lifecycle)).
@@ -79,7 +79,7 @@ official `plugins uninstall` path.
 | --- | --- | --- |
 | Operating system | **macOS, Windows, or Linux** | Engine layout detection covers all three (ADR-0011). |
 | ZCode app | Desktop, logged in | Hooks and the plugin load through the desktop engine. |
-| Node.js | ≥ 22, via nvm or Homebrew | The `hook-node` doctor check reports exactly which resolution path your hooks will use. |
+| Node.js | ≥ 24, via nvm or Homebrew | The `hook-node` doctor check reports exactly which resolution path your hooks will use. |
 | Project | A git repository | Evidence binding requires commits to exist; F-item evidence is captured **after** a commit. |
 | Launch style | Either | Launching ZCode from the terminal or the Dock both work; the Dock case is handled by the `run-hook` launcher. |
 
@@ -866,7 +866,7 @@ do.
 | `codegraph` | Codegraph MCP/CLI availability (absence = `skip`) |
 | `loop` | Goal-loop progress in this directory (skip when none; warns while a loop is open) |
 | `hooks` | Hook syntax self-check (vm-parsed in a worker) + `hooks.json` registry validation |
-| `node` | Node version floor (≥ 22) |
+| `node` | Node version floor (≥ 24) |
 | `hook-node` | Which path the hook launcher resolves node from |
 | `lzy-path` | Whether `lzy` resolves on PATH |
 | `state` | `.lazyzcode/` hygiene (orphan temp files, goal state) |
@@ -913,8 +913,8 @@ Privacy: zero telemetry; diagnostics are computed locally and printed locally.
 - **macOS, Windows, and Linux** are supported for engine detection and the
   full install chain (ADR-0011); the distribution matrix is arm64-live-verified
   (Windows 11 / Ubuntu ARM VMs), x64 coverage follows the official download
-  matrix by documentation. The CI matrix (node 22/24 × ubuntu/windows, four
-  legs) stays green on main; three test families are explicitly skipped on
+  matrix by documentation. The CI matrix (node 24 × ubuntu/windows, two legs
+  plus a sqlite-floor job pinned to 24.0.0) stays green on main; three test families are explicitly skipped on
   win32 (kept until VM verification): SIGTERM kill receipt semantics, gh CLI
   parsing semantics, and EACCES permission-denial semantics (POSIX permission
   bits do not apply on win32) — skipped groups are a support boundary, not a

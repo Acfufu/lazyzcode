@@ -20,9 +20,9 @@ test("assertNodeFloor：floor 超当前版本即拒，报文含当前版本与�
   }
 });
 
-test("assertNodeFloor：floor=0 放行不抛；NODE_MAJOR_FLOOR 单源常量在位（=22）", async () => {
+test("assertNodeFloor：floor=0 放行不抛；NODE_MAJOR_FLOOR 单源常量在位（=24，P3 engines 收紧）", async () => {
   const { assertNodeFloor } = await import(pathToFileURL(join(ROOT, "core", "installer.js")).href);
   const { NODE_MAJOR_FLOOR } = await import(pathToFileURL(join(ROOT, "core", "doctor.js")).href);
   assert.doesNotThrow(() => assertNodeFloor(0));
-  assert.equal(NODE_MAJOR_FLOOR, 22);
+  assert.equal(NODE_MAJOR_FLOOR, 24);
 });

@@ -48,7 +48,7 @@ import {
 import { loadRuntime } from "./runtime.js";
 import { createGit } from "./git.js";
 
-export const NODE_MAJOR_FLOOR = 22; // 单源（债六，0.1.1）：install/sync 前置探测同用此常量
+export const NODE_MAJOR_FLOOR = 24; // 单源（债六，0.1.1）：install/sync 前置探测同用此常量；P3 engines 收紧 ≥24（ADR-0039 地板，goal p3-sqlite-switch）
 
 // 项目记忆过期提示阈值（memory-staleness-fingerprint）：地图基点后覆盖域提交数达到该值，
 // doctor agents-md 的 ok 行尾追加「地图落后 N 个提交」提示。写死+人工维护口径（无 env、

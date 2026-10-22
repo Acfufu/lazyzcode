@@ -244,7 +244,7 @@ npm run build                 # docs/ -> dist/ (Jekyll emulation)
 npm run check                 # link crawl + anchor integrity, exit 1 on any miss
 ```
 
-CI runs the suite on node 22 / 24. The docs site builds on GitHub Pages
+CI runs the suite on node 24 (plus a sqlite-floor job pinned to 24.0.0). The docs site builds on GitHub Pages
 from `/docs` (Jekyll, GFM); `scripts/docs-preview/build.mjs` mirrors that
 pipeline locally — Pages adds rouge syntax coloring on top, everything else
 matches.

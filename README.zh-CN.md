@@ -42,7 +42,7 @@
 
 ## 🚀 安装（10 分钟）
 
-前置：macOS / Windows / Linux、ZCode 桌面端（已登录）、Node ≥ 22、git（证据绑定
+前置：macOS / Windows / Linux、ZCode 桌面端（已登录）、Node ≥ 24、git（证据绑定
 tree hash，必需——`lzy loop register` 对非 git 宿主硬拒并给 `git init` 指路，
 ADR-0019）。三平台引擎布局均已适配探测（macOS 应用包、Linux deb
 `/opt/ZCode`、Windows 每用户 `%LOCALAPPDATA%\Programs\ZCode`）。
@@ -346,14 +346,14 @@ skills/hooks/agents 机器，LazyZCode 是让它们把活干完的那层工作�
 ## 🏗️ 架构
 
 LazyZCode = 一个插件（纪律层）+ 一个 CLI（循环状态机）。零 npm 依赖、
-Node ≥ 22、纯 ESM。
+Node ≥ 24、纯 ESM。
 
 ```
 lazyzcode/
 ├── plugin/   → lazyzcode 插件：skills/zw + skills/init-deep、hooks/（6 个，经 run-hook 启动器）、agents/（3 只）
 ├── core/     → 共享逻辑：loop、installer、doctor、ratelimit、agentsmd、engine、git、paths、status、update、cost、dag、attempt、attest、runtime、drive、h3r、progress、headless、hostdb
 ├── cli/      → lzy 入口（cli/lzy.js）+ 语法检查 worker
-├── test/     → 契约测试（node:test 零依赖）+ GitHub Actions（node 22/24）
+├── test/     → 契约测试（node:test 零依赖）+ GitHub Actions（node 24）
 └── docs/     → 调研底稿、ADR、五轮评审、诊断记录
 ```
 
@@ -365,7 +365,7 @@ lazyzcode/
 
 - 平台支持边界（ADR-0011）：macOS / Windows / Linux 三平台支持；三平台引擎布局均
   已实测，分发矩阵按 arm64 实证（Windows 11 / Ubuntu ARM 虚拟机活体）——x64 覆盖
-  以官方下载矩阵文档声明。CI 矩阵（node 22/24 × ubuntu/windows 四腿）在 main 常绿；
+  以官方下载矩阵文档声明。CI 矩阵（node 24 × ubuntu/windows 两腿+sqlite-floor 钉 24.0.0）在 main 常绿；
   三族测试在 win32 显式 skip（维持至 VM 实测）：SIGTERM 击杀回执语义、gh CLI 解析
   语义、EACCES 权限拒绝语义（POSIX 权限位在 win32 不生效）——skip 组属支持边界而
   非已验面（M3 债 G 补核 2026-09-25：CI win32 腿执行其余全量套件绿）。

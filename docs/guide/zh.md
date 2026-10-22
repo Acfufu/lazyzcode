@@ -25,7 +25,7 @@ CLI（目标循环状态机）。
   应用包、Linux deb `/opt/ZCode`、Windows 每用户 `%LOCALAPPDATA%\Programs\ZCode`），
   绝不盲猜。
 - **ZCode 桌面端**，已安装并登录。LazyZCode 跑在 ZCode *里面*，没有单独的登录。
-- **Node.js ≥ 22** —— 任意在维护的 LTS。nvm 或 Homebrew 装的都行：当引擎的钩子
+- **Node.js ≥ 24** —— sqlite 存储地板（ADR-0039）。nvm 或 Homebrew 装的都行：当引擎的钩子
   环境里没有 `node` 时，插件自带的启动器会扫这两个位置（Windows 经
   nvm-windows/Program Files 解析；见 [钩子与生命周期](#钩子与生命周期)）。
 - **git** —— 证据绑定用 `git rev-parse HEAD^{tree}`，干活的项目必须是 git 仓库。
@@ -69,7 +69,7 @@ lzy uninstall
 | --- | --- | --- |
 | 操作系统 | **macOS / Windows / Linux** | 三平台引擎布局探测全覆盖（ADR-0011）。 |
 | ZCode | 桌面端，已登录 | 钩子与插件都经桌面端引擎装载。 |
-| Node.js | ≥ 22，nvm 或 Homebrew | `lzy doctor` 的 `hook-node` 检查会告诉你钩子实际走哪条解析路径。 |
+| Node.js | ≥ 24，nvm 或 Homebrew | `lzy doctor` 的 `hook-node` 检查会告诉你钩子实际走哪条解析路径。 |
 | 项目 | git 仓库 | 证据绑定要求存在提交；F 项证据在提交**之后**取证。 |
 | 启动方式 | 均可 | 终端启动或 Dock 直启都行；Dock 场景由 `run-hook` 启动器兜底。 |
 
@@ -686,7 +686,7 @@ lzy version                     打印版本
 | `codegraph` | Codegraph MCP/CLI 在场性（缺席 = `skip`） |
 | `loop` | 本目录目标循环进度（无循环 = `skip`；循环开着为 `warn`） |
 | `hooks` | 钩子语法自检（worker 内 vm 解析）+ `hooks.json` 注册校验 |
-| `node` | Node 版本下限（≥ 22） |
+| `node` | Node 版本下限（≥ 24） |
 | `hook-node` | 钩子启动器从哪条路径解析 node |
 | `lzy-path` | `lzy` 能否在 PATH 上解析 |
 | `state` | `.lazyzcode/` 卫生（孤儿临时文件、goal 状态） |
@@ -731,7 +731,7 @@ LazyZCode **没有配置文件**。一切皆推导：
 
 - 引擎探测与全安装链支持 **macOS / Windows / Linux** 三平台（ADR-0011）；
   分发矩阵按 arm64 实证（Windows 11 / Ubuntu ARM 虚拟机活体），x64 覆盖以官方
-  下载矩阵文档声明。CI 矩阵 node 22/24 × ubuntu/windows 四腿在 main 常绿；
+  下载矩阵文档声明。CI 矩阵 node 24 × ubuntu/windows 两腿+sqlite-floor（钉 24.0.0）在 main 常绿；
   三族测试在 win32 显式 skip（维持至 VM 实测）：SIGTERM 击杀回执语义、gh CLI
   解析语义、EACCES 权限拒绝语义（POSIX 权限位在 win32 不生效）——skip 组属支持
   边界而非已验面（M3 债 G 补核 2026-09-25：CI win32 腿执行其余全量套件绿）。

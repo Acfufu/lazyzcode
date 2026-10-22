@@ -46,7 +46,7 @@
 ## 🚀 Install (10 minutes)
 
 Prerequisites: macOS, Windows, or Linux; the ZCode desktop app (logged in),
-Node ≥ 22, git (evidence binds tree hashes, so git is required — `lzy loop register`
+Node ≥ 24, git (evidence binds tree hashes, so git is required — `lzy loop register`
 hard-rejects a non-git host with `git init` guidance, ADR-0019). Engine
 layouts are detected on all three platforms (macOS app bundle, Linux deb
 `/opt/ZCode`, Windows per-user `%LOCALAPPDATA%\Programs\ZCode`).
@@ -402,14 +402,14 @@ loop is meant to pull work back across a lazy stop, not to trap the session.
 ## 🏗️ Architecture
 
 LazyZCode is a plugin (the discipline layer) plus a CLI (the loop state
-machine). Zero npm dependencies, Node ≥ 22, pure ESM.
+machine). Zero npm dependencies, Node ≥ 24, pure ESM.
 
 ```
 lazyzcode/
 ├── plugin/   → the lazyzcode plugin: skills/zw + skills/init-deep, hooks/ (6, via the run-hook launcher), agents/ (3)
 ├── core/     → shared logic: loop, installer, doctor, ratelimit, agentsmd, engine, git, paths, status, update, cost, dag, attempt, attest, runtime, drive, h3r, progress, headless, hostdb
 ├── cli/      → the lzy entry (cli/lzy.js) + syntax-check worker
-├── test/     → contract tests (node:test, zero deps) + GitHub Actions (node 22/24)
+├── test/     → contract tests (node:test, zero deps) + GitHub Actions (node 24)
 └── docs/     → research notes, ADRs, five review rounds, diagnostics
 ```
 
@@ -423,7 +423,7 @@ installs plugins and nothing else — enabling goes through the engine's officia
 - Platform support boundary (ADR-0011): macOS, Windows and Linux are all
   supported; engine layouts are measured on each, the distribution matrix is
   arm64-live-verified (Windows 11 / Ubuntu ARM VMs), and x64 coverage follows
-  the official download matrix by documentation. The CI matrix (node 22/24 ×
+  the official download matrix by documentation. The CI matrix (node 24 ×
   ubuntu/windows, four legs) stays green on main; three test families are
   explicitly skipped on win32 (kept until VM verification): SIGTERM kill
   receipt semantics, gh CLI parsing semantics, and EACCES permission-denial

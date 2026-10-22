@@ -233,7 +233,7 @@ npm run build                 # docs/ -> dist/（Jekyll 同构模拟）
 npm run check                 # 爬链 + 锚点完整性，任何 miss 即退出码 1
 ```
 
-CI 在 node 22 / 24 上跑全套。文档站由 GitHub Pages 从 `/docs` 构建
+CI 在 node 24 上跑全套（另含 sqlite-floor 腿钉 24.0.0）。文档站由 GitHub Pages 从 `/docs` 构建
 （Jekyll，GFM）；`scripts/docs-preview/build.mjs` 在本地镜像同一条管线——
 Pages 在其上多一层 rouge 语法高亮，其余一致。
 

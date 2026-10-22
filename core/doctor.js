@@ -14,6 +14,7 @@ import { effectiveAuthorization, loadContract } from "./contract.js";
 import { projectCheck } from "./project.js";
 import { loadMigrationState } from "./migrate.js";
 import { budgetView } from "./queue.js"; // M3 N9：drive 预算视图评审分项读数
+import { openStore } from "./statedb.js"; // P3：sqlite-store 检查行只读核（不可读=fail，不抛错）
 import { loadPolicyFile, DUTY_TABLE_VERSION } from "./policy.js"; // 0.4.0 M1：policy 家族巡逻（形状闸 fail-closed）+ M2 N5 版本漂移读数
 import { loadReviewFile, loadScopeFile, auditClosedFindingsApplicability } from "./review.js"; // 0.4.0 M2：review 运行族巡逻 + M4：范围档巡逻与 stale 审计（fail 级同口径）
 import { loadFindingsFile, CLOSED_FINDING_STATUSES } from "./findings.js"; // 0.4.0 M3：发现账本巡逻（同 fail 级口径）
@@ -971,6 +972,54 @@ function checkMigratePreview(push, cwd) {
   push("migrate", "ok", detail);
 }
 
+// P3（goal p3-sqlite-switch）：局部状态 SQLite 存储态检查行（#46 允许新增行；全程不抛错）。
+// 分态：非工作区=skip／未迁移（双缺席）=ok（JSON 态现行权威）／已迁移（marker∧库）=ok（条目
+// 计数）／残缺（单边在场）=warn／库不可读=fail；journal 未收尾 run 附具名续跑指路。
+function checkSqliteStore(push, cwd) {
+  const lz = join(cwd, ".lazyzcode");
+  if (!existsSync(lz)) {
+    push("sqlite-store", "skip", "非工作区（.lazyzcode 缺席）");
+    return;
+  }
+  const dbPath = join(lz, "state.sqlite");
+  const markerPath = join(lz, "state.backend.json");
+  const markerExists = existsSync(markerPath);
+  const dbExists = existsSync(dbPath);
+  let inflight = "";
+  try {
+    const jdir = join(lz, "migration", "sqlite", "journal");
+    for (const r of readdirSync(jdir).filter((f) => f.endsWith(".jsonl"))) {
+      const lines = readFileSync(join(jdir, r), "utf8").trim().split("\n").filter(Boolean);
+      const last = lines.at(-1);
+      if (last && JSON.parse(last).phase !== "done") {
+        inflight = ` · journal 未收尾：${r.replace(/\.jsonl$/, "")}（lzy migrate sqlite <root> 续跑）`;
+        break;
+      }
+    }
+  } catch {}
+  if (markerExists && !dbExists) {
+    push("sqlite-store", "warn", `迁移已完成而库缺席（残缺态）${inflight}——恢复：从 .lazyzcode/migration/sqlite/<runId>/backup/ 备份核对`);
+    return;
+  }
+  if (dbExists && !markerExists) {
+    push("sqlite-store", "warn", `state.sqlite 在场而读向标记缺席${inflight}——迁移未完成或异物库；已迁移工作区应两件并存（lzy migrate sqlite <root> 重入即续）`);
+    return;
+  }
+  if (markerExists && dbExists) {
+    try {
+      const m = JSON.parse(readFileSync(markerPath, "utf8"));
+      const db = openStore(dbPath, { readOnly: true });
+      const items = db.prepare("SELECT COUNT(*) AS n FROM queue_items").get()?.n ?? 0;
+      db.close();
+      push("sqlite-store", "ok", `SQLite 权威（backend=${m?.backend ?? "?"}，条目 ${items}）——旧 JSON 三族保留只作备份/导出${inflight}`);
+    } catch (err) {
+      push("sqlite-store", "fail", `state.sqlite 不可读：${String(err?.message ?? err).slice(0, 120)}——恢复：备份核对（.lazyzcode/migration/sqlite/<runId>/backup/）`);
+    }
+    return;
+  }
+  push("sqlite-store", "ok", `JSON 态（未迁移）${inflight}——显式迁移：lzy migrate sqlite ${cwd}`);
+}
+
 // 提交账本巡逻（ADR-0005）：goal 起点后的提交缺 `Goal:` 尾注的比例。
 // warn-only：账本是约定纪律，缺指针不阻断任何流程，doctor 可见即可。
 export function checkLedger(push, cwd) {
@@ -1490,6 +1539,7 @@ export async function collectDoctor(cwd = process.cwd()) {
     (p) => checkReviewScope(p, cwd),
     (p) => checkProjectManifest(p, cwd),
     (p) => checkMigratePreview(p, cwd),
+    (p) => checkSqliteStore(p, cwd),
     (p) => checkHostGit(p, cwd),
     (p) => checkWaterline(p),
     (p) => checkOrphanWake(p, cwd),

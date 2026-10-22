@@ -10,7 +10,7 @@
 
 ## 2. 当前状态（2026-10-10 短表；完整历史档案 → docs/history.md）
 
-- **已发布**：npm `lazyzcode` **0.5.0**（latest）＝收束诚实化工作集（具名收束读面 #47／沙盒允许表／用量账本／回执补轴）；M3 重评主门负结论=不采纳、默认维持旧线（ADR-0034）→ v050-m3-report.md；win32 VM 复测 10-10（update+doctor+人权门+三道门拒向活体；finish 完整面=义务评审需凭据，边界记档）。
+- **已发布**：npm `lazyzcode` **0.5.0**（latest）＝收束诚实化工作集；M3 重评主门负结论=不采纳（ADR-0034）；win32 复测 10-10 边界记档。**P3 SQLite 切换已实施未发布**（10-23，p3-sqlite-switch：显式迁移/读向 marker/误写检测/engines ≥24；定案→design §7 增补）。
 - 发布/评审机械与报告库 → docs/release-checklist.md、docs/reviews/。
 
 ## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19，设计前必读）：引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔0.16.5→0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组，lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**（engine-3140-sync 只锚版本漏检教训）
@@ -57,7 +57,7 @@
 | #50 | 评估集重锚 | 三仓×2 新任务独立封存（v3＋新 seed）；M0＋oracle-v3 转开发材料（2026-10-07） |
 | #51 | M2 冻结面 | deferred 8 条冻结前修；冻结点=M2，基线=v0.4.1（2026-10-07） |
 | #52 | 评审 OS 沙盒 | 仅独立评审：Seatbelt 引擎+endpoint 代理+清理；分级=双条件钉沙盒 tier，缺一降级 app-layer（OAuth 透传暴露中性）（ADR-0038，未发布） |
-| #53 | SQLite 存储地板 | 三族迁单库 state.sqlite（node:sqlite 零依赖）；地板 Node ≥24.0.0（22 线不入支持面）；只用 SQL 层操作；前向单向不回退；engines 随 P3（ADR-0039，2026-10-16） |
+| #53 | SQLite 存储地板 | 三族迁单库 state.sqlite（node:sqlite 零依赖）；地板 Node ≥24.0.0（22 线不入支持面）；只用 SQL 层操作；前向单向不回退；engines 已收紧 ≥24（P3，2026-10-23；ADR-0039） |
 
 其余 #1-#24 全表 → docs/decisions.md。
 

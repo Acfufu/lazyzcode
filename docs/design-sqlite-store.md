@@ -1,6 +1,6 @@
 # 局部状态 SQLite 存储契约（P1 冻结）
 
-日期：2026-10-16 · 状态：**P1 冻结；P2 已实施**（2026-10-18，goal p2-sqlite-tx：存储层生产化与四调用面接线，未发布任何机制；处置表与 P2→P3 交接=§12；P3 显式迁移未启动）
+日期：2026-10-16 · 状态：**P1 冻结；P2 已实施；P3 已实施**（2026-10-23，goal p3-sqlite-switch：显式迁移与单权威切换——迁移机器/读向 marker/误写检测/engines 收紧，未发布；P3 实施定案=§7 增补，处置与交接=§12；P4 真实 CLI 平台面未启动）
 依据：`docs/plan-lzy-sqlite-state.md` §4（P1 批=范围/schema/存储契约/能力矩阵/试点及故障证据）；`docs/adr/0039-sqlite-store-boundary.md`（边界与地板定案）；能力矩阵与逐版本原始证据=goal `p1-sqlite-pilot` 的 F 证据面（探针脚本 `scripts/sqlite-capability-probe.mjs`，P1 N4 入库）。
 本文件是存储层单一实施依据：P1 只冻结，不接线；任何与现行 `core/queue.js` 语义的偏差都在 §3 对账表逐条声明。
 
@@ -148,6 +148,16 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
 6. 切换后 DB 是唯一权威；旧 JSON 保留只作备份/导出；DB 缺失/损坏/读取失败**不回落到旧 JSON** 继续派发或批准。
 7. `update/sync` 永不自动迁移；迁移是显式用户动作。
 
+**P3 实施定案（2026-10-23，goal p3-sqlite-switch；实现=`core/sqlite-migrate.js` + `core/statedb.js` marker/指纹原语 + cli `migrate sqlite`）**：
+
+1. **新工作区姿态=JSON 起步**：生产零自动建库（迁移=显式用户动作）；空/部分族工作区可显式迁移（缺家族=空族合法导入，loadFamilyFile ENOENT=null 现成语义）。
+2. **读向闸=库外 marker**（`.lazyzcode/state.backend.json`，`{backend:"sqlite",format:1,migratedAt,writerVersion}`）：marker 在场=迁移已做 → DB 必须（core 库缺席/不可读=具名拒不回落；钩子零记录+具名诊断+exit 0）；marker 缺席=迁移未做 → P2 判据逐字。**marker 损坏=当迁移态处理**（库在场照读 DB、库缺席具名拒）——marker 只在「库缺席」时有判别意义，健康库永不被损坏侧车挡住（core 与钩子口径一致）。「非工作区／迁移未做／迁移已做」三分可判（§12 交接清单 7 收口）。
+3. **提交点序=install→marker→meta.backend 最后写**：install（staged close 后同卷原子 rename）→ 写 marker（读向翻转）→ 写 `meta.backend`+`writer_version`+`meta.json_frozen`（最后写=提交点，§7.5）。install→marker 窗口=P2 判据已认库且内容为忠实导入，语义安全；marker→meta.backend 窗口=读向已翻、resume 按相位补提交点。两窗口均被 journal 相位覆盖，重入幂等。
+4. **备份语义**：三族=文件复制到 `.lazyzcode/migration/sqlite/<runId>/backup/` + manifest 逐文件 sha256 + install 前源漂移双读校验（漂移=停）；**VACUUM INTO 不入迁移路径**（迁移前无库可 VACUUM——§12-2「§6 路线」的 reading 如实记档：staged 库以 integrity_check 为导入门禁，VACUUM INTO 仍专属 backupTo 运维面）；迁移不改写不删除源 JSON（前向单向）。
+5. **命令面**：`lzy migrate sqlite <根路径>`（根路径显式，沿 cmdMigrate 家法）；单命令无 preview（对账内建于 apply）；重跑语义=未收尾 journal→断点续跑（幂等）、已收尾且库在场→具名拒（已迁移）；前置拒绝=活跃 tx（open/delivering）或 running 条目（§7.1 冻结写入）+ withLock 整段。journal=`migration/sqlite/journal/<runId>.jsonl`（七相位），与 ADR-0029 机器（state.json 版本入口）互不相涉。
+6. **旧状态误写检测**：提交时三族冻结指纹落 `meta.json_frozen`（在场=sha256、缺席=null）；`reconcileDispatch` withLock 锁内首行预检（runQueueDispatch 首动作即 reconcile，单点覆盖双入口）；任一族「在场但 sha≠冻结」=具名拒（恢复/删除/核对三路指路），缺席=不违例；meta.json_frozen 缺席（P2 时代库工作区、夹具）=no-op；JSON 态不检（逐字零变更）。
+7. **openDb 自建空库修复**（r6-F2）：双信号合取——打开前 stat 在场性 + 现文件 birthtime≥本进程打开入口时戳（亚毫秒墙钟 `performance.timeOrigin+performance.now()`，Date.now() 取整会同毫秒误判）——才判「本进程打开序列内 SQLite 自建」，close+unlink 后按缺席继续；打开前已在场的旧占位/异物库恒走原具名拒不误删；unlink 失败=保留走原拒。
+
 ## 8. 版本冲突与回退姿态
 
 - **前向单向**：不提供反向导出；**不支持自动回退**（切换后已有新写入时，恢复旧备份会丢新账——明示不支持）。
@@ -216,4 +226,18 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
   4. **engines 收紧窗口**：P2 维持 `package.json` engines 不动（JSON 面 ≥22 现行承诺不变）；机制收紧随 P3 切换窗口一次性落（§2/§11-F3）；钩子侧 major≥24 地板探针已在 P2 先行（库在场才生效，无库工作区不受影响）。
   5. **夹具/脚本面**：八件参数化（`KINDS=["json","sqlite"]` 循环）与 scripts 五件适配随 P3 全量切换须再核对（届时 DB kind 或转为主断言体，JSON kind 收缩为迁移回放面）；P2 证据面=`artifacts/p2-baseline/`。
 
-**P2**：已实施（见上「P2→P3 交接注记」；设计依据 §3–§5，出口=九项冻结表逐项可核 + P1 八发现全处置）。**P3**：§7/§8 的显式迁移与单权威切换。**P4**：真实 CLI 平台面（含 win32 VM）与最低运行时验证。
+**P2→P3 交接注记五条输入面的 P3 定案指针（2026-10-23 落定）**：①meta.backend 提交点语义→§7 增补定案 3（install→marker→meta.backend 最后写；P2 从不写 meta.backend 的遗留就此收口）；②迁移机器备份语义→§7 增补定案 4（三族文件复制+双读校验；VACUUM INTO 不入迁移路径的 reading 如实记档）；③JSON 分支现行门→维持 checksum-only 零变更（交接注记 3 的「若加版本闸须走契约评审」未触发——误写检测走 meta.json_frozen 独立面，JSON 兜底不加闸）；④engines 收紧→已随 P3 窗口一次性落（package.json ≥24.0.0 + NODE_MAJOR_FLOOR 24 + CI 去 22 腿 + 文案 20 位点；钩子侧 major≥24 探针 P2 先行者就此全面接齐）；⑤夹具/脚本面→八件 KINDS 双 kind 维持（未迁移 JSON 态与已迁移 DB 态均为 P3 后合法运行态，「DB 转主断言体」不做的 rationale：两态皆是运行态，翻转无收益；Node<24 具名 skip 化=r8-F1）；scripts 夹具驱动三件 git 零变更锚定。
+
+**P3 已实施面（无未迁移工作区行为变更；不发版）**：迁移机器 `core/sqlite-migrate.js`（七相位 journal+备份双读+canonical 对账+漂移双读+三类具名拒+stopAfterPhase 测试钩子）；`core/statedb.js` 增 marker 原语（readBackendMarker/writeBackendMarker）与冻结指纹原语（json_frozen/assertNoJsonMiswrite/JSON_FAMILIES）；`core/queue.js` 读向闸（stateBackend/backendCall markerState 前置）+openDb 双信号修复+误写检测接入 reconcileDispatch 首行；`plugin/hooks/trigger.js` 内联 marker 三分支；doctor `sqlite-store` 检查行（#46 新增行）；cli `migrate sqlite`；engines 收紧；契约测试 `test/sqlite-migrate.contract.test.js` 11 腿（P2 八件双 kind 维持+具名 skip 化）。
+
+**P2 评审 P3 处置表（r6/r7/r8 五条非阻塞，2026-10-23 逐条落定）**：
+
+| 发现 | 处置 | 落点 |
+|---|---|---|
+| r6-F1（结算级联时点双后端不同序） | 记档无代码改动：单权威切换后已迁移工作区仅 DB 路径在跑，时点分歧不可达；未迁移工作区=纯 JSON（P2 行为不变）——分歧仅存于「同场景双后端对照」这一测试构造内 | 本行（§12）；contract 双 kind 等价腿持续兜底 |
+| r6-F2（openDb 判据非原子） | 已修：双信号合取（打开前 stat 在场性+birthtime≥亚毫秒入口时戳）判自建空库，close+unlink 后按缺席继续；预存占位/异物库恒原拒不误删；契约腿⑤钉安全性质 | §7 增补定案 7；`core/queue.js` openDb；contract 腿⑤ |
+| r7-F1（backupTo 拼接守卫） | 记档：迁移机器不新增 VACUUM INTO 用户路径（备份=三族文件复制，§7 增补定案 4）；backupTo 单引号守卫原样保留，现调用方仍仅 scripts/测试 | 本行（§12）；`core/statedb.js` backupTo 未动 |
+| r8-F1（Node<24 八件 [sqlite] 腿静默缺席） | 已修：八件 [sqlite] 腿恒在+<24 具名 skip（文案含地板依据；Node 22.23.1 实测 skipped=13 带因） | `test/`八件 KINDS 块；F7 红绿双面在 artifacts/p3-baseline/ |
+| r8-F2（evidence-probe.sh 硬编码路径） | 已修：`REPO="${LZY_PROBE_REPO:-…}"` 覆盖缝；姊妹件 evidence-probe-f6.sh 同款留档不改（不在 P3 scope） | `scripts/v031/evidence-probe.sh`；本行记档 |
+
+**P2**：已实施（见上「P2→P3 交接注记」；设计依据 §3–§5，出口=九项冻结表逐项可核 + P1 八发现全处置）。**P3**：已实施（§7 增补定案 1–7；出口=显式迁移/核对/单权威切换全链可核 + P2 评审五备忘全处置；「切默认」语义=迁移翻转为该工作区唯一权威，新工作区仍 JSON 起步——§7 增补定案 1）。**P4**：真实 CLI 平台面（含 win32 VM）、最低运行时验证与发布窗口（engines 收紧随发版生效）未启动。

@@ -31,8 +31,8 @@ import { createGit } from "./git.js";
 import {
   stateDbPath, openStore, readSnapshot, replaceQueueFamily, replaceDispatchTxs, replaceBudgetEvents,
   occupyDispatch, patchDispatchTx, settleDispatch, appendBudgetEvent, readBudgetAggregate, StatedbError,
-  readBackendMarker,
-} from "./statedb.js"; // P2 N2/N3/N4：双后端 seam 的 DB 侧引擎（JSON 侧=本模块现行路径，逐字不动）；P3 N3：读向 marker 原语
+  readBackendMarker, assertNoJsonMiswrite,
+} from "./statedb.js"; // P2 N2/N3/N4：双后端 seam 的 DB 侧引擎（JSON 侧=本模块现行路径，逐字不动）；P3：读向 marker 与误写检测原语
 
 // ── 双后端 seam（P2 N2；P3 N3 增读向 marker 闸，设计 docs/design-sqlite-store.md §7/§10）──
 // 判据分态（P3 定案②）：marker（.lazyzcode/state.backend.json）在场=迁移已做 → DB 必须
@@ -992,8 +992,23 @@ function acknowledgeDeliveries(cwd, q, verdicts) {
   return acked;
 }
 
+// N4（P3 定案⑥）：迁移后旧状态误写检测——DB 态预检（meta.json_frozen 在场才生效：
+// P2 时代库在场无 marker 工作区与测试夹具无冻结指纹=空转 no-op）；JSON 态不检（逐字零变更）。
+// runQueueDispatch 首动作即 reconcileDispatch（恢复判定表先行），本预检同时覆盖两入口。
+function assertNoMiswriteIfDb(cwd) {
+  if (stateBackend(cwd) !== "sqlite") return;
+  const db = openDb(cwd);
+  if (!db) return; // 迁移态库缺席已由 marker 闸具名拒，不会到达
+  try {
+    assertNoJsonMiswrite(cwd, db);
+  } finally {
+    try { db.close(); } catch {}
+  }
+}
+
 export function reconcileDispatch(cwd, deps = {}) {
   return withLock(cwd, () => {
+    assertNoMiswriteIfDb(cwd);
     const d = loadDispatch(cwd);
     const open = (d?.txs ?? []).filter((t) => t.phase === "open");
     const verdicts = [];

@@ -122,6 +122,10 @@ function importToStaged(source, stagedPath) {
   ensureSchema(db);
   try {
     replaceQueueFamily(db, { items: source.queue.items, budget: source.queue.budget ?? null });
+    // 预算缺席=无行（replaceQueueFamily 经 writeBudgetRow 无条件写 id=1 行，而 readSnapshot 对
+    // 「行在但全空」回对象≠null——JSON 侧 budget 缺席/null 的语义=无行；不删则 reconcile 必停。
+    // F5 取证探针发现（2026-10-23），补齐「空/部分族工作区迁移」路径（计划定案①）。
+    if (source.queue.budget == null) db.prepare("DELETE FROM queue_budget WHERE id = 1").run();
     replaceDispatchTxs(db, source.dispatch.txs);
     replaceBudgetEvents(db, source.ledger.entries);
   } catch (e) {

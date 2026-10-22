@@ -335,3 +335,21 @@ test("⑪钩子三分支（stdin 驱动生产 trigger.js）：迁移态正常=DB
   assert.equal(authCount(f3.d), k0, "零记录：陈旧投影不生成批准");
   rmSync(f3.d, { recursive: true, force: true });
 });
+
+test("⑫空/部分族工作区迁移：仅 ledger 族（queue/dispatch 缺席）+预算 null=空族导入成功", { skip: FLOOR_SKIP }, () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-mig-sparse-"));
+  spawnSync("git", ["init", "-q"], { cwd: d });
+  const cHash = sha256("sparse");
+  saveLedger(d, { entries: [{ seq: 1, kind: "review", at: FIXED, dedupKey: "review:sparse:1", authorization: { slug: "g", contractHash: cHash }, provenance: "review:sparse", itemId: null, txId: null, sessionId: null, ms: null, points: 3, note: "仅账本" }] });
+  // queue/dispatch 家族缺席（fallback 空族）+ queue.json 不存在→budget=null 路径
+  migrateToSqlite(d);
+  const db = openStore(stateDbPath(d), { readOnly: true });
+  const items = db.prepare("SELECT COUNT(*) AS n FROM queue_items").get().n;
+  const events = db.prepare("SELECT COUNT(*) AS n FROM budget_events").get().n;
+  const budgetRow = db.prepare("SELECT COUNT(*) AS n FROM queue_budget").get().n;
+  db.close();
+  assert.equal(items, 0, "queue 缺席=空族导入");
+  assert.equal(events, 1);
+  assert.equal(budgetRow, 0, "预算 null=无行（readSnapshot null 语义对齐）");
+  rmSync(d, { recursive: true, force: true });
+});

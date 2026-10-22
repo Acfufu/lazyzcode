@@ -10,8 +10,9 @@
 // a transaction」）→ 本模块包装为具名 StatedbError，绝不做静默加入/静默降级。
 // 锁序：withLock（目录锁）→ 单一 DB 事务；本模块不取锁（调用方持锁）。
 import { createRequire } from "node:module";
-import { mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
@@ -579,4 +580,103 @@ export function backupTo(db, targetPath) {
 
 export function integrityCheck(db) {
   return db.prepare("PRAGMA integrity_check").get();
+}
+
+// ── 库外读向 marker（P3 定案②；design §7 P3 定案面收口）──
+// 迁移机器在提交链写（install→marker→meta.backend 最后写=提交点）；core stateBackend 与钩子
+// 读向闸以它区分「迁移未做」（无 marker→现行判据）与「迁移已做」（marker 在场→DB 必须，绝不回落）。
+// marker 损坏（存在但解析失败/形状不识别）=fail-closed 具名拒，不静默当缺席。
+export function backendMarkerPath(cwd) {
+  return join(cwd, ".lazyzcode", "state.backend.json");
+}
+
+export function readBackendMarker(cwd) {
+  const p = backendMarkerPath(cwd);
+  let text;
+  try {
+    text = readFileSync(p, "utf8");
+  } catch (err) {
+    if (err?.code === "ENOENT") return null;
+    throw new StatedbError(
+      `读向标记不可读（${err?.code ?? err?.message ?? err}）：${p}。恢复：该文件由 lzy migrate sqlite 写入；` +
+      `迁移已完成后 state.sqlite 为唯一权威——核对/恢复该标记，勿手改标记期望回落 JSON`,
+    );
+  }
+  let m = null;
+  try {
+    m = JSON.parse(text);
+  } catch {
+    m = null;
+  }
+  if (!m || m.backend !== "sqlite" || m.format !== 1) {
+    throw new StatedbError(
+      `读向标记不可读（解析失败或形状不识别）：${p}。恢复：该文件由 lzy migrate sqlite 写入（{backend:"sqlite",format:1}）；` +
+      `迁移已完成后 state.sqlite 为唯一权威——核对/恢复该标记，勿手改标记期望回落 JSON`,
+    );
+  }
+  return m;
+}
+
+export function writeBackendMarker(cwd, { migratedAt = new Date().toISOString() } = {}) {
+  const p = backendMarkerPath(cwd);
+  const payload = { backend: "sqlite", format: 1, migratedAt, writerVersion: WRITER_VERSION };
+  mkdirSync(dirname(p), { recursive: true });
+  const tmp = join(dirname(p), `.${basename(p)}.${process.pid}.${Date.now()}.tmp`);
+  writeFileSync(tmp, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  renameSync(tmp, p);
+  return payload;
+}
+
+// ── 旧状态误写检测（P3 定案⑥）：meta.json_frozen 冻结指纹（在场=sha256、缺席=null）；
+// 「在场但内容≠冻结」=违例（旧版 CLI 误写），缺席=不违例（删备份是用户权利）。
+export const JSON_FAMILIES = [
+  { key: "queue", rel: join(".lazyzcode", "queue", "queue.json") },
+  { key: "dispatch", rel: join(".lazyzcode", "queue", "dispatch.json") },
+  { key: "ledger", rel: join(".lazyzcode", "budget", "ledger.json") },
+];
+
+function sha256File(p) {
+  return createHash("sha256").update(readFileSync(p)).digest("hex");
+}
+
+export function currentFamilyFingerprints(root) {
+  const out = {};
+  for (const f of JSON_FAMILIES) {
+    const p = join(root, f.rel);
+    try {
+      out[f.key] = sha256File(p);
+    } catch (err) {
+      if (err?.code === "ENOENT") out[f.key] = null;
+      else throw new StatedbError(`旧状态指纹不可读（${err?.code ?? err?.message ?? err}）：${p}`);
+    }
+  }
+  return out;
+}
+
+export function readFrozenFingerprints(db) {
+  const row = db.prepare("SELECT value FROM meta WHERE key = 'json_frozen'").get();
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value);
+  } catch {
+    throw new StatedbError(`meta.json_frozen 解析失败（库内元数据损坏）——指路：用 .lazyzcode/migration/sqlite/<runId>/backup/ 备份核对`);
+  }
+}
+
+// 违例=具名拒（文案含核对/恢复/删备份三路指路）；调用方=dispatch/reconcile 入口（N4）与迁移机器。
+export function assertNoJsonMiswrite(root, db) {
+  const frozen = readFrozenFingerprints(db);
+  if (!frozen) return { violations: [], frozen: null };
+  const now = currentFamilyFingerprints(root);
+  const violations = JSON_FAMILIES
+    .filter((f) => frozen[f.key] != null && now[f.key] != null && now[f.key] !== frozen[f.key])
+    .map((f) => join(root, f.rel));
+  if (violations.length) {
+    throw new StatedbError(
+      `检测到迁移后旧状态文件被改写（state.sqlite 为唯一权威，旧 JSON 仅作备份/导出）：${violations.join("、")}。` +
+      `指路：①若为旧版 CLI 误写——从 .lazyzcode/migration/sqlite/<runId>/backup/ 恢复该文件后重试；` +
+      `②若确认无需保留——删除该备份文件后重试（缺席=不违例）；③核对期间派发/对账保持阻断。`,
+    );
+  }
+  return { violations: [], frozen };
 }

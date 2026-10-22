@@ -71,7 +71,7 @@ const famPaths = (d) => ({
 });
 const markerPath = (d) => join(d, ".lazyzcode", "state.backend.json");
 const journalPhases = (d) => {
-  const jdir = join(d, ".lazyzcode", "migration", "sqlite");
+  const jdir = join(d, ".lazyzcode", "migration", "sqlite", "journal");
   const runs = readdirSync(jdir).filter((n) => n.endsWith(".jsonl"));
   return { runs, phases: runs.flatMap((r) => readFileSync(join(jdir, r), "utf8").trim().split("\n").map((l) => JSON.parse(l).phase)) };
 };
@@ -140,14 +140,16 @@ test("③误写检测：篡改源 JSON=拒/恢复=放行/删除备份=不违例"
   migrateToSqlite(d);
   const fam = famPaths(d);
   const orig = readFileSync(fam.queue, "utf8");
+  const dbRO = openStore(stateDbPath(d), { readOnly: true });
 
   writeFileSync(fam.queue, orig.replace("就绪", "篡改"));
-  assert.throws(() => assertNoJsonMiswrite(d), /误写|改写/);
+  assert.throws(() => assertNoJsonMiswrite(d, dbRO), /误写|改写/);
 
   writeFileSync(fam.queue, orig);
-  assert.doesNotThrow(() => assertNoJsonMiswrite(d));
+  assert.doesNotThrow(() => assertNoJsonMiswrite(d, dbRO));
 
   rmSync(fam.queue);
-  assert.doesNotThrow(() => assertNoJsonMiswrite(d), "缺席备份=不违例（删备份是用户权利）");
+  assert.doesNotThrow(() => assertNoJsonMiswrite(d, dbRO), "缺席备份=不违例（删备份是用户权利）");
+  dbRO.close();
   rmSync(d, { recursive: true, force: true });
 });

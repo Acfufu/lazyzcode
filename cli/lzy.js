@@ -54,6 +54,7 @@ import {
   renderMigrationPreview,
   renderMigrationStatus,
 } from "../core/migrate.js";
+import { migrateToSqlite } from "../core/sqlite-migrate.js"; // P3：JSON→SQLite 显式迁移（ADR-0039；唯一生产调用方）
 import { formatAttempts } from "../core/attempt.js";
 import {
   acquireLease,
@@ -1150,6 +1151,8 @@ function printHelp() {
   lzy contract auth                         授权账本时序（approval/withdrawal，追加式后到者赢）
   lzy project check                         lzy.project.json 校验+就绪静态半（入口存在态）
   lzy project discover                      只读缺失清单（能力类缺项/入口缺失配方）
+  lzy migrate sqlite <根路径>               JSON→SQLite 显式迁移（P3；备份→导入→对账→原子安装
+                                            →backend 标记提交点；幂等续跑；前向单向）
   lzy migrate preview <根路径>              旧记录只读预览（契约草案 authorization=NONE；
                                             活跃 goal 在场拒；零写回）
   lzy migrate apply <根路径>                显式迁移：备份→暂存→校验→原子切换+版本入口
@@ -1309,7 +1312,20 @@ function cmdProject(args) {
 function cmdMigrate(args) {
   const { _, f } = parseArgs(args);
   const sub = _[0];
-  const usage = "用法：lzy migrate preview <目标根路径>（只读）| apply <目标根路径>（显式迁移）| status <目标根路径>（迁移状态；--root <dir> 等价）";
+  const usage = "用法：lzy migrate sqlite <目标根路径>（JSON→SQLite 显式迁移；--root <dir> 等价）| preview <目标根路径>（只读）| apply <目标根路径>（显式迁移）| status <目标根路径>（迁移状态）";
+  if (sub === "sqlite") {
+    // P3（goal p3-sqlite-switch）：JSON 三族→单库显式迁移；根路径显式（防裸命令误迁移宿主树）。
+    const root = typeof f.root === "string" ? f.root : _[1];
+    if (!root || _[2]) throw new LoopError("用法：lzy migrate sqlite <目标根路径>（JSON→SQLite 显式迁移；--root <dir> 等价）");
+    const abs = resolve(process.cwd(), root);
+    const res = migrateToSqlite(abs);
+    console.log(`✔ 迁移完成 runId=${res.runId}`);
+    const c = res.counts ?? {};
+    console.log(`  计数：条目 ${c.items ?? "?"} · 事务 ${c.txs ?? "?"} · 段 ${c.segments ?? "?"} · 事件 ${c.events ?? "?"}${c.budget ? " · 预算行在" : ""}`);
+    console.log("  读向：state.sqlite 为唯一权威（标记 .lazyzcode/state.backend.json）；旧 JSON 三族保留只作备份/导出，不再读写");
+    console.log("  备份：.lazyzcode/migration/sqlite/<runId>/backup/（manifest 含 sha256）；回退姿态=前向单向，不支持自动回退（ADR-0039）");
+    return;
+  }
   if (sub !== "preview" && sub !== "apply" && sub !== "status") {
     throw new LoopError(usage);
   }

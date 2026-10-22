@@ -5,7 +5,7 @@
 //（生产 CLI 不传；用于确定性构造断点态，真 kill -9 腿由 F3 取证脚本承接）。
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -199,4 +199,139 @@ test("⑤r6-F2 安全性质：打开前已在场的缺表文件（旧占位/异�
   );
   assert.ok(existsSync(stateDbPath(d)), "预存占位文件不被误删");
   rmSync(d, { recursive: true, force: true });
+});
+
+test("⑥前置拒绝：活跃 tx（open）/running 条目/ delivering 在途=具名拒且零产物", { skip: FLOOR_SKIP }, () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-mig-active-"));
+  seedSource(d);
+  // open tx 在场（未决占用）→ 拒
+  saveDispatch(d, {
+    txs: [{ txId: "tx-open", itemId: "q1", goalSlug: "mig-goal", phase: "open", openedAt: FIXED, settledAt: null, limits: { wallMs: 60000, points: 10 }, segments: [], deliveringSinceMs: null, deliveringPid: null, note: "未决" }],
+  });
+  assert.throws(() => migrateToSqlite(d), /活跃写入者.*tx:tx-open\(open\)/);
+  assert.ok(!existsSync(stateDbPath(d)), "拒绝态不装库");
+  // running 条目在场 → 拒
+  const q = loadQueue(d);
+  q.items[0].state = "running";
+  saveDispatch(d, { txs: [] });
+  saveQueue(d, q);
+  assert.throws(() => migrateToSqlite(d), /活跃写入者.*item:q1\(running\)/);
+  assert.ok(!existsSync(stateDbPath(d)));
+  rmSync(d, { recursive: true, force: true });
+});
+
+test("⑦源损坏停：ledger checksum 破坏=loadLedger 三门具名拒且零产物（无 install/marker）", { skip: FLOOR_SKIP }, () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-mig-corrupt-"));
+  seedSource(d);
+  const fam = famPaths(d);
+  const obj = JSON.parse(readFileSync(fam.ledger, "utf8"));
+  obj.entries[0].note = "字节级篡改";
+  writeFileSync(fam.ledger, `${JSON.stringify(obj, null, 2)}\n`);
+  assert.throws(() => migrateToSqlite(d), /校验和不符/);
+  assert.ok(!existsSync(stateDbPath(d)), "损坏停=不安装");
+  assert.ok(!existsSync(join(d, ".lazyzcode", "state.backend.json")), "损坏停=不写 marker");
+  rmSync(d, { recursive: true, force: true });
+});
+
+test("⑧漂移停：import 断点后改源→续跑 install 前双读校验具名拒", { skip: FLOOR_SKIP }, () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-mig-drift-"));
+  seedSource(d);
+  try { migrateToSqlite(d, { stopAfterPhase: "import" }); } catch {}
+  const q = loadQueue(d);
+  q.items[0].title = "漂移写入";
+  saveQueue(d, q); // 写侧 API=checksum 合法的真内容变更（裸改字节会先撞三门而非漂移面）
+  assert.throws(() => migrateToSqlite(d), /迁移窗口内被改写|逐项语义对账不符/);
+  assert.ok(!existsSync(stateDbPath(d)), "漂移停=不安装");
+  rmSync(d, { recursive: true, force: true });
+});
+
+test("⑨install 断点续跑：install 后中断→重跑补 marker/meta 提交点收尾", { skip: FLOOR_SKIP }, () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-mig-inst-"));
+  seedSource(d);
+  try { migrateToSqlite(d, { stopAfterPhase: "install" }); } catch {}
+  assert.ok(existsSync(stateDbPath(d)), "install 已落库");
+  assert.ok(!existsSync(join(d, ".lazyzcode", "state.backend.json")), "marker 未写（中断态）");
+  const res = migrateToSqlite(d); // 续跑：读向已按 P2 判据认库，重入补提交点
+  assert.equal(res.phases.at(-1), "done");
+  assert.ok(existsSync(join(d, ".lazyzcode", "state.backend.json")), "续跑补 marker");
+  assert.equal(readMeta(d, "backend"), "sqlite");
+  rmSync(d, { recursive: true, force: true });
+});
+
+test("⑩seq/dedup 逐值保留：事件 seq 连续原值、dedupKey 集合逐字（非重排非重编）", { skip: FLOOR_SKIP }, () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-mig-seq-"));
+  const cHash = seedSource(d).cHash;
+  const extra = [
+    { seq: 4, kind: "metering-absent", at: FIXED, dedupKey: "metering-absent:tx-a:s1", authorization: { slug: "mig-goal", contractHash: cHash }, provenance: "tx:tx-a", itemId: "q1", txId: "tx-a", sessionId: "s1", ms: null, points: null, note: "缺席" },
+    { seq: 5, kind: "points", at: FIXED, dedupKey: "points:tx-a:s2", authorization: { slug: "mig-goal", contractHash: cHash }, provenance: "tx:tx-a", itemId: "q1", txId: "tx-a", sessionId: "s2", ms: null, points: 0.25, note: "小数" },
+    { seq: 6, kind: "killed-inflight", at: FIXED, dedupKey: "killed-inflight:tx-a", authorization: { slug: "mig-goal", contractHash: cHash }, provenance: "tx:tx-a", itemId: "q1", txId: "tx-a", sessionId: "s2", ms: 1, points: null, note: "终止" },
+    { seq: 7, kind: "wall", at: FIXED, dedupKey: "wall:tx-a:delivery", authorization: { slug: "mig-goal", contractHash: cHash }, provenance: "tx:tx-a", itemId: "q1", txId: "tx-a", sessionId: null, ms: 9, points: null, note: "交付" },
+  ];
+  const led = JSON.parse(readFileSync(famPaths(d).ledger, "utf8"));
+  saveLedger(d, { entries: [...led.entries, ...extra] }); // 写侧传无 checksum 新对象（旧 checksum 会被计进新指纹=读回必炸）
+  migrateToSqlite(d);
+  const db = openStore(stateDbPath(d), { readOnly: true });
+  const rows = db.prepare("SELECT seq, dedup_key FROM budget_events ORDER BY seq").all();
+  db.close();
+  assert.deepEqual(rows.map((r) => r.seq), [1, 2, 3, 4, 5, 6, 7], "seq 原值连续保留");
+  const srcKeys = JSON.parse(readFileSync(famPaths(d).ledger, "utf8")).entries.map((e) => e.dedupKey).sort();
+  assert.deepEqual(rows.map((r) => r.dedup_key).sort(), srcKeys, "dedupKey 集合逐字保留");
+  rmSync(d, { recursive: true, force: true });
+});
+
+test("⑪钩子三分支（stdin 驱动生产 trigger.js）：迁移态正常=DB 批准/迁移态删库=零记录诊断/未迁移=JSON 批准", { skip: FLOOR_SKIP }, () => {
+  const TRIGGER = join(ROOT, "plugin", "hooks", "trigger.js");
+  const hook = (cwd, prompt) => spawnSync(process.execPath, [TRIGGER], {
+    cwd, encoding: "utf8", timeout: 60_000,
+    env: { ...process.env, LZY_ZCODE_ENGINE: "/nonexistent" },
+    input: JSON.stringify({ prompt, cwd, session_id: "mig-hook" }),
+  });
+  const authCount = (cwd) => {
+    const dir = join(cwd, ".lazyzcode", "authorizations");
+    try { return readdirSync(dir).length; } catch { return 0; }
+  };
+  const buildFixture = () => {
+    const d = mkdtempSync(join(tmpdir(), "lzy-mig-hook-"));
+    const g = spawnSync("git", ["init", "-q"], { cwd: d });
+    assert.equal(g.status, 0);
+    const cHash = sha256(`hook-${d}`);
+    const bh = "ef".repeat(32);
+    writeFileSync(join(d, "cb.md"), "task: B 交付\nendpoint: B\nscope: .\nrepo: Acfufu/lazyzcode\nbase: main\nbranch: mig\npr-title: t\n\n- [A1] x\n");
+    saveQueue(d, {
+      items: [{ id: "q1", title: "B交付", goalSlug: "qb1", contractHash: cHash, contractPath: "c.md", planPath: "p.md", endpoint: "B", state: "ready", createdAt: FIXED, updatedAt: FIXED, deps: [], seq: 1, tier: "light", risk: "low", blockedReason: null, completedEndpoint: null, delivery: { B: { path: "cb.md", hash: sha256(readFileSync(join(d, "cb.md"))) } } }],
+      budget: { pointsLimit: 100, wallLimitMs: 3600000, notes: [], pointsStoppedAck: null },
+    });
+    saveDispatch(d, { txs: [] });
+    saveLedger(d, { entries: [] });
+    return { d, short: sha256(readFileSync(join(d, "cb.md"))).slice(0, 8) };
+  };
+
+  // ①未迁移（无 marker 无库）：JSON 支照常批准
+  const f1 = buildFixture();
+  const n0 = authCount(f1.d);
+  const r1 = hook(f1.d, `批准 ${f1.short}`);
+  assert.equal(r1.status, 0);
+  assert.equal(authCount(f1.d), n0 + 1, "未迁移=JSON 批准落账");
+  rmSync(f1.d, { recursive: true, force: true });
+
+  // ②迁移态正常：DB 只读读面批准等价
+  const f2 = buildFixture();
+  migrateToSqlite(f2.d);
+  const m0 = authCount(f2.d);
+  const r2 = hook(f2.d, `批准 ${f2.short}`);
+  assert.equal(r2.status, 0);
+  assert.match(r2.stdout + r2.stderr, /approval recorded/i);
+  assert.equal(authCount(f2.d), m0 + 1, "迁移态=DB 读面批准落账");
+  rmSync(f2.d, { recursive: true, force: true });
+
+  // ③迁移态删库（marker 在场）：零记录+具名诊断+exit 0（红半 n959 的绿面）
+  const f3 = buildFixture();
+  migrateToSqlite(f3.d);
+  rmSync(stateDbPath(f3.d));
+  const k0 = authCount(f3.d);
+  const r3 = hook(f3.d, `批准 ${f3.short}`);
+  assert.equal(r3.status, 0, "钩子失败支不阻断会话（exit 0）");
+  assert.match(r3.stdout + r3.stderr, /迁移已完成（读向标记在场）而 state\.sqlite 缺席/);
+  assert.equal(authCount(f3.d), k0, "零记录：陈旧投影不生成批准");
+  rmSync(f3.d, { recursive: true, force: true });
 });

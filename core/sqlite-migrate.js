@@ -315,20 +315,24 @@ export function migrateToSqlite(root, opts = {}) {
     let counts = null;
     if (!phasesDone.has("install")) {
       const db = openStore(stagedPath);
-      if (!phasesDone.has("reconcile")) {
-        const snap = readSnapshot(db);
-        reconcileCompare(loadFamilies(root).source, snap);
-        const ic = integrityCheck(db);
-        if (ic?.integrity_check !== "ok") {
-          db.close();
-          throw new StatedbError(`迁移停：staged 库 integrity_check=${JSON.stringify(ic?.integrity_check)}——拒安装`);
+      // 句柄纪律（win32 CI 实证：throw 路径漏 close → 开句柄挡测试 rmSync=EPERM）：
+      // 对账/integrity/漂移/stopAfter 任何一支停机都经 finally 干净关闭后再抛。
+      try {
+        if (!phasesDone.has("reconcile")) {
+          const snap = readSnapshot(db);
+          reconcileCompare(loadFamilies(root).source, snap);
+          const ic = integrityCheck(db);
+          if (ic?.integrity_check !== "ok") {
+            throw new StatedbError(`迁移停：staged 库 integrity_check=${JSON.stringify(ic?.integrity_check)}——拒安装`);
+          }
+          journal("reconcile", { ok: true });
+          stopAfter("reconcile");
         }
-        journal("reconcile", { ok: true });
-        stopAfter("reconcile");
+        driftCheck(root, frozen);
+        counts = snapshotCounts(db);
+      } finally {
+        db.close(); // 干净关闭：WAL checkpoint 入主文件、侧车删除（known-unknown #2 的核验在 assertNoSidecars）
       }
-      driftCheck(root, frozen);
-      counts = snapshotCounts(db);
-      db.close(); // 干净关闭：WAL checkpoint 入主文件、侧车删除（known-unknown #2 的核验在 assertNoSidecars）
       assertNoSidecars(stagedPath);
       renameSync(stagedPath, dbPath);
       journal("install", { counts });

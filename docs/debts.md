@@ -12,7 +12,7 @@
 
 ---
 
-## §1 现役账（11 件）
+## §1 现役账（12 件）
 
 ### A 线 · 0.5.0 评估重评五项（决策 #42 / ADR-0034 钉死；输入清单底稿 = `docs/spikes/v040-m5-report.md` §8）
 
@@ -41,6 +41,12 @@
 | C4 | ~~loop graph 双图视图~~ → 已实施（执行图×失效 DAG 证据现行性；决策 #46） | 已关账 |
 
 **C 线不追平项**（触发器站岗，勿再议）：mass-ulw 式产品级并行编排/wire 协议/viewer 生态——触发 = 首个需要推送的第三方观察者出现；调度器 grant 派发（与 claim 职责重叠已否，ADR-0036）；消息层（终局宣言 ADR-0035，推翻 ADR 才可再议）。
+
+### D 线 · 测试隔离卫生（2026-10-23 外部登记：MuseMark 仓会话）
+
+| # | 项 | 性质 |
+|---|---|---|
+| D1 | 自测夹具写**真实**全局沙盒账本：`fx.*` 测试运行（project=临时目录）的落账/spool 混入 `~/.zcode/cli/lzy-usage/`——2026-10-15 人工清过一批假行（备份 `.bak-pollution-clean-20261015` 在案），2026-10-23 又漏入 pending spool `.spool-pending-fx.a1.r1.json`（error="disk full (fixture)"，重试成功即再污染）。修法=评审/计量自测经隔离 `sandboxUsageDir`（env 注入临时账本目录），spool 写点同走隔离 | 待修（测试面小批；受害面=cost/TokenTracker 聚合精度与 dedup 扫描） |
 
 ---
 

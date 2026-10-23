@@ -1,6 +1,6 @@
 # 局部状态 SQLite 存储契约（P1 冻结）
 
-日期：2026-10-16 · 状态：**P1 冻结；P2 已实施；P3 已实施**（2026-10-23，goal p3-sqlite-switch：显式迁移与单权威切换——迁移机器/读向 marker/误写检测/engines 收紧，未发布；P3 实施定案=§7 增补，处置与交接=§12；P4 真实 CLI 平台面未启动）
+日期：2026-10-16 · 状态：**P1 冻结；P2 已实施；P3 已实施；P4 已实施（2026-10-23 发版 0.6.0，goal p4-sqlite-release：七条评审处置＋macOS 真实 CLI 电池 29/29＋win32 VM 电池 10/10＋定版发布；处置表与平台事实=§12 P4 节）**
 依据：`docs/plan-lzy-sqlite-state.md` §4（P1 批=范围/schema/存储契约/能力矩阵/试点及故障证据）；`docs/adr/0039-sqlite-store-boundary.md`（边界与地板定案）；能力矩阵与逐版本原始证据=goal `p1-sqlite-pilot` 的 F 证据面（探针脚本 `scripts/sqlite-capability-probe.mjs`，P1 N4 入库）。
 本文件是存储层单一实施依据：P1 只冻结，不接线；任何与现行 `core/queue.js` 语义的偏差都在 §3 对账表逐条声明。
 
@@ -240,4 +240,18 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
 | r8-F1（Node<24 八件 [sqlite] 腿静默缺席） | 已修：八件 [sqlite] 腿恒在+<24 具名 skip（文案含地板依据；Node 22.23.1 实测 skipped=13 带因） | `test/`八件 KINDS 块；F7 红绿双面在 artifacts/p3-baseline/ |
 | r8-F2（evidence-probe.sh 硬编码路径） | 已修：`REPO="${LZY_PROBE_REPO:-…}"` 覆盖缝；姊妹件 evidence-probe-f6.sh 同款留档不改（不在 P3 scope） | `scripts/v031/evidence-probe.sh`；本行记档 |
 
-**P2**：已实施（见上「P2→P3 交接注记」；设计依据 §3–§5，出口=九项冻结表逐项可核 + P1 八发现全处置）。**P3**：已实施（§7 增补定案 1–7；出口=显式迁移/核对/单权威切换全链可核 + P2 评审五备忘全处置；「切默认」语义=迁移翻转为该工作区唯一权威，新工作区仍 JSON 起步——§7 增补定案 1）。**P4**：真实 CLI 平台面（含 win32 VM）、最低运行时验证与发布窗口（engines 收紧随发版生效）未启动。
+**P3 评审 P4 处置表（r3/r4 七条非阻塞，2026-10-23 goal p4-sqlite-release 逐条落定）**：
+
+| 发现 | 处置 | 落点 |
+|---|---|---|
+| r3-F1（迁移机微窗 kill 重入死路：rename→journal(install) 窗内重入 openStore 伪空库） | 已修：重入判据改锚 journal 相位（reconcile done∧install 缺席∧最终库在场=install 物理已完成）→integrity+counts 交叉核对后补相位续跑；伪空 staged 预损态同判据自愈 | `core/sqlite-migrate.js`（b56acda）；contract 腿⑬ |
+| r3-F2（钩子 marker 形状门与 core 口径分歧：parse 成功但形状不识别回落 JSON 批准） | 已修：形状不识别=当迁移态处理，落「迁移已完成而库缺席」具名诊断支（零记录+exit 0）；parse 失败面钉住 fail-closed | `plugin/hooks/trigger.js`（9e0eba0）；contract 腿⑭ |
+| r3-F3（误写检测漏 frozen=null 族） | 已修＋语义定案：违例判据统一「now 在场 ∧ sha≠冻结指纹」，冻结时缺席迁移后出现=违例（§7 定案 6 增补随批落） | `core/statedb.js`（aa01e5e）；contract 腿⑫续段；§7 定案 6 增补 |
+| r3-F4（doctor marker 归因折叠：marker 损坏＋库健康误报库不可读） | 已修：marker parse 独立 try；损坏+库健康=warn 具名文案「读向标记损坏——当迁移态处理」，库不可读才 fail 且归因库 | `core/doctor.js`（0a014e2）；`test/doctor-sqlite-store.contract.test.js` |
+| r4-F1/F2（evidence-probe.sh PATH 硬编码＋管道吞退出码） | 已修：PATH 注入缝 `LZY_PROBE_NODE_HOME`＋`set -o pipefail`+`BRIDGE_EXIT` 显式记账 | `scripts/v031/evidence-probe.sh`（f540f18）；实跑腿档案 |
+| r4-F3（tier1-unattended 断言隐式依赖宿主 TZ） | 已修：模块顶钉 `process.env.TZ`（任何 Date 使用前；CI TZ env 保留双保险） | `test/tier1-unattended.contract.test.js`（7c9d9bf）；红绿档 n6 |
+| 同族点：evidence-probe-f6.sh（P3 留档）/v030-m1-gate-repro.sh:31（实有 PIPESTATUS，残余仅 \| head SIGPIPE 形态）/ablation t4 verdict（冻结取证材料族） | 记档不接（理由见 P4 计划 N5 处置表） | 本行 |
+
+**P4 已实施面（goal p4-sqlite-release，2026-10-23）**：七条处置如上表全落；macOS 宿主真实 CLI 电池 29/29（§7 清单①-⑦：派发 kill/恢复/重复 reconcile 零新账、并发恰一占用、迁移微窗/漂移/损坏重入、钩子四路、reset 预算保留、backup-replay+守卫、引擎 0.17.0 包封归一+7 事件面；原始件 artifacts/p4-baseline/s1-s7）；win32 VM（Windows 11 aarch64）电池 10/10（node 22→24.19.0 就地升、tarball 安装、NTFS 迁移全链、预算写读回、WAL 打开期在场/关闭收敛/integrity ok、钩子三腿、doctor sqlite-store；原始件 artifacts/p4-baseline/win32/leg0-6）；0.6.0 定版冻结（五处版本位+provenance 三体一致+全量 962/962+pack 白名单净）。记档不阻塞：backup-replay 同目录重跑在 VACUUM INTO 处 exit 1（守卫仅认 state.sqlite，dev 脚本 wart）；headless-review-lifecycle:87 满载一次性时序 flake（P4 零改动文件，复跑 3 次全绿）。
+
+**P2**：已实施（见上「P2→P3 交接注记」；设计依据 §3–§5，出口=九项冻结表逐项可核 + P1 八发现全处置）。**P3**：已实施（§7 增补定案 1–7；出口=显式迁移/核对/单权威切换全链可核 + P2 评审五备忘全处置；「切默认」语义=迁移翻转为该工作区唯一权威，新工作区仍 JSON 起步——§7 增补定案 1）。**P4**：已实施（上表七条处置全落 + §7 清单①-⑦ 平台电池双绿 + 0.6.0 定版发布；出口=「源码绑定证据、限制说明、独立审查与交接」逐项可核）。

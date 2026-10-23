@@ -140,10 +140,11 @@ P1 冻结项：真实源事件身份、schema 与数值表示、最低运行时�
 
 首次交付后观察实际队列使用、历史查询与崩溃恢复成本；只有常态使用或实测显示 goal/DAG/runtime 的存储成为主要问题，才另立扩围计划。全量迁移、远程 DB、跨项目统一写库和新调度器不属于本计划。
 
-P0 已实施（2026-10-15）；**P1 已实施**（2026-10-16，goal p1-sqlite-pilot 收官：契约冻结落档见 §4 与 docs/design-sqlite-store.md，P1→P2 交接清单见该文 §12）；**P2 已实施**（2026-10-18，goal p2-sqlite-tx 收官：实施依据原文见 §5，实施定案与发现处置及 P2→P3 交接注记=docs/design-sqlite-store.md §2/§5/§10/§12）；**P3 已实施**（2026-10-23，goal p3-sqlite-switch 收官：显式迁移与单权威切换——实施定案与 P2 评审五备忘处置=docs/design-sqlite-store.md §7 增补/§12；读向 marker/误写检测/engines 收紧 ≥24 随批落，未发布）；P4 未启动。本文仅将已讨论顺序与审查边界保存为后续实施依据。
+P0 已实施（2026-10-15）；**P1 已实施**（2026-10-16，goal p1-sqlite-pilot 收官：契约冻结落档见 §4 与 docs/design-sqlite-store.md，P1→P2 交接清单见该文 §12）；**P2 已实施**（2026-10-18，goal p2-sqlite-tx 收官：实施依据原文见 §5，实施定案与发现处置及 P2→P3 交接注记=docs/design-sqlite-store.md §2/§5/§10/§12）；**P3 已实施**（2026-10-23，goal p3-sqlite-switch 收官：显式迁移与单权威切换——实施定案与 P2 评审五备忘处置=docs/design-sqlite-store.md §7 增补/§12）；**P4 已实施**（2026-10-23，goal p4-sqlite-release 收官：七条评审处置＋§7 清单①-⑦平台电池（macOS 29/29＋win32 VM 10/10）＋0.6.0 定版发布；处置表与平台事实=docs/design-sqlite-store.md §12 P4 节）。本文仅将已讨论顺序与审查边界保存为后续实施依据。
 
 ## 9. 修订记录
 
+- 2026-10-23（P4 收官同步，goal p4-sqlite-release）：§8 状态行同步（P4 未启动 → P4 已实施——七条处置＋平台电池双绿＋0.6.0 发布）；§7 清单的执行证据与限制说明=docs/design-sqlite-store.md §12 P4 节＋artifacts/p4-baseline/。
 - 2026-10-23（P3 收官同步，goal p3-sqlite-switch）：§6 状态改「已实施」、§8 状态行与 P3 行出口同步（P3–P4 未启动 → P4 未启动）。实施定案与 P2 评审五备忘处置表落 docs/design-sqlite-store.md §7 增补/§12。
 - 2026-10-18（P2 收官同步，goal p2-sqlite-tx）：§5 状态改「P2 已实施」并落实施定案指针；§8 状态行同步（P2–P4 未启动 → P3–P4 未启动）。实施定案、P1 评审八发现处置表与 P2→P3 交接注记落 docs/design-sqlite-store.md §2/§5/§10/§12。
 - 2026-10-11（独立评估复核后补强）：① §3 P0 前置拍板＝评审沙盒工作集先收口入库；② §4 P1 契约点名 #46 观察面契约（status/doctor `--json` schemaVersion 只增不改）；③ §4 node:sqlite 版本底线事实具体化（22.5.0 引入带旗标／22.13.0 去旗标仍 experimental／22.0–22.4 无此模块，engines `>=22` 实际 admit 的 22.0–22.12 不可用）；④ §6 P3 journal/提交点补 ADR-0029 先例引用；⑤ §7 P4 点名 DB 不可读分支须钩子 stdin 级契约测试。评估结论：计划 §2 引用的代码行为经现行源码逐条核实属实，批次结构（P0 先修账务、P1 可否决 SQLite）与仓库宪法/现行决策一致，可作实施依据。

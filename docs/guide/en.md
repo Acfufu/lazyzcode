@@ -27,10 +27,17 @@ One package installs both halves of LazyZCode: the `lazyzcode:zw` plugin
   `%LOCALAPPDATA%\Programs\ZCode`); nothing is guessed.
 - **ZCode desktop app**, installed and logged in. LazyZCode runs *inside*
   ZCode; there is no separate login.
-- **Node.js ≥ 24** — the sqlite storage floor (ADR-0039). Installed via nvm or Homebrew both
+- **Node.js ≥ 24** — the sqlite storage floor (ADR-0039; **enforced by
+  `engines >=24` as of 0.6.0** — npm refuses the install outright, it is no
+  longer advisory). Installed via nvm or Homebrew both
   work: the bundled hook launcher scans both locations when the engine's hook
   environment lacks `node` (Windows resolves via nvm-windows/Program Files;
   see [Hooks & lifecycle](#hooks--lifecycle)).
+  Windows platform validation boundary (0.6.0, tested on Windows 11 aarch64):
+  migration / queue / hooks / doctor all work; `state.sqlite` WAL is active
+  on the local NTFS volume while a connection is open and converges on close
+  with `integrity_check=ok`; shared-folder layouts are outside the tested
+  surface.
 - **git** — evidence binding uses `git rev-parse HEAD^{tree}`, so the project
   you work in must be a git repository.
 

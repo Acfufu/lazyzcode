@@ -25,9 +25,13 @@ CLI（目标循环状态机）。
   应用包、Linux deb `/opt/ZCode`、Windows 每用户 `%LOCALAPPDATA%\Programs\ZCode`），
   绝不盲猜。
 - **ZCode 桌面端**，已安装并登录。LazyZCode 跑在 ZCode *里面*，没有单独的登录。
-- **Node.js ≥ 24** —— sqlite 存储地板（ADR-0039）。nvm 或 Homebrew 装的都行：当引擎的钩子
+- **Node.js ≥ 24** —— sqlite 存储地板（ADR-0039；**0.6.0 起随 `engines >=24` 强制生效**——
+  npm 装包即被拒，不再是建议值）。nvm 或 Homebrew 装的都行：当引擎的钩子
   环境里没有 `node` 时，插件自带的启动器会扫这两个位置（Windows 经
   nvm-windows/Program Files 解析；见 [钩子与生命周期](#钩子与生命周期)）。
+  Windows 平台验证边界（0.6.0，Windows 11 aarch64 实测）：迁移/队列/钩子/doctor
+  全链可用，`state.sqlite` 的 WAL 在本地 NTFS 卷上打开期在写、关闭后收敛，
+  `integrity_check=ok`；共享文件夹形态未入验证面。
 - **git** —— 证据绑定用 `git rev-parse HEAD^{tree}`，干活的项目必须是 git 仓库。
 
 ### 安装

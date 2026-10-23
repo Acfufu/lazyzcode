@@ -8,9 +8,9 @@
 做 ZCode 版的 [lazycodex](https://github.com/code-yeongyu/lazycodex)（OmO 引擎的 Codex 发行版，MIT）。形态：**ZCode 插件 + 轻量 CLI（`lzy`）**——插件承载 skills/hooks/agents（纪律层），CLI 承载目标循环状态机与安装器。
 
 
-## 2. 当前状态（2026-10-10 短表；完整历史档案 → docs/history.md）
+## 2. 当前状态（2026-10-23 短表；完整历史档案 → docs/history.md）
 
-- **已发布**：npm `lazyzcode` **0.5.0**（latest）＝收束诚实化工作集；M3 重评主门负结论=不采纳（ADR-0034）；win32 复测 10-10 边界记档。**P3 SQLite 切换已实施未发布**（10-23，p3-sqlite-switch：显式迁移/读向 marker/误写检测/engines ≥24；定案→design §7 增补）。
+- **已发布**：npm `lazyzcode` **0.6.0**（latest，2026-10-23）＝SQLite 切换生效（显式迁移/读向 marker/误写检测/engines ≥24 强制＋P4 七条修复；macOS 电池 29/29＋win32 VM 10/10；design §7/§12）。前版 0.5.0＝收束诚实化（M3 负结论不宣称 ADR-0034）。
 - 发布/评审机械与报告库 → docs/release-checklist.md、docs/reviews/。
 
 ## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19，设计前必读）：引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔0.16.5→0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组，lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**（engine-3140-sync 只锚版本漏检教训）

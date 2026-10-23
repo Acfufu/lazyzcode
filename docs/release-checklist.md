@@ -889,3 +889,25 @@ install`). Requires the ZCode desktop app (logged in), Node ≥ 22, git.
 - **scratch loop（node 驱动脚本经宿主 http.server+客户机 curl 通道）**：register→**人权门拒出短码→UPS 钩子 stdin `approve <短码>` 批准记录落 approvals/→重采纳过门**（快照 sha256 绑定）→start→step done→`lzy status --json` **schemaVersion=1＋`handoff-causes` 行 JSON 活体**（0.5.0 观察面契约 win32 首发）。
 - **三道门拒向活体（本弧增量证据）**：①finish 完整性闸门两次正确拦脏树（plan.md/driver 自身）；②finish 政策层义务拦（统一门 `review.general-correctness` 要求真实评审运行）——**0.4.x 统一门七合取首次上 win32，行为正确**；③LIGHT 零 F goal 的完整 finish 在干净 VM **结构性不可达**（义务评审需引擎凭据，VM 无）——边界=凭据非平台，如实记档（0.4.0/0.4.1 未做 VM 复测，本条为其首次 win32 曝光读数）。
 - 收尾：scratch/驱动脚本/日志已清、宿主 http.server 已停、VM 停回未启动态（=开工前）；VM 全局停 0.5.0（本次升级物）。遗留注记：C:\scratch010 为 0.1.x 时代旧残留，非本场所留未动。
+
+## 执行记录（0.6.0，SQLite 切换版——goal p4-sqlite-release，定版与发布链）
+
+### 内容与定位
+
+P3 SQLite 切换随发版生效（显式迁移/读向 marker/误写检测/doctor sqlite-store/engines ≥24 强制）＋P4 七条评审处置；平台验证 macOS 电池 29/29（artifacts/p4-baseline/s1-s7）＋win32 VM 电池 10/10（artifacts/p4-baseline/win32/leg0-6）。处置表=docs/design-sqlite-store.md §12 P4 节。
+
+### 定版冻结（2026-10-23）
+
+- 五处版本位 0.5.0→0.6.0（package.json/plugin.json/marketplace version+ref/home.html）＋CHANGELOG 0.6.0 节；provenance-ready exit 0（三体一致+ref 联锁）。
+- 全量 962/962 绿（check.test-suite exit 0）；首跑 headless-review-lifecycle:87 一次性满载时序红、复跑 3 次全绿、该文件 P4 零改动=既有 load flake 记档不阻塞。
+- npm pack dry-run：75 文件，白名单零污染（grep 不到 .mimosa/.lazyzcode/docs//acfufu/sess_）。
+- 冻结提交 e98f60e（ADJ-15 载荷冻结点：此后 cli/core/plugin/README*/CHANGELOG/package.json 零改直至发布）。
+
+### 平台验证事实（N7/N8）
+
+- macOS 电池 29/29：kill 真进程崩溃恢复/重复 reconcile 零新账、并发恰一占用无重复认领、迁移微窗重入/漂移（reconcile 语义对账拦停）/staged 损坏拒/幂等拒不覆盖、钩子四路（delivery 批准+1/DB 不可读零记录/版本闸/误写删除自愈）、reset 预算保留、backup-replay 全链+守卫 exit 2、引擎 0.17.0 包封归一（shapeRecognized）+7 事件面在源。
+- win32 VM 10/10（Windows 11 aarch64）：node 22.23.2→24.19.0 就地升（C:\Tools\node，旧版留 node22-bak）；tarball 安装（npm prefix=C:\Tools\node）；NTFS 迁移全链 ✔；WAL 打开期 sidecar 在场/关闭收敛/integrity ok ✔；钩子三腿 ✔；doctor sqlite-store「SQLite 权威」行 ✔。VM 已清理停回、http.server 已停。
+- 记档不阻塞：backup-replay 同目录重跑在 VACUUM INTO 处 exit 1（守卫仅认 state.sqlite）；win32 引擎面未装（engine 未找到=干净机既知态）。
+
+### 发布链（随 N11 执行后回填：tag/publish/registry 对表/换环境冒烟/gh release/全局升级 sync）
+

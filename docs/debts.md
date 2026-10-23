@@ -12,7 +12,7 @@
 
 ---
 
-## §1 现役账（12 件）
+## §1 现役账（14 件）
 
 ### A 线 · 0.5.0 评估重评五项（决策 #42 / ADR-0034 钉死；输入清单底稿 = `docs/spikes/v040-m5-report.md` §8）
 
@@ -46,7 +46,9 @@
 
 | # | 项 | 性质 |
 |---|---|---|
-| D1 | 自测夹具写**真实**全局沙盒账本：`fx.*` 测试运行（project=临时目录）的落账/spool 混入 `~/.zcode/cli/lzy-usage/`——2026-10-15 人工清过一批假行（备份 `.bak-pollution-clean-20261015` 在案），2026-10-23 又漏入 pending spool `.spool-pending-fx.a1.r1.json`（error="disk full (fixture)"，重试成功即再污染）。修法=评审/计量自测经隔离 `sandboxUsageDir`（env 注入临时账本目录），spool 写点同走隔离 | 待修（测试面小批；受害面=cost/TokenTracker 聚合精度与 dedup 扫描） |
+| D1 | 自测夹具写**真实**全局沙盒账本：`fx.*` 测试运行（project=临时目录）的落账/spool 混入 `~/.zcode/cli/lzy-usage/`——2026-10-15 人工清过一批假行（备份 `.bak-pollution-clean-20261015` 在案），2026-10-23 又漏入 pending spool `.spool-pending-fx.a1.r1.json`（error="disk full (fixture)"，重试成功即再污染）。修法=评审/计量自测经隔离 `sandboxUsageDir`（env 注入临时账本目录），spool 写点同走隔离 **已消费：fix-061-batch（2026-10-24）——LZY_SANDBOX_USAGE_DIR 接缝（cost.js sandboxUsageDir）＋六测试文件注入收口＋真实账本清污（2026-10.jsonl 445→444 剔第 368 行、备份 .bak-clean-20261024）＋spool 复活回执封死；红绿 F3/F4 在案** | 已关账 |
+| D2 | settleDispatch 交付墙钟 provenance 派生对非字符串入参退化为 `[object Object]`（core/statedb.js 模板串拼接 `${provenance ?? ""}:delivery`；fix-061-batch 评审 a1.r1 F-1，P3 非阻塞） | 待修（顺手修候选；现行调用面 provenance 全字符串不触发） |
+| D3 | harvest 工具收尾日志硬编码 homedir 路径文案，LZY_SANDBOX_USAGE_DIR 覆盖时误报落账目的地（scripts/harvest-sandbox-usage.mjs:229；仅文案，写入实际过 seam；fix-061-batch 评审 a1.r2 F-1，P3 非阻塞） | 待修（文案级；与 D2 同批顺手修） |
 
 ---
 

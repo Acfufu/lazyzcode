@@ -919,3 +919,14 @@ P3 SQLite 切换随发版生效（显式迁移/读向 marker/误写检测/doctor
 - **全局 lzy 升级**：nvm bin 0.5.0→0.6.0（载荷先由隔离环境 sync 至 0.6.0，版本行即刻同版本）。
 - **LOOP_COMPLETE**：统一门 PASS（快照 b5d8966e）→ finish → attestation `.lazyzcode/attestations/p4-sqlite-release-20261023T201010Z.json`；comparator 5/5 MATCH（n994）。
 
+## 执行记录（0.6.1，SQLite-switch patch——2026-10-24 收官）
+
+- **起因与载荷**：用户批准宿主仓狗粮迁移实弹撞出 0.6.0 回归（迁移导入在对象 provenance 账本上炸 `Provided value cannot be bound to SQLite parameter 5`）→ goal fix-061-batch（LOOP_COMPLETE d110f71）：provenance 规约统一（写侧 stringify/读侧双态还原）＋dedupKey 入口具名拒＋`LZY_SANDBOX_USAGE_DIR` 接缝与六测试文件隔离（debts D1 关账）＋**宿主仓迁移落位**（journal 1792788111167 幂等续跑 24 事件；本仓自此 SQLite 态）。发版为用户直令批（修复笔 c4d2ec6/定版 c937eea 无 Goal 尾注沿先例）。
+- **CI 红拦截（发版批内实弹）**：d110f71 ubuntu 腿翻红＝`UNDECIDED_RE` 大小写不敏感子串匹配把夹具随机后缀 `vqlTbd` 误判未决标记（0.0.8 起彩票雷，与 fix-061-batch 无关）——词边界化＋plan-gate 钉4 确定性复刻（c4d2ec6，沿 0.4.0「CI 显形缺陷修入发布批」先例）。
+- **发布前验证**：966/966（基线 962＋4：statedb ⑨/migrate ⑯/cost 接缝/钉4）；provenance-ready exit 0（三体＋ref 联锁 v0.6.1）；dry-run 75 文件敏感扫描 0 命中；版本五处（package/plugin manifest/marketplace version+ref/home.html softwareVersion/sitemap 首页 lastmod）。
+- **链**：CI 四腿绿（run 40034103881，conclusion=success）→ tag v0.6.1 最后切＝c937eea → GitHub Release（SQLite-switch patch）→ **publish 用户 2FA**（`npm publish /tmp/lazyzcode-0.6.1.tgz`，载荷=tag 树打包）。
+- **发后核验（全过）**：registry latest=0.6.1（CDN 窗 ~30s，第 3 轮询翻；full metadata 另滞后 ~20s）；**tarball 三方逐字节一致**（registry 拉回=tag 树打包，sha256 `e434c65e…`，cmp IDENTICAL）；隔离 prefix 冒烟 CLI 0.6.1（缓存 0.6.0=ADR-0012 中间态正向形态，隔离上下文预期）；真机 `lzy update` 0.6.0→0.6.1 全链 EXIT=0（新装子进程 sync=ADR-0012 活体）；doctor EXIT=0：payload ✔/files 25 逐字 ✔/payload-ver 25 版目·CLI 一致 ✔/sqlite-store=SQLite 权威 ✔（全局 CLI 读宿主狗粮态）。
+- **win32 面降档记档**：0.6.1 增量为平台无关 JS（无平台分派/路径/进程面改动），win32=CI windows-latest 腿全量套件（含新增 provenance/迁移/接缝测试）；VM 全电池不重跑沿 0.1.2 降档先例，0.6.0 电池为平台基线。
+- **遗留（下一批顺手修候选，debts D2/D3）**：settleDispatch provenance 模板串拼接退化（r1 F-1）、harvest 日志文案硬编码路径（r2 F-1）。
+
+

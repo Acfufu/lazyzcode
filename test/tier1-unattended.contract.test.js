@@ -1,6 +1,11 @@
 // tier-1 无人值守契约测试：scheduleAdvisory（错峰窗口纯函数）+ doctor schedule 行
 // 三条真实路径（集中段→warn 建议窗口 / 无集中段→skip / 无日志→skip）。
 // fixture 全落 scratch HOME，绝不触碰真实 ~/.zcode。
+// r4-F3（P4）：双轴混用（窗轴=进程本地 getHours、计价轴=UTC+8）的断言隐式依赖宿主 TZ——
+// 模块顶钉 TZ（任何 Date 使用前；scope-tier.contract.test.js 同法先例；运行时改 TZ 生效性
+// POSIX≥Node13/Windows≥Node16，地板 ≥24 无虞；node --test 每文件独立进程不渗漏）。
+// 异时区裸跑（含 TZ=UTC 的 CI 默认）不再环境性红；CI 的 TZ env 保留作双保险。
+process.env.TZ = "Asia/Shanghai";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

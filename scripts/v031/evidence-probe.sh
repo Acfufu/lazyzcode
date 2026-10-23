@@ -5,7 +5,8 @@
 #   绿半：默认（仓内 CLI / 现版 trigger）
 # 脚本只执行流程并原样打印，不做红绿期望判定——差异全部来自被测面本身。
 set -u
-export PATH="$HOME/.nvm/versions/node/v24.19.0/bin:$PATH"
+set -o pipefail # r4-F2（P4）：管道右侧不再吞队首退出码——bridge 段以 BRIDGE_EXIT= 行显式记账
+export PATH="${LZY_PROBE_NODE_HOME:-$HOME/.nvm/versions/node/v24.19.0/bin}:$PATH" # r4-F1（P4）：node 家目录可注入（与 :10 LZY_PROBE_REPO 同族；跨机重放勿读作者机器路径）
 FID="${1:?用法：evidence-probe.sh <F1|F2|F3|F4|F5>}"
 REPO="${LZY_PROBE_REPO:-/Users/acfufu/Codehub/lazyzcode}" # r8-F2（P2 评审备忘；N5）：跨机/异树重放取证须可注入，勿读入外来树
 CLI="${LZY_PROBE_CLI:-$REPO/cli/lzy.js}"
@@ -67,6 +68,7 @@ F1|F3|F5)
   [ "$FID" = "F5" ] && MODE="--merge-fails"
   echo; echo "--- dispatch（harness 夹具驱动 + 假外部注入）$MODE ---"
   node "$REPO/scripts/v031/queue-bridge-e2e.mjs" "$D" $MODE 2>&1 | tail -40
+  echo "BRIDGE_EXIT=$?" # r4-F2（P4）：pipefail 下 $? = 队首 node 退出码（失败不再被 tail 静默）
   echo; echo "--- 文件面 ---"
   readq | node -e '
 let sin="";process.stdin.on("data",(d)=>sin+=d).on("end",()=>{

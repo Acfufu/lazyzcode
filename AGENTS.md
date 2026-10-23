@@ -10,7 +10,7 @@
 
 ## 2. 当前状态（2026-10-23 短表；完整历史档案 → docs/history.md）
 
-- **已发布**：npm `lazyzcode` **0.6.1**（latest，2026-10-24）＝SQLite-switch patch（0.6.0 对象 provenance 迁移回归修复＋计划门词边界＋D1 测试账本隔离；966/966·win32=CI 腿降档；goal fix-061-batch；**宿主仓已迁 SQLite＝活体狗粮**）。前版 0.6.0＝SQLite 切换生效（显式迁移/marker/误写检测/engines ≥24＋P4 七修复，电池 29/29＋10/10）。
+- **已发布**：npm `lazyzcode` **0.6.1**（latest，2026-10-24）＝SQLite-switch patch（0.6.0 对象 provenance 迁移回归修复＋计划门词边界＋D1 测试账本隔离；966/966·win32=CI 腿；**宿主仓已迁 SQLite＝活体狗粮**）。前版 0.6.0＝SQLite 切换生效（显式迁移/误写检测/engines ≥24；电池 29/29＋10/10）。
 - 发布/评审机械与报告库 → docs/release-checklist.md、docs/reviews/。
 
 ## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19，设计前必读）：引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔0.16.5→0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组，lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**（engine-3140-sync 只锚版本漏检教训）

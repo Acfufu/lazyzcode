@@ -11,6 +11,9 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+// 0.6.1 D1-b（debts §1）：用量落账/spool 经 LZY_SANDBOX_USAGE_DIR 隔离到临时目录——
+// 本文件是实证污染源（:599 disk-full 夹具走真 HOME spool）；??= 幂等且可被外部探针覆写。
+process.env.LZY_SANDBOX_USAGE_DIR ??= mkdtempSync(join(tmpdir(), "lzy-usage-iso-"));
 import {
   BASELINE_DUTY_ID,
   INVALID_REASONS,

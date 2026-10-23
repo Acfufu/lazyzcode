@@ -551,3 +551,21 @@ test("a1.r5 F-3：追加失败 spool pending 回执——诊断面 pending 计�
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+// 0.6.1 N5：sandboxUsageDir env 接缝契约——LZY_SANDBOX_USAGE_DIR 优先（测试隔离面）、
+// 缺席/空白回落真实 ~/.zcode/cli/lzy-usage（生产语义零变）。
+test("sandboxUsageDir 接缝：env 优先、缺席与空白回落真实路径（0.6.1 D1-a）", () => {
+  const saved = process.env.LZY_SANDBOX_USAGE_DIR;
+  try {
+    const iso = mkdtempSync(join(tmpdir(), "lzy-usage-seam-"));
+    process.env.LZY_SANDBOX_USAGE_DIR = iso;
+    assert.equal(sandboxUsageDir(), iso, "注入目录优先");
+    process.env.LZY_SANDBOX_USAGE_DIR = "  ";
+    assert.match(sandboxUsageDir(), /\.zcode[\\/]cli[\\/]lzy-usage$/, "空白串=缺席语义回落真实路径");
+    delete process.env.LZY_SANDBOX_USAGE_DIR;
+    assert.match(sandboxUsageDir(), /\.zcode[\\/]cli[\\/]lzy-usage$/, "缺席回落真实路径");
+  } finally {
+    if (saved === undefined) delete process.env.LZY_SANDBOX_USAGE_DIR;
+    else process.env.LZY_SANDBOX_USAGE_DIR = saved;
+  }
+});

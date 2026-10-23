@@ -24,7 +24,7 @@ const { saveQueue, saveDispatch, saveLedger, loadQueue } = await import(
 const { migrateToSqlite, assertNoJsonMiswrite } = await import(
   pathToFileURL(join(ROOT, "core", "sqlite-migrate.js")).href
 );
-const { openStore, stateDbPath, ensureSchema, replaceQueueFamily } = await import(
+const { openStore, stateDbPath, ensureSchema, replaceQueueFamily, readSnapshot } = await import(
   pathToFileURL(join(ROOT, "core", "statedb.js")).href
 );
 
@@ -469,5 +469,31 @@ test("⑮r3-F3 误写检测补 frozen=null 族：冻结时缺席、迁移后出�
   rmSync(famPaths(d).queue);
   assert.doesNotThrow(() => assertNoJsonMiswrite(d, dbRO));
   dbRO.close();
+  rmSync(d, { recursive: true, force: true });
+});
+
+// ⑯0.6.1 对象 provenance 账本迁移全绿：宿主仓真实形态（评审运行器对象 provenance）在 0.6.0
+// 于导入相位炸 Provided value cannot be bound（fix-061-batch F1 红半在案）——N1/N2 后导入/对账/读回保形。
+test("⑯0.6.1 对象 provenance 账本迁移：导入/reconcile/读回保形（宿主仓真实形态）", { skip: FLOOR_SKIP }, () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-mig-objprov-"));
+  spawnSync("git", ["init", "-q"], { cwd: d });
+  const cHash = sha256("objprov");
+  const objProv = { runId: "fx.contract.r1", duty: "review.general-correctness", source: "review-runner" };
+  saveLedger(d, {
+    entries: [{
+      seq: 1, kind: "review", at: FIXED, dedupKey: "review:objprov:1",
+      authorization: { slug: "g", contractHash: cHash }, provenance: objProv,
+      itemId: null, txId: null, sessionId: "sess-x", ms: 1200, points: 5, note: "对象形态",
+    }],
+  });
+  const res = migrateToSqlite(d);
+  assert.equal(res.phases.at(-1), "done", "导入+对账全相位通过（0.6.0 在 import 相位炸）");
+  assert.equal(res.counts.events, 1);
+  const db = openStore(stateDbPath(d));
+  const ev = readSnapshot(db).events;
+  db.close();
+  assert.equal(ev.length, 1);
+  assert.deepEqual(ev[0].provenance, objProv, "对象 provenance 迁移后读回保形（reconcile 全字段对账已隐含）");
+  assert.equal(ev[0].dedupKey, "review:objprov:1");
   rmSync(d, { recursive: true, force: true });
 });

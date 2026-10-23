@@ -9,6 +9,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+// 0.6.1 D1-b（debts §1）：用量落账/spool 经 LZY_SANDBOX_USAGE_DIR 隔离（??= 幂等可覆写）。
+process.env.LZY_SANDBOX_USAGE_DIR ??= mkdtempSync(join(tmpdir(), "lzy-usage-iso-"));
 import {
   BASELINE_DUTY_ID,
   ReviewPreflightError,
@@ -282,6 +284,7 @@ test("runReview 接线：白名单 extraEnv 进 spawn、metering.usage 跨会话
   const savedEnv = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
   const savedAllow = process.env.LZY_SANDBOX_PROVIDERS;
   const savedHome = process.env.HOME;
+  const savedUsageDir = process.env.LZY_SANDBOX_USAGE_DIR; // 0.6.1 D1-a 接缝：落账目录显式钉到本用例隔离 HOME
   const d = fixture();
   try {
     process.env.LZY_SANDBOX_PROVIDERS = "cmdcode,glm-leg"; // 显式允许表（2026-10-08 收紧后的前置）
@@ -290,6 +293,7 @@ test("runReview 接线：白名单 extraEnv 进 spawn、metering.usage 跨会话
     process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = realPath;
     process.env.HOME = ledgerHome; // sandboxUsageDir()=~/.zcode/cli/lzy-usage → 落隔离 HOME
     process.env.USERPROFILE = ledgerHome;
+    process.env.LZY_SANDBOX_USAGE_DIR = join(ledgerHome, ".zcode", "cli", "lzy-usage");
 
     let capturedSpawnArgs = null;
     let sandboxCfgAtSpawn = null; // 即焚断言的读法：白名单配置在 spawn 后被清理——内容须在 spawn 时捕获
@@ -348,8 +352,8 @@ test("runReview 接线：白名单 extraEnv 进 spawn、metering.usage 跨会话
     else process.env.LZY_SANDBOX_PROVIDERS = savedAllow;
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;
-    if (savedHome === undefined) delete process.env.USERPROFILE;
-    else process.env.USERPROFILE = savedHome;
+    if (savedUsageDir === undefined) delete process.env.LZY_SANDBOX_USAGE_DIR;
+    else process.env.LZY_SANDBOX_USAGE_DIR = savedUsageDir;
     rmSync(d, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
     rmSync(cfgDir, { recursive: true, force: true });

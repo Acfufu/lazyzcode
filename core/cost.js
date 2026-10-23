@@ -306,7 +306,10 @@ export function aggregateUsageRows(rows) {
 // 照样入账：tokens 已烧）。月份按 UTC+8 归属（+8h 位移后取 ISO 年月，与报表口径一致）。
 
 export function sandboxUsageDir() {
-  return join(homedir(), ".zcode", "cli", "lzy-usage");
+  // 0.6.1 D1-a 接缝：测试/夹具经 LZY_SANDBOX_USAGE_DIR 注入隔离账本目录，缺席回落真实路径
+  //（生产语义零变；fx.* 自测污染真实 ~/.zcode/cli/lzy-usage/ 的教训，debts §1 D1）。
+  const override = process.env.LZY_SANDBOX_USAGE_DIR;
+  return override && override.trim() !== "" ? override : join(homedir(), ".zcode", "cli", "lzy-usage");
 }
 
 // 实例身份摘要（F-1/F-2 修复）：来源库 distinct sid 集 → 16 hex。引擎会话 id 全局唯一，

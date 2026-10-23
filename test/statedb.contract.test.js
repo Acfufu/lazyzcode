@@ -17,7 +17,7 @@ import {
   SCHEMA_VERSION, StatedbBusyError, StatedbError, StatedbUnsupportedError,
   openStore, ensureSchema, putQueueItem, setBudget, occupyDispatch, settleDispatch,
   appendBudgetEvent, readSnapshot, readBudgetAggregate, assertWal, runtimeSupport, stateDbPath,
-  replaceDispatchTxs, patchDispatchTx,
+  replaceDispatchTxs, patchDispatchTx, replaceBudgetEvents,
 } from "../core/statedb.js";
 
 const MAJOR = Number(process.versions.node.split(".")[0]);
@@ -287,4 +287,48 @@ test("⑩备份恢复重放回路（N7④）：scripts/backup-replay.mjs 全链 
     assert.equal(g.status, 2, `守卫须 exit 2（得 ${g.status}）`);
     assert.match(g.stderr, /已存在 state\.sqlite/);
   } finally { rmSync(guardDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+});
+
+// 0.6.1 N3：provenance 列 TEXT 规约统一（N1 写侧 stringify/N2 读侧双态还原）。
+// 载荷=宿主仓真实形态（评审运行器对象 provenance）；红绿同源面=迁移导入 replaceBudgetEvents
+//（0.6.0 对象直绑 TEXT 列即炸——fix-061-batch F1 探针红半在案）。
+test("⑨provenance 规约：对象/数组 round-trip 保形、字符串与字面量不误还原（0.6.1 N1/N2）", { skip: FLOOR_SKIP }, () => {
+  const dir = freshDir();
+  try {
+    const db = openStore(join(dir, "t.sqlite"));
+    ensureSchema(db);
+    const objProv = { runId: "fx.contract.r1", duty: "review.general-correctness", source: "review-runner" };
+    const base = {
+      at: "2026-10-24T00:00:00.000Z", kind: "review", authorization: AUTH, itemId: null, txId: null,
+      sessionId: "s1", ms: 10, points: 1, overrunPoints: null, note: null,
+    };
+    replaceBudgetEvents(db, [
+      { ...base, seq: 1, provenance: objProv, dedupKey: "k1" },
+      { ...base, seq: 2, provenance: "reconcile:tx-1", dedupKey: "k2" },
+      { ...base, seq: 3, provenance: "123", dedupKey: "k3" },
+      { ...base, seq: 4, provenance: "true", dedupKey: "k4" },
+      { ...base, seq: 5, provenance: null, dedupKey: "k5" },
+      { ...base, seq: 6, provenance: [1, 2], dedupKey: "k6" },
+    ]);
+    const ev = readSnapshot(db).events;
+    assert.equal(ev.length, 6);
+    assert.deepEqual(ev[0].provenance, objProv, "对象 provenance 写侧 stringify+读侧还原=保形");
+    assert.equal(ev[1].provenance, "reconcile:tx-1", "裸字符串原样");
+    assert.equal(ev[2].provenance, "123", "可 parse 非对象字面量不误还原");
+    assert.equal(ev[3].provenance, "true");
+    assert.equal(ev[4].provenance, null);
+    assert.deepEqual(ev[5].provenance, [1, 2], "数组保形");
+    // 生产 append 路径同规约（appendBudgetEvent→insertEvent）＋dedupKey 必填契约（NOT NULL 列=机器门）
+    appendBudgetEvent(db, { ...base, provenance: objProv, dedupKey: "k7" });
+    assert.throws(
+      () => appendBudgetEvent(db, { ...base, provenance: "x" }),
+      /dedupKey 必填/, "dedupKey 缺席=入口具名拒（防 undefined 直绑的密码化报文）",
+    );
+    const ev2 = readSnapshot(db).events;
+    assert.equal(ev2.length, 7);
+    assert.deepEqual(ev2[6].provenance, objProv);
+    db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+  }
 });

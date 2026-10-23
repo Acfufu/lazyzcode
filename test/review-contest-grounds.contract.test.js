@@ -15,6 +15,8 @@ import { withInjectedReviewSandbox } from "./helpers/review-sandbox-stub.js";
 const runReview = withInjectedReviewSandbox(actualRunReview);
 import { FINDINGS_VERSION, assertFindingsShape, findingFingerprint, contestFinding } from "../core/findings.js";
 import { saveFamilyFile } from "../core/queue.js";
+// 0.6.1 D1-b（debts §1）：用量落账/spool 经 LZY_SANDBOX_USAGE_DIR 隔离（??= 幂等可覆写）。
+process.env.LZY_SANDBOX_USAGE_DIR ??= mkdtempSync(join(tmpdir(), "lzy-usage-iso-"));
 
 // 沙盒 provider 前置固定为 BUILTIN-only 形态（2026-10-08 显式允许表案）：本文件测 gate/运行时
 // 语义，不测 provider 白名单——机器 env 在场会让「允许表为空」前置拒生效，测试须自洽。

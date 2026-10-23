@@ -11,6 +11,9 @@ import { spawnSync } from "node:child_process";
 import { runReview, BASELINE_DUTY_ID, ReviewPreflightError } from "../core/review.js";
 import { testReviewSandbox } from "./helpers/review-sandbox-stub.js";
 
+// 0.6.1 D1-b（debts §1）：用量落账/spool 经 LZY_SANDBOX_USAGE_DIR 隔离（??= 幂等可覆写）。
+process.env.LZY_SANDBOX_USAGE_DIR ??= mkdtempSync(join(tmpdir(), "lzy-usage-iso-"));
+
 const evidence = resolve(".omo/evidence/review-isolation-tier");
 mkdirSync(evidence, { recursive: true });
 

@@ -22,6 +22,8 @@ import { withInjectedReviewSandbox, testReviewSandbox } from "./helpers/review-s
 const runReview = withInjectedReviewSandbox(actualRunReview);
 import { candidateIdentity } from "../core/verify.js";
 import { createHash } from "node:crypto";
+// 0.6.1 D1-b（debts §1）：用量落账/spool 经 LZY_SANDBOX_USAGE_DIR 隔离（??= 幂等可覆写）。
+process.env.LZY_SANDBOX_USAGE_DIR ??= mkdtempSync(join(tmpdir(), "lzy-usage-iso-"));
 import { evaluateGate } from "../core/gate.js";
 import { appendLedgerEntry, budgetView, reviewLedgerPoints } from "../core/queue.js";
 import { recordAuthorization } from "../core/contract.js";

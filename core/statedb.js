@@ -247,16 +247,36 @@ export function setBudget(db, { pointsLimit = null, wallLimitMs = null, notes = 
   });
 }
 
+// provenance 列为 TEXT（0.6.1 规约统一）：字符串/null 直传，对象/数组以 JSON 文本落列——
+// 与 appendLedgerEntry 门面（queue.js）同一规约；原语层直绑对象曾是 0.6.0 迁移导入炸点。
+const provText = (v) => (v == null || typeof v === "string" ? v ?? null : JSON.stringify(v));
+
+// 读侧双态还原：列内 {/[ 起头的 JSON 文本还原为对象/数组（写侧 stringify 的镜像）；裸字符串、
+// null、以及可 parse 但非对象的字面量（"123"/"true"）一律原样，不误还原。
+const provRestore = (v) => {
+  if (typeof v !== "string" || !(v.startsWith("{") || v.startsWith("["))) return v ?? null;
+  try {
+    const p = JSON.parse(v);
+    return p != null && typeof p === "object" ? p : v;
+  } catch {
+    return v;
+  }
+};
+
 // 唯一事件约束（A2）：事务内 seq=MAX+1 显式分配 + dedup_key UNIQUE 判重（2067/1555→duplicate no-op）。
 // 仅在同一 withWriteTx 事务内调用（内部函数，结构性不嵌套）。
 function insertEvent(db, entry) {
+  if (entry.dedupKey == null) {
+    // dedup_key NOT NULL（schema 即门）：缺席先具名拒，防 undefined/null 直绑的密码化绑定报文。
+    throw new StatedbError("budget_events.dedupKey 必填（dedup_key NOT NULL 列）");
+  }
   const next = db.prepare("SELECT COALESCE(MAX(seq),0)+1 AS next FROM budget_events").get().next;
   try {
     db.prepare(`INSERT INTO budget_events
       (seq,at,kind,authorization_json,provenance,item_id,tx_id,session_id,ms,points,overrun_points,note,dedup_key)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       next, entry.at ?? new Date().toISOString(), entry.kind, JSON.stringify(entry.authorization),
-      entry.provenance ?? null, entry.itemId ?? null, entry.txId ?? null, entry.sessionId ?? null,
+      provText(entry.provenance), entry.itemId ?? null, entry.txId ?? null, entry.sessionId ?? null,
       entry.ms ?? null, entry.points ?? null, entry.overrunPoints ?? null, entry.note ?? null, entry.dedupKey,
     );
     return { duplicate: false, seq: next };
@@ -423,7 +443,7 @@ export function readBudgetAggregate(db, { excludeTxId = null } = {}) {
   const stopKinds = [];
   for (const r of db.prepare("SELECT * FROM budget_events ORDER BY seq").all()) {
     const e = {
-      seq: r.seq, at: r.at, kind: r.kind, authorization: JSON.parse(r.authorization_json), provenance: r.provenance,
+      seq: r.seq, at: r.at, kind: r.kind, authorization: JSON.parse(r.authorization_json), provenance: provRestore(r.provenance),
       itemId: r.item_id, txId: r.tx_id, sessionId: r.session_id, ms: r.ms, points: r.points,
       overrunPoints: r.overrun_points, note: r.note, dedupKey: r.dedup_key,
     };
@@ -475,7 +495,7 @@ export function readSnapshot(db) {
     extra: r.extra_json ? JSON.parse(r.extra_json) : null,
   }));
   const events = db.prepare("SELECT * FROM budget_events ORDER BY seq").all().map((r) => ({
-    seq: r.seq, at: r.at, kind: r.kind, authorization: JSON.parse(r.authorization_json), provenance: r.provenance,
+    seq: r.seq, at: r.at, kind: r.kind, authorization: JSON.parse(r.authorization_json), provenance: provRestore(r.provenance),
     itemId: r.item_id, txId: r.tx_id, sessionId: r.session_id, ms: r.ms, points: r.points,
     overrunPoints: r.overrun_points, note: r.note, dedupKey: r.dedup_key,
   }));
@@ -559,11 +579,15 @@ export function replaceBudgetEvents(db, entries) {
   return withWriteTx(db, () => {
     db.prepare("DELETE FROM budget_events").run();
     entries.forEach((e, i) => {
+      if (e.dedupKey == null) {
+        // dedup_key NOT NULL（schema 即门）：缺席先具名拒（迁移导入路径同款守卫，named refusal）。
+        throw new StatedbError(`budget_events.dedupKey 必填（dedup_key NOT NULL 列）：seq=${e.seq ?? i + 1}`);
+      }
       db.prepare(`INSERT INTO budget_events
         (seq,at,kind,authorization_json,provenance,item_id,tx_id,session_id,ms,points,overrun_points,note,dedup_key)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
         Number.isInteger(e.seq) ? e.seq : i + 1, e.at ?? new Date().toISOString(), e.kind,
-        JSON.stringify(e.authorization), e.provenance ?? null, e.itemId ?? null, e.txId ?? null,
+        JSON.stringify(e.authorization), provText(e.provenance), e.itemId ?? null, e.txId ?? null,
         e.sessionId ?? null, e.ms ?? null, e.points ?? null, e.overrunPoints ?? null, e.note ?? null, e.dedupKey,
       );
     });

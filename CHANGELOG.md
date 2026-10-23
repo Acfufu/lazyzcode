@@ -49,6 +49,35 @@ fixes and real-platform validation that gate the switch.
   after close with `integrity_check=ok`, hook stdin legs, doctor
   sqlite-store row. 10/10.
 
+### Review isolation & metering (ADR-0038 + P0 ledger fixes) — backfilled 2026-10-24
+
+These changes landed 2026-10-11..16 (after the 0.5.0 publish, before the
+SQLite arc) and ship in the 0.6.0 tarball, but were omitted from the
+release notes at freeze time. Recorded here for completeness; the 0.6.0
+registry tarball is unchanged.
+
+- Review OS sandbox for independent reviews (ADR-0038, decision #52):
+  macOS Seatbelt whole-engine coverage with a parent-process network
+  proxy (plain HTTP origin-checked; HTTPS only CONNECT to the provider
+  hostname:port); sandbox tier pinned by dual condition (Seatbelt probe
+  AND personal key leg), otherwise the run lands in the app-layer
+  runtime with isolation {level,backend,auth} recorded in the run file
+  and doctor pre-diagnosis; OAuth-only default shapes land app-layer
+  with credentials copied into the isolated HOME (0600, destroy-listed).
+  `lzy review cleanup` reclaims leftover credentials and temp dirs.
+- Review transcript read cap raised 16→64 MiB (first live-fire
+  calibration: deep recheck sessions hit 24–25.5 MiB).
+- Budget-ledger accounting fixes (goal p0-ledger-fix): metering
+  completeness gains a partial state with per-(attempt,seq) ack scoping;
+  overrun is derived max(0, actual − cap) and no longer double-counts
+  into consumption totals; backfill event identity = source-state
+  watermark (same-run distinct sids not swallowed, replays not
+  double-counted); observation-integrity diagnostics count corrupt and
+  unreadable rows instead of silently dropping them; review contract
+  tests stop writing fixture rows into the real ~/.zcode/cli/lzy-usage
+  ledger; usage write points gain assertRegularTarget guards (refuse
+  pre-planted symlinks).
+
 ## [0.5.0] - 2026-10-10
 
 The closeout-honesty release. Degraded goal-loop stops become named and

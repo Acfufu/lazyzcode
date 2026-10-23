@@ -909,5 +909,13 @@ P3 SQLite 切换随发版生效（显式迁移/读向 marker/误写检测/doctor
 - win32 VM 10/10（Windows 11 aarch64）：node 22.23.2→24.19.0 就地升（C:\Tools\node，旧版留 node22-bak）；tarball 安装（npm prefix=C:\Tools\node）；NTFS 迁移全链 ✔；WAL 打开期 sidecar 在场/关闭收敛/integrity ok ✔；钩子三腿 ✔；doctor sqlite-store「SQLite 权威」行 ✔。VM 已清理停回、http.server 已停。
 - 记档不阻塞：backup-replay 同目录重跑在 VACUUM INTO 处 exit 1（守卫仅认 state.sqlite）；win32 引擎面未装（engine 未找到=干净机既知态）。
 
-### 发布链（随 N11 执行后回填：tag/publish/registry 对表/换环境冒烟/gh release/全局升级 sync）
+### 发布链实弹（2026-10-23，publish 用户 2FA）
+
+- **tag**：v0.6.0 切于冻结树后（tag 树 f62ba190…）＋推送；publish/tag 零触树、评审指纹不漂。
+- **publish 凭据插曲**：会话起始 npm token 失效（whoami 401/publish 404）——用户重登后仍需 2FA（EOTP），非交互环境浏览器等待流不可达，最终由用户终端直发完成（方式 B）；机械面在会话内全备。
+- **registry 对表**：`npm view lazyzcode version` → **0.6.0**（dist-tags.latest 翻转）；`dist.shasum=662bf013…` 与 publish 输出一致；**registry tarball 与 tag 树本地 pack sha256 同（52837f12…）且 cmp 字节一致**；`engines>=24.0.0` 生效。
+- **隔离 prefix 冒烟 ✔**：`npm i -g lazyzcode@0.6.0 --prefix /tmp/lzy-smoke-060 --prefer-online` 1s 装成 → ADR-0012 中间态自名（CLI 0.6.0·载荷 0.5.0）→ sync 后 `0.6.0（插件载荷同版本）· 引擎 0.17.0`；doctor EXIT=0：payload ✔0.6.0/payload-ver 缓存 24 版本目录·CLI 一致/sqlite-store 行在。
+- **gh release**：v0.6.0（0.6.0 — SQLite switch release；tag v0.6.0）在场。
+- **全局 lzy 升级**：nvm bin 0.5.0→0.6.0（载荷先由隔离环境 sync 至 0.6.0，版本行即刻同版本）。
+- **LOOP_COMPLETE**：统一门 PASS（快照 b5d8966e）→ finish → attestation `.lazyzcode/attestations/p4-sqlite-release-20261023T201010Z.json`；comparator 5/5 MATCH（n994）。
 

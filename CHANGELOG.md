@@ -3,6 +3,47 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [0.6.1] - 2026-10-24
+
+The SQLite-switch patch. A 0.6.0 regression found by dogfooding the
+migration on this repo's own ledger, plus the test-usage isolation debt
+(debts §1 D1) and a plan-gate false positive that flaked CI.
+
+### Fixed
+
+- Migration import crash on ledgers with object-shaped `provenance`
+  (the review-runner shape `{runId,duty,source}`): the statedb
+  primitives bound the value straight into the TEXT column
+  (`Provided value cannot be bound to SQLite parameter 5`), and the
+  read side returned the raw string, so reconcile could never pass
+  either. The column convention is now unified with the append facade —
+  objects/arrays are stringified on write and restored on read (bare
+  strings and parseable-but-non-object literals like "123"/"true" are
+  untouched).
+- A missing `budget_events.dedupKey` now fails with a named refusal at
+  both write entry points instead of a cryptic bind error (`dedup_key`
+  is NOT NULL — the schema is the gate).
+- Plan-gate undecided-marker scan anchored to word boundaries for the
+  latin token: an identifier containing "tbd" (e.g. a random temp-dir
+  suffix like `vqlTbd`) no longer false-positives plan adoption;
+  standalone TBD and the CJK phrases are still refused.
+
+### Changed
+
+- `sandboxUsageDir()` honors `LZY_SANDBOX_USAGE_DIR` — test/fixture
+  isolation for the usage ledger and spool receipts; absent or blank
+  falls back to the real `~/.zcode/cli/lzy-usage` (production semantics
+  unchanged). Six test files now run isolated so `fx.*` fixtures stop
+  writing rows and retry receipts into the real ledger.
+
+### Verification
+
+966/966 tests (baseline 962 + provenance matrix, object-provenance
+migration chain, usage-dir seam, plan-gate word-boundary pin). win32
+coverage via the CI windows leg; the full VM battery was not rerun
+(the 0.6.1 delta is platform-neutral JS — the 0.6.0 battery remains
+the platform baseline).
+
 ## [0.6.0] - 2026-10-23
 
 The SQLite switch release. Goal-loop queue/budget/ledger state moves from

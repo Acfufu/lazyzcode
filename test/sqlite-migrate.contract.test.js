@@ -394,3 +394,61 @@ test("⑫空/部分族工作区迁移：仅 ledger 族（queue/dispatch 缺席�
   assert.equal(budgetRow, 0, "预算 null=无行（readSnapshot null 语义对齐）");
   rmSync(d, { recursive: true, force: true });
 });
+
+test("⑭r3-F2 钩子 marker 形状门对齐（⑪续段）：形状不识别=当迁移态处理，绝不回落 JSON 批准", { skip: FLOOR_SKIP }, () => {
+  const TRIGGER = join(ROOT, "plugin", "hooks", "trigger.js");
+  const hook = (cwd, prompt) => spawnSync(process.execPath, [TRIGGER], {
+    cwd, encoding: "utf8", timeout: 60_000,
+    env: { ...process.env, LZY_ZCODE_ENGINE: "/nonexistent" },
+    input: JSON.stringify({ prompt, cwd, session_id: "mig-hook-shape" }),
+  });
+  const authCount = (cwd) => {
+    const dir = join(cwd, ".lazyzcode", "authorizations");
+    try { return readdirSync(dir).length; } catch { return 0; }
+  };
+  const fixture = () => {
+    const d = mkdtempSync(join(tmpdir(), "lzy-mig-hookshape-"));
+    spawnSync("git", ["init", "-q"], { cwd: d });
+    const cHash = sha256(`hookshape-${d}`);
+    writeFileSync(join(d, "cb.md"), "task: B 交付\nendpoint: B\nscope: .\nrepo: Acfufu/lazyzcode\nbase: main\nbranch: mig\npr-title: t\n\n- [A1] x\n");
+    saveQueue(d, {
+      items: [{ id: "q1", title: "B交付", goalSlug: "qb1", contractHash: cHash, contractPath: "c.md", planPath: "p.md", endpoint: "B", state: "ready", createdAt: FIXED, updatedAt: FIXED, deps: [], seq: 1, tier: "light", risk: "low", blockedReason: null, completedEndpoint: null, delivery: { B: { path: "cb.md", hash: sha256(readFileSync(join(d, "cb.md"))) } } }],
+      budget: { pointsLimit: 100, wallLimitMs: 3600000, notes: [], pointsStoppedAck: null },
+    });
+    saveDispatch(d, { txs: [] });
+    saveLedger(d, { entries: [] });
+    migrateToSqlite(d); // DB 权威态
+    return { d, short: sha256(readFileSync(join(d, "cb.md"))).slice(0, 8) };
+  };
+
+  // ①形状不识别 marker（{"backend":"json"}）+ 库在场 → DB 批准照常（marker 只在库缺席时有判别意义）
+  const f1 = fixture();
+  writeFileSync(markerPath(f1.d), JSON.stringify({ backend: "json", format: 1 }));
+  const n1 = authCount(f1.d);
+  const r1 = hook(f1.d, `批准 ${f1.short}`);
+  assert.equal(r1.status, 0);
+  assert.equal(authCount(f1.d), n1 + 1, "形状不识别+库在场=DB 批准照常");
+  rmSync(f1.d, { recursive: true, force: true });
+
+  // ②形状不识别 marker + 库缺席 → exit 0+具名诊断+零落账（红半=改前树当 marker 缺席回落 JSON 落账批准）
+  const f2 = fixture();
+  writeFileSync(markerPath(f2.d), JSON.stringify({ backend: "json", format: 1 }));
+  rmSync(stateDbPath(f2.d));
+  const n2 = authCount(f2.d);
+  const r2 = hook(f2.d, `批准 ${f2.short}`);
+  assert.equal(r2.status, 0, "钩子失败支不阻断会话（exit 0）");
+  assert.match(r2.stdout + r2.stderr, /迁移已完成（读向标记在场）而 state\.sqlite 缺席/);
+  assert.equal(authCount(f2.d), n2, "零记录：形状侧车不降级读向判据");
+  rmSync(f2.d, { recursive: true, force: true });
+
+  // ③parse 失败面（{broken）+库缺席：钉住既有 fail-closed（不静默当缺席）防回归
+  const f3 = fixture();
+  writeFileSync(markerPath(f3.d), "{broken");
+  rmSync(stateDbPath(f3.d));
+  const n3 = authCount(f3.d);
+  const r3 = hook(f3.d, `批准 ${f3.short}`);
+  assert.equal(r3.status, 0);
+  assert.match(r3.stdout + r3.stderr, /迁移已完成（读向标记在场）而 state\.sqlite 缺席/);
+  assert.equal(authCount(f3.d), n3, "parse 失败=既有 fail-closed 不回归");
+  rmSync(f3.d, { recursive: true, force: true });
+});

@@ -71,8 +71,11 @@ function queueDeliveryVerdict(cwd, short, sessionId) {
   // marker 损坏/不可读（非 ENOENT）=fail-closed 当迁移态处理（库在场照读 DB；库缺席落诊断支）。
   let markerPresent = false;
   try {
-    const m = JSON.parse(readFileSync(join(cwd, ".lazyzcode", "state.backend.json"), "utf8"));
-    markerPresent = !!(m && m.backend === "sqlite" && m.format === 1);
+    // r3-F2 口径对齐（core statedb readBackendMarker 逐字）：文件在场即迁移态——形状不识别
+    //（null/异 backend/format≠1）与解析失败同责=当迁移态处理（库在场照读、库缺席落下方诊断支），
+    // 绝不因形状侧车当缺席回落 JSON 批准；marker 只在「库缺席」时有判别意义（design §7 定案 2）。
+    JSON.parse(readFileSync(join(cwd, ".lazyzcode", "state.backend.json"), "utf8"));
+    markerPresent = true;
   } catch (err) {
     if (err && err.code !== "ENOENT") markerPresent = true;
   }

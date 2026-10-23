@@ -7,7 +7,7 @@ import { test } from "node:test";
 process.env.LZY_ABLATE_HUMAN_GATE = "1";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -100,6 +100,39 @@ test("钉3：「已知未知」四字自身过门——未知二字永不入禁�
     assert.match(s.out, /已知未知段落地/); // 项标题带「未知」字样仍完整入库
   } finally {
     rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// 钉 4（0.6.1，CI 实弹回归钉）：TBD 词内嵌形不拦——夹具随机后缀（vqlTbd）曾以
+// 大小写不敏感子串匹配误中未决标记、integrity-kernel 腿在 CI 彩票式翻红；
+// 独立词形态仍拦由钉 2 背书。
+test("钉4：标识符内嵌 Tbd（词内形）不误拦——随机后缀彩票回归钉", () => {
+  const d = repo();
+  // 兄弟夹具名确定性复刻 CI 撞击形（vqlTbd）——subjects 头与条目行双面钉
+  const parent = mkdtempSync(join(tmpdir(), "lzy-pg-sib-"));
+  const named = join(parent, "lzy-v008-sib-vqlTbd");
+  mkdirSync(named, { recursive: true });
+  const g = (args) => spawnSync("git", args, { cwd: named, encoding: "utf8" });
+  g(["init", "-q"]);
+  g(["config", "user.email", "t@l"]);
+  g(["config", "user.name", "t"]);
+  writeFileSync(join(named, "a.txt"), "a\n");
+  g(["add", "a.txt"]);
+  g(["commit", "-qm", "init"]);
+  try {
+    register(d, "embed-tbd");
+    const body = [
+      "# 计划",
+      `subjects: ${named}`,
+      "- [N1] 兄弟目录 lzy-v008-sib-vqlTbd 归属核验",
+      "- [F1] 终验",
+    ].join("\n");
+    const r = lzy(["loop", "plan", planAt(d, body)], d);
+    assert.equal(r.code, 0, `词内嵌 Tbd 不得按未决标记拒（out=${r.out.slice(0, 200)}）`);
+    assert.match(r.out, /计划门通过：2 项已采纳/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+    rmSync(parent, { recursive: true, force: true });
   }
 });
 

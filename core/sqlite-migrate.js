@@ -313,7 +313,32 @@ export function migrateToSqlite(root, opts = {}) {
 
     // reconcile + install（staged 在场才有这两相；resume-from-install 起跳过）
     let counts = null;
-    if (!phasesDone.has("install")) {
+    // r3-F1 重入重锚定：kill 落在 renameSync(staged, dbPath) 与 journal("install") 之间时，
+    // journal 末相位=reconcile 而最终库已在场（reconcile+integrity 均已过的忠实导入）。
+    // 判据锚 journal 相位而非 staged 缺席——P3 开发期预损态（坏路径重入制造的伪空 staged
+    // 与真库并存）同判据自愈：对最终库 integrity_check + counts 对 journal import 行交叉
+    // 核对后补 install 相位续跑；已核实的 staged 位（含伪空库/侧车）为可证废弃物，一并清理。
+    const reanchor = !phasesDone.has("install") && phasesDone.has("reconcile") && existsSync(dbPath);
+    if (reanchor) {
+      const dbF = openStore(dbPath);
+      try {
+        const ic = integrityCheck(dbF);
+        if (ic?.integrity_check !== "ok") {
+          throw new StatedbError(`迁移停：重入重锚定 integrity_check=${JSON.stringify(ic?.integrity_check)}——最终库损坏，人工核对 ${journalDir}`);
+        }
+        counts = snapshotCounts(dbF);
+      } finally {
+        dbF.close();
+      }
+      const importCounts = journalLine("import")?.counts ?? null;
+      if (importCounts != null && JSON.stringify(importCounts) !== JSON.stringify(counts)) {
+        throw new StatedbError(`迁移停：重入重锚定 counts 与 journal import 行不符（${JSON.stringify(importCounts)} → ${JSON.stringify(counts)}）——最终库内容可疑，人工核对 ${journalDir}`);
+      }
+      for (const p of [stagedPath, `${stagedPath}-wal`, `${stagedPath}-shm`]) rmSync(p, { force: true });
+      journal("install", { counts, reanchored: true });
+      stopAfter("install");
+    }
+    if (!phasesDone.has("install") && !reanchor) {
       const db = openStore(stagedPath);
       // 句柄纪律（win32 CI 实证：throw 路径漏 close → 开句柄挡测试 rmSync=EPERM）：
       // 对账/integrity/漂移/stopAfter 任何一支停机都经 finally 干净关闭后再抛。
@@ -337,7 +362,7 @@ export function migrateToSqlite(root, opts = {}) {
       renameSync(stagedPath, dbPath);
       journal("install", { counts });
       stopAfter("install");
-    } else {
+    } else if (!reanchor) {
       counts = journalLine("install")?.counts ?? null;
     }
 

@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -334,6 +334,47 @@ test("⑪钩子三分支（stdin 驱动生产 trigger.js）：迁移态正常=DB
   assert.match(r3.stdout + r3.stderr, /迁移已完成（读向标记在场）而 state\.sqlite 缺席/);
   assert.equal(authCount(f3.d), k0, "零记录：陈旧投影不生成批准");
   rmSync(f3.d, { recursive: true, force: true });
+});
+
+test("⑬r3-F1 窗态重入：rename→journal(install) 微窗中断后重入重锚定（含伪空 staged 预损态自愈）", { skip: FLOOR_SKIP }, () => {
+  const runDir = (d) => {
+    const jdir = join(d, ".lazyzcode", "migration", "sqlite", "journal");
+    const runId = readdirSync(jdir).filter((n) => n.endsWith(".jsonl"))[0].replace(/\.jsonl$/, "");
+    return join(d, ".lazyzcode", "migration", "sqlite", runId);
+  };
+  // ⑬-a 窗态：stopAfterPhase:"reconcile"（停点在 rename 前）+ 手动 rename 复现 kill 落在
+  // renameSync(staged, dbPath) 与 journal("install") 之间的盘态（staged 已消失、journal 末相位=reconcile）。
+  const d1 = mkdtempSync(join(tmpdir(), "lzy-mig-window-"));
+  seedSource(d1);
+  try { migrateToSqlite(d1, { stopAfterPhase: "reconcile" }); } catch {}
+  const staged1 = join(runDir(d1), "staged.sqlite");
+  assert.ok(existsSync(staged1), "停点在 rename 前：staged 在场");
+  renameSync(staged1, stateDbPath(d1)); // 复现微窗盘态
+  const { phases: ph1 } = journalPhases(d1);
+  assert.ok(ph1.includes("reconcile") && !ph1.includes("install"), "journal 末相位=reconcile（窗态构成）");
+  const res1 = migrateToSqlite(d1); // 重入：绿=重锚定收尾；红（改前树）=openStore(缺席 staged) 新建伪空库→no such table
+  assert.equal(res1.phases.at(-1), "done");
+  assert.equal(res1.counts.items, 3, "重锚定不丢条目");
+  assert.ok(existsSync(join(d1, ".lazyzcode", "state.backend.json")), "重锚定补 marker");
+  assert.equal(readMeta(d1, "backend"), "sqlite");
+  assert.ok(!existsSync(staged1), "staged 位不残留");
+  const { runs: r1, phases: p1 } = journalPhases(d1);
+  assert.equal(r1.length, 1, "重入复用同一 runId journal");
+  for (const ph of ["install", "commit", "done"]) assert.ok(p1.includes(ph), `重锚定缺相位 ${ph}`);
+  rmSync(d1, { recursive: true, force: true });
+
+  // ⑬-b 预损态：P3 开发期真实现场——坏路径重入已制造伪空 staged（0 字节）与真库并存；同判据自愈并清理。
+  const d2 = mkdtempSync(join(tmpdir(), "lzy-mig-window-pre-"));
+  seedSource(d2);
+  try { migrateToSqlite(d2, { stopAfterPhase: "reconcile" }); } catch {}
+  const staged2 = join(runDir(d2), "staged.sqlite");
+  renameSync(staged2, stateDbPath(d2));
+  writeFileSync(staged2, ""); // 伪空 staged（openStore 缺席路径新建的 0 字节形态）
+  const res2 = migrateToSqlite(d2);
+  assert.equal(res2.phases.at(-1), "done");
+  assert.ok(!existsSync(staged2), "预损伪 staged 被清理");
+  assert.ok(existsSync(join(d2, ".lazyzcode", "state.backend.json")));
+  rmSync(d2, { recursive: true, force: true });
 });
 
 test("⑫空/部分族工作区迁移：仅 ledger 族（queue/dispatch 缺席）+预算 null=空族导入成功", { skip: FLOOR_SKIP }, () => {

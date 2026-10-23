@@ -974,7 +974,8 @@ function checkMigratePreview(push, cwd) {
 
 // P3（goal p3-sqlite-switch）：局部状态 SQLite 存储态检查行（#46 允许新增行；全程不抛错）。
 // 分态：非工作区=skip／未迁移（双缺席）=ok（JSON 态现行权威）／已迁移（marker∧库）=ok（条目
-// 计数）／残缺（单边在场）=warn／库不可读=fail；journal 未收尾 run 附具名续跑指路。
+// 计数）／残缺（单边在场）=warn／marker 不可读而库健康=warn 当迁移态处理（P4 r3-F4）／
+// 库不可读=fail；journal 未收尾 run 附具名续跑指路。
 function checkSqliteStore(push, cwd) {
   const lz = join(cwd, ".lazyzcode");
   if (!existsSync(lz)) {
@@ -1006,12 +1007,27 @@ function checkSqliteStore(push, cwd) {
     return;
   }
   if (markerExists && dbExists) {
+    // r3-F4 归因拆分：marker 解析与库读面分 try——marker 不可读（解析失败或形状不识别，
+    // core readBackendMarker 同口径）而库健康=warn 当迁移态处理（§7 定案 2：健康库永不被
+    // 损坏侧车挡住），不新增 state 枚举；库也不可读才 fail 且归因库。
+    let markerBackend = null;
+    let markerUnreadable = false;
     try {
       const m = JSON.parse(readFileSync(markerPath, "utf8"));
+      if (m && m.backend === "sqlite" && m.format === 1) markerBackend = m.backend;
+      else markerUnreadable = true;
+    } catch {
+      markerUnreadable = true;
+    }
+    try {
       const db = openStore(dbPath, { readOnly: true });
       const items = db.prepare("SELECT COUNT(*) AS n FROM queue_items").get()?.n ?? 0;
       db.close();
-      push("sqlite-store", "ok", `SQLite 权威（backend=${m?.backend ?? "?"}，条目 ${items}）——旧 JSON 三族保留只作备份/导出${inflight}`);
+      if (markerUnreadable) {
+        push("sqlite-store", "warn", `读向标记损坏——当迁移态处理，state.sqlite 在场为权威（条目 ${items}）${inflight}——恢复：核对 .lazyzcode/state.backend.json（库在场即权威，标记可核后重写）`);
+      } else {
+        push("sqlite-store", "ok", `SQLite 权威（backend=${markerBackend ?? "?"}，条目 ${items}）——旧 JSON 三族保留只作备份/导出${inflight}`);
+      }
     } catch (err) {
       push("sqlite-store", "fail", `state.sqlite 不可读：${String(err?.message ?? err).slice(0, 120)}——恢复：备份核对（.lazyzcode/migration/sqlite/<runId>/backup/）`);
     }

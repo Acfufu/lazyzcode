@@ -155,7 +155,7 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
 3. **提交点序=install→marker→meta.backend 最后写**：install（staged close 后同卷原子 rename）→ 写 marker（读向翻转）→ 写 `meta.backend`+`writer_version`+`meta.json_frozen`（最后写=提交点，§7.5）。install→marker 窗口=P2 判据已认库且内容为忠实导入，语义安全；marker→meta.backend 窗口=读向已翻、resume 按相位补提交点。两窗口均被 journal 相位覆盖，重入幂等。
 4. **备份语义**：三族=文件复制到 `.lazyzcode/migration/sqlite/<runId>/backup/` + manifest 逐文件 sha256 + install 前源漂移双读校验（漂移=停）；**VACUUM INTO 不入迁移路径**（迁移前无库可 VACUUM——§12-2「§6 路线」的 reading 如实记档：staged 库以 integrity_check 为导入门禁，VACUUM INTO 仍专属 backupTo 运维面）；迁移不改写不删除源 JSON（前向单向）。
 5. **命令面**：`lzy migrate sqlite <根路径>`（根路径显式，沿 cmdMigrate 家法）；单命令无 preview（对账内建于 apply）；重跑语义=未收尾 journal→断点续跑（幂等）、已收尾且库在场→具名拒（已迁移）；前置拒绝=活跃 tx（open/delivering）或 running 条目（§7.1 冻结写入）+ withLock 整段。journal=`migration/sqlite/journal/<runId>.jsonl`（七相位），与 ADR-0029 机器（state.json 版本入口）互不相涉。
-6. **旧状态误写检测**：提交时三族冻结指纹落 `meta.json_frozen`（在场=sha256、缺席=null）；`reconcileDispatch` withLock 锁内首行预检（runQueueDispatch 首动作即 reconcile，单点覆盖双入口）；任一族「在场但 sha≠冻结」=具名拒（恢复/删除/核对三路指路），缺席=不违例；meta.json_frozen 缺席（P2 时代库工作区、夹具）=no-op；JSON 态不检（逐字零变更）。
+6. **旧状态误写检测**：提交时三族冻结指纹落 `meta.json_frozen`（在场=sha256、缺席=null）；`reconcileDispatch` withLock 锁内首行预检（runQueueDispatch 首动作即 reconcile，单点覆盖双入口）；任一族「在场但 sha≠冻结」=具名拒（恢复/删除/核对三路指路），缺席=不违例；meta.json_frozen 缺席（P2 时代库工作区、夹具）=no-op；JSON 态不检（逐字零变更）。**P4 增补（r3-F3，2026-10-23）**：违例判据统一为「now 在场 ∧ sha≠冻结指纹」——冻结时缺席（frozen=null）、迁移后出现的族（旧版 CLI 误写/异物拷入）与改写同责=违例；「缺席=不违例」读向不变（冻结后在场的族被删除仍不违例）。
 7. **openDb 自建空库修复**（r6-F2）：双信号合取——打开前 stat 在场性 + 现文件 birthtime≥本进程打开入口时戳（亚毫秒墙钟 `performance.timeOrigin+performance.now()`，Date.now() 取整会同毫秒误判）——才判「本进程打开序列内 SQLite 自建」，close+unlink 后按缺席继续；打开前已在场的旧占位/异物库恒走原具名拒不误删；unlink 失败=保留走原拒。
 
 ## 8. 版本冲突与回退姿态

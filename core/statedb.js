@@ -668,12 +668,14 @@ export function assertNoJsonMiswrite(root, db) {
   const frozen = readFrozenFingerprints(db);
   if (!frozen) return { violations: [], frozen: null };
   const now = currentFamilyFingerprints(root);
+  // r3-F3：违例判据=「now 在场 ∧ sha≠冻结指纹」统一式——冻结时缺席（frozen=null）迁移后
+  // 出现的族（旧版 CLI 误写/异物拷入）与改写同责；缺席=不违例（删备份是用户权利）不变。
   const violations = JSON_FAMILIES
-    .filter((f) => frozen[f.key] != null && now[f.key] != null && now[f.key] !== frozen[f.key])
+    .filter((f) => now[f.key] != null && now[f.key] !== frozen[f.key])
     .map((f) => join(root, f.rel));
   if (violations.length) {
     throw new StatedbError(
-      `检测到迁移后旧状态文件被改写（state.sqlite 为唯一权威，旧 JSON 仅作备份/导出）：${violations.join("、")}。` +
+      `检测到迁移后旧状态文件被改写或新增（state.sqlite 为唯一权威，旧 JSON 仅作备份/导出）：${violations.join("、")}。` +
       `指路：①若为旧版 CLI 误写——从 .lazyzcode/migration/sqlite/<runId>/backup/ 恢复该文件后重试；` +
       `②若确认无需保留——删除该备份文件后重试（缺席=不违例）；③核对期间派发/对账保持阻断。`,
     );

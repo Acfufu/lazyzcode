@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync, renameSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync, renameSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -451,4 +451,23 @@ test("⑭r3-F2 钩子 marker 形状门对齐（⑪续段）：形状不识别=�
   assert.match(r3.stdout + r3.stderr, /迁移已完成（读向标记在场）而 state\.sqlite 缺席/);
   assert.equal(authCount(f3.d), n3, "parse 失败=既有 fail-closed 不回归");
   rmSync(f3.d, { recursive: true, force: true });
+});
+
+test("⑮r3-F3 误写检测补 frozen=null 族：冻结时缺席、迁移后出现的族=违例；删除=自愈", { skip: FLOOR_SKIP }, () => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-mig-sparse-miswrite-"));
+  spawnSync("git", ["init", "-q"], { cwd: d });
+  const cHash = sha256("sparse-miswrite");
+  saveLedger(d, { entries: [{ seq: 1, kind: "review", at: FIXED, dedupKey: "review:sparse-miswrite:1", authorization: { slug: "g", contractHash: cHash }, provenance: "review:sparse-miswrite", itemId: null, txId: null, sessionId: null, ms: null, points: 3, note: "仅账本" }] });
+  migrateToSqlite(d); // 稀疏：queue/dispatch 冻结指纹=null（腿⑫同形态）
+  const dbRO = openStore(stateDbPath(d), { readOnly: true });
+  // 迁移后 queue.json 出现（旧版 CLI 直写/异物拷入形态）→ 违例。生产写面 saveQueue 在迁移态
+  // 走 DB 分支（stateBackend 分派），永不产出该态——故直接落文件模拟旧版写者。
+  mkdirSync(join(d, ".lazyzcode", "queue"), { recursive: true });
+  writeFileSync(famPaths(d).queue, `${JSON.stringify({ items: [{ id: "late" }], budget: null }, null, 2)}\n`);
+  assert.throws(() => assertNoJsonMiswrite(d, dbRO), /误写|新增/);
+  // 删除后=自愈（缺席=不违例）
+  rmSync(famPaths(d).queue);
+  assert.doesNotThrow(() => assertNoJsonMiswrite(d, dbRO));
+  dbRO.close();
+  rmSync(d, { recursive: true, force: true });
 });

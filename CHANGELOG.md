@@ -3,6 +3,52 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [0.6.0] - 2026-10-23
+
+The SQLite switch release. Goal-loop queue/budget/ledger state moves from
+loose JSON files to a single `state.sqlite` (node:sqlite, zero new
+dependencies) behind an explicit, one-way migration — plus the P4 review
+fixes and real-platform validation that gate the switch.
+
+### Storage (P3, ADR-0039)
+
+- `lzy migrate sqlite <root>`: explicit JSON→SQLite migration machine
+  (backup→import→reconcile→atomic install→backend-marker commit; journal
+  idempotent resume; source-drift double-read; corrupted-import named
+  refusal; never overwrites an existing `state.sqlite`).
+- Read-gate marker `.lazyzcode/state.backend.json`: once migrated, the DB
+  is the single authority — no silent JSON fallback (missing-DB and
+  unrecognized-marker shapes get named diagnostics instead).
+- Legacy-JSON miswrite detection after migration (frozen fingerprints;
+  post-freeze writes — including the frozen=null family — are refused with
+  a delete-and-retry self-heal path).
+- `lzy doctor` gains the `sqlite-store` five-state row; new workspaces
+  still start on JSON (migration is always an explicit action).
+- Runtime floor raised to **Node ≥ 24.0.0** (`engines >=24`); the 22 line
+  is out of the support surface (node:sqlite experimental semantics).
+
+### Fixed (P4 — P3 review dispositions)
+
+- Migration-machine micro-window kill re-entry re-anchoring (r3-F1);
+  hook marker-shape gate aligned with core (r3-F2); miswrite detection
+  covers the frozen=null family (r3-F3); doctor marker/Library attribution
+  split (r3-F4); evidence-probe.sh PATH injection seam + pipefail
+  (r4-F1/F2); tier-1 unattended test pins TZ instead of assuming host
+  locale (r4-F3). backup-replay same-dir rerun failing at VACUUM INTO is
+  recorded as a known dev-script wart, not fixed.
+
+### Platform validation (P4)
+
+- macOS host real-CLI battery: dispatch kill/crash recovery, concurrent
+  dispatch (single occupancy, no double ledger), migration interrupt/drift/
+  corruption re-entry, hook paths (approval, DB-unreadable zero-record,
+  version gate, miswrite self-heal), reset budget retention, backup-replay,
+  engine 0.17.0 plugins-list envelope + 7-hook-event surface. 29/29.
+- Windows 11 aarch64 VM: Node 22→24 in-place upgrade, tarball install,
+  full migration chain on NTFS, queue/budget read-write, WAL converges
+  after close with `integrity_check=ok`, hook stdin legs, doctor
+  sqlite-store row. 10/10.
+
 ## [0.5.0] - 2026-10-10
 
 The closeout-honesty release. Degraded goal-loop stops become named and

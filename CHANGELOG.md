@@ -3,6 +3,53 @@
 All notable changes to LazyZCode. Format inspired by Keep a Changelog;
 versioning is SemVer.
 
+## [0.6.2] - 2026-10-28
+
+The global usage-ledger accounting patch: cross-process serialization,
+receipt isolation, and two small fixes. The managed-process lifecycle
+work (ADR-0041) remains a separate open track — this release adds no
+process-cleanup guarantee and claims none.
+
+### Fixed
+
+- Send headless cleanup signals once across timeout, exit and close events;
+  avoid Darwin's zombie-only group `EPERM` on a duplicate signal. A first
+  cleanup failure remains an error. This does not add descendant containment.
+- Serialize global usage-ledger reads, deduplication and append across
+  processes; review and harvest recompute cumulative deltas under the same
+  lock. JSONL history remains unchanged. Ambiguous source identities or
+  conflicting snapshots fail visibly and retain the source for recovery.
+- Isolate pending receipts by project and event identity, preserve legacy
+  receipts, and write replacements atomically.
+- Preserve structured delivery provenance (D2); report the actual harvest
+  destination and handle Windows source paths (D3).
+- Align English and Chinese sandbox release status with 0.6.0 and describe
+  point budgets as approximate limits, including in-flight overruns.
+
+修复全局用量并发追加、累计差量、跨项目回执、D2/D3 及双语文案；避免
+headless 重复清理命中 macOS 僵尸进程组而误报 EPERM，首次清理失败仍报错。
+历史 JSONL 不改写；身份不明或读数冲突具名阻塞并保留来源。托管进程生命
+周期（ADR-0041）为独立在研线，本版不含进程回收承诺。
+
+### Upgrade note / 升级注
+
+Writers from releases before 0.6.2 do not take the new cross-process
+usage-ledger lock. Finish or stop any in-flight `lzy review` / harvest
+writer before upgrading; otherwise its appends bypass serialization.
+Legacy records without session identities are preserved as-is — reconcile
+against the source run archives; history is never rewritten automatically.
+
+0.6.2 之前的版本写者不遵循新的跨进程用量账本锁。升级前先结束或停止在途的
+`lzy review`／harvest 写者，否则其追加绕过串行化。缺会话身份的旧记录原样
+保留，对照来源运行档核对；历史从不自动改写。
+
+Verification: 983/983 full suite (macOS arm64, concurrency=2); three-platform
+focused matrix; three-platform real disk-full legs (Linux tmpfs on the 24.0.0
+floor / macOS HFS+ small volume / Windows NTFS VHD —
+[records](docs/reports/reliability-patch-2026-10-25.md), local artifacts
+`artifacts/reliability/disk-full-062/`). CI gains a macOS leg. The lifecycle
+gate stays open; outstanding items are listed in the same execution record.
+
 ## [0.6.1] - 2026-10-24
 
 The SQLite-switch patch. A 0.6.0 regression found by dogfooding the

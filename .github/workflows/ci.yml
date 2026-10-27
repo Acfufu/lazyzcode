@@ -14,8 +14,10 @@ jobs:
     strategy:
       matrix:
         # P3 engines 收紧（goal p3-sqlite-switch；ADR-0039 地板 ≥24.0.0）：node 22 腿退出矩阵
+        # macos 腿（0.6.2 发布批）：本机 arm64 全套 concurrency=2 绿在案（reliability 报告），
+        # runner 首跑即三平台持续覆盖；TZ env POSIX 语义同 linux 腿。
         node: [24]
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     # scheduleAdvisory 断言「UTC+8 宿主下的本地小时渲染」（core/ratelimit.js 双轴：
     # 直方图=进程本地 getHours，计价表=UTC+8）——runner 默认 TZ=UTC 会错开 8h 致三只挂。

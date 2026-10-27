@@ -2,9 +2,11 @@
 
 > 维护者拍板（2026-09-07）：发布动作由维护者择机执行；lzy 侧已备料（repository 元数据、files 排除、doctor、契约测试）。本清单是执行时的检查账。
 
-## 当前未发布可靠性补丁（2026-10-25）
+## 0.6.2 已发布收官（2026-10-28）＋ 当前在研
 
-本地 R3 账本修复与既有双语文案修正已推进，[执行记录](reports/reliability-patch-2026-10-25.md)列出候选与检查结果。R0 生命周期门、R1/R2 及 R5 整体门尚未通过，**不得据本地账本检查通过进入发布**；版本仍为 0.6.1。提交、推送、发布及付费模型均未授权执行。
+**0.6.2（usage-ledger accounting patch）已上 latest**：账本互斥/spool 隔离/EPERM 修正/D2/D3/双语文案与升级注；五笔（fix→probes→docs→ci→release）＋tag v0.6.2=fa57692；983/983 全套＋三平台聚焦矩阵＋三平台真实磁盘满腿（linux 24.0.0 地板/darwin HFS+/win32 NTFS VHD，证据 artifacts/reliability/disk-full-062/）；CI 五腿全绿（**macOS 腿首跑**）；registry dist-tag latest=0.6.2、shasum `0d7822a6…` 与本地 pack 逐字一致、隔离 prefix 冒烟 CLI 0.6.2（ADR-0012 中间态面活体）、真机 lzy update 0.6.1→0.6.2 全链。Windows 150s 悬案四轮重采无复现（空闲负载，spawn 7–31ms），带证据挂账站岗。
+
+**当前在研**：托管进程生命周期（ADR-0041）——R0 未过（macOS ES 缺 Apple 授权，申请草稿待维护者审发）、R1/R2 未启动；原生产品价值 M0 独立计划未启动。
 
 ## npm
 

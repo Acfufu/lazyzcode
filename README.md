@@ -158,7 +158,7 @@ lzy uninstall        # prefers the engine's official plugins uninstall
 | Tier | `lzy loop tier heavy` | One-way LIGHT→HEAVY upgrade; HEAVY adoption without a PASS review is machine-rejected (adoption-time gate) |
 | Risk | `lzy loop risk <level>` | One-way risk_class upgrade (low/med/high/restricted); HIGH+ barred from unattended lanes by the drive-entry gate (ADR-0020) |
 | Lease | `lzy loop lease acquire\|heartbeat\|release\|reclaim` | Run-level lease: minutes-scale mutex with heartbeat; fence token declares write paths; `reclaim` is the zombie-lease exit (auto when the holder pid is gone, `--force` when it is not) (ADR-0020) |
-| Budget | `lzy loop budget init\|spend\|remaining` | Drive budget: wall-clock + points double cap; over-cap reject = clean wind-down signal (ADR-0020) |
+| Budget | `lzy loop budget init\|spend\|remaining` | Drive budget: wall-clock limit and approximate points limit; in-flight overspend remains recorded, then dispatch stops (ADR-0020/0027) |
 | Drive | `lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]` | In-wake unattended execution channel: headless segments inside one wake, risk/lease/budget gates between segments, fence-tokened segment writes; wind-down authors the handoff snapshot itself; exit 0 = done or clean wind-down, 1 = gate reject / segment failure (ADR-0020) |
 | Drive workers | `lzy loop drive --workers N` · `--fast` | Multi-worker waves (0.2.4): N worker chains on sibling worktrees, claim-based step split, wave-terminal merge + evidence re-anchor; `--fast` ≡ `--workers 2`; env-auth required, H3R wake switches off; measured turns ≈2× — see the experiment report before enabling |
 | Step claims | `lzy loop claim [<id>] [--release]` | Anonymous per-step claiming for same-goal multi-worker runs: 48h mutex, blocked-step checks against plan `deps:` edges, `step done` auto-releases; bare form lists claimable steps |
@@ -443,18 +443,23 @@ defend against:
   Node scripts (UserPromptSubmit, SessionStart, Stop, PreToolUse, PostToolUse,
   PostToolUseFailure); their output is injected context for the model, not a
   sandbox boundary.
-- **Independent review OS sandbox (in development, unreleased):** macOS Seatbelt
-  restricts the review engine and descendants; candidate/factual inputs are read-only
+- **Independent review OS sandbox (available since 0.6.0):** macOS Seatbelt
+  applies when its probe passes and an allowed personal API key is available.
+  Otherwise, including Linux/Windows and OAuth-only setups, reviews use app-layer
+  isolation; the run record and doctor disclose the actual tier. In the OS sandbox,
+  Seatbelt restricts the review engine and descendants; candidate/factual inputs are read-only
   and isolated HOME/tmp are writable. An environment allowlist and controlled proxy
   restrict access to allowed API endpoints. HTTP checks the exact origin; HTTPS checks
   CONNECT hostname:port, not tunneled SNI/Host/paths. DNS addresses are pinned at startup;
-  explicitly allowed local/private APIs remain reachable. Unresolved endpoints or missing
-  proxies/backends refuse launch; Linux/Windows do not yet support this entry point. Other drive/queue defaults
-  are unchanged. Managed process groups are reclaimed on normal exit/interruption;
-  doctor reports SIGKILL residues for `lzy review cleanup <runId>`. Allowed API
+  explicitly allowed local/private APIs remain reachable. An unresolved endpoint or
+  unavailable proxy refuses sandbox launch. Other drive/queue defaults are unchanged.
+  Cleanup targets the managed process group; descendants in independent groups can
+  survive, including ordinary host shell children. After SIGKILL, doctor reports
+  registered residues; `lzy review cleanup <runId>` removes dead-owner configuration
+  copies/tmp and does not prove all descendants have stopped. Allowed API
   credentials remain readable and the endpoint can receive data. This does not promise
-  prevention of all exfiltration, complete hostile-child reclamation, review correctness
-  or a hard spending cap. [Scope and recovery](docs/guide/en.md#os-sandbox-for-independent-reviews-in-development-unreleased).
+  prevention of all exfiltration, complete descendant reclamation, review correctness
+  or a hard spending cap. [Scope and recovery](docs/guide/en.md#os-sandbox-for-independent-reviews-available-since-060).
 - **Install footprint is the engine's official plugin cache** — enabling flows
   through the engine's official CLI, and LazyZCode never writes your
   `config.json`.

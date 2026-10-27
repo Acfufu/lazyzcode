@@ -407,33 +407,43 @@ patterns keep a declaration grantable instead of refused:
 - When in doubt, declare narrowly and let `lzy review reuse` print the per-reason
   fallback — a refused path names exactly what was missing.
 
-## OS sandbox for independent reviews (in development, unreleased)
+<a id="os-sandbox-for-independent-reviews-in-development-unreleased"></a>
 
-This describes the development contract, not an upgrade to the published 0.5.0
-isolation boundary. `lzy review run` and `recheck` wrap the review engine and its
-descendants in macOS Seatbelt. Candidate snapshots and factual inputs are read-only;
+## OS sandbox for independent reviews (available since 0.6.0)
+
+This capability shipped in 0.6.0 and is included in 0.6.1. The guarantee depends
+on the detected platform and authentication tier described below. When the Seatbelt
+probe passes and an allowed personal API key is available, `lzy review run` and
+`recheck` use the os-sandbox tier, wrapping the engine and its descendants in macOS
+Seatbelt. Candidate snapshots and factual inputs are read-only;
 the isolated HOME and tmp are writable. Path metadata queries remain allowed, so
 file existence is not hidden. An environment allowlist excludes inherited
 host secrets, NODE_OPTIONS, DYLD settings and proxies. PERSONAL configuration still
 requires an explicit provider allowlist; BUILTIN templates are copied into the
-isolated HOME too. OAuth-only authentication remains unavailable.
+isolated HOME too. Without both tier prerequisites, including Linux/Windows,
+OAuth-only setups and no enabled allowed key, reviews use app-layer isolation:
+isolated HOME and facts-only checks remain, authentication uses envAuth or an OAuth
+credential copy, and there is no OS confinement. The run record's
+`isolation {level,backend,auth}` and doctor disclose the tier. Unreadable or
+unrecognized provider configuration still refuses launch.
 
-Network access goes through a parent-process proxy for endpoints from allowed
+In the os-sandbox tier, network access goes through a parent-process proxy for endpoints from allowed
 PERSONAL `api.baseUrl` values or BUILTIN template defaults. Plain HTTP forwarding
 checks the exact origin. HTTPS permits only CONNECT to the configured hostname:port;
 it does not inspect TLS SNI, HTTP Host or paths inside the tunnel. DNS addresses are
 resolved and pinned when the proxy starts, not resolved again per request in this run.
 Explicitly allowed local/private API endpoints remain reachable. An unresolved
-endpoint, unavailable proxy or OS backend, or failed probe refuses launch without
-falling back to an unrestricted process. Linux/Windows
-do not yet support this review entry point. Other drive/queue defaults are unchanged.
+endpoint or unavailable proxy refuses sandbox launch. Other drive/queue defaults
+are unchanged.
 
-Normal exit, timeout and catchable interruption reclaim the managed process group
-and credential copies/tmp. Descendants that deliberately use `setsid` retain OS
-restrictions, but complete process reclamation is not guaranteed. After SIGKILL,
+Normal exit, timeout and catchable interruption attempt to reclaim the managed
+process group and credential copies/tmp. Descendants in independent process groups
+retain OS restrictions in the sandbox tier, but may survive cleanup; ordinary host
+shell children can use such groups too. After SIGKILL,
 use `lzy doctor` to inspect residues and `lzy review cleanup <runId>` to remove
 registered configuration copies and tmp only after their owner is no longer alive.
-Transcripts and usage databases remain. Allowed API credentials are readable by the
+This command does not prove all descendants have stopped. Transcripts and usage
+databases remain. Allowed API credentials are readable by the
 reviewer and the allowed endpoint can receive data. This is not a container/VM and
 does not guarantee prevention of all exfiltration, review correctness or a hard
 spending cap. See [ADR-0038](../adr/0038-review-os-sandbox.md).
@@ -944,6 +954,13 @@ Privacy: zero telemetry; diagnostics are computed locally and printed locally.
   claims and dirt first).
 - Trigger matching is deliberately stratified — if you want the loop from
   mid-sentence, say `lazyzcode:zw` or `ultrawork`.
+- **Upgrading to 0.6.2+ while old writers run**: the cross-process usage-ledger
+  lock landed in 0.6.2; writers from earlier releases do not take it, so an
+  in-flight `lzy review` / harvest append from a pre-0.6.2 process can bypass
+  serialization while you have already upgraded elsewhere. Finish or stop old
+  writers before upgrading. Legacy records without session identities are
+  preserved as-is — reconcile them against the source run archives; ledger
+  history is never rewritten automatically.
 
 ## Security & trust surface
 

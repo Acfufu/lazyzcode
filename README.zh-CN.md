@@ -140,7 +140,7 @@ lzy uninstall        # 优先走引擎官方 plugins uninstall
 | Tier | `lzy loop tier heavy` | LIGHT→HEAVY 单向升级；HEAVY 无 PASS 评审采纳被机器拒（采纳时点门） |
 | Risk | `lzy loop risk <level>` | risk_class 单向升级（low/med/high/restricted）；HIGH+ 由 drive 入口门拒入无人值守车道（ADR-0020） |
 | Lease | `lzy loop lease acquire\|heartbeat\|release\|reclaim` | 运行级认领：分钟级互斥+心跳续期；fence 令牌申报写路径；`reclaim`=僵尸租约出口（持有进程已死自动回收，仍活须 `--force`）（ADR-0020） |
-| Budget | `lzy loop budget init\|spend\|remaining` | 运行预算：墙钟+积分双硬顶；超顶拒=干净收束信号（ADR-0020） |
+| Budget | `lzy loop budget init\|spend\|remaining` | 运行预算：墙钟限制＋积分近似限制；在途超额如实记账，停止后续派发（ADR-0020/0027） |
 | Drive | `lzy loop drive [--wall-ms N] [--max-segments N] [--mode m]` | 唤起内无人值守执行通道：一次唤起内 headless 段循环，段间查 risk/lease/预算三门，段内写带 fence 令牌；收束自写交接快照；退出码 0=done 或干净收束，1=门拒/段失败（ADR-0020） |
 | Drive workers | `lzy loop drive --workers N` · `--fast` | 多工人波编排（0.2.4）：N 条工人链在兄弟 worktree 并行，认领制分派步，波终 merge+证据重锚；`--fast` ≡ `--workers 2`；前提 env-auth 且 H3R 唤醒开关关闭；实测 turns≈2×——启用前读实验报告 |
 | 步级认领 | `lzy loop claim [<id>] [--release]` | 同目标多工人的匿名步级认领：48h 互斥、按计划 `deps:` 依赖边做阻塞校验、`step done` 自动释放；无参列可认领集 |
@@ -379,15 +379,18 @@ lazyzcode/
 - **钩子执行本地代码。** 六个生命周期事件运行本插件的本地 Node 脚本
   （UserPromptSubmit、SessionStart、Stop、PreToolUse、PostToolUse、PostToolUseFailure）；
   其输出是对模型的注入上下文，不是沙箱边界。
-- **独立评审 OS 沙盒（开发中，未发布）**：macOS Seatbelt 约束评审引擎及后代，
+- **独立评审 OS 沙盒（0.6.0 起已发布）**：Seatbelt 探针通过且允许的个人 API key
+  可用时启用；否则（含 Linux/Windows、OAuth-only）使用 app-layer 隔离，运行档和
+  doctor 披露实际分级。OS 沙盒中，macOS Seatbelt 约束评审引擎及后代，
   候选/事实只读、隔离 HOME/tmp 可写；环境白名单与受控代理将网络限于已允许
   provider 的 API endpoint。HTTP 精确核 origin；HTTPS 只核 CONNECT hostname:port，
   不核隧道内 SNI/Host/路径。启动时固定 DNS 地址，显式本地/内网 API 仍可达；
-  endpoint 不可解析、代理或后端缺席拒启动，Linux/Windows 暂不支持该入口；
-  drive/queue 默认行为不变。正常/中断清理受管进程组，SIGKILL 残留由 doctor
-  提示并经 `lzy review cleanup <runId>` 回收。准入 API 凭据可读且 endpoint 能接收
-  数据，不保证所有外泄防护、恶意后代全回收、评审正确或预算硬帽。
-  [范围与恢复方式](docs/guide/zh.md#独立评审的-os-沙盒开发中未发布)。
+  endpoint 不可解析或代理不可用时拒绝沙盒启动；drive/queue 默认行为不变。
+  清理针对受管进程组；另起进程组的后代可能存活，包含普通宿主 shell 子进程。
+  SIGKILL 后 doctor 提示登记残留，`lzy review cleanup <runId>` 清理无活 owner 的
+  配置副本/tmp，不证明全部后代已停止。准入 API 凭据可读且 endpoint 能接收
+  数据，不保证所有外泄防护、后代全回收、评审正确或预算硬帽。
+  [范围与恢复方式](docs/guide/zh.md#独立评审的-os-沙盒060-起已发布)。
 - **安装落点是引擎官方插件缓存**——启用走引擎官方 CLI，LazyZCode 绝不写你的
   `config.json`。
 - **双分发链，用户可自验。** npm：把发布公示的 shasum 与

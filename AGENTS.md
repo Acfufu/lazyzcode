@@ -8,9 +8,10 @@
 做 ZCode 版的 [lazycodex](https://github.com/code-yeongyu/lazycodex)（OmO 引擎的 Codex 发行版，MIT）。形态：**ZCode 插件 + 轻量 CLI（`lzy`）**——插件承载 skills/hooks/agents（纪律层），CLI 承载目标循环状态机与安装器。
 
 
-## 2. 当前状态（2026-10-23 短表；完整历史档案 → docs/history.md）
+## 2. 当前状态（2026-10-25 短表；历史 → docs/history.md）
 
-- **已发布**：npm `lazyzcode` **0.6.1**（latest，2026-10-24）＝SQLite-switch patch（0.6.0 对象 provenance 迁移回归修复＋计划门词边界＋D1 测试账本隔离；966/966·win32=CI 腿；**宿主仓已迁 SQLite＝活体狗粮**）。前版 0.6.0＝SQLite 切换生效（显式迁移/误写检测/engines ≥24；电池 29/29＋10/10）。
+- **已发布**：npm `lazyzcode` **0.6.1**（latest，2026-10-24）；966/966，win32=CI。宿主 SQLite、Node ≥24 地板生效；变更与证据见历史与清单。
+- **本地在研**：可靠性补丁（ADR-0040/0041）；R0 未过，macOS ES 缺授权；进度 → docs/reports/reliability-r0-native-2026-10-25.md。
 - 发布/评审机械与报告库 → docs/release-checklist.md、docs/reviews/。
 
 ## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19，设计前必读）：引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔0.16.5→0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组，lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**（engine-3140-sync 只锚版本漏检教训）
@@ -34,7 +35,7 @@
 | #27 | UPS 人权门 | 批准绑定 exact-hash（L2）；--force 不越过；0.3.0 起契约 goal 批准对象=contractHash（ADR-0024） |
 | #28 | runtime kernel | lease/fencing/budget 三件一体 + risk 机器面 |
 | #29 | 推进信号 | 状态集口径（done∪头树∪绿节点∪登记数；不含脏树）；单源 core/progress.js |
-| #30 | H3R | 原型休眠、执法点前移三级、去留=短期 A、复验触发器化（10-01） |
+| #30 | H3R | 原型休眠、三级执法、短期 A、触发复验（10-01） |
 | #31 | fast 形态 | --workers 波编排保留主线、LIGHT only、不默认化、判据①灰带归档（10-01） |
 | #32 | 积分预算执法 | 近似限制语义（逐请求完成检测+停止下一次派发+在途超额如实记账） |
 | #33 | M1 契约授权 | 批准对象=contractHash、撤回=UPS 短码、契约内重规划免人权门、无契约 goal 保持现行门 |
@@ -56,10 +57,12 @@
 | #49 | 采纳判据 | 主门不动＋产品标准单列：质量不劣＋收束 100%＋完成率≥1/2＋积分不升，不得称质量提升（2026-10-07） |
 | #50 | 评估集重锚 | 三仓×2 新任务独立封存（v3＋新 seed）；M0＋oracle-v3 转开发材料（2026-10-07） |
 | #51 | M2 冻结面 | deferred 8 条冻结前修；冻结点=M2，基线=v0.4.1（2026-10-07） |
-| #52 | 评审 OS 沙盒 | 仅独立评审：Seatbelt 引擎+endpoint 代理+清理；分级=双条件钉沙盒 tier，缺一降级 app-layer（OAuth 透传暴露中性）（ADR-0038，已随 0.6.0 发布） |
-| #53 | SQLite 存储地板 | 三族迁单库 state.sqlite（node:sqlite 零依赖）；地板 Node ≥24.0.0（22 线不入支持面）；只用 SQL 层操作；前向单向不回退；engines 已收紧 ≥24（P3，2026-10-23；ADR-0039） |
+| #52 | 评审 OS 沙盒 | 仅独立评审，Seatbelt+个人 key 双条件，否则 app-layer；OAuth 透传暴露中性（ADR-0038，0.6.0 已发布） |
+| #53 | SQLite 存储地板 | 三族迁 state.sqlite（内建零依赖），Node ≥24.0.0；SQL 层操作、单向迁移（ADR-0039，已发布；2026-10-23） |
+| #54 | 全局用量互斥 | JSONL 保留；空 SQLite 只作锁，累计快照锁内求差，spool 按事件隔离（ADR-0040，本地未发布，2026-10-25） |
+| #55 | 进程托管方向 | Windows 原生 helper＋Linux cgroup；macOS 原生 ES 先验授权，不切 VM；R0 未过（ADR-0041，2026-10-25） |
 
-其余 #1-#24 全表 → docs/decisions.md。
+其余 #1-#24 → docs/decisions.md。
 
 ## 5. 设计宪法与红线
 
@@ -88,7 +91,7 @@ docs/
   guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架
   spikes/p0-day1.md          ← P0 首日三 spike 结果
-  adr/0001..0039-*.md         ← 架构决策原文（§4 摘要/decisions.md 全表）
+  adr/0001..0040-*.md         ← 架构决策原文（§4 摘要/decisions.md 全表）
   reviews/ release-checklist.md  ← 评审报告/处置记录 + 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist
   handoffs/ templates/        ← 安装价值校准交接/记录模板
   diagnostics/               ← 运行环境诊断记录（钩子 env/PATH）
@@ -107,7 +110,7 @@ artifacts/                   ← 本地产物（gitignore 不入库）
 **双证据（red-green）**：F 项断言红半（改前失败）+绿半（改后通过）；豁免须一行理由。_Avoid_: 测试先行
 **tier（轻重分级）**：LIGHT 精简 / HEAVY 全套纪律；只升不降。_Avoid_: 模式切换
 
-其余全部术语（失效 DAG、世系、认领、交接快照、人权门、H3R、复合指纹、wave、lease、fencing 等）→ CONTEXT.md。
+其余术语 → CONTEXT.md。
 
 ## 9. 维护规则
 

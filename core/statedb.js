@@ -251,6 +251,14 @@ export function setBudget(db, { pointsLimit = null, wallLimitMs = null, notes = 
 // 与 appendLedgerEntry 门面（queue.js）同一规约；原语层直绑对象曾是 0.6.0 迁移导入炸点。
 const provText = (v) => (v == null || typeof v === "string" ? v ?? null : JSON.stringify(v));
 
+function deliveryProvenance(v) {
+  if (v == null || typeof v === "string") return `${v ?? ""}:delivery`;
+  if (Array.isArray(v) || (typeof v === "object" && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null))) {
+    return { source: v, phase: "delivery" };
+  }
+  throw new StatedbError("交付 provenance 须为字符串、JSON 对象/数组或 null；拒绝隐式字符串化");
+}
+
 // 读侧双态还原：列内 {/[ 起头的 JSON 文本还原为对象/数组（写侧 stringify 的镜像）；裸字符串、
 // null、以及可 parse 但非对象的字面量（"123"/"true"）一律原样，不误还原。
 const provRestore = (v) => {
@@ -405,7 +413,7 @@ export function settleDispatch(db, {
       // 「wall N 段」口径与 JSON settleTxLedger 逐字对齐（交付段不入段墙钟计数）。
       const baseMs = tx.delivering_since_ms != null ? Math.max(0, Date.now() - tx.delivering_since_ms) : 0;
       const e = insertEvent(db, {
-        authorization, provenance: `${provenance ?? ""}:delivery` || null, itemId: tx.item_id, txId,
+        authorization, provenance: deliveryProvenance(provenance), itemId: tx.item_id, txId,
         sessionId: null, at: sealedAt, kind: "wall", dedupKey: `wall:${txId}:delivery`,
         ms: Number.isFinite(deliveryWall.ms) ? deliveryWall.ms : baseMs, note: deliveryWall.note ?? null,
       });

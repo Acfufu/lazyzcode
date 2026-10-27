@@ -3,13 +3,14 @@
 // 归因用「简化 OR + 人工复核」（红队 R4 否决过巧公式）：目标时间窗 ∩（会话目录=本仓 ∪
 // 认领会话集）。spawn 豁免声明：本模块经 hostdb 查 sqlite3——plan-v2 §4-2 明示豁免，
 // loop.js 零 spawn 纪律不受影响。
-import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { appendFileSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, writeFileSync, renameSync, rmSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import { queryHostDb } from "./hostdb.js";
 import { billingDbPath } from "./paths.js";
 import { utc8HourDay } from "./ratelimit.js";
+import { withSandboxUsageLock } from "./sandbox-usage-lock.js";
 
 // ── 系数表（官方常设规则，人工维护，沿 PEAK_WINDOWS 先例：对照官方文档逐条更新并保留源）
 //
@@ -360,9 +361,23 @@ export function sandboxLedgerLine(cwd, record, now = new Date()) {
   };
 }
 
-export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
+export function appendSandboxUsage(cwd, record, { now = new Date(), lockTimeoutMs } = {}) {
   const line = sandboxLedgerLine(cwd, record, now);
   if (!line) return false;
+  const dir = sandboxUsageDir();
+  return withSandboxUsageLock(dir, () => appendSandboxLine(dir, line, now, completeSandboxLines(dir)), { timeoutMs: lockTimeoutMs });
+}
+
+// Writers may not treat damaged/partially written history as an empty ledger.
+function completeSandboxLines(dir) {
+  for (const name of readdirSync(dir).filter(n => n.endsWith(".jsonl"))) assertRegularTarget(join(dir, name));
+  const { lines, diag } = readSandboxUsageWithDiag({ dir });
+  if (diag.dirState !== "ok" || diag.corruptLines) throw new Error(`全局用量账本完整性失败：${diag.dirState}，损坏行 ${diag.corruptLines}；保留原账并核对，拒绝追加`);
+  return lines;
+}
+
+// Caller owns the directory-wide mutex. No read/compute/append race.
+function appendSandboxLine(dir, line, now, lines) {
   // 幂等去重（收口③＋N3/F4＋a1.r2 F-1/F-2 修复）：
   // - 携事件身份行（harvest.instance 或 watermark 在场）＝评审运行器行（instance）/补账行
   //  （instance+watermark）：重放判定=(project, runId, instance, watermark) 四元组全等——
@@ -378,7 +393,6 @@ export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
       0,
     )}`;
   if (line.runId) {
-    const lines = readSandboxUsageLines();
     if (line.harvest) { // a1.r7 F-3：携身份对象即走事件身份四元组（instance/watermark 缺一也判，不落回数值指纹）；无对象=旧形行才走 fp 兼容路
       const sameEvent = (l) =>
         l.project === line.project &&
@@ -390,12 +404,92 @@ export function appendSandboxUsage(cwd, record, { now = new Date() } = {}) {
       return false;
     }
   }
-  const dir = sandboxUsageDir();
-  mkdirSync(dir, { recursive: true });
   const month = new Date(now.getTime() + 8 * 3_600_000).toISOString().slice(0, 7);
   assertRegularTarget(join(dir, `${month}.jsonl`)); // a1.r12 F-2：写点防预置符号链接/非普通文件（同仓守卫家法）
-  appendFileSync(join(dir, `${month}.jsonl`), `${JSON.stringify(line)}\n`, { mode: 0o600 });
+  appendFileSync(join(dir, `${month}.jsonl`), `${JSON.stringify(line)}\n`, { mode: 0o600, flush: true });
   return true;
+}
+
+// Cumulative sources (review runner and harvest) share one delta calculation.
+// This pure function is also used for dry-run previews; apply MUST recompute it
+// under the mutex. Old delta-event callers retain appendSandboxUsage semantics.
+export function sandboxUsageSnapshotDelta(cwd, record, lines) {
+  if (!Array.isArray(record?.metering?.usage) || record.metering.usage.length === 0) return null;
+  if (typeof record.runId !== "string" || !record.runId) throw new Error("累计用量快照缺 runId，拒绝猜测事件身份");
+  const project = String(cwd ?? "") || null;
+  const instance = record.harvest?.instance ?? null;
+  const sessions = snapshotSessions(record);
+  const prior = lines.filter(l => {
+    if (l.project !== project || l.runId !== record.runId) return false;
+    if (!l.harvest || (l.harvest.instance ?? null) === instance) return true;
+    if (instance === null) throw new Error("累计快照缺来源实例，已有具名实例不可再次全额入账；保留来源库后重试");
+    if (!sessions) return false; // legacy input retains the exact-instance contract
+    const old = snapshotSessions(l);
+    if (!old) throw new Error("历史实例缺会话集合，无法区分同运行扩展与重建；保留来源库后核对，拒绝猜测差量");
+    if (old.every(s => sessions.includes(s))) return true;
+    if (old.some(s => sessions.includes(s))) throw new Error("来源会话集合仅部分覆盖已入账实例；须重新读取完整快照，拒绝混合计量");
+    return false; // proven disjoint: a genuinely different run with the same runId
+  });
+  const columns = ["inputTokens", "cacheReadTokens", "outputTokens", "points"];
+  const number = n => { if (n == null) return 0; if (typeof n !== "number" || !Number.isFinite(n) || n < 0) throw new Error("用量快照或历史计量损坏：必须是有限非负数"); return n; };
+  const groups = rows => {
+    const map = new Map();
+    for (const u of rows) {
+      if (!u || typeof u !== "object") throw new Error("用量快照或历史计量损坏");
+      const key = JSON.stringify([u.provider ?? "", u.model ?? ""]);
+      const g = map.get(key) ?? { provider: u.provider, model: u.model, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, points: 0 };
+      for (const col of columns) g[col] += number(u[col]);
+      map.set(key, g);
+    }
+    return map;
+  };
+  if (prior.some(l => !Array.isArray(l.usage))) throw new Error("历史用量行损坏：usage 非数组，拒绝当零");
+  const truth = groups(record.metering.usage), existing = groups(prior.flatMap(l => l.usage));
+  const delta = [];
+  let advanced = false, regressed = false;
+  for (const key of new Set([...truth.keys(), ...existing.keys()])) {
+    const current = truth.get(key), old = existing.get(key);
+    const u = { provider: current?.provider ?? old?.provider, model: current?.model ?? old?.model };
+    for (const col of columns) {
+      const diff = number(current?.[col]) - number(old?.[col]);
+      const epsilon = col === "points" ? 1e-9 : 0;
+      if (diff > epsilon) advanced = true;
+      if (diff < -epsilon) regressed = true;
+      u[col] = diff > epsilon ? diff : 0;
+    }
+    if (columns.some(col => u[col] > 0)) delta.push(u);
+  }
+  const points = number(record.metering.points) - prior.reduce((s, l) => s + number(l.points), 0);
+  if (points > 1e-9) advanced = true;
+  if (points < -1e-9) regressed = true;
+  if (advanced && regressed) throw new Error("用量快照与已入账记录不单调，拒绝混合新旧读数；保留来源库后重试");
+  if (!advanced) return null; // duplicate or an older, fully covered source snapshot
+  return { ...record, metering: { ...record.metering, usage: delta, points: Math.max(0, points) } };
+}
+
+function snapshotSessions(record) {
+  const ids = record.harvest?.sessionIds;
+  if (ids == null) {
+    // A historical single-session record can still prove its own identity.
+    return record.sessionId && instanceDigest([record.sessionId]) === record.harvest?.instance ? [record.sessionId] : null;
+  }
+  if (!Array.isArray(ids) || ids.some(s => typeof s !== "string" || !s)) throw new Error("用量来源会话集合损坏");
+  const normalized = [...new Set(ids)].sort();
+  if (instanceDigest(normalized) !== (record.harvest?.instance ?? null)) throw new Error("用量来源实例摘要与会话集合不一致");
+  return normalized.length ? normalized : null;
+}
+
+export function appendSandboxUsageSnapshot(cwd, record, { now = new Date(), lockTimeoutMs } = {}) {
+  if (!Array.isArray(record?.metering?.usage) || record.metering.usage.length === 0) return false;
+  const dir = sandboxUsageDir();
+  return withSandboxUsageLock(dir, () => {
+    const lines = completeSandboxLines(dir);
+    const delta = sandboxUsageSnapshotDelta(cwd, record, lines);
+    if (!delta) return false;
+    const appended = appendSandboxLine(dir, sandboxLedgerLine(cwd, delta, now), now, lines);
+    if (!appended) throw new Error("同一事件身份出现增长读数，拒绝静默丢弃差量；须重新取得来源水位后补账");
+    return true;
+  }, { timeoutMs: lockTimeoutMs });
 }
 
 // 写点守卫（a1.r12 F-2）：目标在场且非 regular 文件=拒（拒跟随符号链接/设备/FIFO）。
@@ -413,11 +507,24 @@ function assertRegularTarget(p) {
 export function spoolPendingAppend(cwd, record, err, now = new Date()) {
   try {
     const dir = sandboxUsageDir();
-    mkdirSync(dir, { recursive: true });
-    const rid = String(record?.runId ?? "unknown").replace(/[^\w.-]/g, "_");
-    assertRegularTarget(join(dir, `.spool-pending-${rid}.json`));
-    writeFileSync(join(dir, `.spool-pending-${rid}.json`), `${JSON.stringify({ at: now.toISOString(), project: String(cwd ?? "") || null, runId: record?.runId ?? null, error: String(err?.message ?? err).slice(0, 200) })}\n`, { mode: 0o600 });
-    return true;
+    return withSandboxUsageLock(dir, () => {
+      const project = String(cwd ?? "") || null;
+      const hasEvent = record?.harvest?.instance != null || record?.harvest?.watermark != null;
+      const identity = [project, record?.runId ?? null, record?.harvest?.instance ?? null, record?.harvest?.watermark ?? null,
+        hasEvent ? null : record?.startedAt ?? randomUUID()]; // no evidence of identity: preserve each receipt
+      const digest = createHash("sha256").update(JSON.stringify(identity)).digest("hex");
+      // Keep the legacy path guard but never overwrite/delete legacy receipts.
+      const rid = String(record?.runId ?? "unknown").replace(/[^\w.-]/g, "_");
+      assertRegularTarget(join(dir, `.spool-pending-${rid}.json`));
+      const target = join(dir, `.spool-pending-${digest}.json`);
+      assertRegularTarget(target);
+      const tmp = join(dir, `.spool-${randomUUID()}.tmp`);
+      try {
+        writeFileSync(tmp, `${JSON.stringify({ version: 2, at: now.toISOString(), project, runId: record?.runId ?? null, harvest: record?.harvest ?? null, error: String(err?.message ?? err).slice(0, 200) })}\n`, { mode: 0o600, flag: "wx", flush: true });
+        renameSync(tmp, target);
+      } finally { rmSync(tmp, { force: true }); }
+      return true;
+    });
   } catch {
     return false;
   }

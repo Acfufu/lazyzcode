@@ -24,6 +24,39 @@ const MAJOR = Number(process.versions.node.split(".")[0]);
 const FLOOR_SKIP = MAJOR >= 24 ? false : `地板 Node ≥24.0.0（拍板 2026-10-16；22 线不入支持面）；当前 v${process.versions.node} 跳过`;
 const AUTH = { slug: "fixture-goal", contractHash: "ab".repeat(32) };
 
+test("D2: delivery provenance preserves structured source and old strings", { skip: FLOOR_SKIP }, () => {
+  const dir = freshDir();
+  const db = openStore(stateDbPath(dir));
+  try {
+    ensureSchema(db);
+    const cases = [
+      ["source", "source:delivery"],
+      [null, ":delivery"],
+      [{ source: "review", runId: "r" }, { source: { source: "review", runId: "r" }, phase: "delivery" }],
+      [["a", "b"], { source: ["a", "b"], phase: "delivery" }],
+    ];
+    cases.forEach(([provenance, expected], i) => {
+      putItem(db, `q-${i}`);
+      occupyDispatch(db, { txId: `tx-${i}`, itemId: `q-${i}`, goalSlug: "fixture-goal", limits: {} });
+      settleDispatch(db, { txId: `tx-${i}`, segments: [], provenance, deliveryWall: { ms: 25 } });
+      const row = readSnapshot(db).events.find(e => e.txId === `tx-${i}`);
+      assert.deepEqual(row.provenance, expected);
+    });
+    [123, false, new Date("2026-01-01T00:00:00Z")].forEach((provenance, i) => {
+      const txId = `unsupported-${i}`;
+      putItem(db, txId);
+      occupyDispatch(db, { txId, itemId: txId, goalSlug: "fixture-goal", limits: {} });
+      assert.throws(() => settleDispatch(db, {
+        txId, segments: [{ sessionId: "s", durationMs: 10 }], provenance,
+        queryPoints: () => ({ absent: false, unpriced: [], points: 1 }), deliveryWall: { ms: 25 },
+      }), /交付 provenance/);
+      const snap = readSnapshot(db);
+      assert.equal(snap.events.filter(e => e.txId === txId).length, 0, "whole settlement must roll back");
+      assert.equal(snap.txs.find(tx => tx.txId === txId).phase, "open");
+    });
+  } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
 function freshDir() {
   return mkdtempSync(join(tmpdir(), "lzy-statedb-"));
 }

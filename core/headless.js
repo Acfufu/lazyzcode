@@ -200,6 +200,7 @@ function defaultRun({ argv, cwd, env, timeoutMs, launcher, processTree, signal }
     let settled = false;
     let spawnError = null;
     let cleanupError = null;
+    let cleanupAttempted = false;
     const timers = new Set();
     const later = (fn, ms) => {
       const timer = setTimeout(fn, ms);
@@ -211,6 +212,13 @@ function defaultRun({ argv, cwd, env, timeoutMs, launcher, processTree, signal }
       child.stderr?.destroy();
     };
     const kill = () => {
+      // exit/close can both run after timeout or cancellation. Never signal a
+      // numeric PGID twice: Darwin may report EPERM once only zombies remain,
+      // and an exited group's number can eventually belong to another run.
+      // A first failure remains visible; repeating an unverified target is not
+      // a recovery mechanism.
+      if (cleanupAttempted) return;
+      cleanupAttempted = true;
       try {
         if (processTree) {
           if (child.pid) process.kill(-child.pid, "SIGKILL");

@@ -19,7 +19,7 @@ import { createGit } from "./git.js";
 import { findEngine } from "./paths.js";
 import { HEADLESS_DEFAULT_TIMEOUT_MS, spawnHeadless, detectHeadlessAuth } from "./headless.js";
 import { effectiveAuthorization, loadContract } from "./contract.js";
-import { querySessionPoints, appendSandboxUsage, sandboxUsageInstance, sandboxUsageSids, spoolPendingAppend } from "./cost.js";
+import { querySessionPoints, appendSandboxUsageSnapshot, instanceDigest, sandboxUsageSids, spoolPendingAppend } from "./cost.js";
 import { createReviewSandbox, reviewSandboxCapability, registerReviewCleanup, cleanupReviewSandbox, prepareReviewProviderRuntime, copyOAuthCredential } from "./review-sandbox.js";
 import { findReviewTranscript, queryReviewHostDb } from "./review-artifacts.js";
 
@@ -1426,15 +1426,17 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     // 无 spawn 但 flag 面已按 leak 落 failures；spawn 面各分类已落——validity 取首因
     const validity = failures.length === 0 ? { status: "valid", reason: null, detail: null } : { status: "invalid", reason: failures[0][0], detail: failures.map(([r, d]) => `${r}: ${d}`).join("；") };
     // F-1/F-2 修复（a1.r2）：实例身份=来源子库 distinct sid 集摘要（引擎会话全局唯一——
-    // 重建同名 run 必异、同 run 推进保持）；沙盒 tier 下经 sandbox 门读取。失败=null（行不携
-    // 实例，去重回退 watermark/旧形口径，诚实降级）。
+    // 重建同名 run 必异、同 run 推进保持或扩展）；沙盒 tier 下经 sandbox 门读取。
+    // 失败=null；累计入口遇到无法核验的既存实例会具名拒绝，保留运行档与补账回执。
     let harvestInstance = null;
+    let harvestSessionIds = null;
     if (spawned) {
       try {
-        harvestInstance = sandboxUsageInstance(join(iso.home, ".zcode", "cli", "db", "db.sqlite"), {
+        harvestSessionIds = sandboxUsageSids(join(iso.home, ".zcode", "cli", "db", "db.sqlite"), {
           ...(sandbox?.metadata?.level === "B" ? { queryDb: (dbPath, sql) => queryReviewHostDb({ home: iso.home, dbPath, sql, sandbox }) } : {}),
           ...(deps.dbSids ? { queryDb: deps.dbSids } : {}),
         });
+        harvestInstance = instanceDigest(harvestSessionIds ?? []);
       } catch {
         harvestInstance = null;
       }
@@ -1468,7 +1470,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
       recheck: recheckOf ? { requested: true, targets: Array.isArray(recheckOf) ? recheckOf : null, contestedOf } : null,
       containment: spawned ? { phantomCount: containmentPhantoms.length, phantoms: containmentPhantoms.slice(0, 50) } : null,
       isolation,
-      harvest: spawned ? { instance: harvestInstance } : null, // 事件身份面（a1.r7 F-3：spawned 即携对象——身份缺失也不落回数值指纹判重）
+      harvest: spawned ? { instance: harvestInstance, sessionIds: harvestSessionIds } : null, // 事件身份面（a1.r7 F-3：spawned 即携对象——身份缺失也不落回数值指纹判重）
       sandbox: sandbox ? { ...sandbox.metadata, deniedConnections: sandbox.stats?.denied ?? 0, cleanup: cleanupState?.state ?? "unknown" } : null,
     };
     const out = await finishRun(cwd, reserve, record);    // 明烧落账（0.5.0，2026-10-02 commandcode 暗烧案）：metering.usage 在场的运行（含
@@ -1477,7 +1479,7 @@ export async function runReview(cwd, { duty = BASELINE_DUTY_ID, timeoutMs, reche
     // 为准，此处只喂聚合面（lzy loop cost / doctor / TokenTracker）。
     // N4/F5：追加失败不再静默吞——外泄账缺行=观测面缺口，如实上浮（运行档与补账通道仍在）。
     try {
-      (deps.appendUsage ?? appendSandboxUsage)(cwd, out.record);
+      (deps.appendUsage ?? appendSandboxUsageSnapshot)(cwd, out.record);
     } catch (e) {
       console.error(`[lzy] 沙盒外泄账追加失败（用量以运行档 metering.usage 为准，可重跑 harvest 补账）：${String(e?.message ?? e).slice(0, 160)}`);
       (deps.spoolPending ?? spoolPendingAppend)(cwd, out.record, e); // a1.r5 F-3：pending 持久回执

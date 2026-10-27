@@ -7,10 +7,9 @@
 // 与 0.5.0 明烧账本起点一致）的运行；pre 段结构性不补（那一段 TT 侧已回灌过）。
 //
 // 幂等（N3＋a1.r2 F-1/F-2 修复）：事件身份=(project, runId, 实例 sid 集摘要, 来源水位 Σtokens|
-// 最新完成时刻)——同实例同水位=重放（跳过）；水位前进=同实例新差量（追加）；实例异=重建同名
-// run 的新运行（等额不吞）；差量只对**同实例**既存行抵消（跨实例不抵消）。金额/Σtokens 不作
-// 身份。已入账但被截断的「半截账」运行追加差量行（append-only 不改旧行）；sid 列缺席的旧库
-// 实例=null → 回退同缺实例口径（诚实降级）。
+// 最新完成时刻)——同实例同水位=重放（跳过）；水位前进=新差量（追加）。会话集扩展抵消旧子集，
+// 完全不交的实例才视为重建同名 run（等额不吞）；谱系未知或部分交叉则具名拒绝。
+// apply 锁内重算差量，append-only 不改旧行；缺 sid 的旧库仅兼容同缺实例历史，不能猜测身份。
 //
 // 用法： node scripts/harvest-sandbox-usage.mjs            # 干跑，只列将追加的行
 //        node scripts/harvest-sandbox-usage.mjs --apply    # 实际追加
@@ -19,7 +18,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { queryHostDb } from "../core/hostdb.js";
-import { aggregateUsageRows, computePoints, appendSandboxUsage, readSandboxUsageLines, instanceDigest } from "../core/cost.js";
+import { aggregateUsageRows, computePoints, appendSandboxUsageSnapshot, sandboxUsageSnapshotDelta, readSandboxUsageWithDiag, sandboxUsageDir, spoolPendingAppend, instanceDigest } from "../core/cost.js";
 
 const APPLY = process.argv.includes("--apply");
 const CUTOFF = process.env.LZY_HARVEST_CUTOFF || "2026-10-03";
@@ -87,9 +86,10 @@ function walkSandboxDbs(root) {
 const parseRun = (db) => {
   // a1.r5 F-5：取**最后一个** /.lazyzcode/（home 之前最深的那层）——路径上游含祖先 .lazyzcode
   // （嵌套仓/夹具布局）时首个匹配会把 root/runId 解析到上级。
-  const i = db.lastIndexOf("/.lazyzcode/");
+  const pathForSplit = process.platform === "win32" ? db.replaceAll("\\", "/") : db;
+  const i = pathForSplit.lastIndexOf("/.lazyzcode/");
   const root = db.slice(0, i);
-  const seg = db.slice(i + "/.lazyzcode/".length).split("/");
+  const seg = pathForSplit.slice(i + "/.lazyzcode/".length).split("/");
   const runId = seg[1] ?? seg[0]; // <kind>/<runId>/home/... ；home 在 <runId> 下、kind 可能嵌套
   const m = /^(.*)\.a(\d+)\.r(\d+)$/.exec(runId);
   return { root, runId, slug: m ? m[1] : runId, attempt: m ? Number(m[2]) : 1 };
@@ -129,14 +129,9 @@ for (const root of roots) {
   }
 }
 
-const existingAll = readSandboxUsageLines();
-const byRun = new Map();
-for (const l of existingAll) {
-  if (!l?.runId) continue;
-  const k = `${l.project ?? ""}\u0000${l.runId}`; // N3（F3）：既存行比对同键带 project
-  const arr = byRun.get(k) ?? [];
-  arr.push(l);
-  byRun.set(k, arr);
+const { lines: existingAll, diag } = readSandboxUsageWithDiag();
+if (diag.dirState === "unreadable" || diag.corruptLines > 0) {
+  throw new Error(`全局账本完整性失败：${diag.dirState} / 损坏行 ${diag.corruptLines}；保留原账，拒绝把缺口当零`);
 }
 
 const plan = [];
@@ -148,49 +143,19 @@ for (const [, e] of runMap) {
   if (day < CUTOFF) { skippedPre += 1; continue; }
   const agg = computePoints(e.rows);
   const truth = aggregateUsageRows(e.rows);
-  const existing = byRun.get(`${e.root}\u0000${e.runId}`) ?? [];
-  // N3（F4）：来源状态水位=Σtokens|最新完成时刻——同水位=同一来源状态的重放（判重跳过）；
-  // 水位前进=新消耗事件（等额新差量/清理重建的等额新运行 maxDone 必异，均不吞）。金额只是载荷。
-  const truthTok = truth.reduce((s, u) => s + (Number(u.inputTokens) || 0) + (Number(u.cacheReadTokens) || 0) + (Number(u.outputTokens) || 0), 0);
+  const truthTok = truth.reduce((sum, u) => sum + u.inputTokens + u.cacheReadTokens + u.outputTokens, 0);
   const watermark = `${truthTok}|${e.maxDone}`;
-  const instance = instanceDigest(e.sids); // F-1/F-2：实例身份（sid 集摘要；空集=null 回退旧口径）
-  // 重放判定（a1.r2 F-1 修复）：同实例同水位=同一来源状态（跳过）；instance 异=重建同名 run
-  // 的新运行（等额不吞）；水位前进=同实例新差量（追加）。
-  if (existing.some((l) => (l.harvest?.instance ?? null) === instance && l.harvest?.watermark === watermark)) { skippedDup += 1; continue; }
-  // 差量：truth − Σexisting——减**同实例行 + 无身份旧形行**（a1.r2 F-1：跨实例行不参与抵消，
-  // 等额新消耗照常入账；a1.r5 F-2：无 harvest 字段的历史行（0.5.0 期跑出来的运行器行）仍须
-  // 参与抵消，否则同运行会被补账双计——旧形行无实例无从判跨，保守减）。
-  const subtractable = existing.filter((l) => !l.harvest || (l.harvest.instance ?? null) === instance);
-  const exGroups = new Map();
-  let exPoints = 0;
-  for (const l of subtractable) {
-    exPoints += Number(l.points) || 0;
-    for (const u of l.usage ?? []) {
-      const k = `${u.provider ?? ""}|${u.model ?? ""}`;
-      const g = exGroups.get(k) ?? { inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, points: 0 };
-      g.inputTokens += Number(u.inputTokens) || 0;
-      g.cacheReadTokens += Number(u.cacheReadTokens) || 0;
-      g.outputTokens += Number(u.outputTokens) || 0;
-      g.points += Number(u.points) || 0;
-      exGroups.set(k, g);
-    }
-  }
-  const delta = [];
-  let deltaTok = 0;
-  for (const u of truth) {
-    const k = `${u.provider ?? ""}|${u.model ?? ""}`;
-    const ex = exGroups.get(k) ?? { inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, points: 0 };
-    const it = Math.max(0, u.inputTokens - ex.inputTokens);
-    const crt = Math.max(0, u.cacheReadTokens - ex.cacheReadTokens);
-    const ot = Math.max(0, u.outputTokens - ex.outputTokens);
-    const pts = Math.max(0, u.points - ex.points);
-    if (it + crt + ot <= 0 && pts <= 0) continue;
-    delta.push({ provider: u.provider, model: u.model, inputTokens: it, cacheReadTokens: crt, outputTokens: ot, points: pts });
-    deltaTok += it + crt + ot; // a1.r7 F-5：口径与相邻行/全仓一致（含 cacheRead）
-  }
-  const deltaPoints = Math.max(0, agg.points - exPoints);
-  if (delta.length === 0 && deltaPoints <= 0) { skippedDup += 1; continue; }
-  plan.push({ ...e, day, delta, deltaTok, deltaPoints, priorRows: existing.length, watermark, instance });
+  const instance = instanceDigest(e.sids);
+  const record = {
+    runId: e.runId, slug: e.slug, attempt: e.attempt, validity: null,
+    metering: { usage: truth, points: agg.points },
+    harvest: { instance, watermark, sessionIds: [...new Set(e.sids.filter(s => typeof s === "string" && s))].sort() },
+  };
+  const preview = sandboxUsageSnapshotDelta(e.root, record, existingAll);
+  if (!preview) { skippedDup += 1; continue; }
+  const deltaTok = preview.metering.usage.reduce((sum, u) => sum + u.inputTokens + u.cacheReadTokens + u.outputTokens, 0);
+  plan.push({ ...e, day, record, deltaTok, deltaPoints: preview.metering.points,
+    priorRows: existingAll.filter(l => l.project === e.root && l.runId === e.runId).length });
 }
 
 plan.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : b.deltaTok - a.deltaTok));
@@ -213,17 +178,18 @@ if (!APPLY) {
   process.exit(0);
 }
 let appended = 0;
+let failed = 0;
 for (const p of plan) {
-  const record = {
-    runId: p.runId,
-    slug: p.slug,
-    attempt: p.attempt,
-    validity: null,
-    metering: { usage: p.delta, points: p.deltaPoints },
-    harvest: { instance: p.instance, watermark: p.watermark }, // 事件身份=实例（F-1/F-2 主判）+水位（读面注记）
-  };
   const now = new Date(p.maxDone || p.maxStart || Date.now());
-  if (appendSandboxUsage(p.root, record, { now })) appended += 1;
-  else console.log(`  跳过（appendSandboxUsage 判重）: ${p.runId}`);
+  try {
+    // The preview can be stale. Re-read and recompute under the shared writer lock.
+    if (appendSandboxUsageSnapshot(p.root, p.record, { now })) appended += 1;
+    else console.log(`  跳过（提交时已覆盖）: ${p.runId}`);
+  } catch (e) {
+    failed += 1;
+    const spooled = spoolPendingAppend(p.root, p.record, e, now);
+    console.error(`  追加失败: ${p.runId}: ${e.message}${spooled ? "（待补账回执已保留）" : "（回执也未写入，须保留来源库）"}`);
+  }
 }
-console.log(`已追加 ${appended}/${plan.length} 行 → ${join(homedir(), ".zcode", "cli", "lzy-usage")}`);
+console.log(`已追加 ${appended}/${plan.length} 行 → ${sandboxUsageDir()}${failed ? `；失败 ${failed}` : ""}`);
+if (failed || unreadable) process.exitCode = 1;

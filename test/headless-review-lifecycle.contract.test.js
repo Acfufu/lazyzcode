@@ -102,3 +102,40 @@ test("already aborted signal returns without launching engine", async () => {
   assert.equal(result.ok, false);
   assert.match(result.error, /取消|中止/);
 });
+
+test("exit and close dispatch group cleanup only once", { skip: process.platform === "win32" }, async () => {
+  const engine = join(evidence, "cleanup-once.cjs");
+  writeFileSync(engine, 'console.log(JSON.stringify({response:"done"}));');
+  const originalKill = process.kill;
+  let calls = 0;
+  process.kill = function(pid, signal) {
+    if (pid < 0 && signal === "SIGKILL") {
+      calls++;
+      // Darwin returns EPERM for a zombie-only group. The real OS reproducer
+      // lives in scripts/probes/r0-macos-zombie.mjs; this pins event idempotence.
+      if (calls > 1) throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
+    }
+    return originalKill.call(process, pid, signal);
+  };
+  try {
+    const result = await spawnHeadless({ ...options, enginePath: engine, processTree: true, baseEnv: {} });
+    await delay(50);
+    assert.equal(result.ok, true, result.error);
+    assert.equal(calls, 1);
+  } finally { process.kill = originalKill; }
+});
+
+test("first group cleanup permission failure is still reported", { skip: process.platform === "win32" }, async () => {
+  const engine = join(evidence, "cleanup-denied.cjs");
+  writeFileSync(engine, 'console.log(JSON.stringify({response:"done"}));');
+  const originalKill = process.kill;
+  process.kill = function(pid, signal) {
+    if (pid < 0 && signal === "SIGKILL") throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
+    return originalKill.call(process, pid, signal);
+  };
+  try {
+    const result = await spawnHeadless({ ...options, enginePath: engine, processTree: true, baseEnv: {} });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /EPERM/);
+  } finally { process.kill = originalKill; }
+});

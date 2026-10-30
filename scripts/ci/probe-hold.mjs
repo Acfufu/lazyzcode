@@ -1,2 +1,2 @@
-console.log("cancel probe started");
-setTimeout(()=>console.log("cancel probe finished"),300000);
+console.log("new cancellation probe candidate");
+setTimeout(()=>console.log("done"),1);

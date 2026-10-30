@@ -302,7 +302,7 @@ PASS 与计划哈希入队（派发前比对：计划改动=评审作废）；ri
 候选与已发布基线对测——基线/候选两臂、每任务 3 trial、预注册中断+恢复腿、独立密封
 oracle 判定交付仓。0.4.0 批次报告（含如实质量门读数：不满足——尚无质量收益证据，及其
 威胁边界）见
-[`docs/reviews/v040-policy-evaluation.md`](../reviews/v040-policy-evaluation.md)。
+[`docs/reviews/v040-policy-evaluation.md`](https://github.com/Acfufu/lazyzcode/blob/main/docs/reviews/v040-policy-evaluation.md)。
 评估只供采纳决策参考，永不接入任何自动门。
 
 ## 写能过审的范围声明（0.4.0）

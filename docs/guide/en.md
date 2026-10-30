@@ -385,7 +385,7 @@ repositories: baseline/candidate arms, three trials per task, a pre-registered
 interruption+resume leg, and an independent sealed oracle that judges the delivered
 repo. The 0.4.0 batch report — including the honest quality-gate reading (not met;
 no evidence of quality benefit) and its threat boundaries — lives at
-[`docs/reviews/v040-policy-evaluation.md`](../reviews/v040-policy-evaluation.md).
+[`docs/reviews/v040-policy-evaluation.md`](https://github.com/Acfufu/lazyzcode/blob/main/docs/reviews/v040-policy-evaluation.md).
 Evaluation informs adoption decisions; it is never wired to any automatic gate.
 
 ## Writing scope declarations that qualify (0.4.0)

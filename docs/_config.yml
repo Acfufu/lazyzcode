@@ -4,7 +4,9 @@ title: LazyZCode
 description: The discipline layer for ZCode — plan, execute, take evidence, never stop half-done.
 url: https://acfufu.github.io
 baseurl: /lazyzcode
-markdown: GFM
+markdown: kramdown
+kramdown:
+  input: GFM
 highlighter: rouge
 permalink: pretty
 

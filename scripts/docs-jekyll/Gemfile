@@ -1,0 +1,4 @@
+source "https://rubygems.org"
+
+# Matches the GitHub Pages dependency set (pages.github.com/versions/).
+gem "github-pages", "= 232", group: :jekyll_plugins

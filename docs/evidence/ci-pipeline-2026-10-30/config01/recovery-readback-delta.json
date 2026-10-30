@@ -1,0 +1,25 @@
+{
+  "rulesetId": 26189284,
+  "readbackUpdatedAtUtc": "2026-10-30T14:05:07.569Z",
+  "readbackUpdatedAtLocal": "2026-10-30T22:05:07.569+08:00",
+  "beforeActors": [],
+  "afterActors": [
+    {
+      "actor_id": 73582072,
+      "actor_type": "User",
+      "bypass_mode": "pull_request"
+    }
+  ],
+  "unchangedFunctionalFields": [
+    "name",
+    "target",
+    "enforcement",
+    "conditions",
+    "rules"
+  ],
+  "allOtherFunctionalFieldsEqual": true,
+  "onlyApprovedActor": true,
+  "acceptance": "API PUT succeeded and independent GET matched; behavior of bypassing a failed PR or direct push was NOT_RUN",
+  "historicalNegativeEligibilityScope": "zero-bypass phase before this approval",
+  "normalMergePolicy": "still wait for all checks on fixed head and latest base"
+}

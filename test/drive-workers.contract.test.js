@@ -264,17 +264,21 @@ test("④波分派：3 步 2 工人=2+1（worker prompt 只含分派步）", asy
   const seen = [];
   const run = ({ argv }) => {
     const prompt = String(argv[argv.indexOf("--prompt") + 1] ?? "");
-    const ids = (prompt.match(/N\d/g) ?? []).sort();
+    const assignment = /^2\. 只做你被分派的步：([^。\n]+)。/m.exec(prompt);
+    assert.ok(assignment, "worker prompt 须包含显式分派清单");
+    const ids = assignment[1].split("、").sort();
     seen.push(ids.join(","));
     return { exitCode: 0, stdout: `${JSON.stringify({ sessionId: "sess-x" })}`, stderr: "" };
   };
-  const r = repo("lzy-dw-split-");
+  // 路径刻意含 N3：路径中的文本不能被计为分派步骤。
+  const r = repo("lzy-dw-split-N3-in-path-");
   try {
     await captureStdout(() => runDrive(r.dir, { workers: 2, maxSegments: 1 }, passDeps(run)));
     const perWorker = seen.filter((s) => s.length > 0);
     assert.equal(perWorker.length, 2, "两名工人都被分派");
     const counts = perWorker.map((s) => s.split(",").length).sort((a, b) => b - a);
     assert.deepEqual(counts, [2, 1], `3 步 2 工人应 2+1，实得 ${JSON.stringify(perWorker)}`);
+    assert.deepEqual(perWorker.flatMap((s) => s.split(",")).sort(), ["N1", "N2", "N3"], "分派清单必须恰好覆盖三个步骤，不能重复或漏派");
   } finally {
     rmSync(r.dir, { recursive: true, force: true });
     rmSync(siblingRoot(r.dir), { recursive: true, force: true });

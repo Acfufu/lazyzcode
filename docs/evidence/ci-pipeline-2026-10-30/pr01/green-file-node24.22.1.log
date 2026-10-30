@@ -1,0 +1,25 @@
+✔ ①迁移全链：导入对账/不动源/marker+meta.backend/journal 相位/重跑拒 (526.223416ms)
+✔ ②journal 断点续跑：import 后中断→重跑完成不双导、复用同一 journal (568.182417ms)
+✔ ③误写检测：篡改源 JSON=拒/恢复=放行/删除备份=不违例 (378.411208ms)
+✔ ④marker 读向闸：迁移态删库=具名拒不回落/无 marker=JSON 照常/marker 损坏=fail-closed (1624.6065ms)
+✔ ⑤r6-F2 安全性质：打开前已在场的缺表文件（旧占位/异物）=具名拒不误删 (541.048625ms)
+✔ ⑤r6-F2 时钟偏差：预存缺表文件的 birthtime 晚于进程时钟仍拒绝且不删除 (404.321292ms)
+✔ ⑥前置拒绝：活跃 tx（open）/running 条目/ delivering 在途=具名拒且零产物 (256.716291ms)
+✔ ⑦源损坏停：ledger checksum 破坏=loadLedger 三门具名拒且零产物（无 install/marker） (264.765584ms)
+✔ ⑧漂移停：import 断点后改源→续跑 install 前双读校验具名拒 (320.523583ms)
+✔ ⑨install 断点续跑：install 后中断→重跑补 marker/meta 提交点收尾 (267.256042ms)
+✔ ⑩seq/dedup 逐值保留：事件 seq 连续原值、dedupKey 集合逐字（非重排非重编） (383.866084ms)
+✔ ⑪钩子三分支（stdin 驱动生产 trigger.js）：迁移态正常=DB 批准/迁移态删库=零记录诊断/未迁移=JSON 批准 (975.7455ms)
+✔ ⑬r3-F1 窗态重入：rename→journal(install) 微窗中断后重入重锚定（含伪空 staged 预损态自愈） (359.518334ms)
+✔ ⑫空/部分族工作区迁移：仅 ledger 族（queue/dispatch 缺席）+预算 null=空族导入成功 (123.255917ms)
+✔ ⑭r3-F2 钩子 marker 形状门对齐（⑪续段）：形状不识别=当迁移态处理，绝不回落 JSON 批准 (987.482666ms)
+✔ ⑮r3-F3 误写检测补 frozen=null 族：冻结时缺席、迁移后出现的族=违例；删除=自愈 (107.370375ms)
+✔ ⑯0.6.1 对象 provenance 账本迁移：导入/reconcile/读回保形（宿主仓真实形态） (88.07125ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10357.279666

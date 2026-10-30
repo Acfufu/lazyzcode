@@ -1,0 +1,9 @@
+✔ pack dry-run：文件清单白名单对表+外带 grep 三连 (1494.261708ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1762.338917

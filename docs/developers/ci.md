@@ -16,6 +16,10 @@ CI 每个 PR 完整运行 Node 24 三平台、文档链接和 Node 24.0.0 SQLite
 
 `workflow-check` 使用 `scripts/ci/workflow-tools.json` 中固定版本和 SHA256 的 actionlint/zizmor 二进制，下载后先核摘要。zizmor 静态检查以 offline 模式运行，fork 路径无需额外 token。两种工具各有隔离反例，防止扫描入口空跑。工具升级须同步版本/摘要并复验反例及完整 CI；扫描发现按位置修复，不全局关闭规则。诊断和下载摘要保留 14 天。
 
+CodeQL 使用独立 advanced setup，固定 action SHA，分析 JavaScript/TypeScript，`build-mode: none`；PR、main push 和每周定时运行。启用前确认 default setup 未同时配置。只有分析 job 获得 `security-events: write`，其余保持只读，不使用 secrets 或 `pull_request_target`。同仓与 fork 的实际分析、SARIF 上传、源码 SHA 和权限结果分别记录；fork token 的平台权限降级不由仓库脚本绕过。上传拒绝或分析失败按真实失败处理，不加 `continue-on-error`。Dependabot PR 同样走 `pull_request` 事件，避免只读 token 在 push 上传时受限，参见 [GitHub 排障说明](https://docs.github.com/en/code-security/reference/code-scanning/troubleshoot-analysis-errors/resource-not-accessible)。
+
+分析 job 成功只表示扫描和上传完成。安全告警由独立 code scanning merge protection 判断，不能以 `CI Required` 或 CodeQL job 的成功状态替代。告警处置由维护者逐条记录规则、位置、严重度、分析 SHA、证据和结论：真实问题修复后复扫；误报或仅测试用途按具体告警说明理由、责任人及复核触发条件后再处置，不批量 dismiss 或整体关闭规则。新增 high/critical 告警、必需工具缺结果，以及隔离反例的实际阻止结果须单独验收。仓库能力不支持语义门时明确标为观测态；尚未执行的 fork 验收保持未执行。
+
 同一 PR 的新候选取消旧运行；push 按事件及提交 SHA 分组，main/dev 的不同 SHA 不互相替换。汇总使用 `always()` 但显式检查每个上游结果。新的必需 job 须同时加入 `needs` 和 `REQUIRED_JOBS`。改名时先跑通新检查、迁移远端规则，再删除旧名。
 
 `scripts/ci/run-checks.mjs <输出目录> [测试路径…]` 用 Node 内置 spec/JUnit 和事件 reporter 运行测试，保存原退出码、信号、完整日志、机器报告、具名跳过及源位置、实际 checkout SHA/tree、PR head/base、run/attempt、OS/架构及 Node/npm。传入 `--script <Node 脚本> [参数…]` 时保存普通检查的日志与 JSON 回执，文档链接、CLI help 及 SQLite 能力探针也走这条路径；探针失败仍有执行前身份及失败回执。报告在失败时也尝试上传，保留 14 天；取消或 runner 丢失可能来不及上传。PR 默认测试合并候选，报告中的 checkout 不能当作 PR head。旧测试使用布尔 skip 时如实保留布尔值及源位置，不伪造具体原因。

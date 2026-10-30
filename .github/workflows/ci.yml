@@ -34,7 +34,7 @@ jobs:
       # Node runs --test "test/**/*.test.js" with spec/JUnit/event reporters and preserves its exit code.
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/tests"
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/cli" --script cli/lzy.js --help
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: tests-${{ matrix.os }}-${{ github.run_attempt }}
@@ -52,7 +52,7 @@ jobs:
         with:
           node-version: 24
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/docs-links" --script scripts/check-docs-links.mjs
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: docs-links-${{ github.run_attempt }}
@@ -71,7 +71,7 @@ jobs:
           node-version: 24.0.0
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/sqlite-floor/probe" --script scripts/sqlite-capability-probe.mjs
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/sqlite-floor/tests" test/statedb.contract.test.js test/statedb-readers.contract.test.js
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: sqlite-floor-${{ github.run_attempt }}
@@ -90,12 +90,12 @@ jobs:
           node-version: 24
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/package-build/runner" --script scripts/ci/package-build.mjs "${{ runner.temp }}/package-candidate"
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/package-build/counterexample-runner" --script scripts/ci/package-negative.mjs "${{ runner.temp }}/package-candidate" "${{ runner.temp }}/package-build/counterexamples"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package-candidate-${{ github.run_attempt }}
           path: ${{ runner.temp }}/package-candidate/
           retention-days: 14
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: package-build-${{ github.run_attempt }}
@@ -126,7 +126,7 @@ jobs:
           name: package-candidate-${{ github.run_attempt }}
           path: ${{ runner.temp }}/package-candidate/
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/package-smoke/runner" --script scripts/ci/package-smoke.mjs "${{ runner.temp }}/package-candidate" "${{ runner.temp }}/package-smoke/reports"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: package-smoke-${{ matrix.os }}-${{ matrix.node }}-${{ github.run_attempt }}
@@ -152,7 +152,7 @@ jobs:
           bundler: 2.5.11
           bundler-cache: true
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/docs-build" --script scripts/docs-jekyll/build.mjs "${{ runner.temp }}/docs-site"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: docs-build-${{ github.run_attempt }}
@@ -170,7 +170,7 @@ jobs:
         with:
           node-version: 24
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/workflow-check/runner" --script scripts/ci/workflow-check.mjs "${{ runner.temp }}/workflow-check/reports"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: workflow-check-${{ github.run_attempt }}

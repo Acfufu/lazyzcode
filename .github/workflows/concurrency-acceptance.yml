@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+    branches: [codex/ci-push-concurrency-20261030]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('push-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+
+jobs:
+  hold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Record actual push identity and hold overlapping runs
+        run: |
+          printf '%s %s %s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA"
+          sleep 90

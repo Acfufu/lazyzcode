@@ -9,6 +9,9 @@ import { spawnSync } from "node:child_process";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const wrapper = join(root, "scripts/ci/run-checks.mjs");
+// Model the standalone workflow entry, not a nested node:test child process.
+const standaloneEnv = { ...process.env };
+delete standaloneEnv.NODE_TEST_CONTEXT;
 
 for (const result of ["success", "failure", "cancelled", "skipped", undefined]) {
   test(`required gate: upstream ${result ?? "missing"}`, () => {
@@ -25,7 +28,7 @@ test("recorded script preserves exit 7 and retains identity, output and result",
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const fixture = join(dir, "failure.mjs"), out = join(dir, "out");
   writeFileSync(fixture, 'console.error("fixture probe failure");process.exit(7);');
-  const r = spawnSync(process.execPath, [wrapper, out, "--script", fixture], { cwd: root, encoding: "utf8", timeout: 30_000 });
+  const r = spawnSync(process.execPath, [wrapper, out, "--script", fixture], { cwd: root, env: standaloneEnv, encoding: "utf8", timeout: 30_000 });
   assert.equal(r.status, 7, r.stdout + r.stderr);
   assert.equal(JSON.parse(readFileSync(join(out, "result.json"))).exitCode, 7);
   assert.match(JSON.parse(readFileSync(join(out, "identity.json"))).checkoutSha, /^[a-f0-9]{40}$/);
@@ -37,7 +40,7 @@ test("recorded test failure stays red with JUnit and a named skip reason", (t) =
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const fixture = join(dir, "failure.test.mjs"), out = join(dir, "out");
   writeFileSync(fixture, 'import {test} from "node:test";test("intentional failure",()=>{throw new Error("fixture failure")});test("named skip",{skip:"fixture capability absent"},()=>{});');
-  const r = spawnSync(process.execPath, [wrapper, out, fixture], { cwd: root, encoding: "utf8", timeout: 30_000 });
+  const r = spawnSync(process.execPath, [wrapper, out, fixture], { cwd: root, env: standaloneEnv, encoding: "utf8", timeout: 30_000 });
   assert.equal(r.status, 1, r.stdout + r.stderr);
   const result = JSON.parse(readFileSync(join(out, "result.json")));
   assert.equal(result.exitCode, 1);

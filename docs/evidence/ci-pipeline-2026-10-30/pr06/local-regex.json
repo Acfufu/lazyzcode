@@ -1,0 +1,63 @@
+{
+  "repository": null,
+  "event": "local",
+  "checkoutSha": "d9e5256b99528b9babcc06cabe8dcc1feb318469",
+  "checkoutTree": "0af863084f881bb01ad7daf9f04b63d78f0aa9fc",
+  "prHead": null,
+  "prBase": null,
+  "runId": null,
+  "attempt": null,
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v24.19.0",
+  "npm": "12.2.1",
+  "kind": "tests",
+  "startedAt": "2026-10-30T06:09:28.585Z",
+  "argv": [
+    "--test",
+    "--test-reporter=spec",
+    "--test-reporter-destination=stdout",
+    "--test-reporter=junit",
+    "--test-reporter-destination=/Users/acfufu/Codehub/lazyzcode/.omo/evidence/testing/pr-pipeline-20261030/pr06/a1/remediation-committed-regex/junit.xml",
+    "--test-reporter=file:///Users/acfufu/Codehub/lazyzcode/scripts/ci/events-reporter.mjs",
+    "--test-reporter-destination=/Users/acfufu/Codehub/lazyzcode/.omo/evidence/testing/pr-pipeline-20261030/pr06/a1/remediation-committed-regex/events.jsonl",
+    "--test-name-pattern=payload-ver",
+    "test/dag-authority.contract.test.js"
+  ],
+  "finishedAt": "2026-10-30T06:09:30.318Z",
+  "exitCode": 0,
+  "signal": null,
+  "hasReports": true,
+  "summaries": [
+    {
+      "success": true,
+      "counts": {
+        "tests": 2,
+        "failed": 0,
+        "passed": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 2,
+        "suites": 0
+      },
+      "duration_ms": 1627.954459,
+      "file": "/Users/acfufu/Codehub/lazyzcode/test/dag-authority.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 2,
+        "failed": 0,
+        "passed": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 2,
+        "suites": 0
+      },
+      "duration_ms": 1694.936042
+    }
+  ],
+  "skips": []
+}

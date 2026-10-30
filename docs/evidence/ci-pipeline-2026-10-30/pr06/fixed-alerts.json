@@ -1,0 +1,86 @@
+[
+  {
+    "number": 3,
+    "state": "fixed",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": "2026-10-30T06:25:39Z",
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/3",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/incomplete-sanitization",
+      "severity": "warning",
+      "security_severity_level": "high"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "dbba58424d94238e992621a4cd080d9cdcc43d2a",
+      "state": "fixed",
+      "location": {
+        "path": "test/dag-authority.contract.test.js",
+        "start_line": 657,
+        "end_line": 657,
+        "start_column": 60,
+        "end_column": 79
+      }
+    }
+  },
+  {
+    "number": 2,
+    "state": "fixed",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": "2026-10-30T06:25:39Z",
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/2",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/incomplete-sanitization",
+      "severity": "warning",
+      "security_severity_level": "high"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "dbba58424d94238e992621a4cd080d9cdcc43d2a",
+      "state": "fixed",
+      "location": {
+        "path": "test/dag-authority.contract.test.js",
+        "start_line": 405,
+        "end_line": 405,
+        "start_column": 107,
+        "end_column": 126
+      }
+    }
+  },
+  {
+    "number": 1,
+    "state": "fixed",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": "2026-10-30T06:25:39Z",
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/1",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/incomplete-sanitization",
+      "severity": "warning",
+      "security_severity_level": "high"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "dbba58424d94238e992621a4cd080d9cdcc43d2a",
+      "state": "fixed",
+      "location": {
+        "path": "test/dag-authority.contract.test.js",
+        "start_line": 405,
+        "end_line": 405,
+        "start_column": 59,
+        "end_column": 78
+      }
+    }
+  }
+]

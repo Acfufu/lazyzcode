@@ -1,0 +1,9 @@
+{
+  "result": "PASS",
+  "meaning": "negative control failed as expected after canary connection",
+  "childExitCode": 1,
+  "expectedChildFailure": true,
+  "originalSha256": "3873d83f85cba6d3a0deec0bc7b25e3de4db524b039ac7cb7895544ed8cda3f9",
+  "mutatedSha256": "b7ab2d4680a97ea00914305bc1d6ea49ee240580f23c05f8f65a16aec3deeb52",
+  "testSha256": "96d9851620d51e7ed145a329d7a6bcc2ae9eb1433194322ea1fd72c16b0f4fd7"
+}

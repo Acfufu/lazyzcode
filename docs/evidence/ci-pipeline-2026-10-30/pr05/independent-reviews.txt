@@ -1,0 +1,20 @@
+# PR05 independent source reviews
+
+Baseline: `7fa731bc525bb4a376b719550b22b7ab00b516f3`
+Candidate: `4465e7e5205911b485d9cbdab88d77d8362da454`
+
+## Standards — PASS
+
+Reviewer: `pr01_standards_review` (read-only source review).
+
+No actionable documented-standard violations or baseline heuristic smells. Reviewed exact diff/log, scanner helper via CodeGraph, tool manifest, Dependabot config and all committed workflow uses. External actions use full SHAs and checkout disables credential persistence; digest verification precedes extraction/execution; counterexamples and downloads stay in temporary/output directories. No new root npm dependency or copied third-party implementation is evident.
+
+Review does not independently establish upstream SHA/digest authenticity, scanner execution, Dependabot execution or hosted CI success.
+
+## Spec — PASS
+
+Reviewer: `pr01_spec_review` (read-only source review, plan unit PR05).
+
+No actionable source findings. The only custom workflow uses full SHA pins and disables checkout credential persistence. Dependabot separates weekly Actions (limit 3, minor/patch group, majors ungrouped), docs npm, and Bundler updates; no root npm entry. Fixed versions and verified-download digest checks precede scans. Negative fixtures require nonzero integer exits plus expected diagnoses; real scans must exit 0. workflow-check directly gates CI Required with read-only permissions and no blanket exceptions.
+
+No tests or upstream provenance checks independently repeated by the reviewer. Dependabot platform acceptance and first update PR remain pending until main activation.

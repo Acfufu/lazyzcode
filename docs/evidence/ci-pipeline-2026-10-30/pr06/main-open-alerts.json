@@ -1,0 +1,366 @@
+[
+  {
+    "number": 17,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/17",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/identity-replacement",
+      "severity": "warning",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "core/verify.js",
+        "start_line": 39,
+        "end_line": 39,
+        "start_column": 84,
+        "end_column": 87
+      }
+    }
+  },
+  {
+    "number": 16,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/16",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/bad-code-sanitization",
+      "severity": "error",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "test/lock-instrument.contract.test.js",
+        "start_line": 62,
+        "end_line": 62,
+        "start_column": 65,
+        "end_column": 89
+      }
+    }
+  },
+  {
+    "number": 15,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/15",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/bad-code-sanitization",
+      "severity": "error",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "test/headless-review-lifecycle.contract.test.js",
+        "start_line": 71,
+        "end_line": 71,
+        "start_column": 200,
+        "end_column": 221
+      }
+    }
+  },
+  {
+    "number": 14,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/14",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/bad-code-sanitization",
+      "severity": "error",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "test/headless-review-lifecycle.contract.test.js",
+        "start_line": 69,
+        "end_line": 69,
+        "start_column": 159,
+        "end_column": 181
+      }
+    }
+  },
+  {
+    "number": 13,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/13",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/bad-code-sanitization",
+      "severity": "error",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "scripts/probes/reliability-r0.mjs",
+        "start_line": 55,
+        "end_line": 55,
+        "start_column": 158,
+        "end_column": 183
+      }
+    }
+  },
+  {
+    "number": 12,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/12",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/bad-code-sanitization",
+      "severity": "error",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "scripts/probes/reliability-containment.mjs",
+        "start_line": 14,
+        "end_line": 14,
+        "start_column": 230,
+        "end_column": 251
+      }
+    }
+  },
+  {
+    "number": 11,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/11",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/bad-code-sanitization",
+      "severity": "error",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "scripts/probes/reliability-containment.mjs",
+        "start_line": 13,
+        "end_line": 13,
+        "start_column": 157,
+        "end_column": 182
+      }
+    }
+  },
+  {
+    "number": 10,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/10",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/bad-code-sanitization",
+      "severity": "error",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "scripts/probes/r0-signal-repro.mjs",
+        "start_line": 34,
+        "end_line": 34,
+        "start_column": 180,
+        "end_column": 201
+      }
+    }
+  },
+  {
+    "number": 9,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/9",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/bad-code-sanitization",
+      "severity": "error",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "scripts/probes/r0-signal-repro.mjs",
+        "start_line": 32,
+        "end_line": 32,
+        "start_column": 145,
+        "end_column": 167
+      }
+    }
+  },
+  {
+    "number": 8,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/8",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/bad-code-sanitization",
+      "severity": "error",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "scripts/probes/r0-macos-zombie.mjs",
+        "start_line": 46,
+        "end_line": 46,
+        "start_column": 216,
+        "end_column": 237
+      }
+    }
+  },
+  {
+    "number": 7,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/7",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/bad-code-sanitization",
+      "severity": "error",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "scripts/probes/lock-contention.mjs",
+        "start_line": 64,
+        "end_line": 64,
+        "start_column": 65,
+        "end_column": 89
+      }
+    }
+  },
+  {
+    "number": 6,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/6",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/shell-command-injection-from-environment",
+      "severity": "warning",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "scripts/probes/r0-linux-recovery.mjs",
+        "start_line": 28,
+        "end_line": 28,
+        "start_column": 36,
+        "end_column": 187
+      }
+    }
+  },
+  {
+    "number": 5,
+    "state": "open",
+    "created_at": "2026-10-30T05:50:06Z",
+    "fixed_at": null,
+    "dismissed_at": null,
+    "dismissed_reason": null,
+    "dismissed_comment": null,
+    "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/5",
+    "dismissedBy": null,
+    "rule": {
+      "id": "js/shell-command-injection-from-environment",
+      "severity": "warning",
+      "security_severity_level": "medium"
+    },
+    "instance": {
+      "ref": "refs/heads/main",
+      "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+      "state": "open",
+      "location": {
+        "path": "scripts/probes/r0-linux-cgroup.mjs",
+        "start_line": 14,
+        "end_line": 14,
+        "start_column": 17,
+        "end_column": 236
+      }
+    }
+  }
+]

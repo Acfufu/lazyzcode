@@ -1,0 +1,60 @@
+{
+  "capturedAt": "2026-10-30T06:50:05.682664+00:00",
+  "ruleset": 26189284,
+  "bypassActors": [],
+  "base": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+  "method": "GitHub live PR merge eligibility; no negative merge requests",
+  "negativeCases": [
+    {
+      "pr": 17,
+      "kind": "cancelled",
+      "head": "61bcaa7e7bdcc7ed33d7bff7a57d67c672dfee5d",
+      "serverMergeState": "BLOCKED",
+      "result": "PASS"
+    },
+    {
+      "pr": 18,
+      "kind": "red",
+      "head": "25b3368ba14695896c9486c370707a4836b69597",
+      "serverMergeState": "BLOCKED",
+      "result": "PASS"
+    },
+    {
+      "pr": 19,
+      "kind": "missing",
+      "head": "e28a67b1d6222a5190779abca5bb4517aef599a9",
+      "serverMergeState": "BLOCKED",
+      "result": "PASS"
+    },
+    {
+      "pr": 20,
+      "kind": "security-high",
+      "head": "0464f0c97c6f58ee85ca8ab30513034238c7e20a",
+      "serverMergeState": "BLOCKED",
+      "result": "PASS"
+    },
+    {
+      "pr": 21,
+      "kind": "no-codeql",
+      "head": "d664e22c39321b9dbd2c65749689c4aae5fbcaae",
+      "serverMergeState": "BLOCKED",
+      "result": "PASS"
+    }
+  ],
+  "wrongSource": {
+    "pr": 19,
+    "classicContext": "CI Required",
+    "classicState": "SUCCESS",
+    "rollupState": "SUCCESS",
+    "serverMergeState": "BLOCKED",
+    "result": "PASS"
+  },
+  "greenControlBeforeMerge": {
+    "pr": 22,
+    "state": "CLEAN"
+  },
+  "staleControlBeforeBaseAdvance": {
+    "pr": 23,
+    "state": "CLEAN"
+  }
+}

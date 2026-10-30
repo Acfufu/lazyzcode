@@ -1,0 +1,7 @@
+# CodeQL remediation independent source reviews
+
+Baseline `dbba58424d94238e992621a4cd080d9cdcc43d2a`; candidate `d9e5256b99528b9babcc06cabe8dcc1feb318469`.
+
+Standards reviewer: PASS; no actionable standards violations or heuristic smells. Complete regex escaping is computed once and reused at all three sinks without removing surrounding assertions. New tests have live upstream/canary listeners, a positive canonical-origin response, denied status assertions and TCP accept counters; product guard is unchanged. Report distinguishes individual high/critical disposition, 13 OPEN medium findings, local/isolated evidence, pending automated closure and fork NOT_RUN. Reviewer did not execute or independently verify runtime/control claims.
+
+Spec reviewer: source PASS; no actionable scope/claim defect. Fixtures and surrounding assertions remain intact. New tests assert 302 passthrough and zero denied-canary connections. Report keeps #1/#2/#3 pending platform closure, #4 proposed individual false-positive disposition, 13 medium OPEN and fork NOT_RUN. These gaps are not waived. Denied-host cases also use a foreign port; they prove those foreign-origin requests are denied, without isolating a hostname-only regression. Report does not claim that stronger result. Source-only review; no tests executed or runtime counts independently verified.

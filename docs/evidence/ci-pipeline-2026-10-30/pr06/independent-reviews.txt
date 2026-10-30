@@ -1,0 +1,14 @@
+# PR06 independent source reviews
+
+Baseline: `e42d4f80006b454e7db241ce85d1ec286b16d9dc`
+Candidate: `7556d34f443db8516e2c7f7b9890c25fafe00557`
+
+## Standards — PASS
+
+Reviewer `pr01_standards_review`, read-only exact diff/log review. No actionable documented-standard violations or baseline heuristic smells. Only YAML/docs changed. Global read permission, analysis-only security-events write, full action SHAs, checkout credential persistence disabled, no secrets or PR-target execution. Docs distinguish job success, semantic alert enforcement and pending fork/platform validation. Upstream authenticity, actual CodeQL/SARIF/alert/rules behavior and local checks were not independently repeated.
+
+## Spec — source PASS; runtime acceptance OPEN
+
+Reviewer `pr01_spec_review`, exact diff/log against plan PR06. No actionable source findings. Separate advanced JS/TS analysis with build-mode none, PR/main-push/weekly triggers, 30-minute timeout, pinned actions, checkout credential persistence disabled, security-events write limited to analysis job; no cross-workflow CI Required shortcut. Docs distinguish scan/upload success from security enforcement, preserve failures, and require individual alert dispositions.
+
+Correct-SHA same-repo analysis/SARIF, existing high/critical triage, actual fork execution, and actual added-alert merge blocking are separate pending acceptance assertions. Fork NOT_RUN does not become PASS through actor unavailability or a defer decision. Source-only review; no tests run by reviewers.

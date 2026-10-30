@@ -1,0 +1,25 @@
+{
+  "type": "test:fail",
+  "data": {
+    "name": "④波分派：3 步 2 工人=2+1（worker prompt 只含分派步）",
+    "nesting": 0,
+    "testNumber": 267,
+    "testId": 5,
+    "parentId": 0,
+    "details": {
+      "duration_ms": 1430.536959,
+      "type": "test",
+      "error": {
+        "name": "Error",
+        "message": "3 步 2 工人应 2+1，实得 [\"N1,N3,N3,N3,N3\",\"N2,N3,N3,N3\"]\n+ actual - expected\n\n  [\n+   5,\n+   4\n-   2,\n-   1\n  ]\n",
+        "stack": "Error [ERR_TEST_FAILURE]: 3 步 2 工人应 2+1，实得 [\"N1,N3,N3,N3,N3\",\"N2,N3,N3,N3\"]\n+ actual - expected\n\n  [\n+   5,\n+   4\n-   2,\n-   1\n  ]\n",
+        "code": "ERR_TEST_FAILURE"
+      }
+    },
+    "tags": [],
+    "line": 263,
+    "column": 1,
+    "file": "/Users/runner/work/lazyzcode/lazyzcode/test/drive-workers.contract.test.js",
+    "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/drive-workers.contract.test.js"
+  }
+}

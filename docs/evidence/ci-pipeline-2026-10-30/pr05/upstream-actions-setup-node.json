@@ -1,0 +1,22 @@
+{
+  "sha": "49933ea5288caeca8642d1e84afbd3f7d6820020",
+  "url": "https://api.github.com/repos/actions/setup-node/git/commits/49933ea5288caeca8642d1e84afbd3f7d6820020",
+  "tree": {
+    "sha": "6e2fefae7f597aebce691c980b27ec6381e493e2",
+    "url": "https://api.github.com/repos/actions/setup-node/git/trees/6e2fefae7f597aebce691c980b27ec6381e493e2"
+  },
+  "parents": [
+    {
+      "sha": "e3ce749e201f52acbab9862647a7b9bd3e37cf76",
+      "url": "https://api.github.com/repos/actions/setup-node/git/commits/e3ce749e201f52acbab9862647a7b9bd3e37cf76",
+      "html_url": "https://github.com/actions/setup-node/commit/e3ce749e201f52acbab9862647a7b9bd3e37cf76"
+    }
+  ],
+  "verification": {
+    "verified": true,
+    "reason": "valid",
+    "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJn7Y4TCRC1aQ7uu5UhlAAAduAQAGDqoFhtRYfLF41f/a47PMjN\nMEiI9Pqegs4UtNNds9oKFb9TDdu5dS3XMnPZKZpBYgVYqQO5GsKsJm3KlN94dzil\n3DHTS12NoqIomddLhd4S4iP9Wf0VXVVKQv+9klzDubDXDUNfEiUpN4lOeC2FGR33\nCAY+cAmLyDen753wyYdLUbBj8wz7lR6HV0CkJwe3Wtp8bU4IXRKWBoAxYEyyP8f1\naVJ+KJJ+qMqm6N3DK9LMBJnD6G/ZM/4zL2fr+iv3cxQjvmVz2kaIF+eUjnKJL5Lr\ne4S2NkNvM51qRSKhGWgTkLr1FLNzxArIid0ZR+dkGKaNXPmcqUk8HOZQSwBKlLCg\nEvbjAIbvhxoX1kXEUhDk0YPDw0aR+CgStMCwX+Px9juXS5GMghxuW/HY+daeXFDF\nOPRkoOEGcLZsc1ybYp9tfp0LyIAcP+IgR9avseRKqitsvXTkJ5gAfmYoqCxwwrZf\nowOuBRIarL/W2EFgL4Y7rcSHEQEk2SLFHwDsgjeJ+T6dOoL5fMB9jM/H3XwZSuhN\nPvKOf9uLR2cYYejEj0NbuYzQASQnqs9a//71LoOBwPgM2GAfUj4OtV0aPuMPpkXa\nW0Dc71BNvq7yfeNMJDmmg666NV15M9ALTc0moaEQ+sdunohUev8IKNizlkAZ7nyQ\nb+3fbciysQ7k72Ry3NCu\n=acKf\n-----END PGP SIGNATURE-----\n",
+    "payload": "tree 6e2fefae7f597aebce691c980b27ec6381e493e2\nparent e3ce749e201f52acbab9862647a7b9bd3e37cf76\nauthor aparnajyothi-y <147696841+aparnajyothi-y@users.noreply.github.com> 1743621651 +0530\ncommitter GitHub <noreply@github.com> 1743621651 -0500\n\nBump @action/cache from 4.0.2 to 4.0.3 (#1262)\n\n* Update versions.yml\n\n* Update versions.yml\n\n* actions/cache upgrade to 4.0.3\n\n* events update\n\n* npm audit fix revert\n\n* npm adit fix revert",
+    "verified_at": "2025-04-02T19:20:55Z"
+  }
+}

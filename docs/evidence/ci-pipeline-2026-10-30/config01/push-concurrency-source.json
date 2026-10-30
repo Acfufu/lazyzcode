@@ -1,0 +1,11 @@
+{
+  "base": {
+    "sha": "786485d37f37e1c0bb8e27bc68b68aecded8c047",
+    "tree": "b535607f3f6b134f49c6dc72779431e7223feb70"
+  },
+  "branch": "codex/ci-push-concurrency-20261030",
+  "productionConcurrency": "concurrency:\n  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('push-{0}', github.sha) }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
+  "probeWorkflow": "name: ci\n\non:\n  push:\n    branches: [codex/ci-push-concurrency-20261030]\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('push-{0}', github.sha) }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n\n\njobs:\n  hold:\n    runs-on: ubuntu-latest\n    timeout-minutes: 3\n    steps:\n      - name: Record actual push identity and hold overlapping runs\n        run: |\n          printf '%s %s %s\\n' \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" \"$GITHUB_SHA\"\n          sleep 90\n",
+  "scope": "actual isolated branch pushes; not forced overlapping main pushes",
+  "jobHoldSeconds": 90
+}

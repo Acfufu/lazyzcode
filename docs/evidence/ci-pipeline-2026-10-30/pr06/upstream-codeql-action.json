@@ -1,0 +1,15 @@
+{
+  "sha": "9b3254085494b55a0f7c4c2b3d2d52cc712ce370",
+  "html_url": "https://github.com/github/codeql-action/commit/9b3254085494b55a0f7c4c2b3d2d52cc712ce370",
+  "tree": {
+    "sha": "aa352d914a7590e46ae3b89c12ef2b32e18f3f7b",
+    "url": "https://api.github.com/repos/github/codeql-action/git/trees/aa352d914a7590e46ae3b89c12ef2b32e18f3f7b"
+  },
+  "verification": {
+    "verified": true,
+    "reason": "valid",
+    "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJq2N6FCRC1aQ7uu5UhlAAAKYgQABlcVNYpZPYZvxdJ8TmNbV+p\nrW+XaKSH9BfAb4wtSFpLggx6oNPqQ+ImkjDhXhah1QT4t/B4b+jWumWCSUG6Wp3D\nha3AVFusnIFCVI93fRRLznnD3wcwRhNig5pelBsTuIZ7ORPWGzSMP3kh+yQ2NVjY\n6Sy/7Mngd78Hsn7n/aJXXbamp9utMGfYfAqFWUHVWR7qHdfV/ZO51cL6fW2Ni7hr\nnDiR+1SmaOVjVeaP086dFcZAWENeM1ikek252ToS64C5o5q9e9aZnRqcmznQEWqx\nDffoqOo0ahpN0eozCPoUIVL+Kgay4bXwK9DhZo05N9BUqy6NNw/HSdhT9YiYMtE3\nNlWzC8HBTiyDBsSvS2jasY8DoY9P9V3G0ON3WScddjce2gBmrGvWSjECXuMYfhjO\nGMyWZGIgRzjPrA4fymSdy8I2pGB6cQLNKQFCdqw4UfIWtfvukxsxpuisb653vWDW\njBbPiMN3o/eF/LSvEB8X+/H49MeVlhv8IupuA5jrglaVP6ZfSGr20BmvYmdGH9qS\nW03GRJyV6xk1ini6SDMHXmzeo7SLptfz/MMyDexE9XqSKgeUVVq8ZFBko1B0Uul0\nV8bzkSJzCU/htLlZ8IWkRprKn0unVQ8XG3L8hmN4Gpo1T/KjuVEymLTXrhEccd6w\n9vBs3ARYfL5Wb0xiN8id\n=rX9L\n-----END PGP SIGNATURE-----\n",
+    "payload": "tree aa352d914a7590e46ae3b89c12ef2b32e18f3f7b\nparent 6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee\nparent b5e1ed9574dcfa81c88c318140f3b3e5c199bfb3\nauthor Mario Campos <mario-campos@github.com> 1792597637 -0500\ncommitter GitHub <noreply@github.com> 1792597637 -0500\n\nMerge pull request #4257 from github/update-v4.39.1-c5a2f4b0f\n\nMerge main into releases/v4",
+    "verified_at": "2026-10-21T15:47:17Z"
+  }
+}

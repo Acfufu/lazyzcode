@@ -29,3 +29,5 @@ CodeQL 使用独立 advanced setup，固定 action SHA，分析 JavaScript/TypeS
 单独检查地板探针并保存回执：`node scripts/ci/run-checks.mjs artifacts/sqlite-probe --script scripts/sqlite-capability-probe.mjs`。命令非零退出会原样传递给调用者，产物目录仍保存执行身份与失败日志。
 
 平台 runner、离线安装与浏览器结果各有验收边界；本流水线不证明真实 ZCode 装载、macOS ES 授权或托管进程生命周期通过。发布仍按现行维护者手工流程执行。
+
+main 规则要求 PR、固定来源的 `CI Required`、最新 base、讨论解决及 CodeQL 语义结果；单维护者的人类 approval 数为 0，不强制 CODEOWNERS approval。实际规则和演练证据见[第一批验收报告](../reports/pr-pipeline-acceptance-2026-10-30.md)。当前没有长期 bypass。若故障锁死，维护者须先记录 PR、原因、操作者、受影响检查和补验计划，再临时调整具体规则；恢复后还原规则并重新验收。普通合并始终先确认固定 head、最新 base 和全部必需检查成功，不能用本地绿灯代替远端状态。

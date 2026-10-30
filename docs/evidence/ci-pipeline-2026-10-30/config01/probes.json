@@ -1,0 +1,65 @@
+[
+  {
+    "kind": "cancelled",
+    "branch": "codex/ci-rule-cancelled-20261030",
+    "head": "61bcaa7e7bdcc7ed33d7bff7a57d67c672dfee5d",
+    "tree": "ef1bdb88450df74a40edb745a8295867b3029662",
+    "pr": 17,
+    "base": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+    "draft": true
+  },
+  {
+    "kind": "red",
+    "branch": "codex/ci-rule-red-20261030",
+    "head": "25b3368ba14695896c9486c370707a4836b69597",
+    "tree": "e0042e656edcc682bb7c96f3a23300f64aeda646",
+    "pr": 18,
+    "base": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+    "draft": true
+  },
+  {
+    "kind": "missing",
+    "branch": "codex/ci-rule-missing-20261030",
+    "head": "e28a67b1d6222a5190779abca5bb4517aef599a9",
+    "tree": "83214fe24ce5e8884b3ca4519c2ef72ef299da41",
+    "pr": 19,
+    "base": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+    "draft": true
+  },
+  {
+    "kind": "security-high",
+    "branch": "codex/ci-rule-security-20261030",
+    "head": "0464f0c97c6f58ee85ca8ab30513034238c7e20a",
+    "tree": "b6e43b28f174fa7d6c1ef08020ee5442af77c1a2",
+    "pr": 20,
+    "base": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+    "draft": true
+  },
+  {
+    "kind": "no-codeql",
+    "branch": "codex/ci-rule-no-codeql-20261030",
+    "head": "d664e22c39321b9dbd2c65749689c4aae5fbcaae",
+    "tree": "a9c33e4bf5e307b3645c17b7d10ff46071682bd0",
+    "pr": 21,
+    "base": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+    "draft": true
+  },
+  {
+    "kind": "green",
+    "branch": "codex/ci-rule-green-20261030",
+    "head": "6c280392c0005b4fc8aa8e8439c4737588e4255d",
+    "tree": "b535607f3f6b134f49c6dc72779431e7223feb70",
+    "pr": 22,
+    "base": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+    "draft": true
+  },
+  {
+    "kind": "stale",
+    "branch": "codex/ci-rule-stale-20261030",
+    "head": "d58e3acec30569f78a63518057d646eab767eff5",
+    "tree": "0b6752a4876f2b1ba39f46155e31bb2a2943700c",
+    "pr": 23,
+    "base": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+    "draft": true
+  }
+]

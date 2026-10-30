@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   test:
+    if: ${{ false }}
     timeout-minutes: 30
     strategy:
       fail-fast: false

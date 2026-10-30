@@ -38,9 +38,9 @@ PR16 的三平台完整报告对应同一实际 checkout tree `0af863084f881bb01
 
 main 的不同提交有各自完成的 canonical push 运行。并发机制另以隔离分支复制生产表达式、相同 workflow 名和 push 事件，实际推送三个不同 SHA；[41017254181](https://github.com/Acfufu/lazyzcode/actions/runs/41017254181)、[41017276889](https://github.com/Acfufu/lazyzcode/actions/runs/41017276889)、[41017294011](https://github.com/Acfufu/lazyzcode/actions/runs/41017294011) 的原生时间戳证明重叠，最终均成功。该项是[真实隔离分支实测](https://github.com/Acfufu/lazyzcode/blob/main/docs/evidence/ci-pipeline-2026-10-30/config01/push-concurrency.json)，没有人为造成 main 的重叠 push，也不将其标作 main 生产重叠记录。
 
-最终 [PR24](https://github.com/Acfufu/lazyzcode/pull/24) 的首个候选 c84664f 在 [41020766156](https://github.com/Acfufu/lazyzcode/actions/runs/41020766156) 被门阻止：macOS Node24.22.1 为 993 通过、1 失败，CI Required failure。失败位于既有 worker 分派测试，旧正则在整个 prompt 匹配 N 加数字，把临时路径中的 N3 也计为步骤，出现 5+4 的误计。固定含 N3 的路径在本地 Node24.19 和匹配的官方24.22.1均确定性重现；没有直接重跑直到变绿。
+最终 [PR24](https://github.com/Acfufu/lazyzcode/pull/24) 的首个候选 c84664f 在 [41020766156](https://github.com/Acfufu/lazyzcode/actions/runs/41020766156) 被门阻止：macOS Node24.22.1 为 993 通过、1 失败，CI Required failure。失败位于既有 worker 分派测试，旧正则在整个 prompt 匹配 N 加数字，出现多余 N3、5+4 的误计。源码和受控对照定位到路径型误计：固定含 N3 的路径在本地 Node24.19 和匹配的官方24.22.1均确定性重现同样结果。原始失败未记录完整 prompt，不宣称恢复了当时的目录名；没有直接重跑直到变绿。
 
-修复提交 `6707134d3ec2adf20bf9ea0fa512803dbbefeaa3` 只改该测试：解析显式分派清单，永久保留含 N3 的对抗性路径，原两工人/2+1断言保留，并新增 N1/N2/N3 恰好覆盖一次的断言。绑定提交的24.22.1定向检查为1通过、0失败、0跳过；独立副本把 N2 记录改为 N1、维持2+1数量时，精确覆盖断言仍失败。产品调度代码没有变更；模型执行使用原有 fake engine，未执行真实 provider 工作。首败身份、红绿日志与负控在[末次取证证据](https://github.com/Acfufu/lazyzcode/tree/main/docs/evidence/ci-pipeline-2026-10-30/final)保留，修复后的候选仍须全套托管检查。
+修复提交 `6707134` 及强化提交 `aa4cb09914a176e493873d9d635fa9473d8361f1` 只改该测试：解析显式分派清单，永久保留含 N3 的对抗性路径；仅移除已知路径字面量后，仍在整个 prompt 检查没有额外步骤引用。原两工人/2+1断言保留，并新增 N1/N2/N3 恰好覆盖一次的断言。绑定强化提交的24.22.1定向检查为1通过、0失败、0跳过；独立副本把 N2 分派文字改为 N1、维持2+1数量时，精确覆盖断言仍失败。产品调度代码没有变更；模型执行使用原有 fake engine，未执行真实 provider 工作。首败身份、红绿日志与负控在[末次取证证据](https://github.com/Acfufu/lazyzcode/tree/main/docs/evidence/ci-pipeline-2026-10-30/final)保留，修复后的候选仍须全套托管检查。
 
 ## 安装包、文档和维护面
 

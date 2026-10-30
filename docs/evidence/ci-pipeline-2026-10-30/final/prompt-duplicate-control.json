@@ -1,9 +1,10 @@
 {
   "result": "PASS",
+  "node": "v24.22.1",
   "expectedChildExit": 1,
   "actualChildExit": 1,
-  "meaning": "2+1 counts retained but duplicated N1 instead of N2 rejected by exact coverage assertion",
-  "sourceSha256": "2183bbe36457964ea62dc4e394d3cbd3f2d6dd4847112abfb4d135605178a19a",
-  "controlSha256": "a2faacc08e61def5ccf01d7c6172994860744910952698eabf11879317363734",
-  "fixture": "/private/tmp/lzy-worker-assignment-control-B2wV1t"
+  "meaning": "actual assignment text changed from N2 to N1;2+1 counts retained but exact coverage rejected duplicate",
+  "sourceSha256": "26dd9e637aedc1424dc6bf4ee0e884184870f6531c4ccfae9eae8693c7610615",
+  "controlSha256": "da1df14f861d9c0a57e3aac6cdb1a4db1ddc0e50fe72b5920232883c5a31e778",
+  "fixture": "/private/tmp/lzy-worker-assignment-control-AHoduE"
 }

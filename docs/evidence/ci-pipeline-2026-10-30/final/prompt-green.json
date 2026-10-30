@@ -1,8 +1,8 @@
 {
   "repository": null,
   "event": "local",
-  "checkoutSha": "6707134d3ec2adf20bf9ea0fa512803dbbefeaa3",
-  "checkoutTree": "2a485557540e7e591ec936307a0b77b83f537b6f",
+  "checkoutSha": "aa4cb09914a176e493873d9d635fa9473d8361f1",
+  "checkoutTree": "066e837310a6505c2464d11e2f6d87432bcc366b",
   "prHead": null,
   "prBase": null,
   "runId": null,
@@ -12,19 +12,19 @@
   "node": "v24.22.1",
   "npm": "12.2.1",
   "kind": "tests",
-  "startedAt": "2026-10-30T07:51:56.314Z",
+  "startedAt": "2026-10-30T07:59:16.574Z",
   "argv": [
     "--test",
     "--test-reporter=spec",
     "--test-reporter-destination=stdout",
     "--test-reporter=junit",
-    "--test-reporter-destination=/Users/acfufu/Codehub/lazyzcode/.omo/evidence/testing/pr-pipeline-20261030/final/a1/worker-prompt-repair/committed-green/junit.xml",
+    "--test-reporter-destination=/Users/acfufu/Codehub/lazyzcode/.omo/evidence/testing/pr-pipeline-20261030/final/a1/worker-prompt-repair/strong-committed-green/junit.xml",
     "--test-reporter=file:///Users/acfufu/Codehub/lazyzcode/scripts/ci/events-reporter.mjs",
-    "--test-reporter-destination=/Users/acfufu/Codehub/lazyzcode/.omo/evidence/testing/pr-pipeline-20261030/final/a1/worker-prompt-repair/committed-green/events.jsonl",
+    "--test-reporter-destination=/Users/acfufu/Codehub/lazyzcode/.omo/evidence/testing/pr-pipeline-20261030/final/a1/worker-prompt-repair/strong-committed-green/events.jsonl",
     "--test-name-pattern=④波分派",
     "test/drive-workers.contract.test.js"
   ],
-  "finishedAt": "2026-10-30T07:51:56.964Z",
+  "finishedAt": "2026-10-30T07:59:17.255Z",
   "exitCode": 0,
   "signal": null,
   "hasReports": true,
@@ -41,7 +41,7 @@
         "topLevel": 1,
         "suites": 0
       },
-      "duration_ms": 558.378958,
+      "duration_ms": 572.452167,
       "file": "/Users/acfufu/Codehub/lazyzcode/test/drive-workers.contract.test.js",
       "entryFile": "/Users/acfufu/Codehub/lazyzcode/test/drive-workers.contract.test.js"
     },
@@ -57,7 +57,7 @@
         "topLevel": 1,
         "suites": 0
       },
-      "duration_ms": 610.078708
+      "duration_ms": 634.748416
     }
   ],
   "skips": []

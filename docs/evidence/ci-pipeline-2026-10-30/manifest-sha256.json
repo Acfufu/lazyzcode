@@ -100,24 +100,29 @@
     "sha256": "4273dd3a0fcb980a1c2efc67bb75317436e1731ffea9e7ac4d85ac72edaef212"
   },
   {
+    "path": "final/pr24-first-failing-test.json",
+    "bytes": 937,
+    "sha256": "4f9267bc13dbc3bd49b1f0b87263e8a9dfc6132a797d6697d7db28fe2c899792"
+  },
+  {
     "path": "final/pr24-first-macos-failure.json",
     "bytes": 44525,
     "sha256": "1b05ef945fa82ff9e7c4df0c515bf17d35c3833507c3324f97561a7c4489a7e0"
   },
   {
     "path": "final/prompt-duplicate-control.json",
-    "bytes": 416,
-    "sha256": "99c8b96b644bd3e4076f4bcfbc1a70724d94e0812595facbec4d27e86d2f80e6"
+    "bytes": 452,
+    "sha256": "b58d21963b97ecbd57461ea15ce67279d85376d41194a30925eed828ee12b945"
   },
   {
     "path": "final/prompt-duplicate-control.log",
     "bytes": 1024,
-    "sha256": "b21684e1a21df5a941413a9b91639b5ba0322c1a4ccc6a1f0f0fde11628425ef"
+    "sha256": "4ff6a2df4eecdf8222bc2ce2600723fceb79759173995273b3a6f0300bc77258"
   },
   {
     "path": "final/prompt-green.json",
-    "bytes": 1868,
-    "sha256": "64580c4e1d7810ea7da9141ba62221e7614ce330af3e982e41214f8256391627"
+    "bytes": 1882,
+    "sha256": "00bdabc0dbb4babcf76eae39cc027c6297998cf07c63b85b90cfc15e389035ba"
   },
   {
     "path": "final/prompt-red-native.log",

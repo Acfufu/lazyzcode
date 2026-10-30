@@ -194,3 +194,43 @@ test('failed startup resolution rejects before listeners open and redacts resolv
   await assert.rejects(startup, error => !error.message.includes('SECRET') && !error.message.includes('review-provider'));
   await assert.rejects(request(port, 'http://127.0.0.1:1/'), error => error.code === 'ECONNREFUSED');
 });
+
+test('HTTP redirects are relayed without dialing a denied canary', async t => {
+  let canaryConnections = 0;
+  let proxy;
+  const canary = http.createServer((_req, res) => res.end('denied-canary'));
+  canary.on('connection', () => { canaryConnections += 1; });
+  let canaryUrl;
+  const upstream = http.createServer((_req, res) => {
+    res.writeHead(302, { Location: canaryUrl });
+    res.end('redirect-body');
+  });
+  t.after(async () => { await proxy?.close(); await stop(upstream); await stop(canary); });
+  canaryUrl = `http://127.0.0.1:${await listen(canary)}/private`;
+  const origin = `http://127.0.0.1:${await listen(upstream)}`;
+  proxy = await startReviewProxy({ endpoints: [origin] });
+  assert.deepEqual(await request(proxy.port, `${origin}/redirect`), { status: 302, body: 'redirect-body' });
+  assert.equal(canaryConnections, 0);
+  assert.equal((await request(proxy.port, canaryUrl)).status, 403);
+  assert.equal(canaryConnections, 0);
+});
+
+test('denied canonical origins make zero canary connections', async t => {
+  let canaryConnections = 0;
+  let proxy;
+  const canary = http.createServer((_req, res) => res.end('denied-canary'));
+  canary.on('connection', () => { canaryConnections += 1; });
+  const upstream = http.createServer((_req, res) => res.end('allowed'));
+  t.after(async () => { await proxy?.close(); await stop(upstream); await stop(canary); });
+  const canaryPort = await listen(canary);
+  const allowedPort = await listen(upstream);
+  proxy = await startReviewProxy({ endpoints: [`http://127.0.0.1:${allowedPort}`] });
+  for (const host of ['127.0.0.1', 'localhost', '%31%32%37.0.0.1', '2130706433', '[::1]', 'xn--bcher-kva.invalid']) {
+    const target = `http://${host}:${canaryPort}/private`;
+    const result = await request(proxy.port, target);
+    assert.equal(canaryConnections, 0, `denied target dialed canary: ${target}`);
+    assert.equal(result.status, 403, target);
+  }
+  // Canonically equivalent origins are still allowed; the policy is not raw-string matching.
+  assert.deepEqual(await request(proxy.port, `http://2130706433:${allowedPort}/ok`), { status: 200, body: 'allowed' });
+});

@@ -59,6 +59,7 @@ const CLI = join(ROOT, "cli", "lzy.js");
 const SUPPRESS_ENGINE = "/nonexistent-lzy-suppressed-engine";
 const HOME = mkdtempSync(join(tmpdir(), "lzy-v009-home-"));
 const CLI_VERSION = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
+const CLI_VERSION_PATTERN = CLI_VERSION.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 function repo(prefix = "lzy-v009-auth-") {
   const d = mkdtempSync(join(tmpdir(), prefix));
@@ -402,7 +403,7 @@ test("doctor payload-ver：一致 ok／错配 warn 带 sync 指路／缓存缺�
   const line = (r) => `${r.stdout ?? ""}${r.stderr ?? ""}`.split("\n").find((l) => l.includes("payload-ver")) ?? "";
   const d1 = repo();
   const ok = line(run(cacheHome([CLI_VERSION]), d1));
-  assert.match(ok, new RegExp(`✔ payload-ver\\s+缓存 \\[.*${CLI_VERSION.replace(/\./g, "\\.")}.*\\] · CLI ${CLI_VERSION.replace(/\./g, "\\.")} 一致`));
+  assert.match(ok, new RegExp(`✔ payload-ver\\s+缓存 \\[.*${CLI_VERSION_PATTERN}.*\\] · CLI ${CLI_VERSION_PATTERN} 一致`));
   // 样本不可读（半份部署/手删 SKILL.md）→ 与「一致」区分
   const noSample = line(run(cacheHome([CLI_VERSION], { withSample: false }), d1));
   assert.match(noSample, /⚠ payload-ver.*未做内容对照/s);
@@ -654,7 +655,7 @@ test("payload-ver 深对照：注册表钉旧版/内容漂移=warn；市场 B �
   const pkg = readFileSync(pkgSkill, "utf8");
   // 市场 B 名（非 lazyzcode-local）候选枚举：照常 ok
   const okB = line(run(homeWith("my-market-b", CLI_VERSION, pkg), d));
-  assert.match(okB, new RegExp("✔ payload-ver\\s+缓存 \\[" + CLI_VERSION.replace(/\./g, "\\.") + "\\]"), "市场 B 名不误报未安装");
+  assert.match(okB, new RegExp("✔ payload-ver\\s+缓存 \\[" + CLI_VERSION_PATTERN + "\\]"), "市场 B 名不误报未安装");
   // 注册表钉旧版 → warn（会话实际加载旧载荷）
   const h2 = homeWith("lazyzcode-local", CLI_VERSION, pkg);
   const regDir = join(h2, ".zcode", "cli", "plugins");

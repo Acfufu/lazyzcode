@@ -267,6 +267,8 @@ test("④波分派：3 步 2 工人=2+1（worker prompt 只含分派步）", asy
     const assignment = /^2\. 只做你被分派的步：([^。\n]+)。/m.exec(prompt);
     assert.ok(assignment, "worker prompt 须包含显式分派清单");
     const ids = assignment[1].split("、").sort();
+    const withoutPaths = prompt.replaceAll(r.dir, "<host>").replaceAll(CLI, "<cli>");
+    assert.deepEqual((withoutPaths.match(/N\d+/g) ?? []).sort(), ids, "prompt 路径之外不能出现分派清单以外的步骤引用");
     seen.push(ids.join(","));
     return { exitCode: 0, stdout: `${JSON.stringify({ sessionId: "sess-x" })}`, stderr: "" };
   };

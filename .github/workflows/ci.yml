@@ -1,6 +1,6 @@
 name: ci
 
-# 最小权限（ADJ-90）：jobs 只需读代码；action 钉 SHA 不做——无 Dependabot 维护面时手动 pin 反增维护负担，留待有自动更新面再议。
+# ADJ-90: read-only PR checks; SHA pinning and automatic updates land together in PR 05.
 permissions:
   contents: read
 
@@ -9,21 +9,19 @@ on:
     branches: [main, dev]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('push-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
-        # P3 engines 收紧（goal p3-sqlite-switch；ADR-0039 地板 ≥24.0.0）：node 22 腿退出矩阵
-        # macos 腿（0.6.2 发布批）：本机 arm64 全套 concurrency=2 绿在案（reliability 报告），
-        # runner 首跑即三平台持续覆盖；TZ env POSIX 语义同 linux 腿。
         node: [24]
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    # scheduleAdvisory 断言「UTC+8 宿主下的本地小时渲染」（core/ratelimit.js 双轴：
-    # 直方图=进程本地 getHours，计价表=UTC+8）——runner 默认 TZ=UTC 会错开 8h 致三只挂。
-    # windows 腿（ADR-0011 三平台支持）：TZ env 在 win32 Node 的语义已在 Windows VM 实证
-    #（goal crossplatform-support N7，VM 本身 UTC+8 且 TZ=UTC 子进程断言通过）；
-    # sqlite3 CLI 缺席的 windows runner 上两套门控套件按既有 skip 语义跳过。
     env:
       TZ: Asia/Shanghai
     steps:
@@ -31,30 +29,61 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      # 收窄发现面到 test/（幻影 pass 结构性根治，goal v005-core#N6）；Node ≥22 对
-      # --test 位置参数按 glob 解释，目录字面量形态不可用——glob 加引号防 shell 抢先展开
-      - run: node --test "test/**/*.test.js"
-      - run: node cli/lzy.js --help
+      # Node runs --test "test/**/*.test.js" with spec/JUnit/event reporters and preserves its exit code.
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/tests"
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/cli" --script cli/lzy.js --help
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tests-${{ matrix.os }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-${{ matrix.os }}/
+          retention-days: 14
 
-  # docs 断链/锚点检查（0.4.0 M5 N3，M4 输入 9①）——独立轻量 job，不入矩阵重复跑。
   docs-links:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node scripts/check-docs-links.mjs
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/docs-links" --script scripts/check-docs-links.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docs-links-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/docs-links/
+          retention-days: 14
 
-  # SQLite 迁移地板腿（P1 N4，ADR-0039 拍板地板 2026-10-16）：钉 24.0.0 实跑
-  # 能力探针（必需面全过）+ 试点契约测试（五面/双读者；<24 环境在其它腿自然具名 skip）。
   sqlite-floor:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24.0.0
-      - run: node scripts/sqlite-capability-probe.mjs
-      - run: node --test test/statedb.contract.test.js test/statedb-readers.contract.test.js
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/sqlite-floor/probe" --script scripts/sqlite-capability-probe.mjs
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/sqlite-floor/tests" test/statedb.contract.test.js test/statedb-readers.contract.test.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sqlite-floor-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sqlite-floor/
+          retention-days: 14
 
+  ci-required:
+    name: CI Required
+    if: always()
+    needs: [test, docs-links, sqlite-floor]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/ci/required-gate.mjs
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          REQUIRED_JOBS: test,docs-links,sqlite-floor

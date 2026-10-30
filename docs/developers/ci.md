@@ -10,4 +10,6 @@ CI 每个 PR 完整运行 Node 24 三平台、文档链接和 Node 24.0.0 SQLite
 
 本地复核可运行 `node --test test/ci-required.test.js`，以及 `node scripts/ci/run-checks.mjs artifacts/ci-local test/sqlite-migrate.contract.test.js`。包装器的失败、skip 与退出码行为另用隔离 fixture 核验；不要把故意失败的 fixture 合入测试目录。
 
+单独检查地板探针并保存回执：`node scripts/ci/run-checks.mjs artifacts/sqlite-probe --script scripts/sqlite-capability-probe.mjs`。命令非零退出会原样传递给调用者，产物目录仍保存执行身份与失败日志。
+
 平台 runner、离线安装与浏览器结果各有验收边界；本流水线不证明真实 ZCode 装载、macOS ES 授权或托管进程生命周期通过。发布仍按现行维护者手工流程执行。

@@ -1,0 +1,12 @@
+# PR 04 independent review
+
+Baseline: ce47218a44b288ee5ee6ceb248cb3abac2497254
+Candidate: 7c961699c51ba4a8ee0732070d778e8b62306024
+
+## Standards
+
+PASS, no actionable documented-standard violations or baseline smells. Exact diff/log, new scripts via CodeGraph, Gem metadata/config and guide/doc hunks reviewed. Dependencies stay in independent docs tool directory; subprocess args and temporary Liquid fixture scoped; CI reuses identity/report recording; docs distinguish PR/container evidence from hosted Pages deployment. No tests or deployment success claimed by reviewer.
+
+## Spec
+
+PASS, 0 actionable findings. Locked Pages toolchain, explicit github-pages loading for nested Gemfile, real Jekyll/Liquid build, five public entry/link/anchor/asset/baseurl checks, isolated malformed Liquid rejection and unconditional docs-build gate match plan. Markdown parser and excluded-review-link fixes directly support observed rendered-site failures and remain in scope. No deployment workflow/source migration. Source-only review, no tests re-executed; post-merge Pages deployment pending.

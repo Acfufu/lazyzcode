@@ -1,0 +1,28 @@
+{
+  "number": 4,
+  "state": "dismissed",
+  "created_at": "2026-10-30T05:50:06Z",
+  "fixed_at": null,
+  "dismissed_at": "2026-10-30T06:38:34Z",
+  "dismissed_reason": "false positive",
+  "dismissed_comment": "Custom exact-origin allowlist dominates this sink; DNS is pinned and redirects relayed. PR16/CI41012793329 add real canary checks; isolated guard removal causes a canary assertion failure. Reopen on endpoint/parser/origin/DNS/redirect changes.",
+  "html_url": "https://github.com/Acfufu/lazyzcode/security/code-scanning/4",
+  "dismissedBy": "Acfufu",
+  "rule": {
+    "id": "js/request-forgery",
+    "severity": "error",
+    "security_severity_level": "critical"
+  },
+  "instance": {
+    "ref": "refs/heads/main",
+    "commit_sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+    "state": "dismissed",
+    "location": {
+      "path": "core/review-proxy.js",
+      "start_line": 98,
+      "end_line": 103,
+      "start_column": 22,
+      "end_column": 7
+    }
+  }
+}

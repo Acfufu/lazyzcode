@@ -1,0 +1,12 @@
+# PR 03 independent review
+
+Baseline: 36204a1110fcdc66a71f5510db26f4711f19867f
+Candidate: 7ef8f9d0e3362262cd48ca0ddca96105eede6991
+
+## Standards
+
+PASS. No actionable documented-rule violations or baseline heuristic smells. Exact diff/log reviewed; CodeGraph inspected all four scripts plus installed installer/path ownership. Uses built-ins, fixed-argument subprocesses except guarded Windows .cmd invocation, isolated home/cache/prefix/work and manifest/checkout/run identity checks. No imported third-party code/text evident in diff; no exhaustive provenance claim. Read-only source review, no tests or platform pass claimed.
+
+## Spec
+
+PASS, 0 actionable findings. Exact diff/log, scripts/workflow/docs, installer/path behavior and existing npm pack envelope handling reviewed. One candidate artifact hashed before install, four smoke legs consume it, installed member sets/hashes and actual bin/.cmd are checked, installed installer deployment uses isolated subprocess home/cache/prefix/work. Three mutations assert intended failures. Package jobs directly gate CI Required, no root dependencies/publish/live engine invocation added. Execution results remain outside source review; no tests run.

@@ -1,0 +1,45 @@
+{
+  "pagesApiBuiltCommit": "7fa731bc525bb4a376b719550b22b7ab00b516f3",
+  "checks": [
+    {
+      "url": "https://acfufu.github.io/lazyzcode/?ci-acceptance=7fa731bc525bb4a376b719550b22b7ab00b516f3",
+      "fetchedAt": "2026-10-30T05:20:19.465Z",
+      "status": 200,
+      "expectedMarker": "LazyZCode",
+      "markerPresent": true,
+      "sha256": "7f82a5cef01fd4d515c3bd53be1a6682a20795daa1f0b32c572ed977ae3bf9c7"
+    },
+    {
+      "url": "https://acfufu.github.io/lazyzcode/guide/en/?ci-acceptance=7fa731bc525bb4a376b719550b22b7ab00b516f3",
+      "fetchedAt": "2026-10-30T05:20:19.510Z",
+      "status": 200,
+      "expectedMarker": "id=\"hooks--lifecycle\"",
+      "markerPresent": true,
+      "sha256": "26db8907cf6a745b443b6f8be216064c0283773ab9a111a00cd4ca0cfbfefb2e"
+    },
+    {
+      "url": "https://acfufu.github.io/lazyzcode/guide/zh/?ci-acceptance=7fa731bc525bb4a376b719550b22b7ab00b516f3",
+      "fetchedAt": "2026-10-30T05:20:19.518Z",
+      "status": 200,
+      "expectedMarker": "id=\"安装\"",
+      "markerPresent": true,
+      "sha256": "613552ca69d5bbc115f691d8ae45029c31b89bb0b4d52d1ae0c97ac63e3676c0"
+    },
+    {
+      "url": "https://acfufu.github.io/lazyzcode/developers/en/?ci-acceptance=7fa731bc525bb4a376b719550b22b7ab00b516f3",
+      "fetchedAt": "2026-10-30T05:20:19.459Z",
+      "status": 200,
+      "expectedMarker": "id=\"system-architecture\"",
+      "markerPresent": true,
+      "sha256": "e2fd50f74ce6cae1ae35a1e6e4698025f5d0ca70938901a5ececfe837ebca9ec"
+    },
+    {
+      "url": "https://acfufu.github.io/lazyzcode/developers/zh/?ci-acceptance=7fa731bc525bb4a376b719550b22b7ab00b516f3",
+      "fetchedAt": "2026-10-30T05:20:19.466Z",
+      "status": 200,
+      "expectedMarker": "id=\"系统架构\"",
+      "markerPresent": true,
+      "sha256": "4587611086b76f2b7d09345281c2578ff68fef656b5b89d2a30376a84952fc05"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "repository": "Acfufu/lazyzcode",
+  "event": "pull_request",
+  "checkoutSha": "185d2b7e047a5dd826bb4dd75f2a7af0c2456463",
+  "checkoutTree": "b77b9f64436a091f92508aea442d073187c09634",
+  "prHead": "4465e7e5205911b485d9cbdab88d77d8362da454",
+  "prBase": "7fa731bc525bb4a376b719550b22b7ab00b516f3",
+  "runId": "41008267859",
+  "attempt": "1",
+  "platform": "linux",
+  "arch": "x64",
+  "node": "v24.22.1",
+  "npm": "11.19.1",
+  "kind": "script",
+  "startedAt": "2026-10-30T05:24:39.216Z"
+}

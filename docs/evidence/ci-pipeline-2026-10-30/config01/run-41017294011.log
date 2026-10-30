@@ -1,0 +1,37 @@
+hold	Set up job	﻿2026-10-30T06:59:21.4299798Z Current runner version: '2.338.0'
+hold	Set up job	2026-10-30T06:59:21.4323188Z ##[group]Runner Image Provisioner
+hold	Set up job	2026-10-30T06:59:21.4323927Z Hosted Compute Agent
+hold	Set up job	2026-10-30T06:59:21.4324502Z Version: 20261021.618
+hold	Set up job	2026-10-30T06:59:21.4325050Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+hold	Set up job	2026-10-30T06:59:21.4325656Z Build Date: 2026-10-21T00:45:21Z
+hold	Set up job	2026-10-30T06:59:21.4326300Z Worker ID: {9a04abf0-6eee-4f53-8004-343a6b0051fe}
+hold	Set up job	2026-10-30T06:59:21.4326907Z Region: westus3
+hold	Set up job	2026-10-30T06:59:21.4327360Z Cloud: Azure
+hold	Set up job	2026-10-30T06:59:21.4327885Z ##[endgroup]
+hold	Set up job	2026-10-30T06:59:21.4329026Z ##[group]Operating System
+hold	Set up job	2026-10-30T06:59:21.4329621Z Ubuntu
+hold	Set up job	2026-10-30T06:59:21.4330089Z 24.04.5
+hold	Set up job	2026-10-30T06:59:21.4330620Z LTS
+hold	Set up job	2026-10-30T06:59:21.4331145Z ##[endgroup]
+hold	Set up job	2026-10-30T06:59:21.4331614Z ##[group]Runner Image
+hold	Set up job	2026-10-30T06:59:21.4332170Z Image: ubuntu-24.04
+hold	Set up job	2026-10-30T06:59:21.4332775Z Version: 20261025.353.1
+hold	Set up job	2026-10-30T06:59:21.4333660Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261025.353/images/ubuntu/Ubuntu2404-Readme.md
+hold	Set up job	2026-10-30T06:59:21.4335170Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261025.353
+hold	Set up job	2026-10-30T06:59:21.4335986Z ##[endgroup]
+hold	Set up job	2026-10-30T06:59:21.4336894Z ##[group]GITHUB_TOKEN Permissions
+hold	Set up job	2026-10-30T06:59:21.4338728Z Contents: read
+hold	Set up job	2026-10-30T06:59:21.4339287Z Metadata: read
+hold	Set up job	2026-10-30T06:59:21.4339796Z ##[endgroup]
+hold	Set up job	2026-10-30T06:59:21.4341478Z Secret source: Actions
+hold	Set up job	2026-10-30T06:59:21.4342287Z Cache mode: write
+hold	Set up job	2026-10-30T06:59:21.4343125Z Prepare workflow directory
+hold	Set up job	2026-10-30T06:59:21.4602522Z Prepare all required actions
+hold	Set up job	2026-10-30T06:59:21.4686022Z Complete job name: hold
+hold	Record actual push identity and hold overlapping runs	﻿2026-10-30T06:59:21.5493399Z ##[group]Run printf '%s %s %s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA"
+hold	Record actual push identity and hold overlapping runs	2026-10-30T06:59:21.5494434Z ^[[36;1mprintf '%s %s %s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA"^[[0m
+hold	Record actual push identity and hold overlapping runs	2026-10-30T06:59:21.5495202Z ^[[36;1msleep 90^[[0m
+hold	Record actual push identity and hold overlapping runs	2026-10-30T06:59:21.5998518Z shell: /usr/bin/bash -e {0}
+hold	Record actual push identity and hold overlapping runs	2026-10-30T06:59:21.5999408Z ##[endgroup]
+hold	Record actual push identity and hold overlapping runs	2026-10-30T06:59:21.6155138Z 41017294011 1 a7e157eaa2cdc8da0972d9d1956be3f8b90a1803
+hold	Complete job	﻿2026-10-30T07:00:51.6294691Z Cleaning up orphan processes

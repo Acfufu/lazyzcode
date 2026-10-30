@@ -12,7 +12,7 @@
 | [3](https://github.com/Acfufu/lazyzcode/security/code-scanning/3) high | 同文件 657 | 同一修复，保持市场目录与载荷核对语义 |
 | [4](https://github.com/Acfufu/lazyzcode/security/code-scanning/4) critical | core/review-proxy.js:98–103 | 自定义 allowlist 未被静态数据流模型识别；完成下述源审和真实边界检查后，按单条 false positive 处置 |
 
-1–3 的输入来自提交内 package.json 的版本 `0.6.2`，接收方是本地 doctor 输出的测试断言，未发现当前产品中的不可信高危输入路径；完整转义仍消除了未来版本域变化时的断言脆弱性。修改后两个原有 payload-ver 测试均通过，外围正则、fixture 和产品实现保持原有语义。平台自动复扫的实际关闭状态另作回读。
+1–3 的输入来自提交内 package.json 的版本 `0.6.2`，接收方是本地 doctor 输出的测试断言，未发现当前产品中的不可信高危输入路径；完整转义仍消除了未来版本域变化时的断言脆弱性。修改后两个原有 payload-ver 测试均通过，外围正则、fixture 和产品实现保持原有语义。跟进 [PR16](https://github.com/Acfufu/lazyzcode/pull/16) 在 15 项检查成功后合并；main `37a5670` 的完整分析 `2060285787` 自动将 1–3 标为 fixed（2026-10-30T06:25:39Z）。
 
 4 的 SARIF 路径从请求 URL 流向 http.request，但发送前存在主导控制流的 exact-origin Set 检查。允许的 endpoints 来自宿主选定的 provider 配置，在 reviewer 启动前固定，请求不能扩展该集合。配置和请求使用相同 URL parser；仅转发获准 HTTP origin，重写 Host，DNS 地址在启动时固定；HTTP 请求不跟随重定向。HTTPS CONNECT 另按获准 authority 处理。
 
@@ -42,4 +42,6 @@
 | 16 | js/bad-code-sanitization | test/lock-instrument.contract.test.js:62 | OPEN |
 | 17 | js/identity-replacement | core/verify.js:39 | OPEN |
 
-main 语义门仍须在修复后完整复扫、单条处置回读及实际演练后验收。fork 路径尚缺另一 GitHub 归属入口，仍为 NOT_RUN；未计为通过。npm 发布方式、本次产品版本和 R0 完成状态未由本报告改变。
+维护者于 2026-10-30T06:38:34Z 将具体告警 4 标为 false positive，并写明上述证据和复核触发。main 回读有 13 条 medium open、0 条 high/critical open；完整 SARIF 仍包含该已具名处置的发现，不能表述为全仓零结果。[汇总验收](pr-pipeline-acceptance-2026-10-30.md) 记录语义门及正反例。
+
+fork 路径尚缺另一 GitHub 归属入口，仍为 NOT_RUN；未计为通过。npm 发布方式、本次产品版本和 R0 完成状态未由本报告改变。

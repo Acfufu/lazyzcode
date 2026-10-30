@@ -1,0 +1,22 @@
+{
+  "sha": "7f797815d8adceb1c412e7abefdd1ab4abc47a5f",
+  "url": "https://api.github.com/repos/ruby/setup-ruby/git/commits/7f797815d8adceb1c412e7abefdd1ab4abc47a5f",
+  "tree": {
+    "sha": "fc25ba6fef39631e12a7a34f08a5cf87c59817a6",
+    "url": "https://api.github.com/repos/ruby/setup-ruby/git/trees/fc25ba6fef39631e12a7a34f08a5cf87c59817a6"
+  },
+  "parents": [
+    {
+      "sha": "26e5b7d197ebf60545ee9667bcbace0be11ccaec",
+      "url": "https://api.github.com/repos/ruby/setup-ruby/git/commits/26e5b7d197ebf60545ee9667bcbace0be11ccaec",
+      "html_url": "https://github.com/ruby/setup-ruby/commit/26e5b7d197ebf60545ee9667bcbace0be11ccaec"
+    }
+  ],
+  "verification": {
+    "verified": false,
+    "reason": "unsigned",
+    "signature": null,
+    "payload": null,
+    "verified_at": null
+  }
+}

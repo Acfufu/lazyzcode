@@ -1,0 +1,27 @@
+{
+  "sha": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+  "url": "https://api.github.com/repos/actions/download-artifact/git/commits/d3f86a106a0bac45b974a628896c90dbdf5c8093",
+  "tree": {
+    "sha": "064a6e5489b0f9f42ede63b1262704c4e73e4093",
+    "url": "https://api.github.com/repos/actions/download-artifact/git/trees/064a6e5489b0f9f42ede63b1262704c4e73e4093"
+  },
+  "parents": [
+    {
+      "sha": "77454371a433f370a16d329ef7db197f700a7a8f",
+      "url": "https://api.github.com/repos/actions/download-artifact/git/commits/77454371a433f370a16d329ef7db197f700a7a8f",
+      "html_url": "https://github.com/actions/download-artifact/commit/77454371a433f370a16d329ef7db197f700a7a8f"
+    },
+    {
+      "sha": "fc02353415da80201a0da48ab47022efd7725d11",
+      "url": "https://api.github.com/repos/actions/download-artifact/git/commits/fc02353415da80201a0da48ab47022efd7725d11",
+      "html_url": "https://github.com/actions/download-artifact/commit/fc02353415da80201a0da48ab47022efd7725d11"
+    }
+  ],
+  "verification": {
+    "verified": true,
+    "reason": "valid",
+    "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJoCmXfCRC1aQ7uu5UhlAAAyxAQACgQZXeEHK8yhfWxtivuUtfy\nQXmm7UbE/IGNU3kqEbSd13Tt0Wxxnt2zya8GEFQ3NdBF29lkzxoy7iodUzAMBWhC\n982EJuL0weaUy+BL+iyBWXDn3YgBxtLx6Jz4mSkHi4b/c6LAOGqft0q82xPC8Q3w\nl0vFC+2Xg7j1sUfX/qBLC7FQCprZl+LGXAqGeEfAgMb/wD8NxSTayiyzNk48d3fy\nKFJ/rqcY8heXyG4R7aT0s7L/qP4SrR5heF35mZTz9ejECz7LPv4ltZ+g8aNhaESO\ngjF/ipHJ9+9BqEqJ5wAVplhs90sZnFvwKeZIllLf4JIwtkw8SMrfsL6MbmO+V+eB\nPiemys5Fszp5uEgpLoWoG03lokEf1EaDOAAWIkfE3Du08hWMHWHwAtltzfm7+pLC\n9qBxTE5A56q9xXi8lYbU6hmfXwEBlGM8N3ootXkrMPd2Lj4XJ6DfD2cVzMiIvLVT\nFRBIuEKIYrVg/L9ol02s2fnZz638LamtRifsEyjTbCGWcEbyVdRctXDag4Ua6stu\n6UrX5Zf5QBh3tQMp/uXeTy5ASEcB1vqAfdrQ1fjJ0EGCcT5euIQIQZNPm5aiuymF\nbwmDJWySfvvEnIHgVpBXj0Knz0wm/xrYy/t3TMBHIU80khvNkRJHYMK1M6gR2hIr\nJ3X4qFN750wiLgtjhz/E\n=PprZ\n-----END PGP SIGNATURE-----\n",
+    "payload": "tree 064a6e5489b0f9f42ede63b1262704c4e73e4093\nparent 77454371a433f370a16d329ef7db197f700a7a8f\nparent fc02353415da80201a0da48ab47022efd7725d11\nauthor Rob Herley <robherley@github.com> 1745511903 -0400\ncommitter GitHub <noreply@github.com> 1745511903 -0400\n\nMerge pull request #404 from actions/robherley/v4.3.0\n\nPrep for v4.3.0 release",
+    "verified_at": "2025-04-24T16:25:07Z"
+  }
+}

@@ -1,0 +1,36 @@
+# PR 02 independent reviews
+
+Baseline: a6938f91a6e8c2bec010eb760e33743b3696750c
+Candidate: 1fd84308a9a6d80efa86491c8ab312607ad7b709
+
+## Standards
+
+PASS. No actionable hard violations of AGENTS.md/CONTEXT.md or relevant SQLite boundary rules, and no actionable baseline heuristic smells found. Exact committed diff/log reviewed; CodeGraph inspected CI helper source, matching committed hunks. Standards files unchanged. Read-only source review only; no tests run and no runtime/CI/platform success claimed.
+
+## Spec
+
+P2: .github/workflows/ci.yml:42–66 diagnostic coverage is partial. Spec line 68 requires each run's summary with identity, result/skip reasons, and failure logs/reports uploaded with always() and 14-day retention. docs-links runs the checker directly with no saved log/summary/upload. sqlite-floor capability probe executes before the wrapper creates its output directory; probe failure skips the wrapper, so always-upload has no diagnostic artifact. Capture those command outputs/results and identity before execution, upload on failure, preserve exits. Other PR 02 behavior matches; remote drills remain pending.
+
+Disposition: fixing diagnostics coverage, then independent recheck required for new candidate.
+
+## Independent recheck at f578265fc07092de2ddf431ccb4fc68a545efbd8
+
+Standards: PASS. No actionable documented-standard violations or baseline heuristic smells in 1fd8430...f578265. Exact committed diff/log and CodeGraph source reviewed. --script mode shares recording/exit handling; all three auxiliary checks use it; docs accurately describe limits and boolean skips. No tests or runtime/CI claims.
+
+Spec: P2 CLOSED. docs-links, CLI help and SQLite probe route through run-checks --script; identity is written before spawn, stdout/stderr drained to command.log, result.json written after nonzero completion, exits preserved, summary/upload paths cover outputs with always()/14 days. No remaining actionable issue in this finding. Read-only source review; no tests or remote/runtime claims.
+
+## Incremental review at 4e40873898f0c64254d04e7131d5415692f5389c
+
+Spec: PASS, no contract weakening. Replacing the YAML literal assertion with root package runner checks plus real subprocess exit/log/result/JUnit/skip tests checks execution at the standalone workflow seam. NODE_TEST_CONTEXT removal affects fixture env only. No tests or remote success claimed by reviewer.
+
+Standards: test-isolation finding. Fixture env inherited GITHUB_STEP_SUMMARY, so intentionally failed fixture receipts could be appended to the real Actions summary. Clear that variable or redirect it to fixture-owned storage. Heuristic evidence clarity concern, not an explicit documented-standard breach.
+
+Disposition: bdc9ccd6f08dd672f351db1be4d704cdb14cc442 clears GITHUB_STEP_SUMMARY from fixture subprocess env. Related 11 tests pass locally; independent closure requested.
+
+Independent Standards closure at bdc9ccd: PASS, summary-isolation finding CLOSED. GITHUB_STEP_SUMMARY removed before both fixture subprocesses. Source-only recheck; no tests or CI success claimed.
+
+## Cross-platform reporter recheck at 725312a03e473de19c7a2b7974cedb200c274197
+
+Standards: PASS, no actionable violations or heuristic smells in bdc9ccd..725312a. Reporter now uses a file URL. Source-only; Windows CI pending.
+
+Spec: PASS. Reporter specifier remains a file: URL derived from import.meta.url, avoiding Windows drive-letter scheme ambiguity. Destinations and failure/gate semantics unchanged; matches PR 02 three-platform reporter requirement. No tests or runtime success claimed by reviewer.

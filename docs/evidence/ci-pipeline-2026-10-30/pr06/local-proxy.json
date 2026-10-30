@@ -1,0 +1,62 @@
+{
+  "repository": null,
+  "event": "local",
+  "checkoutSha": "d9e5256b99528b9babcc06cabe8dcc1feb318469",
+  "checkoutTree": "0af863084f881bb01ad7daf9f04b63d78f0aa9fc",
+  "prHead": null,
+  "prBase": null,
+  "runId": null,
+  "attempt": null,
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v24.19.0",
+  "npm": "12.2.1",
+  "kind": "tests",
+  "startedAt": "2026-10-30T06:09:27.115Z",
+  "argv": [
+    "--test",
+    "--test-reporter=spec",
+    "--test-reporter-destination=stdout",
+    "--test-reporter=junit",
+    "--test-reporter-destination=/Users/acfufu/Codehub/lazyzcode/.omo/evidence/testing/pr-pipeline-20261030/pr06/a1/remediation-committed-proxy/junit.xml",
+    "--test-reporter=file:///Users/acfufu/Codehub/lazyzcode/scripts/ci/events-reporter.mjs",
+    "--test-reporter-destination=/Users/acfufu/Codehub/lazyzcode/.omo/evidence/testing/pr-pipeline-20261030/pr06/a1/remediation-committed-proxy/events.jsonl",
+    "test/review-proxy.contract.test.js"
+  ],
+  "finishedAt": "2026-10-30T06:09:27.221Z",
+  "exitCode": 0,
+  "signal": null,
+  "hasReports": true,
+  "summaries": [
+    {
+      "success": true,
+      "counts": {
+        "tests": 12,
+        "failed": 0,
+        "passed": 12,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 12,
+        "suites": 0
+      },
+      "duration_ms": 27.925709,
+      "file": "/Users/acfufu/Codehub/lazyzcode/test/review-proxy.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 12,
+        "failed": 0,
+        "passed": 12,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 12,
+        "suites": 0
+      },
+      "duration_ms": 69.660542
+    }
+  ],
+  "skips": []
+}

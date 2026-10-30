@@ -12,6 +12,7 @@ const wrapper = join(root, "scripts/ci/run-checks.mjs");
 // Model the standalone workflow entry, not a nested node:test child process.
 const standaloneEnv = { ...process.env };
 delete standaloneEnv.NODE_TEST_CONTEXT;
+delete standaloneEnv.GITHUB_STEP_SUMMARY;
 
 for (const result of ["success", "failure", "cancelled", "skipped", undefined]) {
   test(`required gate: upstream ${result ?? "missing"}`, () => {

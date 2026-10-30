@@ -175,9 +175,29 @@
     "sha256": "02ba1203503bd25499c302c8203b1c14e4948659e731e96d80ec7d35022a53e2"
   },
   {
+    "path": "pr03/package-smoke-macos-latest-24-1-identity.json",
+    "bytes": 493,
+    "sha256": "81eef76fe4551d1468e0bf55aa5236417f268ca5b9d8dea687d0f37be66ee6f3"
+  },
+  {
+    "path": "pr03/package-smoke-ubuntu-latest-24-1-identity.json",
+    "bytes": 490,
+    "sha256": "9b4b1c63a9855eda245acae84a156808ef390eed388661d15ab0ca181d103708"
+  },
+  {
+    "path": "pr03/package-smoke-ubuntu-latest-24.0.0-1-identity.json",
+    "bytes": 488,
+    "sha256": "0f20480c2722f8456c851f0c9cae91619fe77e5beb761730ce396ad1dcc8cecb"
+  },
+  {
+    "path": "pr03/package-smoke-windows-latest-24-1-identity.json",
+    "bytes": 490,
+    "sha256": "f5a1b27d8c54ea61aba6283ac6723361ef97570ce6959347ab7b09adf796cad4"
+  },
+  {
     "path": "pr03/same-package.json",
-    "bytes": 2195,
-    "sha256": "45643c4d892e93dd305eeb3ba0aa0367afffcec0a8d5848fc0b77473ea9cecbb"
+    "bytes": 3419,
+    "sha256": "0571b4fe4458e1377e4570db31c813f69e86bf14f77d131ce64dc0f9d9bcd270"
   },
   {
     "path": "pr04/independent-reviews.txt",

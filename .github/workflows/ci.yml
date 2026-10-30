@@ -30,8 +30,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       # Node runs --test "test/**/*.test.js" with spec/JUnit/event reporters and preserves its exit code.
-      - run: node scripts/ci/run-tests.mjs "${{ runner.temp }}/test-${{ matrix.os }}"
-      - run: node cli/lzy.js --help
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/tests"
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/cli" --script cli/lzy.js --help
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -47,7 +47,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node scripts/check-docs-links.mjs
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/docs-links" --script scripts/check-docs-links.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docs-links-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/docs-links/
+          retention-days: 14
 
   sqlite-floor:
     runs-on: ubuntu-latest
@@ -57,8 +63,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.0.0
-      - run: node scripts/sqlite-capability-probe.mjs
-      - run: node scripts/ci/run-tests.mjs "${{ runner.temp }}/sqlite-floor" test/statedb.contract.test.js test/statedb-readers.contract.test.js
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/sqlite-floor/probe" --script scripts/sqlite-capability-probe.mjs
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/sqlite-floor/tests" test/statedb.contract.test.js test/statedb-readers.contract.test.js
       - uses: actions/upload-artifact@v4
         if: always()
         with:

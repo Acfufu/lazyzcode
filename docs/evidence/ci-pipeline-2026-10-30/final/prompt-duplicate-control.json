@@ -1,0 +1,9 @@
+{
+  "result": "PASS",
+  "expectedChildExit": 1,
+  "actualChildExit": 1,
+  "meaning": "2+1 counts retained but duplicated N1 instead of N2 rejected by exact coverage assertion",
+  "sourceSha256": "2183bbe36457964ea62dc4e394d3cbd3f2d6dd4847112abfb4d135605178a19a",
+  "controlSha256": "a2faacc08e61def5ccf01d7c6172994860744910952698eabf11879317363734",
+  "fixture": "/private/tmp/lzy-worker-assignment-control-B2wV1t"
+}

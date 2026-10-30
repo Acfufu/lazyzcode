@@ -1,0 +1,1567 @@
+{
+  "checkoutSha": "5dcb0adee7b0bb15350c3ddd66e19edd568746f9",
+  "checkoutTree": "69c412a4ec58df9e718d88c7e4141304378863e7",
+  "prHead": "c84664fce9dd418c63c77f33881304e972846619",
+  "prBase": "786485d37f37e1c0bb8e27bc68b68aecded8c047",
+  "runId": "41020766156",
+  "attempt": "1",
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v24.22.1",
+  "npm": "11.19.1",
+  "exitCode": 1,
+  "signal": null,
+  "summaries": [
+    {
+      "success": true,
+      "counts": {
+        "tests": 6,
+        "failed": 0,
+        "passed": 6,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 6,
+        "suites": 0
+      },
+      "duration_ms": 978.773042,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/ablation-pipeline.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/ablation-pipeline.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 2,
+        "failed": 0,
+        "passed": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 2,
+        "suites": 0
+      },
+      "duration_ms": 1072.545209,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/ablation-spawn.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/ablation-spawn.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 12,
+        "failed": 0,
+        "passed": 12,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 12,
+        "suites": 0
+      },
+      "duration_ms": 5181.877833,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/ablation-switch.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/ablation-switch.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 3,
+        "failed": 0,
+        "passed": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 3,
+        "suites": 0
+      },
+      "duration_ms": 710.279667,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/agentsmd-staleness.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/agentsmd-staleness.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 16,
+        "failed": 0,
+        "passed": 16,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 16,
+        "suites": 0
+      },
+      "duration_ms": 4548.144541,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/attempt-lineage.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/attempt-lineage.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 5,
+        "failed": 0,
+        "passed": 5,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 5,
+        "suites": 0
+      },
+      "duration_ms": 824.598708,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/attestation-trailer.doctor.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/attestation-trailer.doctor.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 14,
+        "failed": 0,
+        "passed": 14,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 14,
+        "suites": 0
+      },
+      "duration_ms": 4542.936,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/budget-ledger.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/budget-ledger.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 6,
+        "failed": 0,
+        "passed": 6,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 6,
+        "suites": 0
+      },
+      "duration_ms": 3720.971625,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/ci-binding.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/ci-binding.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 8,
+        "failed": 0,
+        "passed": 8,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 8,
+        "suites": 0
+      },
+      "duration_ms": 681.70375,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/ci-required.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/ci-required.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 19,
+        "failed": 0,
+        "passed": 19,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 19,
+        "suites": 0
+      },
+      "duration_ms": 1851.241083,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/claim.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/claim.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 5,
+        "failed": 0,
+        "passed": 5,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 5,
+        "suites": 0
+      },
+      "duration_ms": 10.037292,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/contract-format.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/contract-format.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 11,
+        "failed": 0,
+        "passed": 11,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 11,
+        "suites": 0
+      },
+      "duration_ms": 5367.888542,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/contract-gate.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/contract-gate.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 24,
+        "failed": 0,
+        "passed": 24,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 24,
+        "suites": 0
+      },
+      "duration_ms": 485.637125,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/cost.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/cost.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 30,
+        "failed": 0,
+        "passed": 30,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 30,
+        "suites": 0
+      },
+      "duration_ms": 17763.319875,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/dag-authority.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/dag-authority.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 18,
+        "failed": 0,
+        "passed": 18,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 18,
+        "suites": 0
+      },
+      "duration_ms": 7088.203292,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/dag-kernel.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/dag-kernel.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 6,
+        "failed": 0,
+        "passed": 6,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 6,
+        "suites": 0
+      },
+      "duration_ms": 4866.234291,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/delivery-drift.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/delivery-drift.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 15,
+        "failed": 0,
+        "passed": 15,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 15,
+        "suites": 0
+      },
+      "duration_ms": 10686.520792,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/delivery-gate.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/delivery-gate.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 17,
+        "failed": 0,
+        "passed": 17,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 17,
+        "suites": 0
+      },
+      "duration_ms": 8564.788458,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/delivery-hook.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/delivery-hook.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 11,
+        "failed": 0,
+        "passed": 11,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 11,
+        "suites": 0
+      },
+      "duration_ms": 8120.277834,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/delivery-pages.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/delivery-pages.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 7,
+        "failed": 0,
+        "passed": 7,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 7,
+        "suites": 0
+      },
+      "duration_ms": 18.100291,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/delivery-state.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/delivery-state.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 18,
+        "failed": 0,
+        "passed": 18,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 18,
+        "suites": 0
+      },
+      "duration_ms": 8028.083833,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/dispatch-recovery.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/dispatch-recovery.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 4,
+        "failed": 0,
+        "passed": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 1,
+        "suites": 1
+      },
+      "duration_ms": 311.969709,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/docs-links.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/docs-links.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 1,
+        "failed": 0,
+        "passed": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 1,
+        "suites": 0
+      },
+      "duration_ms": 1056.819916,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/doctor-sqlite-store.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/doctor-sqlite-store.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 7,
+        "failed": 0,
+        "passed": 7,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 7,
+        "suites": 0
+      },
+      "duration_ms": 1151.086833,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/drive-prompt.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/drive-prompt.contract.test.js"
+    },
+    {
+      "success": false,
+      "counts": {
+        "tests": 29,
+        "failed": 1,
+        "passed": 28,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 29,
+        "suites": 0
+      },
+      "duration_ms": 38549.198292,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/drive-workers.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/drive-workers.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 19,
+        "failed": 0,
+        "passed": 19,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 19,
+        "suites": 0
+      },
+      "duration_ms": 12834.525833,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/drive.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/drive.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 20,
+        "failed": 0,
+        "passed": 20,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 20,
+        "suites": 0
+      },
+      "duration_ms": 6707.946333,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/engine-surface.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/engine-surface.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 13,
+        "failed": 0,
+        "passed": 13,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 1,
+        "suites": 1
+      },
+      "duration_ms": 68.893041,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/evaluation-qualification.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/evaluation-qualification.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 12,
+        "failed": 0,
+        "passed": 12,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 7,
+        "suites": 7
+      },
+      "duration_ms": 2141.65875,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/evaluation-runner.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/evaluation-runner.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 8,
+        "failed": 0,
+        "passed": 8,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 8,
+        "suites": 0
+      },
+      "duration_ms": 6804.002834,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/evidence-manifest.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/evidence-manifest.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 9,
+        "failed": 0,
+        "passed": 9,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 9,
+        "suites": 0
+      },
+      "duration_ms": 21.139583,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/finding-contest.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/finding-contest.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 2,
+        "failed": 0,
+        "passed": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 2,
+        "suites": 0
+      },
+      "duration_ms": 673.241375,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/findings-ledger.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/findings-ledger.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 6,
+        "failed": 0,
+        "passed": 6,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 6,
+        "suites": 0
+      },
+      "duration_ms": 355.844417,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/graph-order.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/graph-order.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 25,
+        "failed": 0,
+        "passed": 25,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 25,
+        "suites": 0
+      },
+      "duration_ms": 5905.931292,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/h3r-enforcement.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/h3r-enforcement.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 10,
+        "failed": 0,
+        "passed": 10,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 10,
+        "suites": 0
+      },
+      "duration_ms": 6446.311417,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/h3r-gate.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/h3r-gate.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 5,
+        "failed": 0,
+        "passed": 5,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 5,
+        "suites": 0
+      },
+      "duration_ms": 544.189,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/handoff-cause-readface.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/handoff-cause-readface.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 3,
+        "failed": 0,
+        "passed": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 3,
+        "suites": 0
+      },
+      "duration_ms": 876.46225,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/handoff-dir.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/handoff-dir.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 1,
+        "failed": 0,
+        "passed": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 1,
+        "suites": 0
+      },
+      "duration_ms": 622.140125,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/harvest-reliability.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/harvest-reliability.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 10,
+        "failed": 0,
+        "passed": 10,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 10,
+        "suites": 0
+      },
+      "duration_ms": 1419.32725,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/headless-primitive.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/headless-primitive.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 8,
+        "failed": 0,
+        "passed": 8,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 8,
+        "suites": 0
+      },
+      "duration_ms": 1611.682167,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/headless-review-lifecycle.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/headless-review-lifecycle.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 3,
+        "failed": 0,
+        "passed": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 3,
+        "suites": 0
+      },
+      "duration_ms": 1281.243,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/history.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/history.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 21,
+        "failed": 0,
+        "passed": 21,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 21,
+        "suites": 0
+      },
+      "duration_ms": 5562.127125,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/hooks.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/hooks.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 3,
+        "failed": 0,
+        "passed": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 3,
+        "suites": 0
+      },
+      "duration_ms": 353.385542,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/hostdb-wal.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/hostdb-wal.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 24,
+        "failed": 0,
+        "passed": 24,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 24,
+        "suites": 0
+      },
+      "duration_ms": 13067.196834,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/human-gate.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/human-gate.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 3,
+        "failed": 0,
+        "passed": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 3,
+        "suites": 0
+      },
+      "duration_ms": 5592.687291,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/integration.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/integration.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 27,
+        "failed": 0,
+        "passed": 27,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 27,
+        "suites": 0
+      },
+      "duration_ms": 16538.415125,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/integrity-kernel.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/integrity-kernel.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 3,
+        "failed": 0,
+        "passed": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 3,
+        "suites": 0
+      },
+      "duration_ms": 373.539417,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/ledger.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/ledger.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 6,
+        "failed": 0,
+        "passed": 6,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 6,
+        "suites": 0
+      },
+      "duration_ms": 8431.182959,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/lock-instrument.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/lock-instrument.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 2,
+        "failed": 0,
+        "passed": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 2,
+        "suites": 0
+      },
+      "duration_ms": 465.45375,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/loop-graph.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/loop-graph.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 21,
+        "failed": 0,
+        "passed": 21,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 21,
+        "suites": 0
+      },
+      "duration_ms": 34784.405083,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/loop.e2e.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/loop.e2e.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 17,
+        "failed": 0,
+        "passed": 17,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 17,
+        "suites": 0
+      },
+      "duration_ms": 5381.252875,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/migrate-apply.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/migrate-apply.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 5,
+        "failed": 0,
+        "passed": 5,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 5,
+        "suites": 0
+      },
+      "duration_ms": 734.07675,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/migrate-preview.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/migrate-preview.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 2,
+        "failed": 0,
+        "passed": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 2,
+        "suites": 0
+      },
+      "duration_ms": 149.653584,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/node-floor.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/node-floor.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 14,
+        "failed": 0,
+        "passed": 14,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 14,
+        "suites": 0
+      },
+      "duration_ms": 7737.493708,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/p3-sweep.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/p3-sweep.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 3,
+        "failed": 0,
+        "passed": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 3,
+        "suites": 0
+      },
+      "duration_ms": 23.66025,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/package.surface.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/package.surface.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 3,
+        "failed": 0,
+        "passed": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 3,
+        "suites": 0
+      },
+      "duration_ms": 1388.326875,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/payload-consistency.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/payload-consistency.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 12,
+        "failed": 0,
+        "passed": 12,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 12,
+        "suites": 0
+      },
+      "duration_ms": 7028.576,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/plan-gate.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/plan-gate.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 11,
+        "failed": 0,
+        "passed": 11,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 11,
+        "suites": 0
+      },
+      "duration_ms": 1463.232208,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/policy.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/policy.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 4,
+        "failed": 0,
+        "passed": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 4,
+        "suites": 0
+      },
+      "duration_ms": 911.35975,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/progress.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/progress.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 10,
+        "failed": 0,
+        "passed": 10,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 10,
+        "suites": 0
+      },
+      "duration_ms": 3256.050541,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/project-manifest.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/project-manifest.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 22,
+        "failed": 0,
+        "passed": 22,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 22,
+        "suites": 0
+      },
+      "duration_ms": 9183.884333,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/queue-delivery.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/queue-delivery.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 11,
+        "failed": 0,
+        "passed": 11,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 11,
+        "suites": 0
+      },
+      "duration_ms": 4881.101375,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/queue-metering.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/queue-metering.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 26,
+        "failed": 0,
+        "passed": 26,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 26,
+        "suites": 0
+      },
+      "duration_ms": 3570.062708,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/queue-state.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/queue-state.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 29,
+        "failed": 0,
+        "passed": 29,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 29,
+        "suites": 0
+      },
+      "duration_ms": 4701.048417,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/ratelimit.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/ratelimit.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 8,
+        "failed": 0,
+        "passed": 8,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 8,
+        "suites": 0
+      },
+      "duration_ms": 4730.516166,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/redgreen-tightening.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/redgreen-tightening.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 4,
+        "failed": 0,
+        "passed": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 4,
+        "suites": 0
+      },
+      "duration_ms": 194.6535,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/replay-artifacts.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/replay-artifacts.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 2,
+        "failed": 0,
+        "passed": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 2,
+        "suites": 0
+      },
+      "duration_ms": 2784.137375,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-artifacts.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-artifacts.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 6,
+        "failed": 0,
+        "passed": 6,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 6,
+        "suites": 0
+      },
+      "duration_ms": 618.836959,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-cleanup.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-cleanup.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 6,
+        "failed": 0,
+        "passed": 6,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 1,
+        "suites": 1
+      },
+      "duration_ms": 2242.938916,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-contest-grounds.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-contest-grounds.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 10,
+        "failed": 0,
+        "passed": 10,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 9,
+        "suites": 8
+      },
+      "duration_ms": 8689.841167,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-findings.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-findings.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 4,
+        "failed": 0,
+        "passed": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 4,
+        "suites": 0
+      },
+      "duration_ms": 812.5255,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-isolation-tier.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-isolation-tier.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 3,
+        "failed": 0,
+        "passed": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 3,
+        "suites": 0
+      },
+      "duration_ms": 157.390292,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-os-sandbox.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-os-sandbox.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 2,
+        "failed": 0,
+        "passed": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 2,
+        "suites": 0
+      },
+      "duration_ms": 9.718959,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-provider-runtime.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-provider-runtime.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 12,
+        "failed": 0,
+        "passed": 12,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 12,
+        "suites": 0
+      },
+      "duration_ms": 64.638416,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-proxy.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-proxy.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 18,
+        "failed": 0,
+        "passed": 18,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 18,
+        "suites": 0
+      },
+      "duration_ms": 13762.43075,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-runtime.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-runtime.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 4,
+        "failed": 0,
+        "passed": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 4,
+        "suites": 0
+      },
+      "duration_ms": 821.066708,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-sandbox-doctor.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-sandbox-doctor.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 10,
+        "failed": 0,
+        "passed": 10,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 10,
+        "suites": 0
+      },
+      "duration_ms": 884.347375,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-sandbox-provider.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-sandbox-provider.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 19,
+        "failed": 0,
+        "passed": 19,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 10,
+        "suites": 10
+      },
+      "duration_ms": 5540.023625,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/review-scope.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/review-scope.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 4,
+        "failed": 0,
+        "passed": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 4,
+        "suites": 0
+      },
+      "duration_ms": 1162.450875,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/risk-axis.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/risk-axis.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 11,
+        "failed": 0,
+        "passed": 11,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 11,
+        "suites": 0
+      },
+      "duration_ms": 8960.146375,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/runtime-kernel.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/runtime-kernel.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 5,
+        "failed": 0,
+        "passed": 5,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 5,
+        "suites": 0
+      },
+      "duration_ms": 2666.572416,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/salvage.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/salvage.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 13,
+        "failed": 0,
+        "passed": 13,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 13,
+        "suites": 0
+      },
+      "duration_ms": 1182.263417,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/sandbox-usage-reliability.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/sandbox-usage-reliability.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 10,
+        "failed": 0,
+        "passed": 10,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 10,
+        "suites": 0
+      },
+      "duration_ms": 7320.881625,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/scope-tier.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/scope-tier.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 17,
+        "failed": 0,
+        "passed": 17,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 17,
+        "suites": 0
+      },
+      "duration_ms": 1760.476167,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/sqlite-migrate.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/sqlite-migrate.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 11,
+        "failed": 0,
+        "passed": 11,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 11,
+        "suites": 0
+      },
+      "duration_ms": 1268.876208,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/statedb-readers.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/statedb-readers.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 12,
+        "failed": 0,
+        "passed": 12,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 12,
+        "suites": 0
+      },
+      "duration_ms": 1238.388375,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/statedb.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/statedb.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 4,
+        "failed": 0,
+        "passed": 4,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 4,
+        "suites": 0
+      },
+      "duration_ms": 884.423042,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/status-doctor-json.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/status-doctor-json.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 5,
+        "failed": 0,
+        "passed": 5,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 5,
+        "suites": 0
+      },
+      "duration_ms": 1499.4995,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/tier1-initdeep.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/tier1-initdeep.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 5,
+        "failed": 0,
+        "passed": 5,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 5,
+        "suites": 0
+      },
+      "duration_ms": 983.443291,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/tier1-unattended.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/tier1-unattended.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 5,
+        "failed": 0,
+        "passed": 5,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 5,
+        "suites": 0
+      },
+      "duration_ms": 4461.258833,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/tier2.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/tier2.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 6,
+        "failed": 0,
+        "passed": 6,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 6,
+        "suites": 0
+      },
+      "duration_ms": 746.728042,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/tripwire.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/tripwire.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 10,
+        "failed": 0,
+        "passed": 10,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 10,
+        "suites": 0
+      },
+      "duration_ms": 13569.453375,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/unified-gate.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/unified-gate.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 10,
+        "failed": 0,
+        "passed": 10,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 10,
+        "suites": 0
+      },
+      "duration_ms": 32.816541,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/update.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/update.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 16,
+        "failed": 0,
+        "passed": 16,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 16,
+        "suites": 0
+      },
+      "duration_ms": 10880.728208,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/v023-fixround-n1.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/v023-fixround-n1.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 7,
+        "failed": 0,
+        "passed": 7,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 7,
+        "suites": 0
+      },
+      "duration_ms": 386.042458,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/v023-fixround-n3.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/v023-fixround-n3.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 8,
+        "failed": 0,
+        "passed": 8,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 8,
+        "suites": 0
+      },
+      "duration_ms": 8860.277667,
+      "file": "/Users/runner/work/lazyzcode/lazyzcode/test/verify-receipt.contract.test.js",
+      "entryFile": "/Users/runner/work/lazyzcode/lazyzcode/test/verify-receipt.contract.test.js"
+    },
+    {
+      "success": false,
+      "counts": {
+        "tests": 994,
+        "failed": 1,
+        "passed": 993,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 959,
+        "suites": 28
+      },
+      "duration_ms": 223699.762625
+    }
+  ],
+  "skips": []
+}

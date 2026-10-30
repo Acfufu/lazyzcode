@@ -100,6 +100,41 @@
     "sha256": "4273dd3a0fcb980a1c2efc67bb75317436e1731ffea9e7ac4d85ac72edaef212"
   },
   {
+    "path": "final/pr24-first-macos-failure.json",
+    "bytes": 44525,
+    "sha256": "1b05ef945fa82ff9e7c4df0c515bf17d35c3833507c3324f97561a7c4489a7e0"
+  },
+  {
+    "path": "final/prompt-duplicate-control.json",
+    "bytes": 416,
+    "sha256": "99c8b96b644bd3e4076f4bcfbc1a70724d94e0812595facbec4d27e86d2f80e6"
+  },
+  {
+    "path": "final/prompt-duplicate-control.log",
+    "bytes": 1024,
+    "sha256": "b21684e1a21df5a941413a9b91639b5ba0322c1a4ccc6a1f0f0fde11628425ef"
+  },
+  {
+    "path": "final/prompt-green.json",
+    "bytes": 1868,
+    "sha256": "64580c4e1d7810ea7da9141ba62221e7614ce330af3e982e41214f8256391627"
+  },
+  {
+    "path": "final/prompt-red-native.log",
+    "bytes": 959,
+    "sha256": "fed7b91022b0e8feb6bb33c15fac63341564790a3c42755c8831d37acdf1deec"
+  },
+  {
+    "path": "final/prompt-red-node24.22.1.log",
+    "bytes": 959,
+    "sha256": "f11da6a6b46cc670054f7dbbabdf28f7852c01c4c10e670672bfaa220a3d13e9"
+  },
+  {
+    "path": "final/prompt-red-source.json",
+    "bytes": 338,
+    "sha256": "c1cc5df404394b8899cf786449ba5ab31b03d623da8f8149e70d75c934256c25"
+  },
+  {
     "path": "pr01/clock-probe-red.json",
     "bytes": 180,
     "sha256": "c62f83917973d3196f9f5ff54b9c9ec945c4bc231644ddd91157197fb2b58463"

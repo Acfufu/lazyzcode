@@ -1,0 +1,7 @@
+{
+  "originalHead": "c84664fce9dd418c63c77f33881304e972846619",
+  "testFile": "test/drive-workers.contract.test.js",
+  "testSha256": "0fcd15551bb70b36886d937f6e46f70fea151bfdae700fd763bfc2a25b7be9a9",
+  "onlyChange": "temporary repo prefix includes N3; original global matching/count assertion unchanged",
+  "productCoreChanged": false
+}

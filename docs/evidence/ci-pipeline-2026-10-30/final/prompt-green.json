@@ -1,0 +1,64 @@
+{
+  "repository": null,
+  "event": "local",
+  "checkoutSha": "6707134d3ec2adf20bf9ea0fa512803dbbefeaa3",
+  "checkoutTree": "2a485557540e7e591ec936307a0b77b83f537b6f",
+  "prHead": null,
+  "prBase": null,
+  "runId": null,
+  "attempt": null,
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v24.22.1",
+  "npm": "12.2.1",
+  "kind": "tests",
+  "startedAt": "2026-10-30T07:51:56.314Z",
+  "argv": [
+    "--test",
+    "--test-reporter=spec",
+    "--test-reporter-destination=stdout",
+    "--test-reporter=junit",
+    "--test-reporter-destination=/Users/acfufu/Codehub/lazyzcode/.omo/evidence/testing/pr-pipeline-20261030/final/a1/worker-prompt-repair/committed-green/junit.xml",
+    "--test-reporter=file:///Users/acfufu/Codehub/lazyzcode/scripts/ci/events-reporter.mjs",
+    "--test-reporter-destination=/Users/acfufu/Codehub/lazyzcode/.omo/evidence/testing/pr-pipeline-20261030/final/a1/worker-prompt-repair/committed-green/events.jsonl",
+    "--test-name-pattern=④波分派",
+    "test/drive-workers.contract.test.js"
+  ],
+  "finishedAt": "2026-10-30T07:51:56.964Z",
+  "exitCode": 0,
+  "signal": null,
+  "hasReports": true,
+  "summaries": [
+    {
+      "success": true,
+      "counts": {
+        "tests": 1,
+        "failed": 0,
+        "passed": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 1,
+        "suites": 0
+      },
+      "duration_ms": 558.378958,
+      "file": "/Users/acfufu/Codehub/lazyzcode/test/drive-workers.contract.test.js",
+      "entryFile": "/Users/acfufu/Codehub/lazyzcode/test/drive-workers.contract.test.js"
+    },
+    {
+      "success": true,
+      "counts": {
+        "tests": 1,
+        "failed": 0,
+        "passed": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 1,
+        "suites": 0
+      },
+      "duration_ms": 610.078708
+    }
+  ],
+  "skips": []
+}

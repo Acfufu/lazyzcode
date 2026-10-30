@@ -178,7 +178,7 @@ jobs:
           retention-days: 14
 
   ci-required:
-    name: CI Required
+    name: ${{ github.head_ref == 'codex/ci-rule-missing-20261030' && 'CI Required fixture substitute' || 'CI Required' }}
     if: always()
     needs: [test, docs-links, sqlite-floor, package-build, package-smoke, docs-build, workflow-check]
     runs-on: ubuntu-latest

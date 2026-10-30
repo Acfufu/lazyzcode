@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       # Node runs --test "test/**/*.test.js" with spec/JUnit/event reporters and preserves its exit code.
-      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/tests"
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/tests" test/ci-acceptance-intentional.test.js
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/cli" --script cli/lzy.js --help
       - uses: actions/upload-artifact@v4
         if: always()

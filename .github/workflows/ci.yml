@@ -127,10 +127,36 @@ jobs:
           path: ${{ runner.temp }}/package-smoke/
           retention-days: 14
 
+  docs-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/scripts/docs-jekyll/Gemfile
+      JEKYLL_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+        with:
+          ruby-version: 3.3.4
+          bundler: 2.5.11
+          bundler-cache: true
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/docs-build" --script scripts/docs-jekyll/build.mjs "${{ runner.temp }}/docs-site"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docs-build-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/docs-build/
+          retention-days: 14
+
   ci-required:
     name: CI Required
     if: always()
-    needs: [test, docs-links, sqlite-floor, package-build, package-smoke]
+    needs: [test, docs-links, sqlite-floor, package-build, package-smoke, docs-build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -141,4 +167,4 @@ jobs:
       - run: node scripts/ci/required-gate.mjs
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
-          REQUIRED_JOBS: test,docs-links,sqlite-floor,package-build,package-smoke
+          REQUIRED_JOBS: test,docs-links,sqlite-floor,package-build,package-smoke,docs-build

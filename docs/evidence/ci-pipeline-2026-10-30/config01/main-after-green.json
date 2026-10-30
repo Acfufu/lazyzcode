@@ -1,0 +1,104 @@
+{
+  "name": "main",
+  "commit": {
+    "sha": "786485d37f37e1c0bb8e27bc68b68aecded8c047",
+    "node_id": "C_kwDOURp3A9oAKDc4NjQ4NWQzN2YzN2UxYzBiYjhlMjdiYzY4YjY4YWVjZGVkOGMwNDc",
+    "commit": {
+      "author": {
+        "name": "Acfufu",
+        "email": "73582072+Acfufu@users.noreply.github.com",
+        "date": "2026-10-30T06:50:15Z"
+      },
+      "committer": {
+        "name": "GitHub",
+        "email": "noreply@github.com",
+        "date": "2026-10-30T06:50:15Z"
+      },
+      "message": "Merge pull request #22 from Acfufu/codex/ci-rule-green-20261030\n\n[ACCEPTANCE] Safe green main-rule fixture",
+      "tree": {
+        "sha": "b535607f3f6b134f49c6dc72779431e7223feb70",
+        "url": "https://api.github.com/repos/Acfufu/lazyzcode/git/trees/b535607f3f6b134f49c6dc72779431e7223feb70"
+      },
+      "url": "https://api.github.com/repos/Acfufu/lazyzcode/git/commits/786485d37f37e1c0bb8e27bc68b68aecded8c047",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJq5D4nCRC1aQ7uu5UhlAAARLIQACRrza5xh47+/B4UACCODivM\nG8XHtWXCvAgEUylHzZ21Pn6w+QNIokfPdHIu2VjaDlO0nLLiSWPPP2hzQeMTFIIs\n7mnDDSWtTPD80IJokoNO0/WVEbyns0exHlzJqEa5RNDnEHeEF/PC99xj9A5OwYLw\nU/q2he/VQXdY3N4b/neUKiDGaar3fBRbobvM97ZT+pfukmpqbkmS+mCTsB6o/9v7\nLnQfUUPdmyBKZGZmCRkUhJCnqb91rM0DuSCaMlbmaOIc6XLU6wj11UNq6KGPtIVr\nPYjG3fvfCH0B9rP69jTRjS2cUAYkSQ2XzWzoG2ZTD0kXQ25rRAEeBlENpvo3SmwE\nUbn1PMEv1ddUqq8DkotYrcsiDU+zcc9Z96sz6k+RMlKQpxQvZxYFC2zcs6KJsHQF\n9HjfTb9YhFkIcqW66pk1pxykzf2k9OGzKq9B1WC0LX6tWXIVCmHwnN6zZnwgNWor\nCLqe/wtYjiKHaqXW2GXRNMxvDIxJ2Y4p3THbmJ84ypDAVWXWP9/bND/9A0F8jaqV\n776+DIGM2f6Li+2tkYS2hR40dmZ2c1+87oZky3jjctK59jEXV9BKmEAgvXmbWNx2\nYdio8L6NyH6TPhRtKX++WttwUlHCuKM600DMRCBAYuPG8vpuBRJePD30mL2JzLjt\nb031P8SY+H91Bq/D9r5H\n=SMUT\n-----END PGP SIGNATURE-----\n",
+        "payload": "tree b535607f3f6b134f49c6dc72779431e7223feb70\nparent 37a56702b6390b62b4f993f6a4e6eee981500cce\nparent 6c280392c0005b4fc8aa8e8439c4737588e4255d\nauthor Acfufu <73582072+Acfufu@users.noreply.github.com> 1793343015 +0000\ncommitter GitHub <noreply@github.com> 1793343015 +0000\n\nMerge pull request #22 from Acfufu/codex/ci-rule-green-20261030\n\n[ACCEPTANCE] Safe green main-rule fixture",
+        "verified_at": "2026-10-30T06:50:16Z"
+      }
+    },
+    "url": "https://api.github.com/repos/Acfufu/lazyzcode/commits/786485d37f37e1c0bb8e27bc68b68aecded8c047",
+    "html_url": "https://github.com/Acfufu/lazyzcode/commit/786485d37f37e1c0bb8e27bc68b68aecded8c047",
+    "comments_url": "https://api.github.com/repos/Acfufu/lazyzcode/commits/786485d37f37e1c0bb8e27bc68b68aecded8c047/comments",
+    "author": {
+      "login": "Acfufu",
+      "id": 73582072,
+      "node_id": "MDQ6VXNlcjczNTgyMDcy",
+      "avatar_url": "https://avatars.githubusercontent.com/u/73582072?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Acfufu",
+      "html_url": "https://github.com/Acfufu",
+      "followers_url": "https://api.github.com/users/Acfufu/followers",
+      "following_url": "https://api.github.com/users/Acfufu/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Acfufu/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Acfufu/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Acfufu/subscriptions",
+      "organizations_url": "https://api.github.com/users/Acfufu/orgs",
+      "repos_url": "https://api.github.com/users/Acfufu/repos",
+      "events_url": "https://api.github.com/users/Acfufu/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Acfufu/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "web-flow",
+      "id": 19864447,
+      "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+      "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/web-flow",
+      "html_url": "https://github.com/web-flow",
+      "followers_url": "https://api.github.com/users/web-flow/followers",
+      "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+      "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+      "organizations_url": "https://api.github.com/users/web-flow/orgs",
+      "repos_url": "https://api.github.com/users/web-flow/repos",
+      "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/web-flow/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "37a56702b6390b62b4f993f6a4e6eee981500cce",
+        "url": "https://api.github.com/repos/Acfufu/lazyzcode/commits/37a56702b6390b62b4f993f6a4e6eee981500cce",
+        "html_url": "https://github.com/Acfufu/lazyzcode/commit/37a56702b6390b62b4f993f6a4e6eee981500cce"
+      },
+      {
+        "sha": "6c280392c0005b4fc8aa8e8439c4737588e4255d",
+        "url": "https://api.github.com/repos/Acfufu/lazyzcode/commits/6c280392c0005b4fc8aa8e8439c4737588e4255d",
+        "html_url": "https://github.com/Acfufu/lazyzcode/commit/6c280392c0005b4fc8aa8e8439c4737588e4255d"
+      }
+    ]
+  },
+  "_links": {
+    "self": "https://api.github.com/repos/Acfufu/lazyzcode/branches/main",
+    "html": "https://github.com/Acfufu/lazyzcode/tree/main"
+  },
+  "protected": true,
+  "protection": {
+    "enabled": false,
+    "required_status_checks": {
+      "enforcement_level": "off",
+      "contexts": [],
+      "checks": []
+    }
+  },
+  "protection_url": "https://api.github.com/repos/Acfufu/lazyzcode/branches/main/protection"
+}

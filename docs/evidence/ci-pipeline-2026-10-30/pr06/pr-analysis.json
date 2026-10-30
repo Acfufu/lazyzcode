@@ -1,0 +1,19 @@
+{
+  "pr": 15,
+  "prHead": "7556d34f443db8516e2c7f7b9890c25fafe00557",
+  "checkoutMergeSha": "ad2e256ce7b5e1f8c338959b2d1ca0514510ce8d",
+  "analysisId": 2060110238,
+  "analysisRef": "refs/pull/15/merge",
+  "tool": {
+    "name": "CodeQL",
+    "guid": null,
+    "version": "2.27.3"
+  },
+  "resultsCount": 0,
+  "rulesCount": 87,
+  "error": "",
+  "warning": "",
+  "sarifResults": 0,
+  "scope": "PR diff-informed analysis; does not establish full main baseline",
+  "forkAcceptance": "NOT_RUN"
+}

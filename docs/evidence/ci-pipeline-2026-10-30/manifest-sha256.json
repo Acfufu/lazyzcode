@@ -15,6 +15,11 @@
     "sha256": "27e0a82ea3658f5e31a25bdf52bea20a71b05f62114d56f452e093c648631222"
   },
   {
+    "path": "config01/main-after-green.json",
+    "bytes": 5912,
+    "sha256": "cf7db5a7bb230f78132d5c4c3ad48af07c8b6d20d06c6c63615e17d0f63bb0fa"
+  },
+  {
     "path": "config01/negative-summary.json",
     "bytes": 1461,
     "sha256": "56b47f20718c91de20db543be30bed595a7e54e98575b0c1d6b66e969bbdef02"
@@ -275,9 +280,19 @@
     "sha256": "3e84f4dedc59070290d37e5a3ac06412fa199ce6322d054189baebd801ce530e"
   },
   {
+    "path": "pr06/main-analyses.json",
+    "bytes": 1048,
+    "sha256": "f2b69b5d099a7dceef5c59f73426ed0710f6c815fd77c957865100478895ef43"
+  },
+  {
     "path": "pr06/main-open-alerts.json",
     "bytes": 9999,
     "sha256": "a6467ce29d213344ae81881751f4b62d569f049e3f5385ba66d034973bb36b15"
+  },
+  {
+    "path": "pr06/pr-analysis.json",
+    "bytes": 489,
+    "sha256": "0c4d307ccb5de26271ca45c7b90444265776d29501e4d2c03e17eeb1b3cd35c9"
   },
   {
     "path": "pr06/remediation-reviews.txt",
@@ -288,6 +303,11 @@
     "path": "pr06/three-platforms.json",
     "bytes": 9649,
     "sha256": "d5a4d55b972781f6c4a61698fca4d2a745fa9d3ea4c7b44a1a1fe41eae3778a5"
+  },
+  {
+    "path": "pr06/upstream-codeql-action.json",
+    "bytes": 1675,
+    "sha256": "e89aa36b8e92bd40e2071a4f54001918a15e244e73c1a04095bf279af75ee474"
   },
   {
     "path": "probes/green.json",

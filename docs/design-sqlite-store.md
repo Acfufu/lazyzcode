@@ -156,7 +156,7 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
 4. **备份语义**：三族=文件复制到 `.lazyzcode/migration/sqlite/<runId>/backup/` + manifest 逐文件 sha256 + install 前源漂移双读校验（漂移=停）；**VACUUM INTO 不入迁移路径**（迁移前无库可 VACUUM——§12-2「§6 路线」的 reading 如实记档：staged 库以 integrity_check 为导入门禁，VACUUM INTO 仍专属 backupTo 运维面）；迁移不改写不删除源 JSON（前向单向）。
 5. **命令面**：`lzy migrate sqlite <根路径>`（根路径显式，沿 cmdMigrate 家法）；单命令无 preview（对账内建于 apply）；重跑语义=未收尾 journal→断点续跑（幂等）、已收尾且库在场→具名拒（已迁移）；前置拒绝=活跃 tx（open/delivering）或 running 条目（§7.1 冻结写入）+ withLock 整段。journal=`migration/sqlite/journal/<runId>.jsonl`（七相位），与 ADR-0029 机器（state.json 版本入口）互不相涉。
 6. **旧状态误写检测**：提交时三族冻结指纹落 `meta.json_frozen`（在场=sha256、缺席=null）；`reconcileDispatch` withLock 锁内首行预检（runQueueDispatch 首动作即 reconcile，单点覆盖双入口）；任一族「在场但 sha≠冻结」=具名拒（恢复/删除/核对三路指路），缺席=不违例；meta.json_frozen 缺席（P2 时代库工作区、夹具）=no-op；JSON 态不检（逐字零变更）。**P4 增补（r3-F3，2026-10-23）**：违例判据统一为「now 在场 ∧ sha≠冻结指纹」——冻结时缺席（frozen=null）、迁移后出现的族（旧版 CLI 误写/异物拷入）与改写同责=违例；「缺席=不违例」读向不变（冻结后在场的族被删除仍不违例）。
-7. **openDb 自建空库修复**（r6-F2）：双信号合取——打开前 stat 在场性 + 现文件 birthtime≥本进程打开入口时戳（亚毫秒墙钟 `performance.timeOrigin+performance.now()`，Date.now() 取整会同毫秒误判）——才判「本进程打开序列内 SQLite 自建」，close+unlink 后按缺席继续；打开前已在场的旧占位/异物库恒走原具名拒不误删；unlink 失败=保留走原拒。
+7. **openDb 缺表库保留**（r6-F2；2026-10-30 CI 基线修复）：库在场却缺表时关闭句柄、保留文件并具名拒绝，不回落 JSON。旧实现将 stat 缺席与 birthtime 判据按 OR 组合，且文件系统创建时间与进程时钟不能证明文件归属；时钟偏差可造成预存库被误删。移除读路径的推断式 unlink，即使检查后消失、SQLite 重建出缺表库也保留待人工核对。契约腿⑤保留原断言并新增时钟偏差反例；实际 runner 验收见 CI 基线报告。
 
 ## 8. 版本冲突与回退姿态
 
@@ -235,7 +235,7 @@ CREATE INDEX idx_queue_items_state ON queue_items(state);
 | 发现 | 处置 | 落点 |
 |---|---|---|
 | r6-F1（结算级联时点双后端不同序） | 记档无代码改动：单权威切换后已迁移工作区仅 DB 路径在跑，时点分歧不可达；未迁移工作区=纯 JSON（P2 行为不变）——分歧仅存于「同场景双后端对照」这一测试构造内 | 本行（§12）；contract 双 kind 等价腿持续兜底 |
-| r6-F2（openDb 判据非原子） | 已修：双信号合取（打开前 stat 在场性+birthtime≥亚毫秒入口时戳）判自建空库，close+unlink 后按缺席继续；预存占位/异物库恒原拒不误删；契约腿⑤钉安全性质 | §7 增补定案 7；`core/queue.js` openDb；contract 腿⑤ |
+| r6-F2（openDb 判据非原子） | 2026-10-30 修正：移除基于时间戳和 stat 的推断式 unlink；在场缺表库保留并具名拒绝。原安全断言＋时钟偏差回归 | §7 增补定案 7；`core/queue.js` openDb；contract 腿⑤ |
 | r7-F1（backupTo 拼接守卫） | 记档：迁移机器不新增 VACUUM INTO 用户路径（备份=三族文件复制，§7 增补定案 4）；backupTo 单引号守卫原样保留，现调用方仍仅 scripts/测试 | 本行（§12）；`core/statedb.js` backupTo 未动 |
 | r8-F1（Node<24 八件 [sqlite] 腿静默缺席） | 已修：八件 [sqlite] 腿恒在+<24 具名 skip（文案含地板依据；Node 22.23.1 实测 skipped=13 带因） | `test/`八件 KINDS 块；F7 红绿双面在 artifacts/p3-baseline/ |
 | r8-F2（evidence-probe.sh 硬编码路径） | 已修：`REPO="${LZY_PROBE_REPO:-…}"` 覆盖缝；姊妹件 evidence-probe-f6.sh 同款留档不改（不在 P3 scope） | `scripts/v031/evidence-probe.sh`；本行记档 |

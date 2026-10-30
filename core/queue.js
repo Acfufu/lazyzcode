@@ -62,40 +62,15 @@ function missingDbAfterMigrate(p) {
 // 打开判据库（缺席=null；在场=已校验句柄；失败=具名 QueueError）。调用方负责 close。
 function openDb(cwd) {
   const p = stateDbPath(cwd);
-  // 亚毫秒墙钟（performance.timeOrigin+now()）：birthtimeMs 带小数，Date.now() 取整会在
-  // 同毫秒窗口把「打开前一瞬创建的预存文件」误判为自建（r6-F2 契约腿实证）。
-  const openedAt = performance.timeOrigin + performance.now();
   if (!existsSync(p)) return null;
-  // r6-F2 双信号（比计划文案的 size 臂更保守）：①existsSync 后、openStore 前再 stat 一次
-  // （在场性）；②缺表时核对现文件 birthtime≥openedAt——两信号合取才判「本进程打开序列内
-  // SQLite 自建空库」，close+unlink 后按库缺席继续。打开前已在场且 birthtime 早于入口的
-  // 文件（旧占位/异物库）恒走原具名拒，绝不误删；unlink 失败=保留走原拒，不静默。
-  let existedAtOpen = true;
-  try {
-    statSync(p);
-  } catch {
-    existedAtOpen = false;
-  }
+  // birthtime 与进程时钟不可证明文件归属（r6-F2 时钟偏差反例）。
+  // 即使检查后文件消失、SQLite 又建出缺表库，也保留并具名拒；读路径不猜测归属后 unlink。
   let db;
   try {
     db = openStore(p);
     const have = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name));
     const missing = STORE_TABLES.filter((t) => !have.has(t));
     if (missing.length > 0) {
-      let bornDuringOpen = false;
-      try {
-        bornDuringOpen = statSync(p).birthtimeMs >= openedAt;
-      } catch {}
-      if (!existedAtOpen || bornDuringOpen) {
-        try { db.close(); } catch {}
-        try {
-          rmSync(p, { force: true });
-          for (const suf of ["-wal", "-shm"]) rmSync(p + suf, { force: true });
-        } catch (e) {
-          throw new StatedbError(`自建空库清理失败（unlink 被拒：${e?.code ?? e?.message ?? e}）——保留文件走具名拒`, { cause: e });
-        }
-        return null;
-      }
       throw new StatedbError(`库在场面 schema 不识别（缺表：${missing.join(",")}）——拒启（P3 迁移前的库或缺描述件的异物库）`);
     }
   } catch (e) {

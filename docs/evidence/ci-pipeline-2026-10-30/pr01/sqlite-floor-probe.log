@@ -1,0 +1,56 @@
+(node:36243) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+{
+  "node": "v24.0.0",
+  "floorMajor": 24,
+  "workdir": "/var/folders/58/r3h7s4pd64v8rr74hxfldjww0000gn/T/lzy-sqlite-probe-I0vTzn",
+  "modulePresent": true,
+  "capabilities": {
+    "basic": {
+      "ok": true,
+      "readback": "x"
+    },
+    "wal": {
+      "ok": true,
+      "mode": "wal"
+    },
+    "busyPragma": {
+      "ok": true,
+      "errcode": 5,
+      "waitedMs": 485
+    },
+    "uniqueConflict": {
+      "ok": true,
+      "errcode": 2067
+    },
+    "vacuumInto": {
+      "ok": true,
+      "rows": 1,
+      "integrity": "ok"
+    },
+    "readOnly": {
+      "ok": true,
+      "readback": 7,
+      "writeErrcode": 8
+    },
+    "crashRecovery": {
+      "ok": true,
+      "rowsAfterKill": [
+        "committed"
+      ],
+      "integrity": "ok"
+    }
+  },
+  "experimentalWarning": 1,
+  "verdict": "supported-pass",
+  "allRequiredPass": true,
+  "required": [
+    "basic",
+    "wal",
+    "busyPragma",
+    "uniqueConflict",
+    "vacuumInto",
+    "readOnly",
+    "crashRecovery"
+  ]
+}

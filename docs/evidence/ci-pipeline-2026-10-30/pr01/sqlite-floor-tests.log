@@ -1,0 +1,35 @@
+(node:36718) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ A/B①approve：判定与记录形状两侧一致（exit 0） (585.021292ms)
+✔ A/B②void：契约入队后漂移=短码作废，两侧零记录（exit 0） (316.030666ms)
+✔ A/B③refuse-multi：同短码多命中=拒猜，两侧零记录（exit 0） (613.498833ms)
+✔ A/B④candidates-no-match：有候选零命中=诊断列短码，两侧零记录（exit 0） (632.721542ms)
+✔ A/B⑤write-failed（跨平台构造）：authorizations 路径被文件占位=写失败，两侧同文案零记录 (531.997958ms)
+✔ A/B⑤b write-failed（r2-F3 可读不可写构造）：authDir chmod 555=真实可读目录上零记录 (522.683375ms)
+✔ A/B⑥unreadable：库/文件损坏=零记录+exit 0；DB 侧具名诊断（JSON 侧落既有诊断支——差异如实断言） (413.168584ms)
+✔ A/B⑥b schema_version 异版本=当不可读：具名诊断+零记录（DB 专项） (190.042541ms)
+✔ A/B⑥c 行级坏行（delivery_json 损坏）=整面当不可读：具名诊断+零记录（DB 专项，fail-closed） (125.2265ms)
+✔ A/B⑦none：零候选=两侧同落生产 no-goal 诊断支（pilot {} 信号退役），零记录+exit 0 (221.857291ms)
+✔ A/B⑧一致性：DB 侧批准记录与 readSnapshot 同读数（同 slug/contractHash；SCHEMA_VERSION 门在库） (134.207625ms)
+(node:36724) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ D2: delivery provenance preserves structured source and old strings (44.022792ms)
+✔ ①唯一事件约束：同 dedupKey 二次入账=duplicate no-op；等额不同身份不吞 (11.217541ms)
+✔ ②占用事务：登记+置 running 同窗可见；同条目重复占用=拒（不重复认领） (13.831ms)
+✔ ③结算事务：三面同窗/重复结算幂等不双计/overrun 派生单列 (11.226584ms)
+✔ ④并发冲突：持锁期间竞争者 busy_timeout 等待后具名 StatedbBusyError（errcode 5） (442.758458ms)
+✔ ⑤崩溃恢复：写事务中 kill -9 → 已提交在/未提交无/open 占用持续可见/integrity ok (457.0935ms)
+✔ ⑥WAL 回读拒面：≠wal → 具名 StatedbUnsupportedError（不静默降级） (0.869334ms)
+✔ ⑦地板守卫语义：地板与模块检查在职；schema 版本常量=1 (0.424ms)
+✔ ⑧结构性不嵌套：既有事务在途时再开操作=具名拒（不静默加入）；回滚后恢复可写 (15.163375ms)
+✔ ⑨段行往返与结算自读：replaceDispatchTxs 写段（extra 保形）→ settleDispatch 缺省自读成事件；patchDispatchTx 单事务合补+未知字段拒 (30.6325ms)
+✔ ⑩备份恢复重放回路（N7④）：scripts/backup-replay.mjs 全链 exit 0（VACUUM INTO→删→恢复→integrity ok+行数一致）+破坏性守卫（已存在 state.sqlite=exit 2） (521.31275ms)
+✔ ⑨provenance 规约：对象/数组 round-trip 保形、字符串与字面量不误还原（0.6.1 N1/N2） (25.088375ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6083.253625

@@ -1,0 +1,27 @@
+✖ ⑤r6-F2 时钟偏差：预存缺表文件的 birthtime 晚于进程时钟仍拒绝且不删除 (27.764625ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 90.202708
+
+✖ failing tests:
+
+test at test/sqlite-migrate.contract.test.js:204:1
+✖ ⑤r6-F2 时钟偏差：预存缺表文件的 birthtime 晚于进程时钟仍拒绝且不删除 (27.764625ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///Users/acfufu/Codehub/lazyzcode/test/sqlite-migrate.contract.test.js:212:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /库在场面 schema 不识别|state\.sqlite 不可用/,
+    operator: 'throws',
+    diff: 'simple'
+  }

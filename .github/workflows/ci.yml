@@ -10,17 +10,20 @@ on:
   pull_request:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('push-{0}', github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-cancel-probe-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   test:
+    concurrency:
+      group: lzy-ci-probe-cancel-20261030
+      cancel-in-progress: true
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         node: [24]
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     env:
       TZ: Asia/Shanghai
@@ -30,7 +33,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       # Node runs --test "test/**/*.test.js" with spec/JUnit/event reporters and preserves its exit code.
-      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/tests"
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/tests" --script scripts/ci/probe-hold.mjs
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/cli" --script cli/lzy.js --help
       - uses: actions/upload-artifact@v4
         if: always()

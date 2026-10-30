@@ -201,6 +201,18 @@ test("⑤r6-F2 安全性质：打开前已在场的缺表文件（旧占位/异�
   rmSync(d, { recursive: true, force: true });
 });
 
+test("⑤r6-F2 时钟偏差：预存缺表文件的 birthtime 晚于进程时钟仍拒绝且不删除", { skip: FLOOR_SKIP }, (t) => {
+  const d = mkdtempSync(join(tmpdir(), "lzy-mig-clock-"));
+  t.after(() => rmSync(d, { recursive: true, force: true }));
+  seedSource(d);
+  writeFileSync(stateDbPath(d), "");
+  // 确定性复现文件系统时间与 performance 纪元偏差；不依赖 runner 负载或 sleep。
+  const now = performance.now();
+  t.mock.method(performance, "now", () => now - 60_000);
+  assert.throws(() => loadQueue(d), /库在场面 schema 不识别|state\.sqlite 不可用/);
+  assert.ok(existsSync(stateDbPath(d)), "时钟偏差不能成为删除预存文件的依据");
+});
+
 test("⑥前置拒绝：活跃 tx（open）/running 条目/ delivering 在途=具名拒且零产物", { skip: FLOOR_SKIP }, () => {
   const d = mkdtempSync(join(tmpdir(), "lzy-mig-active-"));
   seedSource(d);

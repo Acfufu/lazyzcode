@@ -1,6 +1,6 @@
 name: ci
 
-# ADJ-90: read-only PR checks; SHA pinning and automatic updates land together in PR 05.
+# ADJ-90: full action SHAs are maintained by grouped weekly Dependabot updates.
 permissions:
   contents: read
 
@@ -25,14 +25,16 @@ jobs:
     env:
       TZ: Asia/Shanghai
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node }}
       # Node runs --test "test/**/*.test.js" with spec/JUnit/event reporters and preserves its exit code.
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/tests"
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/test-${{ matrix.os }}/cli" --script cli/lzy.js --help
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: tests-${{ matrix.os }}-${{ github.run_attempt }}
@@ -43,12 +45,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/docs-links" --script scripts/check-docs-links.mjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: docs-links-${{ github.run_attempt }}
@@ -59,13 +63,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.0.0
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/sqlite-floor/probe" --script scripts/sqlite-capability-probe.mjs
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/sqlite-floor/tests" test/statedb.contract.test.js test/statedb-readers.contract.test.js
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: sqlite-floor-${{ github.run_attempt }}
@@ -76,20 +82,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/package-build/runner" --script scripts/ci/package-build.mjs "${{ runner.temp }}/package-candidate"
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/package-build/counterexample-runner" --script scripts/ci/package-negative.mjs "${{ runner.temp }}/package-candidate" "${{ runner.temp }}/package-build/counterexamples"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: package-candidate-${{ github.run_attempt }}
           path: ${{ runner.temp }}/package-candidate/
           retention-days: 14
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: package-build-${{ github.run_attempt }}
@@ -109,18 +115,18 @@ jobs:
           - {os: ubuntu-latest, node: '24.0.0'}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: package-candidate-${{ github.run_attempt }}
           path: ${{ runner.temp }}/package-candidate/
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/package-smoke/runner" --script scripts/ci/package-smoke.mjs "${{ runner.temp }}/package-candidate" "${{ runner.temp }}/package-smoke/reports"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: package-smoke-${{ matrix.os }}-${{ matrix.node }}-${{ github.run_attempt }}
@@ -134,10 +140,10 @@ jobs:
       BUNDLE_GEMFILE: ${{ github.workspace }}/scripts/docs-jekyll/Gemfile
       JEKYLL_ENV: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
@@ -146,25 +152,45 @@ jobs:
           bundler: 2.5.11
           bundler-cache: true
       - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/docs-build" --script scripts/docs-jekyll/build.mjs "${{ runner.temp }}/docs-site"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: docs-build-${{ github.run_attempt }}
           path: ${{ runner.temp }}/docs-build/
           retention-days: 14
 
+  workflow-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: node scripts/ci/run-checks.mjs "${{ runner.temp }}/workflow-check/runner" --script scripts/ci/workflow-check.mjs "${{ runner.temp }}/workflow-check/reports"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: workflow-check-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/workflow-check/
+          retention-days: 14
+
   ci-required:
     name: CI Required
     if: always()
-    needs: [test, docs-links, sqlite-floor, package-build, package-smoke, docs-build]
+    needs: [test, docs-links, sqlite-floor, package-build, package-smoke, docs-build, workflow-check]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - run: node scripts/ci/required-gate.mjs
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
-          REQUIRED_JOBS: test,docs-links,sqlite-floor,package-build,package-smoke,docs-build
+          REQUIRED_JOBS: test,docs-links,sqlite-floor,package-build,package-smoke,docs-build,workflow-check

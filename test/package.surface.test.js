@@ -40,8 +40,10 @@ test("git 跟踪文件不含 .mimosa 残留", { skip: GIT_SKIP }, () => {
   assert.ok(tracked.every((f) => !f.includes(".mimosa")), `泄漏：${tracked.filter((f) => f.includes(".mimosa"))}`);
 });
 
-test("CI 骨架在场且声明零依赖测试命令", () => {
+test("CI 骨架在场且根包声明 Node 内建测试命令", () => {
   const ci = readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
   assert.match(ci, /node-version/);
-  assert.match(ci, /node --test/);
+  // CI 通过报告包装器派发；实际运行由报告/退出码验收，不再按 YAML 文本猜调用链。
+  const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+  assert.match(pkg.scripts.test, /^node --test /);
 });

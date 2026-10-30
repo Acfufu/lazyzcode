@@ -12,6 +12,10 @@ CI 每个 PR 完整运行 Node 24 三平台、文档链接和 Node 24.0.0 SQLite
 
 真实构建核对首页、双语 guide/developers 的输出、内部链接、锚点和静态资源 baseurl；隔离非法 Liquid 页面必须因 Liquid 语法错误失败。站点使用 kramdown 的 GFM parser 保持 GitHub 风格的中文/符号标题锚点；被 Pages 排除的评审档链接到 GitHub 源文件。PR 只构建，现行 main `/docs` 的 Pages 来源保持不变。
 
+全部自定义 workflow 的外部 action 使用完整提交 SHA，checkout 关闭凭据持久化。Dependabot 每周维护 Actions、独立 docs-preview npm 工具和 Jekyll Bundler 依赖；Actions 同时最多三个更新 PR，minor/patch 分组，major 单列，不增加根 npm 依赖项。更新 PR 同样经过完整合并检查，配置被读取和实际首个更新 PR 的出现要分别验收。
+
+`workflow-check` 使用 `scripts/ci/workflow-tools.json` 中固定版本和 SHA256 的 actionlint/zizmor 二进制，下载后先核摘要。zizmor 静态检查以 offline 模式运行，fork 路径无需额外 token。两种工具各有隔离反例，防止扫描入口空跑。工具升级须同步版本/摘要并复验反例及完整 CI；扫描发现按位置修复，不全局关闭规则。诊断和下载摘要保留 14 天。
+
 同一 PR 的新候选取消旧运行；push 按事件及提交 SHA 分组，main/dev 的不同 SHA 不互相替换。汇总使用 `always()` 但显式检查每个上游结果。新的必需 job 须同时加入 `needs` 和 `REQUIRED_JOBS`。改名时先跑通新检查、迁移远端规则，再删除旧名。
 
 `scripts/ci/run-checks.mjs <输出目录> [测试路径…]` 用 Node 内置 spec/JUnit 和事件 reporter 运行测试，保存原退出码、信号、完整日志、机器报告、具名跳过及源位置、实际 checkout SHA/tree、PR head/base、run/attempt、OS/架构及 Node/npm。传入 `--script <Node 脚本> [参数…]` 时保存普通检查的日志与 JSON 回执，文档链接、CLI help 及 SQLite 能力探针也走这条路径；探针失败仍有执行前身份及失败回执。报告在失败时也尝试上传，保留 14 天；取消或 runner 丢失可能来不及上传。PR 默认测试合并候选，报告中的 checkout 不能当作 PR head。旧测试使用布尔 skip 时如实保留布尔值及源位置，不伪造具体原因。

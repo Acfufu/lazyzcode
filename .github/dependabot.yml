@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      actions-compatible:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /scripts/docs-preview
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      preview-compatible:
+        update-types: [minor, patch]
+  - package-ecosystem: bundler
+    directory: /scripts/docs-jekyll
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      pages-compatible:
+        update-types: [minor, patch]

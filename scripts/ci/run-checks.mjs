@@ -1,7 +1,6 @@
 import { appendFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { resolve, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { identity } from "./identity.mjs";
 
 const out = resolve(process.argv[2] ?? "artifacts/ci-tests");
@@ -10,7 +9,7 @@ const isTest = process.argv[3] !== "--script";
 const meta = { ...identity(), kind: isTest ? "tests" : "script", startedAt: new Date().toISOString() };
 writeFileSync(join(out, "identity.json"), `${JSON.stringify(meta, null, 2)}\n`);
 const log = createWriteStream(join(out, isTest ? "tests.log" : "command.log"));
-const args = isTest ? ["--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=junit", `--test-reporter-destination=${join(out, "junit.xml")}`, `--test-reporter=${fileURLToPath(new URL("events-reporter.mjs", import.meta.url))}`, `--test-reporter-destination=${join(out, "events.jsonl")}`, ...(process.argv.slice(3).length ? process.argv.slice(3) : ["test/**/*.test.js"])] : process.argv.slice(4);
+const args = isTest ? ["--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=junit", `--test-reporter-destination=${join(out, "junit.xml")}`, `--test-reporter=${new URL("events-reporter.mjs", import.meta.url).href}`, `--test-reporter-destination=${join(out, "events.jsonl")}`, ...(process.argv.slice(3).length ? process.argv.slice(3) : ["test/**/*.test.js"])] : process.argv.slice(4);
 if (args.length === 0) throw new Error("--script requires a Node script path");
 const child = spawn(process.execPath, args, { stdio: ["ignore", "pipe", "pipe"] });
 child.stdout.on("data", (data) => { process.stdout.write(data); log.write(data); });

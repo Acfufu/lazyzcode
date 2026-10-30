@@ -1,0 +1,90 @@
+{
+  "verifiedAt": "2026-10-30T08:28:28.230204+00:00",
+  "mainSha": "934d9c7e50557c4d2f9d9e846ed7326fe00a6551",
+  "tree": "f922f01501a8471bf5dcfce5920e4d6276162ec4",
+  "pr": 24,
+  "acceptedHead": "a62e3d3f0c4986cd9159b0ba5ef4ada9b94cc256",
+  "prChecks": 15,
+  "mainCiRun": 41025146142,
+  "mainJobs": 13,
+  "allMainJobs": "success",
+  "requiredCheckApp": 15368,
+  "codeqlRun": 41025146186,
+  "analysisId": 2060757335,
+  "analysisTool": {
+    "name": "CodeQL",
+    "guid": null,
+    "version": "2.27.3"
+  },
+  "rawResults": 14,
+  "openAlerts": {
+    "medium": 13,
+    "high": 0,
+    "critical": 0
+  },
+  "pagesRun": 41025145229,
+  "pagesBuiltCommit": "934d9c7e50557c4d2f9d9e846ed7326fe00a6551",
+  "liveHttpPages": 5,
+  "ruleset": 26189284,
+  "bypassActors": [],
+  "evidenceFilesVerified": 75,
+  "forkAcceptance": "NOT_RUN; external entry pending",
+  "persistentRecoveryBypass": "BLOCKED_AUTO_REVIEW; user choice pending",
+  "npmPublished": false,
+  "mainRawArtifacts": {
+    "bundles": 13,
+    "filesHashed": 93,
+    "receipt": "main-artifact-verification.json",
+    "manifest": "main-raw-evidence-manifest.json"
+  },
+  "mainPlatformTests": [
+    {
+      "platform": "darwin",
+      "node": "v24.21.0",
+      "npm": "11.19.0",
+      "counts": {
+        "tests": 994,
+        "failed": 0,
+        "passed": 994,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 959,
+        "suites": 28
+      },
+      "workerAssignmentRegression": "PASS"
+    },
+    {
+      "platform": "linux",
+      "node": "v24.22.1",
+      "npm": "11.19.1",
+      "counts": {
+        "tests": 994,
+        "failed": 0,
+        "passed": 992,
+        "cancelled": 0,
+        "skipped": 2,
+        "todo": 0,
+        "topLevel": 959,
+        "suites": 28
+      },
+      "workerAssignmentRegression": "PASS"
+    },
+    {
+      "platform": "win32",
+      "node": "v24.22.1",
+      "npm": "11.19.1",
+      "counts": {
+        "tests": 993,
+        "failed": 0,
+        "passed": 969,
+        "cancelled": 0,
+        "skipped": 24,
+        "todo": 0,
+        "topLevel": 958,
+        "suites": 28
+      },
+      "workerAssignmentRegression": "PASS"
+    }
+  ]
+}

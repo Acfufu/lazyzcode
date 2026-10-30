@@ -1,0 +1,22 @@
+{
+  "recordedAtUtc": "2026-10-30 14:08:50 UTC",
+  "scope": "main ruleset 26189284 only",
+  "recovery": {
+    "question": "是否批准为 Acfufu（用户 ID 73582072）增加长期“仅 PR”恢复例外？该账号将能经 PR 绕过检查；日常合并仍要求全绿。",
+    "answer": "批准仅 Acfufu 的 PR 恢复例外",
+    "approvedActor": {
+      "actor_id": 73582072,
+      "actor_type": "User",
+      "bypass_mode": "pull_request"
+    },
+    "supersedesPendingDecision": "config01/bypass-policy-block.json",
+    "priorAutomaticRejectionRetained": true
+  },
+  "fork": {
+    "answer": "fork 验收暂挂，先完成其余项",
+    "arrangement": "DEFERRED_BY_USER",
+    "acceptance": "NOT_RUN",
+    "passed": false,
+    "externalEntryStillRequiredForExecution": true
+  }
+}

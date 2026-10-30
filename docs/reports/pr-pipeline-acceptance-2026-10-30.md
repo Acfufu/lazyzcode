@@ -1,6 +1,6 @@
 # GitHub PR 流水线第一批实施与验收
 
-日期：2026-10-30（Asia/Shanghai）。范围：方案 PR01–06 和配置01。第一批实现及 main 确定性/安全语义门已落地，正例已实际合并，负例已由 GitHub 服务器判为不可合并。**完整验收仍有 fork 路径 NOT_RUN**：需要另一 GitHub 归属的实际入口，未由同仓或本地检查替代。
+日期：2026-10-30（Asia/Shanghai）。范围：方案 PR01–06 和配置01。第一批实现及 main 确定性/安全语义门已落地，正例已实际合并，负例在无 bypass 阶段由 GitHub 服务器判为不可合并。**fork 路径按用户安排暂挂，验收保持 NOT_RUN**：需要另一 GitHub 归属的实际入口，未由同仓或本地检查替代；其余项继续完成。
 
 本批没有 npm 发布、发布方式迁移或 AI 失败归因试点。npm 发布记录仍为 0.6.2；本批源码修复未发版。真实 ZCode 装载、macOS ES 授权和生命周期 R0 保持各自原有验收状态。
 
@@ -60,7 +60,7 @@ Dependabot 动态更新任务实际成功并提出 [12](https://github.com/Acfuf
 
 [main ruleset 26189284](https://github.com/Acfufu/lazyzcode/rules/26189284) 于 2026-10-30 14:38:45 +08:00 启用。原状 rulesets 为空、classic protection 404；当前 main protected=true。实际[规则快照](https://github.com/Acfufu/lazyzcode/blob/main/docs/evidence/ci-pipeline-2026-10-30/config01/ruleset.json)要求：PR；人类 approval 0；不强制 CODEOWNERS approval；讨论解决；`CI Required` 必须来自 GitHub Actions App15368；严格最新 base；禁止强推/删除；CodeQL 工具结果必需，安全阈值 high_or_higher、普通告警阈值 errors。dev 不增加同等规则。
 
-下表负例使用 GitHub 实际 PR 合并资格判定；均非 draft、无合并冲突，前六项观察时 base 为 37a5670。**没有向负例发送 merge 请求**。规则配置回读、真实检查来源和服务器资格共同构成证据，不将单独返回规则 JSON 当作生效验收。
+下表负例使用无 bypass 阶段的 GitHub 实际 PR 合并资格判定；均非 draft、无合并冲突，前六项观察时 base 为 37a5670。**没有向负例发送 merge 请求**。规则配置回读、真实检查来源和服务器资格共同构成证据，不将单独返回规则 JSON 当作生效验收；后续获授权账号的恢复例外不由这些旧负例证明。
 
 | 场景 | 实际 PR | 观察结果 |
 | --- | --- | --- |
@@ -75,10 +75,14 @@ Dependabot 动态更新任务实际成功并提出 [12](https://github.com/Acfuf
 
 过时 base 首次查询为 UNKNOWN，未计通过；REST 触发服务器计算后再观察到 BEHIND。PR 的 baseRefOid 快照仍为旧基线，实际 main tip 另由 branches API 核对。负例和原聚合门演练 PR 均关闭未合并，源码及运行记录保留。强推/删除和讨论解决只核配置，没有执行破坏性操作或创建测试讨论。
 
-当前规则无 bypass。拟增加 Acfufu 用户 73582072 的长期“仅 PR”恢复例外时，自动审批在执行前拒绝，理由是具体账号及长期作用范围尚未明确批准；[阻断记录](https://github.com/Acfufu/lazyzcode/blob/main/docs/evidence/ci-pipeline-2026-10-30/config01/bypass-policy-block.json)和严格规则回读保留。未绕过拒绝或改用更宽 actor；其批准问题单独待答，不称为 GitHub 能力不支持。普通合并不跳过检查；锁死时按开发者 CI 说明记录后临时调整具体规则，再恢复、补验。本次没有 bypass 合并。
+最初增加长期恢复例外的请求曾在执行前被自动审批拒绝，理由是具体账号及长期作用范围尚未明确批准；[原阻断记录](https://github.com/Acfufu/lazyzcode/blob/main/docs/evidence/ci-pipeline-2026-10-30/config01/bypass-policy-block.json)及[无 bypass 阶段快照](https://github.com/Acfufu/lazyzcode/blob/main/docs/evidence/ci-pipeline-2026-10-30/config01/ruleset-no-bypass-phase.json)保持原样，属于历史事实，不再表示批准待答。用户随后明确选择“批准仅 Acfufu 的 PR 恢复例外”，该[授权及 fork 安排](https://github.com/Acfufu/lazyzcode/blob/main/docs/evidence/ci-pipeline-2026-10-30/config01/recovery-user-decisions.json)已单独登记。
+
+2026-10-30 22:05:07 +08:00，GitHub 接受并经独立 GET 回读：只增加 `User` 73582072（Acfufu），`bypass_mode=pull_request`；其余名称、目标、启用态、main 范围及全部规则字段与变更前一致，[逐字段核对](https://github.com/Acfufu/lazyzcode/blob/main/docs/evidence/ci-pipeline-2026-10-30/config01/recovery-readback-delta.json)和[准确请求](https://github.com/Acfufu/lazyzcode/blob/main/docs/evidence/ci-pipeline-2026-10-30/config01/recovery-request.json)保留。没有扩大为管理员角色、其他账号或 always 模式。GitHub 不机械区分恢复与日常，该账号经 PR 绕过检查的能力已授予；日常仍按流程等待全绿。恢复 PR 须记录原因、操作者、跳过项及补验计划，恢复后补验并留结果。此次验收范围是配置提交与独立回读，实际绕过失败 PR、直推、强推及删除演练均未执行；不能称恢复行为已实测。
+
+此前严格阶段的 [PR24](https://github.com/Acfufu/lazyzcode/pull/24) 候选 a62e3d3f 经过 15 项检查后合并为 main `934d9c7e`。[main CI 41025146142](https://github.com/Acfufu/lazyzcode/actions/runs/41025146142) 13 个 job 全部成功，三平台失败均为 0（Linux 跳过 2、Windows 跳过 24）；[CodeQL 41025146186](https://github.com/Acfufu/lazyzcode/actions/runs/41025146186) 全量分析 2060757335 无 error/warning，open high/critical 为 0、medium 13；[Pages 41025145229](https://github.com/Acfufu/lazyzcode/actions/runs/41025145229) built 到该 SHA，五个真实 HTTP200 页面及所需锚点检查通过。[当时最终回执](https://github.com/Acfufu/lazyzcode/blob/main/docs/evidence/ci-pipeline-2026-10-30/final/pr24-main-verification.json)绑定 tree `f922f01501a8471bf5dcfce5920e4d6276162ec4`，13 份原始产物及完整日志另以 93 个文件摘要保存在本地；该快照中的无 bypass 状态属于启用恢复例外之前。
 
 ## 尚未验收及证据保存
 
-fork 实测仍缺另一归属入口：仓库现有 forks 与账号 orgs 均为空，同账号创建 fork 的实际尝试返回原仓库且 fork=false，未创建新 fork，不能算成功。同仓正确 SHA 的分析、隔离 push、Dependabot 或本地 payload 均未被冒充 fork 权限验收。供应入口或明确暂缓只改变安排，NOT_RUN 不会变为 PASS。
+fork 实测仍缺另一归属入口：仓库现有 forks 与账号 orgs 均为空，同账号创建 fork 的实际尝试返回原仓库且 fork=false，未创建新 fork，不能算成功。用户现已选择“fork 验收暂挂，先完成其余项”，安排状态为暂挂，验收仍为 NOT_RUN，不再等待该入口推进其余项。同仓正确 SHA 的分析、隔离 push、Dependabot 或本地 payload 均未被冒充 fork 权限验收；暂挂不会将 NOT_RUN 变为 PASS。
 
-CI 诊断/候选 artifact 配置保留 14 天；取消或 runner 丢失可能没有完整上传，缺产物不推导成功。关键 JSON、日志、skip 与 SHA 摘要已提交到证据目录，完整原始输出留在本地执行目录。最终文档 PR 自身仍须完整 CI/CodeQL 及 main 合并后检查；它的实际提交与平台记录绑定本报告修订。
+CI 诊断/候选 artifact 配置保留 14 天；取消或 runner 丢失可能没有完整上传，缺产物不推导成功。关键 JSON、日志、skip 与 SHA 摘要已提交到证据目录，完整原始输出留在本地执行目录。后续文档 PR 同样须完整 CI/CodeQL 及 main 合并后检查，其实际提交与平台记录绑定本报告修订；恢复例外的存在不改变本次正常合并先检查全绿的流程。

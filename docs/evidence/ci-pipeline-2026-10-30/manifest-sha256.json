@@ -50,14 +50,29 @@
     "sha256": "79ea6bc7b523f7d20d34f88a0aafe658eb0c83688505a2cc3e3611e5807f6d83"
   },
   {
+    "path": "config01/recovery-readback-delta.json",
+    "bytes": 767,
+    "sha256": "dddd63b6cad8a97466489816a8352889d6323b6237fa704079c22a089f778223"
+  },
+  {
+    "path": "config01/recovery-request.json",
+    "bytes": 1547,
+    "sha256": "a2b3214c29aa6a7e97e992ea35f3f05785bc2accba9548762a0cd93bcea40794"
+  },
+  {
+    "path": "config01/recovery-user-decisions.json",
+    "bytes": 786,
+    "sha256": "7e940a158a21e509ae94bd5ead70682e7daf4896f4d32a135520a06dcce47ffb"
+  },
+  {
     "path": "config01/ruleset-no-bypass-phase.json",
     "bytes": 1906,
     "sha256": "4e30a403573905dd0008f927f81a12648c04fe5f6453e8f3fe522212e147d6b9"
   },
   {
     "path": "config01/ruleset.json",
-    "bytes": 1906,
-    "sha256": "4e30a403573905dd0008f927f81a12648c04fe5f6453e8f3fe522212e147d6b9"
+    "bytes": 2026,
+    "sha256": "ce18c32ea719e36c98cc6e5e4e2cc91e0a53af8945bdfe1eaa17d98d641c570d"
   },
   {
     "path": "config01/rulesets-before.json",
@@ -108,6 +123,11 @@
     "path": "final/pr24-first-macos-failure.json",
     "bytes": 44525,
     "sha256": "1b05ef945fa82ff9e7c4df0c515bf17d35c3833507c3324f97561a7c4489a7e0"
+  },
+  {
+    "path": "final/pr24-main-verification.json",
+    "bytes": 2158,
+    "sha256": "600ef2ed55ac1d1cb3219ad77c186d403fd710adc8a7d5d502e86f433347b40f"
   },
   {
     "path": "final/prompt-duplicate-control.json",

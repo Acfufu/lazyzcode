@@ -30,4 +30,6 @@ CodeQL 使用独立 advanced setup，固定 action SHA，分析 JavaScript/TypeS
 
 平台 runner、离线安装与浏览器结果各有验收边界；本流水线不证明真实 ZCode 装载、macOS ES 授权或托管进程生命周期通过。发布仍按现行维护者手工流程执行。
 
-main 规则要求 PR、固定来源的 `CI Required`、最新 base、讨论解决及 CodeQL 语义结果；单维护者的人类 approval 数为 0，不强制 CODEOWNERS approval。实际规则和演练证据见[第一批验收报告](../reports/pr-pipeline-acceptance-2026-10-30.md)。当前没有长期 bypass。若故障锁死，维护者须先记录 PR、原因、操作者、受影响检查和补验计划，再临时调整具体规则；恢复后还原规则并重新验收。普通合并始终先确认固定 head、最新 base 和全部必需检查成功，不能用本地绿灯代替远端状态。
+main 规则要求 PR、固定来源的 `CI Required`、最新 base、讨论解决及 CodeQL 语义结果；单维护者的人类 approval 数为 0，不强制 CODEOWNERS approval。实际规则和演练证据见[第一批验收报告](../reports/pr-pipeline-acceptance-2026-10-30.md)。用户已明确批准长期恢复例外，仅限 Acfufu（用户 ID 73582072）、`pull_request` 模式；不包含其他账号、角色或 `always` 模式。GitHub 按账号授予绕过能力，不区分“恢复”与“日常”；日常先全绿是维护流程要求。普通合并仍须先确认固定 head、最新 base 和全部必需检查成功，不能用本地绿灯代替远端状态。
+
+若故障锁死，先在恢复 PR 中记录原因、操作者、跳过项及补验计划，再使用该例外；恢复后执行补验并记录结果。此次仅完成配置提交及独立 API 回读，没有实际绕过失败 PR、直推、强推或删除 main 的演练。原负例在无 bypass 阶段完成，不能据此宣称获授权账号仍无法绕过检查。fork 验收按用户安排暂挂，结果保持 NOT_RUN，后续有外部入口时另行执行。

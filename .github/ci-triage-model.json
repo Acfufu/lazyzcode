@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "protocol": "chat-completions",
+  "compatibilityVerified": false,
+  "endpoint": null,
+  "model": null,
+  "inputUsdPerMillion": null,
+  "outputUsdPerMillion": null,
+  "pricingCheckedAt": null,
+  "tokenBound": "utf8-bytes-plus-4096",
+  "maxCompletionTokens": 2048
+}

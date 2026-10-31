@@ -1,0 +1,58 @@
+name: ci-triage
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Failed ci.yml run ID in this repository
+        required: true
+        type: string
+      attempt:
+        description: Run attempt (empty selects the latest at collection start)
+        required: false
+        type: string
+      enable_model:
+        description: Call the reviewed model configuration (requires API key)
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+# Serialize the entire lifetime pilot, including manual reruns. Never auto-retry a paid call.
+concurrency:
+  group: ci-triage-pilot
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: github.ref == 'refs/heads/main' && github.repository == 'Acfufu/lazyzcode'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      # github.sha is this trusted main dispatch's controller, never the target CI SHA.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: node scripts/ci/triage.mjs "$TARGET_RUN_ID" "$RUNNER_TEMP/ci-triage" "$TARGET_ATTEMPT"
+        env:
+          TARGET_RUN_ID: ${{ inputs.run_id }}
+          TARGET_ATTEMPT: ${{ inputs.attempt }}
+          TRIAGE_ENABLE_MODEL: ${{ inputs.enable_model }}
+          GH_TOKEN: ${{ github.token }}
+          TRIAGE_MODEL_API_KEY: ${{ secrets.TRIAGE_MODEL_API_KEY }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-triage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-triage/
+          retention-days: 14
+          if-no-files-found: error

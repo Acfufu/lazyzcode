@@ -1,0 +1,522 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-31T05:25:04.507Z",
+  "pullRequest": "https://github.com/Acfufu/lazyzcode/pull/27",
+  "implementationHead": "49f342385e7dbdb58ee18c96bc6576988f789667",
+  "ci": {
+    "url": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815",
+    "runId": "41171862815",
+    "attempt": "1",
+    "checks": [
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124452611526",
+        "name": "CI Required",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/runs/124451520174",
+        "name": "CodeQL",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451362449",
+        "name": "package-smoke (macos-latest, 24)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451362367",
+        "name": "package-smoke (ubuntu-latest, 24)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451362346",
+        "name": "package-smoke (ubuntu-latest, 24.0.0)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451362352",
+        "name": "package-smoke (windows-latest, 24)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451325273",
+        "name": "test (24, macos-latest)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451325295",
+        "name": "docs-build",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451325173",
+        "name": "workflow-check",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451325288",
+        "name": "package-build",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451325296",
+        "name": "sqlite-floor",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451325337",
+        "name": "docs-links",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862760/job/124451324972",
+        "name": "CodeQL (javascript-typescript)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451325293",
+        "name": "test (24, windows-latest)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/Acfufu/lazyzcode/actions/runs/41171862815/job/124451325412",
+        "name": "test (24, ubuntu-latest)",
+        "state": "SUCCESS"
+      }
+    ],
+    "tests": [
+      {
+        "os": "macos",
+        "node": "v24.22.1",
+        "npm": "11.19.1",
+        "checkoutSha": "c3c09f097d18f2dda408aa99d0ad61c22da795ac",
+        "checkoutTree": "c6f7fe083b03c3a57b35d5b1b34f979c0f5e44e2",
+        "exitCode": 0,
+        "counts": {
+          "tests": 1013,
+          "failed": 0,
+          "passed": 1013,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "topLevel": 978,
+          "suites": 28
+        },
+        "skips": [],
+        "failedFiles": []
+      },
+      {
+        "os": "ubuntu",
+        "node": "v24.22.1",
+        "npm": "11.19.1",
+        "checkoutSha": "c3c09f097d18f2dda408aa99d0ad61c22da795ac",
+        "checkoutTree": "c6f7fe083b03c3a57b35d5b1b34f979c0f5e44e2",
+        "exitCode": 0,
+        "counts": {
+          "tests": 1013,
+          "failed": 0,
+          "passed": 1011,
+          "cancelled": 0,
+          "skipped": 2,
+          "todo": 0,
+          "topLevel": 978,
+          "suites": 28
+        },
+        "skips": [
+          {
+            "name": "real sandbox readers accept regular artifacts and deny links, FIFOs and concurrent escapes",
+            "reason": true,
+            "file": "/home/runner/work/lazyzcode/lazyzcode/test/review-artifacts.contract.test.js",
+            "line": 15
+          },
+          {
+            "name": "real OS boundary confines engine, descendants, files and network",
+            "reason": true,
+            "file": "/home/runner/work/lazyzcode/lazyzcode/test/review-os-sandbox.contract.test.js",
+            "line": 27
+          }
+        ],
+        "failedFiles": []
+      },
+      {
+        "os": "windows",
+        "node": "v24.22.1",
+        "npm": "11.19.1",
+        "checkoutSha": "c3c09f097d18f2dda408aa99d0ad61c22da795ac",
+        "checkoutTree": "c6f7fe083b03c3a57b35d5b1b34f979c0f5e44e2",
+        "exitCode": 0,
+        "counts": {
+          "tests": 1012,
+          "failed": 0,
+          "passed": 988,
+          "cancelled": 0,
+          "skipped": 24,
+          "todo": 0,
+          "topLevel": 977,
+          "suites": 28
+        },
+        "skips": [
+          {
+            "name": "全绿判读：回执 kind=ci 绑 {repo, sha, checks}，记录 sha=现行 HEAD",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\ci-binding.contract.test.js",
+            "line": 68
+          },
+          {
+            "name": "非 success 判读：非零退出+点名结论",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\ci-binding.contract.test.js",
+            "line": 89
+          },
+          {
+            "name": "远端无此提交：如实「无 CI 结果」，不冒充现行绿",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\ci-binding.contract.test.js",
+            "line": 104
+          },
+          {
+            "name": "非现行对照：候选前进后记录 sha≠现行 HEAD，读面如实标注",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\ci-binding.contract.test.js",
+            "line": 135
+          },
+          {
+            "name": "querySessionPoints 真 db：usage 按 (provider,model) 分组、tokens/points 与库一致（0.5.0 升级面）",
+            "reason": "sqlite3 缺席",
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\cost.contract.test.js",
+            "line": 460
+          },
+          {
+            "name": "CLI：lzy loop cost 沙盒外泄账段（真 db+真落账目录，双源分列）",
+            "reason": "sqlite3 缺席",
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\cost.contract.test.js",
+            "line": 489
+          },
+          {
+            "name": "harvest CLI: real SQLite sources, preview is read-only, concurrent apply is idempotent and logs override",
+            "reason": "sqlite3 CLI unavailable; real harvest source leg unverified",
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\harvest-reliability.contract.test.js",
+            "line": 13
+          },
+          {
+            "name": "POSIX process group reaps stdio-holding grandchild on normal",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\headless-review-lifecycle.contract.test.js",
+            "line": 59
+          },
+          {
+            "name": "POSIX process group reaps stdio-holding grandchild on timeout",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\headless-review-lifecycle.contract.test.js",
+            "line": 59
+          },
+          {
+            "name": "POSIX process group reaps stdio-holding grandchild on abort",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\headless-review-lifecycle.contract.test.js",
+            "line": 59
+          },
+          {
+            "name": "exit and close dispatch group cleanup only once",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\headless-review-lifecycle.contract.test.js",
+            "line": 106
+          },
+          {
+            "name": "first group cleanup permission failure is still reported",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\headless-review-lifecycle.contract.test.js",
+            "line": 128
+          },
+          {
+            "name": "水位警戒线（plan-v2 Phase 2-3）：超阈值注一次、窗内不重复、env 抬线、无账本静默",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\hooks.contract.test.js",
+            "line": 464
+          },
+          {
+            "name": "hostdb/WAL 静寂：-shm 不可创建时 -readonly 恒拒而 immutable 回退读出内容",
+            "reason": "sqlite3 缺席",
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\hostdb-wal.contract.test.js",
+            "line": 24
+          },
+          {
+            "name": "hostdb/WAL 非静寂守卫：-wal 有内容时不读旧快照（宁降级）",
+            "reason": "sqlite3 缺席",
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\hostdb-wal.contract.test.js",
+            "line": 54
+          },
+          {
+            "name": "hostdb/既有行为：非 WAL 库与坏路径读面不变",
+            "reason": "sqlite3 缺席",
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\hostdb-wal.contract.test.js",
+            "line": 88
+          },
+          {
+            "name": "钩子：批准记录写入失败（EACCES 只读目录）——同款诊断（V021-ADJ-63）",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\human-gate.contract.test.js",
+            "line": 251
+          },
+          {
+            "name": "orphan-wake doctor 检查（plan-v2 Phase 2-4）：无索引 skip/零 wake skip/空转 warn/喂活 ok",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\p3-sweep.contract.test.js",
+            "line": 456
+          },
+          {
+            "name": "⑥0.4.0 M2 参数化：默认路径=宿主账本（隔离 HOME 缺席→absent）；显式 dbPath 读子账本 metered>0 且二次读不累加",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\queue-metering.contract.test.js",
+            "line": 188
+          },
+          {
+            "name": "real sandbox readers accept regular artifacts and deny links, FIFOs and concurrent escapes",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\review-artifacts.contract.test.js",
+            "line": 15
+          },
+          {
+            "name": "real OS boundary confines engine, descendants, files and network",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\review-os-sandbox.contract.test.js",
+            "line": 27
+          },
+          {
+            "name": "A/B⑤b write-failed（r2-F3 可读不可写构造）：authDir chmod 555=真实可读目录上零记录",
+            "reason": "win32 权限模型不适用（r2-F3：chmod 555 构造 POSIX-only，记档）",
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\statedb-readers.contract.test.js",
+            "line": 186
+          },
+          {
+            "name": "基态+反例族 ②③④⑤⑥⑦：同一已批准契约夹具注入-恢复，原因逐体对应",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\unified-gate.contract.test.js",
+            "line": 124
+          },
+          {
+            "name": "超时击杀：SIGTERM 后回执如实记 timeout（非零退出）",
+            "reason": true,
+            "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\verify-receipt.contract.test.js",
+            "line": 87
+          }
+        ],
+        "failedFiles": []
+      }
+    ],
+    "samePackage": [
+      {
+        "os": "ubuntu-latest",
+        "node": "v24.22.1",
+        "result": "PASS",
+        "platform": "linux",
+        "runId": "41171862815",
+        "attempt": "1",
+        "checkoutSha": "c3c09f097d18f2dda408aa99d0ad61c22da795ac",
+        "checkoutTree": "c6f7fe083b03c3a57b35d5b1b34f979c0f5e44e2",
+        "sha256": "f8a041d13588df8bb9f563a399ee66670c95f82b79cec43d44db4a9f02d16918",
+        "integrity": "sha512-GC8KjZ3ZzEnwih0uTUV3dnT1EqsQDpUt1OVK1Mb+6SvYwIeaHzs+QtLlUsZ1yPKF2mOpE58He30fP54WxYsc0g==",
+        "installedFiles": 76,
+        "payloadFiles": 25
+      },
+      {
+        "os": "windows-latest",
+        "node": "v24.22.1",
+        "result": "PASS",
+        "platform": "win32",
+        "runId": "41171862815",
+        "attempt": "1",
+        "checkoutSha": "c3c09f097d18f2dda408aa99d0ad61c22da795ac",
+        "checkoutTree": "c6f7fe083b03c3a57b35d5b1b34f979c0f5e44e2",
+        "sha256": "f8a041d13588df8bb9f563a399ee66670c95f82b79cec43d44db4a9f02d16918",
+        "integrity": "sha512-GC8KjZ3ZzEnwih0uTUV3dnT1EqsQDpUt1OVK1Mb+6SvYwIeaHzs+QtLlUsZ1yPKF2mOpE58He30fP54WxYsc0g==",
+        "installedFiles": 76,
+        "payloadFiles": 25
+      },
+      {
+        "os": "macos-latest",
+        "node": "v24.22.1",
+        "result": "PASS",
+        "platform": "darwin",
+        "runId": "41171862815",
+        "attempt": "1",
+        "checkoutSha": "c3c09f097d18f2dda408aa99d0ad61c22da795ac",
+        "checkoutTree": "c6f7fe083b03c3a57b35d5b1b34f979c0f5e44e2",
+        "sha256": "f8a041d13588df8bb9f563a399ee66670c95f82b79cec43d44db4a9f02d16918",
+        "integrity": "sha512-GC8KjZ3ZzEnwih0uTUV3dnT1EqsQDpUt1OVK1Mb+6SvYwIeaHzs+QtLlUsZ1yPKF2mOpE58He30fP54WxYsc0g==",
+        "installedFiles": 76,
+        "payloadFiles": 25
+      },
+      {
+        "os": "ubuntu-latest",
+        "node": "v24.0.0",
+        "result": "PASS",
+        "platform": "linux",
+        "runId": "41171862815",
+        "attempt": "1",
+        "checkoutSha": "c3c09f097d18f2dda408aa99d0ad61c22da795ac",
+        "checkoutTree": "c6f7fe083b03c3a57b35d5b1b34f979c0f5e44e2",
+        "sha256": "f8a041d13588df8bb9f563a399ee66670c95f82b79cec43d44db4a9f02d16918",
+        "integrity": "sha512-GC8KjZ3ZzEnwih0uTUV3dnT1EqsQDpUt1OVK1Mb+6SvYwIeaHzs+QtLlUsZ1yPKF2mOpE58He30fP54WxYsc0g==",
+        "installedFiles": 76,
+        "payloadFiles": 25
+      }
+    ]
+  },
+  "local": {
+    "initialFullSuite": {
+      "node": "v24.19.0",
+      "npm": "12.2.1",
+      "checkoutSha": "20b426ffdc3d43e6db5c470e816ac0f73029bfad",
+      "checkoutTree": "07eb3ac5f313dbc5b8b8751838f39953c2b16341",
+      "exitCode": 1,
+      "counts": {
+        "tests": 1013,
+        "failed": 14,
+        "passed": 999,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 978,
+        "suites": 28
+      },
+      "skips": [],
+      "failedFiles": [
+        {
+          "file": "payload-consistency.contract.test.js",
+          "counts": {
+            "tests": 3,
+            "failed": 1,
+            "passed": 2,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0,
+            "topLevel": 3,
+            "suites": 0
+          }
+        },
+        {
+          "file": "review-artifacts.contract.test.js",
+          "counts": {
+            "tests": 2,
+            "failed": 1,
+            "passed": 1,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0,
+            "topLevel": 2,
+            "suites": 0
+          }
+        },
+        {
+          "file": "review-os-sandbox.contract.test.js",
+          "counts": {
+            "tests": 3,
+            "failed": 1,
+            "passed": 2,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0,
+            "topLevel": 3,
+            "suites": 0
+          }
+        },
+        {
+          "file": "review-proxy.contract.test.js",
+          "counts": {
+            "tests": 12,
+            "failed": 11,
+            "passed": 1,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0,
+            "topLevel": 12,
+            "suites": 0
+          }
+        }
+      ],
+      "worktreeContainedUncommittedImplementation": true
+    },
+    "controlledFailedFiles": {
+      "node": "v24.19.0",
+      "npm": "12.2.1",
+      "checkoutSha": "49f342385e7dbdb58ee18c96bc6576988f789667",
+      "checkoutTree": "c6f7fe083b03c3a57b35d5b1b34f979c0f5e44e2",
+      "exitCode": 0,
+      "counts": {
+        "tests": 20,
+        "failed": 0,
+        "passed": 20,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 20,
+        "suites": 0
+      },
+      "skips": [],
+      "failedFiles": [],
+      "change": "single unchanged-code rerun of four failed files outside the outer execution sandbox; original failure retained"
+    },
+    "packageAttempts": [
+      {
+        "attempt": "a1",
+        "result": "FAIL",
+        "reason": "npm pack ETIMEDOUT at 120 seconds; no manifest; dependent install/negative probes could not run"
+      },
+      {
+        "attempt": "a2",
+        "result": "FAIL",
+        "change": "NPM_CONFIG_OFFLINE=true",
+        "reason": "npm pack ETIMEDOUT at 120 seconds; no further local package rerun"
+      }
+    ],
+    "mechanismTests": {
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    "scanners": {
+      "result": "PASS",
+      "downloads": [
+        {
+          "name": "actionlint",
+          "version": "1.7.12",
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz",
+          "sha256": "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f",
+          "actualSha256": "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f"
+        },
+        {
+          "name": "zizmor",
+          "version": "1.31.1",
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/zizmor-aarch64-apple-darwin.tar.gz",
+          "sha256": "ad5aa633cd56215b11e6c51d51f90c7e6b22904a75047d1215abbd422f61d698",
+          "actualSha256": "ad5aa633cd56215b11e6c51d51f90c7e6b22904a75047d1215abbd422f61d698"
+        }
+      ],
+      "counterexamples": [
+        "invalid dependency rejected",
+        "unsafe workflow rejected"
+      ]
+    }
+  },
+  "liveCanonicalSelector": {
+    "runId": "41070942593",
+    "attempt": "2",
+    "workflowId": 352622680,
+    "sha": "20b426ffdc3d43e6db5c470e816ac0f73029bfad",
+    "url": "https://github.com/Acfufu/lazyzcode/actions/runs/41070942593",
+    "gateJobId": 124136889479
+  },
+  "oldReleaseTag": {
+    "tag": "v0.6.2",
+    "sha": "fa5769210df9839a8ef5c020e2a9600b285ed9f4",
+    "result": "REJECTED_AS_EXPECTED",
+    "reason": "exactly one CI Required job is required; historical tag CI predates the required gate"
+  },
+  "notRun": [
+    "main-only release-candidate workflow positive execution for a future release tag",
+    "real Actions tag drift/expired artifact drill",
+    "first real release registry readback and installation",
+    "real ZCode loading; lifecycle R0 unchanged"
+  ]
+}

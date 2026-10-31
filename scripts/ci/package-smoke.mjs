@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { identity } from "./identity.mjs";
 import { runNpm } from "./npm.mjs";
+import { verifyReleaseFiles } from "./release-lib.mjs";
 
 const candidate = resolve(process.argv[2]);
 const out = resolve(process.argv[3] ?? "artifacts/package-smoke");
@@ -27,14 +28,19 @@ const members = (root) => {
   return result.sort();
 };
 try {
+  assert.ok(process.argv.length <= 4 || (process.argv.length === 7 && process.argv[4] === "--release"), "unexpected smoke arguments");
+  // Local release checks explicitly verify the sealed four-platform receipts and expiry first.
+  // The current local run identity stays in evidence; CI's default same-run checks stay strict.
+  const candidateRun = process.argv[4] === "--release"
+    ? verifyReleaseFiles(candidate, process.argv[5], process.argv[6]).manifest : run;
   const manifest = JSON.parse(readFileSync(join(candidate, "manifest.json"), "utf8"));
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.kind, "unpublished-ci-candidate");
-  assert.equal(manifest.checkoutSha, run.checkoutSha, "candidate is from another checkout");
-  assert.equal(manifest.checkoutTree, run.checkoutTree, "candidate is from another tree");
-  assert.equal(manifest.repository, run.repository, "candidate repository differs");
-  assert.equal(manifest.runId, run.runId, "candidate run differs");
-  assert.equal(manifest.attempt, run.attempt, "candidate attempt differs; rerun the complete workflow");
+  assert.equal(manifest.checkoutSha, candidateRun.checkoutSha, "candidate is from another checkout");
+  assert.equal(manifest.checkoutTree, candidateRun.checkoutTree, "candidate is from another tree");
+  assert.equal(manifest.repository, candidateRun.repository, "candidate repository differs");
+  assert.equal(manifest.runId, candidateRun.runId, "candidate run differs");
+  assert.equal(manifest.attempt, candidateRun.attempt, "candidate attempt differs; rerun the complete workflow");
   assert.equal(manifest.filename, basename(manifest.filename));
   assert.match(manifest.filename, /^[A-Za-z0-9._-]+\.tgz$/);
   const tgz = join(candidate, manifest.filename), bytes = readFileSync(tgz);

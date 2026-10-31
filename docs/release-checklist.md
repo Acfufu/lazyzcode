@@ -16,7 +16,7 @@
    - 文件清单只含 `cli/ core/ plugin/ + README/LICENSE/CHANGELOG/package.json`；
    - 输出中 grep 不到 `.mimosa`、`.lazyzcode`、`docs/`、`acfufu`、`sess_` 任何一处。
 4. **provenance 边界**：本机 2FA 直发不产生 provenance。本批维持该方式；PR08 OIDC stage-only 按维护者 2026-10-31 选择暂缓。若将来采纳 GitHub Actions trusted publishing，满足公开仓库/公开包等条件时 npm 会[自动生成 provenance](https://docs.npmjs.com/trusted-publishers/#automatic-provenance-generation)，不要求额外 flag。发布前跑 `node scripts/provenance-ready.mjs`（exit 0 = 包元数据 provenance-ready：repository 归一化指向本仓、name、版本三体一致）。
-5. 候选流程落入 main 后，按下节生成并核验候选，维护者用 2FA **只发布验证过的原 tgz**：`npm publish /绝对路径/lazyzcode-<版本>.tgz --tag latest`。预发行显式选择其他 dist-tag；禁止从目录重打包发布。
+5. 候选流程已随 PR27 合入 main；下一次发版按下节生成并核验候选，维护者用 2FA **只发布验证过的原 tgz**：`npm publish /绝对路径/lazyzcode-<版本>.tgz --tag latest`。预发行显式选择其他 dist-tag；禁止从目录重打包发布。
 6. 按下节 `registry` 命令回读确切版本/dist-tag/integrity/shasum，下载比对并隔离安装；真实 ZCode `lzy update` / `doctor` 另行实测。
 
 ## 受信候选包（PR07，2026-10-31）

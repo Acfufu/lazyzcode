@@ -11,7 +11,7 @@
 ## 2. 当前状态（2026-10-31；历史 → docs/history.md）
 
 - npm **0.6.2**（2026-10-28）；本批未发版。发布/评审 → docs/release-checklist.md、docs/reviews/。
-- **CI**：第一批 main 门已落地，fork 暂挂；PR07 已实现、待合入/发行验收，PR08 暂缓 → docs/reports/pr-pipeline-batch2-2026-10-31.md。
+- **CI**：main 门已落地，fork 暂挂；PR07 已合入且 main CI 通过，发行验收下次发版；PR08 暂缓 → docs/reports/pr-pipeline-batch2-2026-10-31.md。
 - **生命周期**：ADR-0041；R0 未过、macOS ES 缺授权 → docs/reports/reliability-r0-native-2026-10-25.md。
 
 ## 3. 硬约束（ZCode v3.14.0 实锤复核 2026-09-19，设计前必读）：引擎 CLI `--version` 与壳版本分线不变、runtime 值随代际漂移〔0.16.5→0.16.9，「恒 0.16.5」证伪；判别轴=壳 Info.plist，引擎权威=Resources/glm/zcode.cjs --version〕；**输出面同样随代际漂移**——`plugins list --json` 0.16.5 出对象包封、0.16.9 出裸数组，lzy 侧由 `core/engine.js normalizePluginList` 唯一边界归一兜住（ADR-0021）；代际复核**须核 JSON 面，不能只核版本锚**（engine-3140-sync 只锚版本漏检教训）

@@ -8,7 +8,7 @@
 做 ZCode 版的 [lazycodex](https://github.com/code-yeongyu/lazycodex)（OmO 引擎的 Codex 发行版，MIT）。形态：**ZCode 插件 + 轻量 CLI（`lzy`）**——插件承载 skills/hooks/agents（纪律层），CLI 承载目标循环状态机与安装器。
 
 
-## 2. 当前状态（2026-10-30；历史 → docs/history.md）
+## 2. 当前状态（2026-10-31；历史 → docs/history.md）
 
 - npm **0.6.2**（2026-10-28）；本批未发版。发布/评审 → docs/release-checklist.md、docs/reviews/。
 - **CI**：第一批 main 门已落地，fork 暂挂；PR07 已实现、待合入/发行验收，PR08 暂缓 → docs/reports/pr-pipeline-batch2-2026-10-31.md。

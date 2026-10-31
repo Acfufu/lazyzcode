@@ -2,7 +2,22 @@
 
 日期：2026-10-31（Asia/Shanghai）。范围为方案 PR07（本地规划 `docs/plan-github-pr-pipelines-2026-10-30.md`）。维护者已选择先完成 PR07，保留本机 2FA 发布；PR08 OIDC stage-only 暂缓。本批不增加 npm 权限、不改账号发布配置、不创建新发行、不移动既有 tag。原本未跟踪的规划与调研文件保留在本地，不夹带进实现 PR。
 
-**状态：实现及 PR 检查通过，未合并；main 上的候选工作流正向运行、真实发行验收仍为 NOT_RUN。** [实际 PR27](https://github.com/Acfufu/lazyzcode/pull/27)，实现提交 `49f342385e7dbdb58ee18c96bc6576988f789667`。下列托管证据绑定该候选的真实 merge checkout，不把 PR head 当作已测 merge tree；报告补记提交另跑 PR 检查。
+**状态：PR27 已合并；合并 SHA 的 main CI 与 CodeQL 均通过。候选工作流正向运行、真实发行验收按维护者安排留到下次发版，仍为 NOT_RUN；PR08 继续暂缓。** [实际 PR27](https://github.com/Acfufu/lazyzcode/pull/27)，实现提交 `49f342385e7dbdb58ee18c96bc6576988f789667`，最终 PR head `dfba1fd11e7bd49e95a26fb5ff2945d68ca79721`；于 2026-10-31 13:42:50 +08:00 合并为 `0f02bb2a085ff433ac70bb76aee0110989af9a53`。原 PR 证据仍绑定各自候选的真实 merge checkout，不把它们冒充 main push 证据。
+
+## main 合并验收
+
+本节固定记录 PR27 合并 SHA 的真实 push 运行，不与后续文档同步提交的检查身份混用：
+
+| 项目 | 实际结果 |
+| --- | --- |
+| 合并 SHA / 事件 / 分支 | `0f02bb2a085ff433ac70bb76aee0110989af9a53` / push / main |
+| canonical main CI | [41173689406](https://github.com/Acfufu/lazyzcode/actions/runs/41173689406)，attempt1，completed/success；13 job 均 success，包含 CI Required |
+| 三平台与同包检查 | macOS/Windows/Linux Node24 全套、SQLite24.0.0 地板、同一 tgz 的三平台与24.0.0安装、docs-links、Jekyll、workflow-check 均 success；skip 仍按各测试现行平台契约，不计通过 |
+| 独立 main CodeQL | [41173689390](https://github.com/Acfufu/lazyzcode/actions/runs/41173689390)，attempt1，同一 SHA 的 push/main，completed/success |
+| 原始合并/运行回执 | 本地 `.omo/evidence/testing/pr07-merge-20261031/a1/`：pr27-merged.json、main-ci-list.json、main-ci-result.json、main-codeql-list.json、main-codeql-result.json、main-ci-watch.log |
+| 下次发行前仍未验收 | release-candidate 的真实正向执行与 Actions 漂移/过期演练、registry 发后回读/隔离安装均 NOT_RUN；本次未发版，未切新 tag，未移动 v0.6.2，PR08 继续暂缓 |
+
+状态同步只修改报告、发布清单及 AGENTS.md 入口，遵循 main 的正常 PR 合并门；本地计划沿用原先未跟踪状态更新，不夹带原调研文件。
 
 ## 实现
 
@@ -28,7 +43,7 @@
 | 本地真正 pack/安装 | 首次 pack 120 秒超时；仅增加 NPM_CONFIG_OFFLINE=true 的一次对照仍超时。无 manifest，依赖它的安装/反例不能计成功。`a1/package-build.log`、`../a2/package-build.log`；不据此修改产品断言 |
 | PR 托管检查 | [CI41171862815](https://github.com/Acfufu/lazyzcode/actions/runs/41171862815) / attempt1 成功，CI Required 成功；[CodeQL41171862760](https://github.com/Acfufu/lazyzcode/actions/runs/41171862760) 分析及 CodeQL 语义检查成功；15 项检查成功 |
 | 同 tgz 四路安装 | 托管四个 consumer 均 PASS，逐项核对 run/attempt/checkout SHA/tree/SHA256/SRI 一致，包76文件/载荷25文件；`same-package.json`。属于 PR ci 工作流，不冒称新的 release-candidate 工作流已经执行 |
-| 新 workflow 的托管正向运行 | NOT_RUN：需先合入 main，并在下一次定版后有满足全部前置的新 tag |
+| 新 workflow 的托管正向运行 | NOT_RUN：工作流已合入 main；按维护者安排，留到下一次定版后用满足全部前置的新 tag 验收 |
 | 错 SHA/tag 漂移/过期/摘要反例的真实 Actions 演练 | NOT_RUN：机制测试已覆盖，尚无真实 Actions 候选回执，不替换成远端验收 |
 | 首次真实发行 registry 回读 | NOT_RUN：按计划留给第一次真实发行；未运行 npm publish |
 

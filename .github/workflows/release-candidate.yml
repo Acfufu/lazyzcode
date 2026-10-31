@@ -1,0 +1,165 @@
+name: release-candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Trusted release tag already in main history (v<version>)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Each attempt owns its package and all four receipts. Rerun the entire workflow after failure.
+concurrency:
+  group: release-candidate-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  source:
+    if: github.ref == 'refs/heads/main' && github.repository == 'Acfufu/lazyzcode'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      tag: ${{ steps.source.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - id: source
+        run: node scripts/ci/release-candidate.mjs prepare "$RELEASE_TAG" "$RUNNER_TEMP/source.json"
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-source-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/source.json
+          retention-days: 30
+          if-no-files-found: error
+
+  build:
+    needs: source
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      # Trusted controller tooling is separate from the immutable tagged package source.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.source.outputs.sha }}
+          path: release-source
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-source-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/proof/
+      - run: node scripts/ci/release-candidate.mjs check-source release-source "$RUNNER_TEMP/proof/source.json"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: node "$GITHUB_WORKSPACE/scripts/ci/package-build.mjs" "$RUNNER_TEMP/candidate"
+        working-directory: release-source
+      - run: node "$GITHUB_WORKSPACE/scripts/ci/package-negative.mjs" "$RUNNER_TEMP/candidate" "$RUNNER_TEMP/negative"
+        working-directory: release-source
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-package-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: release-negative-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/negative/
+          retention-days: 30
+
+  smoke:
+    needs: [source, build]
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, node: '24'}
+          - {os: windows-latest, node: '24'}
+          - {os: macos-latest, node: '24'}
+          - {os: ubuntu-latest, node: '24.0.0'}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.source.outputs.sha }}
+          path: release-source
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-package-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate/
+      - run: node "${{ github.workspace }}/scripts/ci/package-smoke.mjs" "${{ runner.temp }}/candidate" "${{ runner.temp }}/smoke"
+        working-directory: release-source
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: release-smoke-${{ matrix.os }}-${{ matrix.node }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/smoke/
+          retention-days: 30
+
+  candidate:
+    needs: [source, build, smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-source-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/proof/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-package-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-smoke-*-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/smoke-receipts/
+      - id: seal
+        run: node scripts/ci/release-candidate.mjs seal "$RUNNER_TEMP/proof/source.json" "$RUNNER_TEMP/candidate" "$RUNNER_TEMP/smoke-receipts"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.seal.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate/
+          retention-days: 30
+          if-no-files-found: error

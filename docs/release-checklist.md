@@ -15,9 +15,34 @@
 3. `npm publish --dry-run` —— 逐项确认：
    - 文件清单只含 `cli/ core/ plugin/ + README/LICENSE/CHANGELOG/package.json`；
    - 输出中 grep 不到 `.mimosa`、`.lazyzcode`、`docs/`、`acfufu`、`sess_` 任何一处。
-4. **provenance 边界**：本机 2FA 直发不产生 provenance（npm 该能力仅 CI OIDC 发布生效）；若迁 CI 发布（GitHub Actions OIDC+npm trusted publishing 配置），publish 命令加 `--provenance`，包页显 Verified 标——迁移本身须另行拍板。发布前跑 `node scripts/provenance-ready.mjs`（exit 0 = 包元数据 provenance-ready：repository 归一化指向本仓、name、版本三体一致）。
-5. `npm publish`（首个版本不带 dist-tag，默认 latest）。
-6. 换环境冒烟：`npm i -g lazyzcode && lzy --version && lzy doctor`。
+4. **provenance 边界**：本机 2FA 直发不产生 provenance。本批维持该方式；PR08 OIDC stage-only 按维护者 2026-10-31 选择暂缓。若将来采纳 GitHub Actions trusted publishing，满足公开仓库/公开包等条件时 npm 会[自动生成 provenance](https://docs.npmjs.com/trusted-publishers/#automatic-provenance-generation)，不要求额外 flag。发布前跑 `node scripts/provenance-ready.mjs`（exit 0 = 包元数据 provenance-ready：repository 归一化指向本仓、name、版本三体一致）。
+5. 候选流程落入 main 后，按下节生成并核验候选，维护者用 2FA **只发布验证过的原 tgz**：`npm publish /绝对路径/lazyzcode-<版本>.tgz --tag latest`。预发行显式选择其他 dist-tag；禁止从目录重打包发布。
+6. 按下节 `registry` 命令回读确切版本/dist-tag/integrity/shasum，下载比对并隔离安装；真实 ZCode `lzy update` / `doctor` 另行实测。
+
+## 受信候选包（PR07，2026-10-31）
+
+候选工作流 `.github/workflows/release-candidate.yml` 仅备料，无 npm token、OIDC 写权限或 publish 步骤。它只接受 main 上手动派发；控制脚本来自本次派发的 main 提交，待打包源码另按解析出的完整 SHA 检出。
+
+1. 完成版本三体、marketplace ref、CHANGELOG 和文档版本同步；先让定版提交合入 main，通过该 **SHA 自己**的 canonical `ci.yml` main push 运行（含成功的 `CI Required`）。保留 ADJ-15 冻结纪律，最后切 `v<版本>` tag 并推送。
+2. 在 Actions 选择 `release-candidate` → Run workflow，branch 选 **main**，输入完整 tag；或 `gh workflow run release-candidate.yml --ref main -f tag=v<版本>`。工作流验证 tag→SHA、main 祖先关系、精确 SHA 的最新 CI run/attempt，以及 tag/三体/marketplace ref；按 SHA pack 一次，再让 macOS、Windows、Linux Node24 和 Linux24.0.0 消费同一 tgz。收尾再次核对 tag 对象与 CI attempt。
+3. 仅候选 job 成功才生成 `release-candidate-<tag>-<run-id>-<attempt>`；它包含原 tgz、manifest、四份安装回执和 release.json，有效期最多 30 天。`release-package-*` 是中间产物，**不得用于发布**。任一失败后重跑整个 workflow；仅重跑失败 job 会因旧 attempt 回执被拒。
+4. 从 Actions summary 独立核对完整源码 SHA 和 canonical CI 链接。在仓库目录运行下列命令，将占位符替换成实际值；下载目录必须为空，Node ≥24，`gh` 已登录并可读仓库 Actions。校验脚本只读访问 GitHub，可用 `GH_TOKEN` 环境变量；未设置时使用 `gh auth token`，不会把 token 写入回执。
+
+```sh
+node scripts/ci/release-candidate.mjs download RUN_ID vVERSION FULL_SHA /tmp/lzy-release-VERSION
+node scripts/ci/release-candidate.mjs verify /tmp/lzy-release-VERSION vVERSION FULL_SHA
+```
+
+`download` 精确绑定仓库、workflow、main dispatch、run/attempt、artifact 名/有效期和控制提交；`verify` 再查 live tag/CI/产物元数据，核 SHA256/SHA512、四个平台回执、包成员摘要，并在本机隔离安装 CLI/载荷。人工检查文件清单与摘要后，紧接着在维护者终端从该绝对 tgz 路径执行 npm publish 和 2FA。验证与手工发布间不存在原子锁：若 tag 发生变更或等待较久，必须重新 verify；已发布 tag 禁止重切。
+
+```sh
+npm publish /tmp/lzy-release-VERSION/lazyzcode-VERSION.tgz --tag latest
+node scripts/ci/release-candidate.mjs registry /tmp/lzy-release-VERSION vVERSION FULL_SHA latest
+```
+
+`registry` 只读 npm：验证确切版本与指定 dist-tag、SRI/shasum，并将 registry tgz 下载到候选目录旁的 `-registry/`，比对原文件 SHA256 后隔离安装同字节文件，留存 registry.json 和 smoke 回执。CDN 传播尚未完成、认证错误、429、超时均失败并具名保留，不能解释成版本不存在或自动重发；等待传播后可只重做只读核验。CLI/载荷离线检查不等于真实 ZCode 装载。
+
+产物过期/删除、tag 移动、canonical CI 重跑或回执 attempt 不一致都须重新生成完整候选并重验；不默认重 pack 字节相同。当前已发布的 v0.6.2 tag 早于固定汇总门，不满足新 canonical CI 前置；不移动旧 tag 作演练。线上正向生成与首次真实 registry 发布验收见[第二批报告](reports/pr-pipeline-batch2-2026-10-31.md)，未完成项不记为通过。
 
 ## GitHub 公开仓库
 

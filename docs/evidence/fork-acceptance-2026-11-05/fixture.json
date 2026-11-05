@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "purpose": "External-owner fork CI and CodeQL acceptance; do not merge",
+  "date": "2026-11-05",
+  "baseRepository": "Acfufu/lazyzcode",
+  "baseSha": "4d6c0ca0a5602c6130b2ab99b40e6068fe6cedda",
+  "forkRepository": "codefufuai/lazyzcode",
+  "expected": "Unmodified production workflows execute without repository secrets; record real permissions, analysis SHA and artifacts."
+}

@@ -1,6 +1,6 @@
 # LazyZCode — 项目宪法（Agent 与贡献者必读）
 
-给 ZCode 造一个 lazycodex 同款的「AI 编码工作流纪律层」：让 AI 不只写代码，而是**计划 → 执行 → 拿证据 → 不做完不停**。本文件是本仓库的单一事实入口：ZCode 原生自动读取（无需任何配置），模型读完即可在本仓正确干活；细节引用 `docs/`，不在此复制。
+给 ZCode 造一个 lazycodex 同款的「AI 编码工作流纪律层」：让 AI 不只写代码，而是**计划 → 执行 → 拿证据 → 不做完不停**。本文件是本仓库的单一事实入口：ZCode 原生自动读取，模型读完即可正确干活；细节引用 `docs/`，不在此复制。
 
 
 ## 1. 北极星
@@ -61,6 +61,7 @@
 | #53 | SQLite 存储地板 | 三族迁 state.sqlite（内建零依赖），Node ≥24.0.0；SQL 层操作、单向迁移（ADR-0039，已发布；2026-10-23） |
 | #54 | 全局用量互斥 | JSONL 保留；空 SQLite 只作锁，累计快照锁内求差，spool 按事件隔离（ADR-0040，本地未发布，2026-10-25） |
 | #55 | 进程托管方向 | Windows 原生 helper＋Linux cgroup；macOS 原生 ES 先验授权，不切 VM；R0 未过（ADR-0041，2026-10-25） |
+| #56/7 | 瘦身归档 | 大件只归档（10-08 补录）；C+ 档 3.9G 四包、U4 缓行、归档=可复原非可运行（11-09） |
 
 其余 #1-#24 → docs/decisions.md。
 
@@ -83,21 +84,21 @@
 ## 7. 仓库地图
 
 ```
-AGENTS.md                    ← 本文件：单一事实入口（宪法）
+AGENTS.md                    ← 本文件：单一事实入口
 docs/
   research-*.md              ← 调研底稿
   history.md decisions.md debts.md    ← 历史里程碑档案 / 决策速查全表 / 挂帐单源账本
   reports/                   ← 报告中心（index+full/pm/dev）+ 逆向源码复核记录
-  guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构，双语；Pages 内容源）
+  guide/ developers/         ← 用户文档 + 开发者图文页（lazycodex.ai/docs 同构；Pages 内容源）
   _layouts/ _includes/ assets/ _config.yml index.md  ← GitHub Pages 骨架
-  spikes/p0-day1.md          ← P0 首日三 spike 结果
-  adr/0001..0040-*.md         ← 架构决策原文（§4 摘要/decisions.md 全表）
+  spikes/p0-day1.md          ← P0 首日三 spike
+  adr/0001..0040-*.md         ← 架构决策原文（索引=decisions.md 全表）
   reviews/ release-checklist.md  ← 评审报告/处置记录 + 发布清单（13 步含 Pages）；narrative-checklist.md=叙事面 checklist
   handoffs/ templates/        ← 安装价值校准交接/记录模板
-  diagnostics/               ← 运行环境诊断记录（钩子 env/PATH）
-plugin/ core/ cli/ test/ .github/  ← P0 骨架：插件载荷 / 共享逻辑 / lzy CLI + 契约测试（node:test 零依赖）+ CI 骨架
-scripts/docs-preview/        ← 文档站本地预览与校验工具链（dev-only 独立依赖）
-README.md（英）+ README.zh-CN.md（中）LICENSE CHANGELOG.md  ← 开源门面（lazycodex 同构双语）
+  diagnostics/               ← 运行环境诊断记录
+plugin/ core/ cli/ test/ .github/  ← 插件载荷 / 共享逻辑 / lzy CLI + 契约测试（node:test 零依赖）+ CI
+scripts/docs-preview/        ← 文档站本地预览与校验工具链
+README.md（英）+ README.zh-CN.md（中）LICENSE CHANGELOG.md  ← 开源门面（lazycodex 同构）
 artifacts/                   ← 本地产物（gitignore 不入库）
 ```
 

@@ -32,4 +32,4 @@ CodeQL 使用独立 advanced setup，固定 action SHA，分析 JavaScript/TypeS
 
 main 规则要求 PR、固定来源的 `CI Required`、最新 base、讨论解决及 CodeQL 语义结果；单维护者的人类 approval 数为 0，不强制 CODEOWNERS approval。实际规则和演练证据见[第一批验收报告](../reports/pr-pipeline-acceptance-2026-10-30.md)。用户已明确批准长期恢复例外，仅限 Acfufu（用户 ID 73582072）、`pull_request` 模式；不包含其他账号、角色或 `always` 模式。GitHub 按账号授予绕过能力，不区分“恢复”与“日常”；日常先全绿是维护流程要求。普通合并仍须先确认固定 head、最新 base 和全部必需检查成功，不能用本地绿灯代替远端状态。
 
-若故障锁死，先在恢复 PR 中记录原因、操作者、跳过项及补验计划，再使用该例外；恢复后执行补验并记录结果。此次仅完成配置提交及独立 API 回读，没有实际绕过失败 PR、直推、强推或删除 main 的演练。原负例在无 bypass 阶段完成，不能据此宣称获授权账号仍无法绕过检查。fork 验收按用户安排暂挂，结果保持 NOT_RUN，后续有外部入口时另行执行。
+若故障锁死，先在恢复 PR 中记录原因、操作者、跳过项及补验计划，再使用该例外；恢复后执行补验并记录结果。此次仅完成配置提交及独立 API 回读，没有实际绕过失败 PR、直推、强推或删除 main 的演练。原负例在无 bypass 阶段完成，不能据此宣称获授权账号仍无法绕过检查。2026-11-05 已用独立账号 codefufuai 完成真实 fork CI/CodeQL 路径验收：首次贡献者运行经逐次审批，全部必需检查通过，实际只读 token 的 SARIF 上传成功；临时草稿 PR 已关闭未合并。[回执及边界](../reports/pr-pipeline-fork-acceptance-2026-11-05.md)。

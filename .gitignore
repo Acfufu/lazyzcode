@@ -24,6 +24,9 @@ artifacts/
 .codegraph/
 .zcode/
 
+# repo-wiki 本地工具产物（.dsh-wiki 生成件与本地站点，不入库）
+.dsh-wiki/
+
 # ZCode 工作区忽略清单（带「以上同步自 .gitignore」标记的生成件，同步即改写；本机工具面不入库）
 .zcodeignore
 

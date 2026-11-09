@@ -1,0 +1,565 @@
+{
+  "pr": 30,
+  "url": "https://github.com/Acfufu/lazyzcode/pull/30",
+  "head": "99131e2af76194b63f393db5e98039c86238e8c6",
+  "base": "4d6c0ca0a5602c6130b2ab99b40e6068fe6cedda",
+  "checkoutSha": "0d40caa3943d8170ee57233bfe5721198dcf39f3",
+  "checkoutTree": "8d966b87ea529fb5069cc2f97a49754c19c1e1c9",
+  "tests": [
+    {
+      "artifact": "sqlite-floor-2",
+      "platform": "linux",
+      "node": "v24.0.0",
+      "skips": [],
+      "summary": {
+        "success": true,
+        "counts": {
+          "tests": 23,
+          "failed": 0,
+          "passed": 23,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "topLevel": 23,
+          "suites": 0
+        },
+        "duration_ms": 719.182771
+      }
+    },
+    {
+      "artifact": "tests-windows-latest-2",
+      "platform": "win32",
+      "node": "v24.22.2",
+      "skips": [
+        {
+          "name": "全绿判读：回执 kind=ci 绑 {repo, sha, checks}，记录 sha=现行 HEAD",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\ci-binding.contract.test.js",
+          "line": 68
+        },
+        {
+          "name": "非 success 判读：非零退出+点名结论",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\ci-binding.contract.test.js",
+          "line": 89
+        },
+        {
+          "name": "远端无此提交：如实「无 CI 结果」，不冒充现行绿",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\ci-binding.contract.test.js",
+          "line": 104
+        },
+        {
+          "name": "非现行对照：候选前进后记录 sha≠现行 HEAD，读面如实标注",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\ci-binding.contract.test.js",
+          "line": 135
+        },
+        {
+          "name": "querySessionPoints 真 db：usage 按 (provider,model) 分组、tokens/points 与库一致（0.5.0 升级面）",
+          "reason": "sqlite3 缺席",
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\cost.contract.test.js",
+          "line": 460
+        },
+        {
+          "name": "CLI：lzy loop cost 沙盒外泄账段（真 db+真落账目录，双源分列）",
+          "reason": "sqlite3 缺席",
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\cost.contract.test.js",
+          "line": 489
+        },
+        {
+          "name": "harvest CLI: real SQLite sources, preview is read-only, concurrent apply is idempotent and logs override",
+          "reason": "sqlite3 CLI unavailable; real harvest source leg unverified",
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\harvest-reliability.contract.test.js",
+          "line": 13
+        },
+        {
+          "name": "POSIX process group reaps stdio-holding grandchild on normal",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\headless-review-lifecycle.contract.test.js",
+          "line": 59
+        },
+        {
+          "name": "POSIX process group reaps stdio-holding grandchild on timeout",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\headless-review-lifecycle.contract.test.js",
+          "line": 59
+        },
+        {
+          "name": "POSIX process group reaps stdio-holding grandchild on abort",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\headless-review-lifecycle.contract.test.js",
+          "line": 59
+        },
+        {
+          "name": "exit and close dispatch group cleanup only once",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\headless-review-lifecycle.contract.test.js",
+          "line": 106
+        },
+        {
+          "name": "first group cleanup permission failure is still reported",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\headless-review-lifecycle.contract.test.js",
+          "line": 128
+        },
+        {
+          "name": "水位警戒线（plan-v2 Phase 2-3）：超阈值注一次、窗内不重复、env 抬线、无账本静默",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\hooks.contract.test.js",
+          "line": 464
+        },
+        {
+          "name": "hostdb/WAL 静寂：-shm 不可创建时 -readonly 恒拒而 immutable 回退读出内容",
+          "reason": "sqlite3 缺席",
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\hostdb-wal.contract.test.js",
+          "line": 24
+        },
+        {
+          "name": "hostdb/WAL 非静寂守卫：-wal 有内容时不读旧快照（宁降级）",
+          "reason": "sqlite3 缺席",
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\hostdb-wal.contract.test.js",
+          "line": 54
+        },
+        {
+          "name": "hostdb/既有行为：非 WAL 库与坏路径读面不变",
+          "reason": "sqlite3 缺席",
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\hostdb-wal.contract.test.js",
+          "line": 88
+        },
+        {
+          "name": "钩子：批准记录写入失败（EACCES 只读目录）——同款诊断（V021-ADJ-63）",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\human-gate.contract.test.js",
+          "line": 251
+        },
+        {
+          "name": "orphan-wake doctor 检查（plan-v2 Phase 2-4）：无索引 skip/零 wake skip/空转 warn/喂活 ok",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\p3-sweep.contract.test.js",
+          "line": 456
+        },
+        {
+          "name": "⑥0.4.0 M2 参数化：默认路径=宿主账本（隔离 HOME 缺席→absent）；显式 dbPath 读子账本 metered>0 且二次读不累加",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\queue-metering.contract.test.js",
+          "line": 188
+        },
+        {
+          "name": "real sandbox readers accept regular artifacts and deny links, FIFOs and concurrent escapes",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\review-artifacts.contract.test.js",
+          "line": 15
+        },
+        {
+          "name": "real OS boundary confines engine, descendants, files and network",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\review-os-sandbox.contract.test.js",
+          "line": 27
+        },
+        {
+          "name": "A/B⑤b write-failed（r2-F3 可读不可写构造）：authDir chmod 555=真实可读目录上零记录",
+          "reason": "win32 权限模型不适用（r2-F3：chmod 555 构造 POSIX-only，记档）",
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\statedb-readers.contract.test.js",
+          "line": 186
+        },
+        {
+          "name": "基态+反例族 ②③④⑤⑥⑦：同一已批准契约夹具注入-恢复，原因逐体对应",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\unified-gate.contract.test.js",
+          "line": 124
+        },
+        {
+          "name": "超时击杀：SIGTERM 后回执如实记 timeout（非零退出）",
+          "reason": true,
+          "file": "D:\\a\\lazyzcode\\lazyzcode\\test\\verify-receipt.contract.test.js",
+          "line": 87
+        }
+      ],
+      "summary": {
+        "success": true,
+        "counts": {
+          "tests": 1012,
+          "failed": 0,
+          "passed": 988,
+          "cancelled": 0,
+          "skipped": 24,
+          "todo": 0,
+          "topLevel": 977,
+          "suites": 28
+        },
+        "duration_ms": 333545.8265
+      }
+    },
+    {
+      "artifact": "tests-macos-latest-2",
+      "platform": "darwin",
+      "node": "v24.22.1",
+      "skips": [],
+      "summary": {
+        "success": true,
+        "counts": {
+          "tests": 1013,
+          "failed": 0,
+          "passed": 1013,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "topLevel": 978,
+          "suites": 28
+        },
+        "duration_ms": 207534.31025
+      }
+    },
+    {
+      "artifact": "tests-ubuntu-latest-2",
+      "platform": "linux",
+      "node": "v24.22.2",
+      "skips": [
+        {
+          "name": "real sandbox readers accept regular artifacts and deny links, FIFOs and concurrent escapes",
+          "reason": true,
+          "file": "/home/runner/work/lazyzcode/lazyzcode/test/review-artifacts.contract.test.js",
+          "line": 15
+        },
+        {
+          "name": "real OS boundary confines engine, descendants, files and network",
+          "reason": true,
+          "file": "/home/runner/work/lazyzcode/lazyzcode/test/review-os-sandbox.contract.test.js",
+          "line": 27
+        }
+      ],
+      "summary": {
+        "success": true,
+        "counts": {
+          "tests": 1013,
+          "failed": 0,
+          "passed": 1011,
+          "cancelled": 0,
+          "skipped": 2,
+          "todo": 0,
+          "topLevel": 978,
+          "suites": 28
+        },
+        "duration_ms": 78722.365239
+      }
+    }
+  ],
+  "smoke": [
+    {
+      "platform": "linux",
+      "node": "v24.0.0",
+      "result": "PASS",
+      "candidateSha256": "f8a041d13588df8bb9f563a399ee66670c95f82b79cec43d44db4a9f02d16918",
+      "candidateIntegrity": "sha512-GC8KjZ3ZzEnwih0uTUV3dnT1EqsQDpUt1OVK1Mb+6SvYwIeaHzs+QtLlUsZ1yPKF2mOpE58He30fP54WxYsc0g==",
+      "candidateCheckoutSha": "0d40caa3943d8170ee57233bfe5721198dcf39f3",
+      "candidateCheckoutTree": "8d966b87ea529fb5069cc2f97a49754c19c1e1c9",
+      "installedFiles": 76,
+      "payloadFiles": 25
+    },
+    {
+      "platform": "win32",
+      "node": "v24.22.2",
+      "result": "PASS",
+      "candidateSha256": "f8a041d13588df8bb9f563a399ee66670c95f82b79cec43d44db4a9f02d16918",
+      "candidateIntegrity": "sha512-GC8KjZ3ZzEnwih0uTUV3dnT1EqsQDpUt1OVK1Mb+6SvYwIeaHzs+QtLlUsZ1yPKF2mOpE58He30fP54WxYsc0g==",
+      "candidateCheckoutSha": "0d40caa3943d8170ee57233bfe5721198dcf39f3",
+      "candidateCheckoutTree": "8d966b87ea529fb5069cc2f97a49754c19c1e1c9",
+      "installedFiles": 76,
+      "payloadFiles": 25
+    },
+    {
+      "platform": "linux",
+      "node": "v24.22.2",
+      "result": "PASS",
+      "candidateSha256": "f8a041d13588df8bb9f563a399ee66670c95f82b79cec43d44db4a9f02d16918",
+      "candidateIntegrity": "sha512-GC8KjZ3ZzEnwih0uTUV3dnT1EqsQDpUt1OVK1Mb+6SvYwIeaHzs+QtLlUsZ1yPKF2mOpE58He30fP54WxYsc0g==",
+      "candidateCheckoutSha": "0d40caa3943d8170ee57233bfe5721198dcf39f3",
+      "candidateCheckoutTree": "8d966b87ea529fb5069cc2f97a49754c19c1e1c9",
+      "installedFiles": 76,
+      "payloadFiles": 25
+    },
+    {
+      "platform": "darwin",
+      "node": "v24.22.1",
+      "result": "PASS",
+      "candidateSha256": "f8a041d13588df8bb9f563a399ee66670c95f82b79cec43d44db4a9f02d16918",
+      "candidateIntegrity": "sha512-GC8KjZ3ZzEnwih0uTUV3dnT1EqsQDpUt1OVK1Mb+6SvYwIeaHzs+QtLlUsZ1yPKF2mOpE58He30fP54WxYsc0g==",
+      "candidateCheckoutSha": "0d40caa3943d8170ee57233bfe5721198dcf39f3",
+      "candidateCheckoutTree": "8d966b87ea529fb5069cc2f97a49754c19c1e1c9",
+      "installedFiles": 76,
+      "payloadFiles": 25
+    }
+  ],
+  "jobs": [
+    {
+      "run": 41966284074,
+      "id": 127044178939,
+      "name": "sqlite-floor",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044179154,
+      "name": "test (24, ubuntu-latest)",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044179200,
+      "name": "workflow-check",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044179247,
+      "name": "test (24, windows-latest)",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044179276,
+      "name": "docs-links",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044179369,
+      "name": "docs-build",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044179371,
+      "name": "test (24, macos-latest)",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044179392,
+      "name": "package-build",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044274352,
+      "name": "package-smoke (ubuntu-latest, 24.0.0)",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044274361,
+      "name": "package-smoke (windows-latest, 24)",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044274367,
+      "name": "package-smoke (ubuntu-latest, 24)",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127044274422,
+      "name": "package-smoke (macos-latest, 24)",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966284074,
+      "id": 127046180670,
+      "name": "CI Required",
+      "conclusion": "success"
+    },
+    {
+      "run": 41966283781,
+      "id": 127044208945,
+      "name": "CodeQL (javascript-typescript)",
+      "conclusion": "success"
+    }
+  ],
+  "archives": [
+    {
+      "id": 13388055826,
+      "name": "package-smoke-ubuntu-latest-24.0.0-2",
+      "sha256": "83efe2429973a745c7368ddd087d6d3a11ac3e51d4553d918141b77d4ba0f668"
+    },
+    {
+      "id": 13387961308,
+      "name": "sqlite-floor-2",
+      "sha256": "f693f9cc8008a1b638b2afcc3f69434653247825b83e9e9cf0a7a8f527068fb9"
+    },
+    {
+      "id": 13387737924,
+      "name": "tests-windows-latest-2",
+      "sha256": "67bb5d8ae231df089c8160c489e34c5be9b9f28be956df008a5505b1bc2d1b0c"
+    },
+    {
+      "id": 13387682230,
+      "name": "package-smoke-windows-latest-24-2",
+      "sha256": "99200316c2b0fae0ac3c6b9a3a715076add208a2cfdf714adfd90b11e198e1e9"
+    },
+    {
+      "id": 13387587258,
+      "name": "package-candidate-2",
+      "sha256": "4a5ef5e294457205eff264c1970475e398d621ac255b8a91af70e3e3101de327"
+    },
+    {
+      "id": 13387567361,
+      "name": "package-build-2",
+      "sha256": "67211527f32dfd8e85599722baeb4f12e82caf551abff9d4f7ae6ce288222957"
+    },
+    {
+      "id": 13387353355,
+      "name": "tests-macos-latest-2",
+      "sha256": "78ebcc3a9ef078d5ac8c60b1dab7247565ae1376daee5e6c7f60929184ac3a0d"
+    },
+    {
+      "id": 13387258237,
+      "name": "docs-links-2",
+      "sha256": "aaa7ce6d9ac2ee7660f5fa22bc55fa7c828329ca0aee5781aae42b41732f8d3a"
+    },
+    {
+      "id": 13387243184,
+      "name": "package-smoke-ubuntu-latest-24-2",
+      "sha256": "fc8111dc80ea4c1884243b6633454150f3cf19433f0af2ee968e996e9405974f"
+    },
+    {
+      "id": 13387239265,
+      "name": "package-smoke-macos-latest-24-2",
+      "sha256": "dbe41a4c1ef35ec080f34f8ca7017e521dab4665d407a9617b654d987101ab42"
+    },
+    {
+      "id": 13387184289,
+      "name": "docs-build-2",
+      "sha256": "66957e596667b17caa297e88baa051f02a46f3035015d9aad795eb5a9de44f98"
+    },
+    {
+      "id": 13387078699,
+      "name": "tests-ubuntu-latest-2",
+      "sha256": "88bc9fcd9e6fbbf5d9a7b1d8320b08595cf8623d41a615c4a4fded5914bcd092"
+    },
+    {
+      "id": 13386864319,
+      "name": "workflow-check-2",
+      "sha256": "35eee922d53afa109d7671f2f1cfabc2214f2c83375e0a6dac1e1cfb46c8aea2"
+    }
+  ],
+  "initialApproval": "Both workflows action_required on attempt 1; maintainer approved only these runs. Execution is attempt 2, not a retry of failed tests.",
+  "package": {
+    "sha256": "f8a041d13588df8bb9f563a399ee66670c95f82b79cec43d44db4a9f02d16918",
+    "integrity": "sha512-GC8KjZ3ZzEnwih0uTUV3dnT1EqsQDpUt1OVK1Mb+6SvYwIeaHzs+QtLlUsZ1yPKF2mOpE58He30fP54WxYsc0g==",
+    "checkoutSha": "0d40caa3943d8170ee57233bfe5721198dcf39f3",
+    "checkoutTree": "8d966b87ea529fb5069cc2f97a49754c19c1e1c9",
+    "runId": "41966284074",
+    "attempt": "2"
+  },
+  "codeql": [
+    {
+      "id": 2100582573,
+      "ref": "refs/pull/30/merge",
+      "commit_sha": "0d40caa3943d8170ee57233bfe5721198dcf39f3",
+      "error": "",
+      "warning": "",
+      "results_count": 0
+    }
+  ],
+  "checkRunsCommit": "99131e2af76194b63f393db5e98039c86238e8c6",
+  "checks": [
+    {
+      "name": "CI Required",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "CodeQL",
+      "app": 57789,
+      "conclusion": "success"
+    },
+    {
+      "name": "package-smoke (macos-latest, 24)",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "package-smoke (ubuntu-latest, 24)",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "package-smoke (windows-latest, 24)",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "package-smoke (ubuntu-latest, 24.0.0)",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "CodeQL (javascript-typescript)",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "package-build",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "test (24, macos-latest)",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "docs-build",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "docs-links",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "test (24, windows-latest)",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "workflow-check",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "test (24, ubuntu-latest)",
+      "app": 15368,
+      "conclusion": "success"
+    },
+    {
+      "name": "sqlite-floor",
+      "app": 15368,
+      "conclusion": "success"
+    }
+  ],
+  "rulesetBypassActors": [
+    {
+      "actor_id": 73582072,
+      "actor_type": "User",
+      "bypass_mode": "pull_request"
+    }
+  ],
+  "closure": {
+    "state": "closed",
+    "merged": false,
+    "closedAt": "2026-11-05T04:22:53Z",
+    "mainSha": "4d6c0ca0a5602c6130b2ab99b40e6068fe6cedda",
+    "forkAndBranchRetained": true
+  },
+  "actualCodeqlTokenPermissions": {
+    "contents": "read",
+    "metadata": "read",
+    "security-events": "read"
+  },
+  "modelDecision": "User reaffirmed disabled on 2026-11-05; no configuration changes, secret setup, or paid requests.",
+  "collectionTransportFailures": "GitHub GET EOFs retained in raw evidence; completed archives reused. No hosted test or workflow rerun."
+}
